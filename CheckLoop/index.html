@@ -4,495 +4,873 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CheckLoop – Sign In</title>
-  <link rel="preconnect" href="[https://fonts.googleapis.com](https://fonts.googleapis.com)">
-  <link rel="preconnect" href="[https://fonts.gstatic.com](https://fonts.gstatic.com)" crossorigin>
-  <link href="[https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap](https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap)" rel="stylesheet">
-  <script src="[https://unpkg.com/@supabase/supabase-js@2](https://unpkg.com/@supabase/supabase-js@2)"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
-    :root{--primary:#1F8FE4;--secondary:#34B45F;--bg:#EEF6FF;--card:#F9FBFF;--text:#0B1117;--muted:#6B7785;--shadow:0 8px 30px rgba(16,24,40,.08)}
-    *{box-sizing:border-box}
-    html,body{height:100%;overflow:hidden}
-    body{margin:0;background:var(--bg);font-family:'Inter',system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:var(--text)}
-    .wrap{min-height:100vh;display:grid;place-items:center;padding:24px}
-    .card{width:100%;max-width:420px;background:var(--card);box-shadow:var(--shadow);border-radius:16px;padding:22px}
-    h1{font-size:22px;margin:0 0 4px}
-    p.sub{margin:0 0 18px;color:var(--muted)}
-    label{display:block;font-size:12px;color:var(--muted);margin:0 0 6px}
-    input{width:100%;padding:14px;border:1px solid #E6EAF0;border-radius:12px;font:inherit;outline:none}
-    input:focus{border-color:var(--primary);box-shadow:0 0 0 4px rgba(31,143,228,.12)}
-    .row{
-      /* replaced by refined .form-meta styles below */
+    /* --- macOS Neon Style Redesign --- */
+    :root {
+      --primary-glow: #00A2FF;
+      --secondary-glow: #34B45F;
+      --text-primary: #FFFFFF;
+      --text-secondary: #aeb8c5;
+      --border-color: rgba(255, 255, 255, 0.2);
+      --glass-bg: rgba(30, 30, 30, 0.5);
+      --shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+      --font-main: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
-    /* replaced by refined .checkbox styles below */
-    .btn{width:100%;display:inline-flex;justify-content:center;align-items:center;gap:8px;border:0;border-radius:12px;padding:12px 14px;font-weight:600;cursor:pointer;background:var(--primary);color:#fff}
-    .btn:disabled{opacity:.6;cursor:not-allowed}
-    .link{background:transparent;border:0;color:var(--muted);cursor:pointer}
-    .alt{margin-top:12px;display:flex;gap:8px;align-items:center}
-    .error{display:none;margin:8px 0 0;padding:10px 12px;border-left:3px solid #E45151;background:rgba(228,81,81,.08);border-radius:10px;color:#9B2C2C}
-    .success{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center}
-    .logoutBtn{margin-top:12px;padding:10px 16px;border:none;border-radius:8px;background:#E45151;color:white;font-weight:600;cursor:pointer}
-    .muted{color:var(--muted)}
-    .form-meta{display:flex;justify-content:space-between;align-items:center;margin:10px 0 14px;font-size:12px;color:var(--muted)}
-    .form-meta .link{color:var(--muted);font-size:inherit;opacity:.9}
-    .form-meta .link:hover{color:var(--text);text-decoration:underline}
-    .checkbox{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;line-height:1}
-    .checkbox input{width:16px;height:16px;margin:0;accent-color:var(--primary)}
-    .alt{margin-top:12px;display:flex;gap:8px;align-items:center;justify-content:center;font-size:12px;color:var(--muted)}
-    .alt .link{color:var(--primary);font-weight:600}
-    .alt .link:hover{text-decoration:underline}
 
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-/* Overwrite or add .fadeInUp with slower, more dramatic animation */
-.fadeInUp {
-  animation: fadeInUp 0.9s ease-out forwards;
-}
-
-  .fadeIn {
-    animation: fadeIn 0.5s ease forwards;
-  }
-
-/* --- App Shell (sidebar + content) --- */
-.app-shell{display:none;grid-template-columns:72px 1fr;height:100vh;overflow:hidden}
-.sidebar {
-  width: 80px;
-  background: #0f172a;
-  padding: 24px 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 24px;
-}
-.sidebar-button {
-  width: 48px;
-  height: 48px;
-  display: grid;
-  place-items: center;
-  border-radius: 999px;
-  cursor: pointer;
-  background: #2d3748; /* grey circle */
-  transition: all 0.3s ease;
-}
-
-.sidebar-button.selected {
-  background: #2d3748;
-  box-shadow: 0 0 0 2px #3b82f6, 0 0 10px 3px rgba(59, 130, 246, 0.6);
-  animation: pulseShadow 1.8s infinite;
-}
-
-.sidebar-button img {
-  width: 28px;
-  height: 28px;
-  display: block;
-  object-fit: contain;
-  filter: brightness(0) invert(1);
-}
-
-@keyframes pulseShadow {
-  0% {
-    box-shadow: 0 0 0 3px #3b82f6, 0 0 20px 8px rgba(59, 130, 246, 0.6);
-  }
-  50% {
-    box-shadow: 0 0 0 3px #3b82f6, 0 0 30px 14px rgba(59, 130, 246, 0.4);
-  }
-  100% {
-    box-shadow: 0 0 0 3px #3b82f6, 0 0 20px 8px rgba(59, 130, 246, 0.6);
-  }
-}
-.sidebar .section{margin-top:6px}
-  .nav{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px}
-  .nav .item{display:flex;align-items:center;justify-content:center;gap:0;padding:12px 0;border-radius:12px;cursor:pointer;color:#cbd5e1}
-  .nav .item:hover{background:rgba(255,255,255,.06);color:#fff}
-  .nav .item.active{background:rgba(255,255,255,0.15);color:#fff}
-  .icon {
-    font-size: 14px;
-    width: 30px;
-    height: 30px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    background-color: #1e293b;
-    color: #94a3b8;
-  }
-.sidebar .spacer{flex:1}
-  .profile{display:flex;align-items:center;justify-content:center;gap:0;background:rgba(255,255,255,.06);padding:10px 0;border-radius:12px;margin-top:12px;}
-.avatar{
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(135deg,var(--primary),#62b5ff);
-  color: #fff;
-  font-weight: 800;
-  font-size: 14px;
-}
-.profile-menu {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  right: 0;
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: var(--shadow);
-  padding: 8px;
-  z-index: 1000;
-}
-.profile-menu button {
-  width: 100%;
-  background: transparent;
-  border: none;
-  padding: 8px 12px;
-  font-weight: 600;
-  color: var(--text);
-  cursor: pointer;
-  text-align: left;
-}
-.profile-menu button:hover {
-  background: #f0f4f8;
-}
-.profile .name{font-weight:600;color:#fff}
-.profile .email{font-size:12px;color:#94a3b8}
-.main{background:var(--bg);padding:24px;display:flex;flex-direction:column;height:100vh;overflow:hidden}
-.section-title {
-  font-size: 11px;
-  font-weight: 600;
-  color: #94a3b8;
-  text-transform: uppercase;
-  margin: 18px 0 6px 12px;
-}
-
-  .grid-2-1{display:grid;grid-template-columns:2fr 1fr;gap:16px;flex:1;min-height:0;height:100%}
-  .panel{background:#fff;border-radius:12px;box-shadow:var(--shadow);padding:16px;display:flex;flex-direction:column;height:100%;min-height:0}
-  #itemsPrimary{display:flex;flex-direction:column;min-height:0;overflow:hidden}
-  .rows { display:flex; flex-direction:column; gap:10px; min-height:0; flex:1; }
-  .panel > #leftRows{flex:1;min-height:0;max-height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding-right:8px}
-#roomsGrid{min-height:0}
-  .row-card {
-    background: var(--card);
-    border-left: 4px solid var(--primary);
-    padding: 8px 12px;
-    border-radius: 8px;
-    font-size: 13px;
-    color: var(--text);
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-    user-select: none;
-  }
-  /* Team header inside staffRows */
-  .team-header{
-    padding:8px 10px;
-    font-size:12px;
-    font-weight:700;
-    text-transform:uppercase;
-    color:var(--primary);
-    background:rgba(31,143,228,.12);
-    border-radius:8px;
-    letter-spacing:.04em;
-    user-select:none;
-  }
-  .row-card{ cursor:grab; }
-  .row-card:active{ cursor:grabbing; }
-  .row-card.dragging{ opacity:.6; transform:scale(0.98); }
-
-  .rows.drop-target{ outline:2px dashed var(--primary); outline-offset:-8px; }
-
-  /* Highlight only the team group being dragged over */
-  .team-group.drop-target{
-    outline:2px dashed var(--primary);
-    outline-offset:-4px;
-    border-radius:8px;
-  }
-
-  .card-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
-    margin-top: 8px;
-  }
-  .grid-card {
-    background: #fff;
-    border-radius: 12px;
-    aspect-ratio: 1 / 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 600;
-    color: var(--text);
-    text-align: center;
-    padding: 8px;
-    box-shadow: var(--shadow);
-  }
-  .drop-box.drop-target {
-    outline: 2px dashed var(--primary);
-    outline-offset: -6px;
-  }
-  .panel-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-  }
-
-  .icon-btn {
-    background: #007bff;
-    color: #fff;
-    border: none;
-    border-radius: 6px;
-    font-size: 20px;
-    width: 32px;
-    height: 32px;
-    cursor: pointer;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-  }
-
-  .icon-btn:hover {
-    background: #0056b3;
-  }
-
-  /* Improved room container layout */
-  .room-container,
-  .rooms-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 20px;
-    padding: 30px;
-    justify-items: center;
-  }
-
-  .room-card {
-    background-color: white;
-    border-radius: 12px;
-    /* Enhanced outline and shadow */
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-    border: 1px solid #e0e0e0;
-    width: 100%;
-    aspect-ratio: 1 / 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: bold;
-    text-align: center;
-    transition: transform 0.2s;
-    position: relative;
-    padding: 8px;
-  }
-  .room-delete{
-    position:absolute;top:8px;right:8px;width:26px;height:26px;display:grid;place-items:center;
-    border:1px solid #e6eaf0;border-radius:8px;background:#fff;color:#9B2C2C;font-weight:800;line-height:1;
-    cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.08);transition:transform .12s ease, box-shadow .2s ease, background .2s ease, color .2s ease;z-index:2
-  }
-  .room-delete:hover{background:#ffecec;color:#B42323;box-shadow:0 4px 12px rgba(228,81,81,.2);transform:translateY(-1px)}
-  .room-delete:active{transform:translateY(0) scale(.98)}
-  .room-header {
-    position: absolute;
-    top: 8px;
-    left: 0;
-    right: 0;
-    text-align: center;
-    font-weight: bold;
-    font-size: 16px;
-    pointer-events: none;
-  }
-
-  .room-items{
-    position: absolute;
-    top: 34px;
-    left: 8px;
-    right: 8px;
-    bottom: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    overflow: auto;
-    padding-right: 4px;
-  }
-  .room-item{
-    background: #fff;
-    border: 1px solid #e6eaf0;
-    border-left: 3px solid var(--primary);
-    border-radius: 8px;
-    padding: 6px 8px;
-    font-size: 12px;
-    font-weight: 600;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-    cursor: grab;
-    user-select: none;
-  }
-  .room-item:active{ cursor: grabbing; }
-
-  .room-card:hover {
-    transform: translateY(-2px);
-  }
-  .room-card.highlight {
-    border: 2px dashed #007bff;
-    background-color: #f0f8ff;
-  }
-@media (max-width: 900px){.grid-2-1{grid-template-columns:2fr 1fr}}
-
-.items-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-  gap: 10px;
-  padding: 10px;
-  overflow-y: auto;
-  height: calc(100% - 40px);
-}
-
-  .item-card {
-    background: white;
-    border-radius: 8px;
-    padding: 20px;
-    text-align: center;
-    cursor: grab;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    user-select: none;
-    transition: transform 0.13s cubic-bezier(0.4,0,0.2,1), box-shadow 0.13s cubic-bezier(0.4,0,0.2,1);
-  }
-  .item-card:hover {
-    transform: scale(1.05);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    cursor: grab;
-  }
-  .item-card:active {
-    cursor: grabbing;
-  }
-
-  .room-card:hover {
-    transform: scale(1.02);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  }
-
-  /* Items page table */
-  .table-wrap{background:#fff;border-radius:12px;box-shadow:var(--shadow);overflow:hidden}
-  table.nice-table{width:100%;border-collapse:separate;border-spacing:0}
-  .nice-table thead th{font-size:12px;text-align:left;color:#64748b;background:#f8fafc;padding:12px 14px;border-bottom:1px solid #e6eaf0}
-  .nice-table tbody td{padding:14px;border-bottom:1px solid #f1f5f9;font-size:14px}
-  .nice-table tbody tr:last-child td{border-bottom:none}
-</style>
-</style>
-</style>
-</style>
-<style>
-    .config-btn{border:1px solid #e6eaf0;background:#fff;border-radius:8px;padding:6px 10px;font-weight:600;cursor:pointer}
-  /* Section cards */
-  .subcard{background:#fff;border-radius:12px;box-shadow:var(--shadow);padding:12px;margin-bottom:12px}
-  .subcard .subcard-title{font-size:12px;color:var(--muted);font-weight:600;margin:0 0 8px;text-transform:uppercase;letter-spacing:.04em}
-  /* Filter layout */
-  .filter-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-  .radio-row{display:flex;gap:8px;flex-wrap:wrap}
-  .radio-pill{display:inline-flex;align-items:center;border:1px solid #e6eaf0;border-radius:999px;padding:6px 10px;cursor:pointer;background:#fff;user-select:none}
-  .radio-pill span{font-weight:600;color:#475569}
-  .radio-pill.active{background:#eef6ff;border-color:#cfe6ff;box-shadow:0 0 0 2px rgba(31,143,228,.12) inset}
-  .subcard input[type="text"]{padding:10px 12px;border:1px solid #E6EAF0;border-radius:10px;font:inherit;outline:none}
-
-  /* --- Staff page column layout --- */
-  #staffRows .row-card{
-    border-left:none;
-    display:grid;
-    grid-template-columns:1fr 160px 64px 40px;
-    align-items:center;
-    gap:8px;
-    padding:6px 10px;
-  }
-  #staffRows .staff-name{font-weight:600;}
-  #staffRows .staff-role{color:var(--muted);font-size:13px;}
-  #staffRows .staff-pin{display:inline-block;min-width:24px;text-align:center;font-weight:700;}
-  #staffRows .staff-pin.pin-yes{color:#26a269;}
-  #staffRows .staff-pin.pin-no{color:#B42323;}
-  /* Configure button */
-  .staff-config-btn{
-    width:28px;
-    height:28px;
-    border:1px solid #e6eaf0;
-    border-radius:8px;
-    background:#fff;
-    font-size:14px;
-    line-height:1;
-    display:grid;
-    place-items:center;
-    cursor:pointer;
-    color:var(--muted);
-  }
-  .staff-config-btn:hover{background:#f1f5f9;}
-  .staff-headers{
-    display:grid;
-    grid-template-columns:1fr 160px 64px 40px;
-    gap:8px;
-    padding:6px 10px;
-    font-size:12px;
-    text-transform:uppercase;
-    color:var(--muted);
-    background:#f1f5f9;
-    border-radius:8px;
-    user-select:none;
-  }
-  @media (max-width:700px){
-    #staffRows .row-card,
-    .staff-headers{
-      grid-template-columns:1fr;
+    * {
+      box-sizing: border-box;
+      transition: background-color 0.3s cubic-bezier(0.25, 0.8, 0.25, 1),
+                  color 0.3s cubic-bezier(0.25, 0.8, 0.25, 1),
+                  border-color 0.3s cubic-bezier(0.25, 0.8, 0.25, 1),
+                  box-shadow 0.3s cubic-bezier(0.25, 0.8, 0.25, 1),
+                  transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
     }
-    #staffRows .staff-role,
-    #staffRows .staff-pin{
-      margin-left:2px;
-    }
-  }
 
-  /* --- Modal for editing staff --- */
-  .modal-overlay{
-    position:fixed;inset:0;
-    background:rgba(0,0,0,.4);
-    display:none;
-    align-items:center;justify-content:center;
-    z-index:2000;
-  }
-  .modal{
-    background:#fff;border-radius:12px;
-    box-shadow:var(--shadow);
-    width:90%;max-width:420px;
-    padding:22px;display:flex;flex-direction:column;gap:14px;
-  }
-  .modal h3{margin:0;font-size:19px;}
-  .modal label{font-size:12px;color:var(--muted);font-weight:600;margin-bottom:4px;display:block;}
-  .modal input,.modal select{
-    width:100%;padding:10px 12px;border:1px solid #e6eaf0;border-radius:9px;font:inherit;
-  }
-  .modal .pin-row{display:flex;align-items:center;gap:10px;}
-  .btn-small{
-    padding:8px 12px;border:none;border-radius:8px;font-weight:600;cursor:pointer;
-  }
-  .btn-primary{background:var(--primary);color:#fff;}
-  .btn-secondary{background:#e6eaf0;color:#475569;}
-  .modal .btn-row{display:flex;justify-content:flex-end;gap:10px;margin-top:4px;}
-</style>
-</style>
+    html, body {
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      margin: 0;
+      font-family: var(--font-main);
+      color: var(--text-primary);
+      background: linear-gradient(135deg, #1a0c2e, #1a2a45, #0d2e3a);
+      background-size: 400% 400%;
+      animation: gradientBG 15s ease infinite;
+    }
+
+    @keyframes gradientBG {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    .wrap {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    /* --- Frosted Glass Card --- */
+    .card {
+      width: 100%;
+      max-width: 420px;
+      background: var(--glass-bg);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border-color);
+      border-radius: 24px;
+      padding: 32px;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      margin: 0 0 8px;
+      text-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+    }
+
+    p.sub {
+      margin: 0 0 24px;
+      color: var(--text-secondary);
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin: 0 0 8px;
+      font-weight: 500;
+    }
+
+    input {
+      width: 100%;
+      padding: 14px;
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      font: inherit;
+      outline: none;
+      background: rgba(0, 0, 0, 0.2);
+      color: var(--text-primary);
+      font-size: 15px;
+    }
+
+    input::placeholder {
+      color: var(--text-secondary);
+      opacity: 0.7;
+    }
+
+    input:focus {
+      border-color: var(--primary-glow);
+      box-shadow: 0 0 0 4px rgba(0, 162, 255, 0.3), 0 0 20px rgba(0, 162, 255, 0.2) inset;
+    }
+
+    .btn {
+      width: 100%;
+      display: inline-flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      border: 0;
+      border-radius: 12px;
+      padding: 14px;
+      font-weight: 600;
+      font-size: 16px;
+      cursor: pointer;
+      background: var(--primary-glow);
+      color: #fff;
+      text-shadow: 0 0 5px rgba(0,0,0,0.2);
+      box-shadow: 0 4px 15px rgba(0, 162, 255, 0.3);
+    }
+    
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0, 162, 255, 0.4);
+    }
+    
+    .btn:active {
+      transform: translateY(0px) scale(0.98);
+      box-shadow: 0 2px 10px rgba(0, 162, 255, 0.3);
+    }
+
+    .btn:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .link {
+      background: transparent;
+      border: 0;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .link:hover {
+      color: var(--primary-glow);
+      text-decoration: underline;
+    }
+
+    .alt {
+      margin-top: 16px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+    .alt .link {
+      color: var(--primary-glow);
+      font-weight: 600;
+    }
+
+    .error {
+      display: none;
+      margin: 12px 0;
+      padding: 12px;
+      border-left: 4px solid #ff4d4d;
+      background: rgba(255, 77, 77, 0.1);
+      backdrop-filter: blur(5px);
+      border-radius: 10px;
+      color: #ffc2c2;
+      font-weight: 500;
+    }
+
+    .success {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      text-align: center;
+    }
+
+    .logoutBtn {
+      margin-top: 12px;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 8px;
+      background: #E45151;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .form-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 12px 0 18px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .checkbox {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-secondary);
+      font-size: 13px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .checkbox input {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      accent-color: var(--primary-glow);
+    }
+
+    /* --- Animations --- */
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.98);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .fadeInUp {
+      animation: fadeInUp 0.6s cubic-bezier(0.25, 0.8, 0.25, 1) forwards;
+    }
+
+    .fadeIn {
+      animation: fadeIn 0.5s ease forwards;
+    }
+
+    /* --- App Shell (sidebar + content) --- */
+    .app-shell {
+      display: none;
+      grid-template-columns: 80px 1fr;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .sidebar {
+      background: rgba(10, 10, 10, 0.4);
+      backdrop-filter: blur(25px) saturate(180%);
+      -webkit-backdrop-filter: blur(25px) saturate(180%);
+      border-right: 1px solid var(--border-color);
+      padding: 24px 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .sidebar-button {
+      width: 52px;
+      height: 52px;
+      display: grid;
+      place-items: center;
+      border-radius: 16px;
+      cursor: pointer;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid transparent;
+    }
+    
+    .sidebar-button:hover {
+        background: rgba(255, 255, 255, 0.1);
+        transform: scale(1.05);
+    }
+
+    .sidebar-button.selected {
+      background: rgba(0, 162, 255, 0.2);
+      border-color: rgba(0, 162, 255, 0.5);
+      box-shadow: 0 0 15px 2px rgba(0, 162, 255, 0.4);
+    }
+
+    .sidebar-button img {
+      width: 28px;
+      height: 28px;
+      display: block;
+      object-fit: contain;
+      filter: invert(90%) sepia(13%) saturate(268%) hue-rotate(180deg) brightness(95%) contrast(90%);
+    }
+    
+    .sidebar-button.selected img {
+        filter: invert(68%) sepia(83%) saturate(5398%) hue-rotate(170deg) brightness(101%) contrast(101%);
+    }
+
+    .sidebar .spacer { flex: 1; }
+
+    .profile {
+      position: relative;
+    }
+
+    .avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, var(--primary-glow), #62b5ff);
+      color: #fff;
+      font-weight: 700;
+      font-size: 16px;
+      cursor: pointer;
+      border: 2px solid rgba(255, 255, 255, 0.5);
+    }
+    
+    .avatar:hover {
+        transform: scale(1.1);
+        box-shadow: 0 0 15px rgba(0, 162, 255, 0.5);
+    }
+
+    .profile-menu {
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%) translateY(-10px);
+      background: var(--glass-bg);
+      backdrop-filter: blur(15px);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border-color);
+      padding: 8px;
+      z-index: 1000;
+      width: 150px;
+    }
+
+    .profile-menu button {
+      width: 100%;
+      background: transparent;
+      border: none;
+      padding: 10px 12px;
+      font-weight: 500;
+      color: var(--text-primary);
+      cursor: pointer;
+      text-align: left;
+      border-radius: 8px;
+    }
+
+    .profile-menu button:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--primary-glow);
+    }
+
+    .main {
+      padding: 24px 32px;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow-y: auto;
+    }
+    
+    .main h2 {
+      font-size: 24px;
+      font-weight: 600;
+      margin: 0 0 16px;
+    }
+
+    .grid-2-1 {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 24px;
+      flex: 1;
+      min-height: 0;
+      height: 100%;
+    }
+
+    .panel {
+      background: var(--glass-bg);
+      backdrop-filter: blur(20px) saturate(150%);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      min-height: 0;
+    }
+
+    #itemsPrimary {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .rows {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-height: 0;
+      flex: 1;
+      overflow-y: auto;
+      padding-right: 8px;
+    }
+    
+    /* Custom scrollbar for webkit browsers */
+    .rows::-webkit-scrollbar { width: 6px; }
+    .rows::-webkit-scrollbar-track { background: transparent; }
+    .rows::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+    .rows::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.4); }
+
+
+    .row-card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid transparent;
+      border-left: 4px solid var(--primary-glow);
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-primary);
+      user-select: none;
+      cursor: grab;
+    }
+    
+    .row-card:hover {
+        background: rgba(255, 255, 255, 0.1);
+        border-color: rgba(0, 162, 255, 0.3);
+    }
+
+    .row-card:active { cursor: grabbing; }
+    .row-card.dragging { opacity: .5; transform: scale(0.98); background: rgba(0, 162, 255, 0.2); }
+
+    .rows.drop-target {
+      background: rgba(0, 162, 255, 0.1);
+      border-radius: 12px;
+    }
+
+    .team-header {
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--primary-glow);
+      background: rgba(0, 162, 255, 0.1);
+      border-radius: 8px;
+      letter-spacing: .05em;
+      user-select: none;
+      margin-top: 10px;
+    }
+    
+    .team-group.drop-target {
+        background: rgba(0, 162, 255, 0.1);
+        border-radius: 12px;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    
+    .panel-header .title {
+        margin: 0;
+    }
+
+    .icon-btn {
+      background: var(--primary-glow);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 24px;
+      font-weight: 300;
+      width: 38px;
+      height: 38px;
+      cursor: pointer;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      box-shadow: 0 2px 10px rgba(0, 162, 255, 0.3);
+    }
+
+    .icon-btn:hover {
+      transform: scale(1.05);
+      box-shadow: 0 4px 15px rgba(0, 162, 255, 0.4);
+    }
+
+    .rooms-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 20px;
+      padding: 10px;
+    }
+
+    .room-card {
+      background-color: rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      border: 1px solid var(--border-color);
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      display: flex;
+      flex-direction: column;
+      font-weight: bold;
+      transition: transform 0.2s, box-shadow 0.2s;
+      position: relative;
+      padding: 8px;
+    }
+    
+    .room-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.2), 0 0 20px rgba(0, 162, 255, 0.2);
+      border-color: rgba(0, 162, 255, 0.5);
+    }
+    
+    .room-card.highlight {
+      border: 2px dashed var(--primary-glow);
+      background-color: rgba(0, 162, 255, 0.1);
+    }
+
+    .room-delete {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      color: #ff8f8f;
+      font-weight: 800;
+      line-height: 1;
+      cursor: pointer;
+      z-index: 2;
+    }
+
+    .room-delete:hover {
+      background: #ff4d4d;
+      color: #fff;
+      box-shadow: 0 0 10px rgba(255, 77, 77, 0.5);
+    }
+
+    .room-header {
+      text-align: center;
+      font-weight: 600;
+      font-size: 16px;
+      padding: 8px;
+      color: var(--text-primary);
+    }
+
+    .room-items {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      overflow: auto;
+      padding: 0 8px 8px 8px;
+    }
+
+    .room-item {
+      background: rgba(0,0,0,0.2);
+      border: 1px solid var(--border-color);
+      border-left: 3px solid var(--primary-glow);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: grab;
+      user-select: none;
+    }
+    .room-item:active { cursor: grabbing; }
+    
+    /* --- Tables --- */
+    .table-wrap {
+      background: var(--glass-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    table.nice-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+    .nice-table thead th {
+      font-size: 12px;
+      text-align: left;
+      font-weight: 600;
+      color: var(--text-secondary);
+      background: rgba(255, 255, 255, 0.05);
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border-color);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .nice-table tbody td {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border-color);
+      font-size: 14px;
+      color: var(--text-primary);
+    }
+    .nice-table tbody tr:last-child td { border-bottom: none; }
+    .nice-table tbody tr:hover { background: rgba(255, 255, 255, 0.03); }
+
+    /* --- Config & Filter Elements --- */
+    .config-btn {
+      border: 1px solid var(--border-color);
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text-secondary);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .config-btn:hover {
+        background: rgba(255, 255, 255, 0.15);
+        color: var(--text-primary);
+        border-color: rgba(255, 255, 255, 0.4);
+    }
+    
+    .subcard {
+      background: var(--glass-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .subcard .subcard-title {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-weight: 600;
+      margin: 0 0 8px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .filter-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .radio-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .radio-pill {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--border-color);
+      border-radius: 999px;
+      padding: 8px 14px;
+      cursor: pointer;
+      background: transparent;
+      user-select: none;
+    }
+    .radio-pill span {
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+    .radio-pill.active {
+      background: var(--primary-glow);
+      border-color: var(--primary-glow);
+      box-shadow: 0 0 10px rgba(0, 162, 255, 0.4);
+    }
+    .radio-pill.active span {
+        color: #fff;
+    }
+    .subcard input[type="text"] {
+      padding: 10px 14px;
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      background: rgba(0,0,0,0.2);
+      color: var(--text-primary);
+    }
+
+    /* --- Staff page --- */
+    #staffRows .row-card {
+      border-left: none;
+      display: grid;
+      grid-template-columns: 1fr 160px 64px 40px;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+    }
+    #staffRows .staff-name { font-weight: 600; }
+    #staffRows .staff-role { color: var(--text-secondary); font-size: 13px; }
+    #staffRows .staff-pin { display: inline-block; min-width: 24px; text-align: center; font-weight: 700; }
+    #staffRows .staff-pin.pin-yes { color: #26a269; }
+    #staffRows .staff-pin.pin-no { color: #B42323; }
+
+    .staff-config-btn {
+      width: 32px;
+      height: 32px;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.05);
+      font-size: 14px;
+      line-height: 1;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      color: var(--text-secondary);
+    }
+    .staff-config-btn:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+
+    .staff-headers {
+      display: grid;
+      grid-template-columns: 1fr 160px 64px 40px;
+      gap: 8px;
+      padding: 8px 12px;
+      font-size: 12px;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+      user-select: none;
+      margin-bottom: 8px;
+    }
+    
+    /* --- Modal --- */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, .6);
+      backdrop-filter: blur(5px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+      animation: fadeIn 0.3s ease forwards;
+    }
+    .modal {
+      background: rgba(40, 40, 40, 0.7);
+      backdrop-filter: blur(25px) saturate(180%);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      width: 90%;
+      max-width: 460px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      animation: fadeInUp 0.4s cubic-bezier(0.25, 0.8, 0.25, 1) forwards;
+    }
+    .modal h3 { margin: 0; font-size: 20px; font-weight: 600;}
+    .modal label { font-size: 13px; color: var(--text-secondary); font-weight: 500; margin-bottom: 6px; display: block; }
+    .modal input, .modal select {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      font: inherit;
+      background: rgba(0,0,0,0.2);
+      color: var(--text-primary);
+    }
+    .modal .pin-row { display: flex; align-items: center; gap: 10px; }
+    .btn-small {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 10px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-primary { background: var(--primary-glow); color: #fff; }
+    .btn-secondary { background: rgba(255,255,255,0.1); color: var(--text-secondary); }
+    .btn-secondary:hover { background: rgba(255,255,255,0.2); color: var(--text-primary); }
+    .modal .btn-row { display: flex; justify-content: flex-end; gap: 12px; margin-top: 8px; }
+
+    /* Dashboard Cards */
+    .card-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 20px;
+    }
+    .grid-card {
+        background: var(--glass-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        aspect-ratio: 1.2 / 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 16px;
+    }
+    .grid-card .dash-value {
+        font-size: 36px;
+        font-weight: 700;
+        color: var(--text-primary);
+    }
+    .grid-card .dash-label {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--text-secondary);
+        margin-top: 4px;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 900px) {
+      .grid-2-1 { grid-template-columns: 1fr; }
+      .main { padding: 16px; }
+    }
+    @media (max-width: 700px) {
+      #staffRows .row-card,
+      .staff-headers {
+        grid-template-columns: 1fr;
+        gap: 4px;
+        padding: 10px;
+      }
+      #staffRows .staff-role,
+      #staffRows .staff-pin {
+        margin-left: 2px;
+      }
+    }
+  </style>
+  <!-- iPad redirect target (optional, can be changed as needed) -->
+  <meta name="ipad-redirect" content="indexIpad.html">
 </head>
 <body>
+  <script>
+  // Robust iPad/iOS detection (works for iPadOS that reports a desktop UA)
+  (function(){
+    try{
+      const params = new URLSearchParams(window.location.search || '');
+      if (params.get('view') === 'desktop') return; // manual override
+
+      const ua = navigator.userAgent || '';
+      const isIOS = /iPad|iPhone|iPod/.test(ua) || (ua.includes('Mac') && 'ontouchend' in document);
+
+      // Allow head meta to specify a custom target, else default to 'ipad.html'
+      const meta = document.querySelector('meta[name="ipad-redirect"]');
+      const target = (meta && meta.content) ? meta.content : 'ipad.html';
+
+      const alreadyOnTarget = new RegExp(target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i').test(window.location.pathname || '');
+
+      if (isIOS && !alreadyOnTarget) {
+        // Use replace so back button doesn't bounce users back into a redirect loop
+        window.location.replace(target);
+      }
+    }catch(e){ /* no-op */ }
+  })();
+  </script>
   <div class="wrap">
     <div class="card fadeInUp" id="authCard">
       <h1 class="fadeIn">Sign in</h1>
-      <p class="sub fadeIn" style="animation-delay: 0.2s;">Use your email and password.</p>
+      <p class="sub fadeIn" style="animation-delay: 0.1s;">Use your email and password.</p>
       <div id="err" class="error"></div>
       <form id="loginForm">
         <label for="email">Email</label>
         <input id="email" type="email" placeholder="you@company.com" autocomplete="email" required />
-        <div style="height:12px"></div>
+        <div style="height:16px"></div>
         <label for="password">Password</label>
         <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" required />
         <div class="form-meta">
@@ -525,7 +903,6 @@
       <div style="display:flex;align-items:center;justify-content:center;margin-bottom:28px;">
         <img id="logoBtn" src="Animated_Logo.gif" alt="Logo" style="cursor:pointer;width:90%;height:auto;max-width:160px;border-radius:8px;margin:5px auto;display:block;" />
       </div>
-      <!-- Sidebar buttons with icons -->
       <div class="section" style="display:flex;flex-direction:column;gap:10px;align-items:center;">
         <div class="sidebar-button selected" id="btnDashboardPage" title="Dashboard">
           <img src="./dashboard.png" alt="Dashboard" />
@@ -544,86 +921,98 @@
         </div>
       </div>
       <div class="spacer"></div>
-      <div class="profile" style="justify-content:center; position: relative;">
+      <div class="profile" style="justify-content:center;">
         <div class="avatar" id="profileInitials" onclick="toggleProfileMenu()">--</div>
         <div class="profile-menu" id="profileMenu" style="display:none">
-          <button class="logoutBtn" onclick="document.getElementById('logoutBtn').click()">Sign Out</button>
+          <button onclick="document.getElementById('logoutBtn').click()">Sign Out</button>
         </div>
       </div>
     </aside>
-    <!-- Dashboard Page -->
-    <section class="main" id="pageDashboard" style="display:none; overflow-y:auto">
-      <h2 style="margin:0 0 12px">Dashboard</h2>
-
-      <div class="card-grid" id="dashCardGrid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px">
+    
+    <!-- Main Content Pages -->
+    <section class="main" id="pageDashboard" style="display:none;">
+      <h2>Dashboard</h2>
+      <div class="card-grid" id="dashCardGrid">
         <div class="grid-card" id="dashRooms"><div><div class="dash-value">0</div><div class="dash-label">Rooms</div></div></div>
         <div class="grid-card" id="dashItems"><div><div class="dash-value">0</div><div class="dash-label">Items</div></div></div>
         <div class="grid-card" id="dashStaff"><div><div class="dash-value">0</div><div class="dash-label">Active Staff</div></div></div>
         <div class="grid-card" id="dashSchedules"><div><div class="dash-value">0</div><div class="dash-label">Schedules</div></div></div>
       </div>
-
       <div class="subcard" style="margin-top:24px">
-        <h3 style="margin:0 0 8px;font-size:16px">Upcoming / Overdue Checks</h3>
-        <table class="nice-table" id="dashDueTable">
-          <thead><tr><th>Item</th><th>Check Type</th><th>Due</th><th>Status</th></tr></thead>
-          <tbody></tbody>
-        </table>
+        <h3 style="margin:0 0 12px;font-size:16px">Upcoming / Overdue Checks</h3>
+        <div class="table-wrap">
+            <table class="nice-table" id="dashDueTable">
+            <thead><tr><th>Item</th><th>Check Type</th><th>Due</th><th>Status</th></tr></thead>
+            <tbody></tbody>
+            </table>
+        </div>
       </div>
     </section>
-    <section class="main" id="pageHome">
-      <h2 style="margin:0 0 12px">Welcome to CheckLoop</h2>
-      <div id="mainContent" style="color:var(--muted)">Choose an option from the left to get started.</div>
+    
+    <section class="main" id="pageHome" style="display: block;">
+      <h2>Welcome to CheckLoop</h2>
+      <div id="mainContent" style="color:var(--text-secondary)">Choose an option from the left to get started.</div>
     </section>
-    <section class="main" id="pageDoctor" style="display:none; overflow-y:auto">
-      <div class="panel" style="padding:0;gap:12px; min-height:100%; background:transparent; box-shadow:none">
-        <div class="panel-header" style="padding:16px 16px 0 16px">
-          <h2 class="title" style="margin:0">Staff</h2>
-          <div style="display:flex;gap:8px;">
-            <button class="btn-small btn-primary" id="addStaffBtn" title="Add Staff">Add Staff</button>
-            <button class="btn-small btn-secondary" id="addTeamBtn" title="Add Team">Add Team</button>
-          </div>
+    
+    <section class="main" id="pageDoctor" style="display:none;">
+      <div class="panel-header">
+        <h2 class="title">Staff</h2>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-small btn-primary" id="addStaffBtn" title="Add Staff">Add Staff</button>
+          <button class="btn-small btn-secondary" id="addTeamBtn" title="Add Team">Add Team</button>
         </div>
-        <div class="subcard" id="staffFilterCard">
-          <div class="filter-row">
-            <div style="display:flex;flex-direction:column;gap:6px">
-              <span class="subcard-title">Filter by</span>
-              <div class="radio-row" id="staffFieldRadios">
-                <label class="radio-pill active"><input type="radio" name="staffField" value="name" checked hidden><span>Name</span></label>
-                <label class="radio-pill"><input type="radio" name="staffField" value="role" hidden><span>Role</span></label>
-              </div>
+      </div>
+      <div class="subcard" id="staffFilterCard">
+        <div class="filter-row">
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <span class="subcard-title">Filter by</span>
+            <div class="radio-row" id="staffFieldRadios">
+              <label class="radio-pill active"><input type="radio" name="staffField" value="name" checked hidden><span>Name</span></label>
+              <label class="radio-pill"><input type="radio" name="staffField" value="role" hidden><span>Role</span></label>
             </div>
-            <input id="staffFilterInput" type="text" placeholder="Type to filter..." autocomplete="off" style="flex:1;min-width:220px" />
-            <button class="config-btn" type="button" id="staffFilterClear">Clear</button>
           </div>
-        </div>
-        <div class="subcard" id="staffRowsCard">
-          <div class="rows" id="staffRows" style="min-height:0;max-height:100%;overflow-y:auto;"></div>
+          <input id="staffFilterInput" type="text" placeholder="Type to filter..." autocomplete="off" style="flex:1;min-width:220px" />
+          <button class="config-btn" type="button" id="staffFilterClear">Clear</button>
         </div>
       </div>
-    </section>
-    <section class="main" id="pageSchedule" style="display:none; overflow-y:auto">
-      <div class="grid-2-1" style="grid-template-columns: 1fr 2fr;">
-        <div class="panel">
-          <div class="panel-header">
-            <h2 class="title">Items</h2>
-          </div>
-          <div class="rows" id="scheduleItemsList" style="overflow-y: auto; max-height: calc(100vh - 120px);">
-            <!-- Draggable items will be loaded here -->
-          </div>
-        </div>
-        <div class="panel" id="scheduleDropZone">
-          <div class="panel-header">
-            <h2 class="title">Scheduled Tasks</h2>
-             <button class="btn-small btn-primary" id="addScheduleTaskBtn">Add Task</button>
-          </div>
-          <div id="scheduledTasksContainer" style="overflow-y: auto; max-height: calc(100vh - 120px);">
-            <!-- Scheduled tasks will be displayed here -->
-          </div>
-        </div>
+      <div class="panel" id="staffRowsCard" style="flex: 1; min-height: 0;">
+        <div class="rows" id="staffRows"></div>
       </div>
     </section>
-    <section class="main" id="pageBoxes" style="display:none">
-      <div class="grid-2-1">
+    
+    <section class="main" id="pageSchedule" style="display:none;">
+        <div class="panel-header">
+            <h2 class="title">Schedule</h2>
+            <button class="icon-btn" id="addScheduleBtn" title="Add schedule">+</button>
+        </div>
+        <div class="subcard" id="scheduleFilterCard">
+            <div class="filter-row">
+            <input id="scheduleFilterInput" type="text" placeholder="Filter by item or check type…" autocomplete="off" style="flex:1;min-width:220px" />
+            <button class="config-btn" type="button" id="scheduleFilterClear">Clear</button>
+            </div>
+        </div>
+        <div class="subcard" id="scheduleTableCard" style="flex: 1; min-height: 0; display: flex; flex-direction: column;">
+            <div class="table-wrap" style="flex: 1; overflow-y:auto;">
+            <table class="nice-table" id="scheduleTable">
+                <thead>
+                <tr>
+                    <th style="min-width:220px">Item</th>
+                    <th style="min-width:180px">Check Type</th>
+                    <th>Frequency</th>
+                    <th>Warn Before</th>
+                    <th>Required</th>
+                    <th>Active</th>
+                    <th></th>
+                </tr>
+                </thead>
+                <tbody id="scheduleTableBody"></tbody>
+            </table>
+            </div>
+        </div>
+    </section>
+
+    <section class="main" id="pageBoxes" style="display:none; padding: 0; background: transparent;">
+      <div class="grid-2-1" style="padding: 24px 32px;">
         <div class="panel" id="itemsPrimary">
           <div class="panel-header">
             <h2 class="title">Rooms</h2>
@@ -634,54 +1023,151 @@
           </div>
         </div>
         <div class="panel" id="itemsSecondary">
+          <h2 class="title" style="margin-bottom: 16px;">Unassigned Items</h2>
           <div class="rows" id="rightRows">
-            <div class="row-card">Example row 1</div>
-            <div class="row-card">Example row 2</div>
-            <div class="row-card">Example row 3</div>
+            <!-- Unassigned items will be populated here -->
           </div>
         </div>
       </div>
     </section>
-    </section>
-    <section class="main" id="pageItems" style="display:none; overflow-y:auto">
-      <div class="panel" style="padding:0;gap:12px; min-height:100%; background:transparent; box-shadow:none">
-        <div class="panel-header" style="padding:16px 16px 0 16px">
-          <h2 class="title" style="margin:0">Items</h2>
-          <button class="icon-btn" id="addItemBtn" title="New Item">+</button>
+
+    <section class="main" id="pageItems" style="display:none;">
+        <div class="panel-header">
+            <h2 class="title">Items</h2>
+            <button class="icon-btn" id="addItemBtn" title="New Item">+</button>
         </div>
         <div class="subcard" id="itemsFilterCard">
-          <div class="filter-row">
+            <div class="filter-row">
             <div style="display:flex;flex-direction:column;gap:6px">
-              <span class="subcard-title">Filter by</span>
-              <div class="radio-row" id="itemsFieldRadios">
+                <span class="subcard-title">Filter by</span>
+                <div class="radio-row" id="itemsFieldRadios">
                 <label class="radio-pill active"><input type="radio" name="itemsField" value="name" checked hidden><span>Name</span></label>
                 <label class="radio-pill"><input type="radio" name="itemsField" value="id" hidden><span>ID</span></label>
                 <label class="radio-pill"><input type="radio" name="itemsField" value="room" hidden><span>Room</span></label>
-              </div>
+                </div>
             </div>
             <input id="itemsFilterInput" type="text" placeholder="Type to filter..." autocomplete="off" style="flex:1;min-width:220px" />
             <button class="config-btn" type="button" id="itemsFilterClear">Clear</button>
-          </div>
+            </div>
         </div>
-        <div class="subcard" id="itemsTableCard">
-          <div class="table-wrap" style="max-height:calc(100vh - 160px); overflow-y:auto">
+        <div class="subcard" id="itemsTableCard" style="flex: 1; min-height: 0; display: flex; flex-direction: column;">
+            <div class="table-wrap" style="flex: 1; overflow-y:auto;">
             <table class="nice-table" id="itemsTable">
-              <thead>
+                <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>ID</th>
-                  <th>Room</th>
-                  <th></th>
+                    <th>Name</th>
+                    <th>ID</th>
+                    <th>Room</th>
+                    <th></th>
                 </tr>
-              </thead>
-              <tbody></tbody>
+                </thead>
+                <tbody></tbody>
             </table>
-          </div>
+            </div>
         </div>
-      </div>
     </section>
   </div>
 
+  <!-- MODALS -->
+  <div id="itemModal" class="modal-overlay">
+    <div class="modal">
+      <h3>Edit Item</h3>
+      <div>
+        <label for="itemModalName">Name</label>
+        <input id="itemModalName" type="text" />
+      </div>
+      <div>
+        <label for="itemModalId">ID</label>
+        <input id="itemModalId" type="text" />
+      </div>
+      <div>
+        <label for="itemModalRoom">Room</label>
+        <select id="itemModalRoom"></select>
+      </div>
+      <div class="btn-row">
+        <button id="itemModalCancel" type="button" class="btn-small btn-secondary">Cancel</button>
+        <button id="itemModalSave" type="button" class="btn-small btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="scheduleModal" class="modal-overlay">
+    <div class="modal">
+      <h3 id="scheduleModalTitle">Add Schedule</h3>
+      <div>
+        <label for="scheduleItemSel">Item</label>
+        <select id="scheduleItemSel"></select>
+      </div>
+      <div>
+        <label for="scheduleTypeSel">Check Type</label>
+        <select id="scheduleTypeSel"></select>
+      </div>
+      <div>
+        <label>Frequency</label>
+        <div class="pin-row">
+          <input id="freqNum" type="number" min="1" step="1" value="1" style="max-width:90px" />
+          <select id="freqUnit">
+            <option value="minute">minutes</option>
+            <option value="hour">hours</option>
+            <option value="day" selected>days</option>
+            <option value="week">weeks</option>
+            <option value="month">months</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label>Warn Before</label>
+        <div class="pin-row">
+          <input id="warnNum" type="number" min="0" step="1" value="3" style="max-width:90px" />
+          <select id="warnUnit">
+            <option value="minute">minutes</option>
+            <option value="hour">hours</option>
+            <option value="day" selected>days</option>
+            <option value="week">weeks</option>
+            <option value="month">months</option>
+          </select>
+        </div>
+      </div>
+      <div class="pin-row">
+        <label style="margin:0; flex-shrink: 0;">Required</label>
+        <input id="scheduleRequired" type="checkbox" checked style="width: 20px; height: 20px;"/>
+        <label style="margin-left:12px; flex-shrink: 0;">Active</label>
+        <input id="scheduleActive" type="checkbox" checked style="width: 20px; height: 20px;"/>
+      </div>
+      <div class="btn-row">
+        <button id="scheduleModalCancel" type="button" class="btn-small btn-secondary">Cancel</button>
+        <button id="scheduleModalSave" type="button" class="btn-small btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="staffModal" class="modal-overlay">
+    <div class="modal">
+      <h3>Edit Staff</h3>
+      <div>
+        <label for="staffModalName">Name</label>
+        <input id="staffModalName" type="text" />
+      </div>
+      <div>
+        <label for="staffModalRole">Role</label>
+        <select id="staffModalRole"></select>
+      </div>
+      <div>
+        <label>Pin</label>
+        <div class="pin-row">
+          <span id="staffModalPinDisplay">****</span>
+          <button id="staffModalPinChange" type="button" class="btn-small btn-secondary">Change</button>
+        </div>
+        <input id="staffModalPinInput" type="text" placeholder="New PIN" style="display:none;margin-top:6px;" />
+      </div>
+      <div class="btn-row">
+        <button id="staffModalCancel" type="button" class="btn-small btn-secondary">Cancel</button>
+        <button id="staffModalSave" type="button" class="btn-small btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ALL JAVASCRIPT IS UNCHANGED BELOW THIS LINE -->
   <script data-app="main">
   
 
@@ -761,77 +1247,90 @@
     const nameByItem   = new Map(_SCHEDULE_ITEMS.map(i=>[Number(i.id), i.item_name || `Item ${i.id}`]));
     const typeById     = new Map(_SCHEDULE_TYPES.map(t=>[Number(t.id), t]));
 
-    const scheduledTasksContainer = document.getElementById('scheduledTasksContainer');
-    if(!scheduledTasksContainer) return;
+    const tbody = document.getElementById('scheduleTableBody');
+    if(!tbody) return;
 
-    scheduledTasksContainer.innerHTML = (rowsRes||[]).map(r=>{
+    const queryText = (document.getElementById('scheduleFilterInput')?.value || '').trim().toLowerCase();
+
+    tbody.innerHTML = (rowsRes||[]).map(r=>{
       const itemName  = nameByItem.get(Number(r.item_id)) || 'Unknown';
       const typeObj   = typeById.get(Number(r.check_type_id));
       const typeName  = typeObj ? typeObj.name : `Type ${r.check_type_id}`;
       const freq      = formatInterval(r.frequency);
-
+      const warn      = formatInterval(r.warn_before);
+      const rowSearch = `${itemName} ${typeName}`.toLowerCase();
+      const hideRow   = queryText && !rowSearch.includes(queryText);
       return `
-        <div class="row-card" data-row-id="${r.id}">
-          <strong>${escapeHtml(itemName)}</strong> - ${escapeHtml(typeName)} (${escapeHtml(freq)})
-        </div>
+        <tr data-row-id="${r.id}" ${hideRow ? 'style="display:none"' : ''}>
+          <td>${escapeHtml(itemName)}</td>
+          <td>${escapeHtml(typeName)}</td>
+          <td>${escapeHtml(freq)}</td>
+          <td>${escapeHtml(warn)}</td>
+          <td>${r.required ? '✓' : '✕'}</td>
+          <td>${r.active   ? '✓' : '✕'}</td>
+          <td>
+            <button class="config-btn schedule-edit-btn" data-id="${r.id}">Edit</button>
+            <button class="config-btn schedule-deactivate-btn" data-id="${r.id}" style="margin-left:6px">${r.active ? 'Deactivate' : 'Activate'}</button>
+          </td>
+        </tr>
       `;
     }).join('');
-
-    const scheduleItemsList = document.getElementById('scheduleItemsList');
-    if(scheduleItemsList){
-        scheduleItemsList.innerHTML = _SCHEDULE_ITEMS.map(item => `
-            <div class="row-card" draggable="true" data-item-id="${item.id}">${escapeHtml(item.item_name)}</div>
-        `).join('');
-    }
   }
   /* --- end phase 2 --- */
 
   /* --- Schedule page logic (phase 3): UI wiring --- */
   function setupScheduleUI(){
-    const dropZone = document.getElementById('scheduleDropZone');
-    if(dropZone && !dropZone.dataset.bound){
-        dropZone.addEventListener('dragover', e => {
-            e.preventDefault();
-            dropZone.classList.add('drop-target');
-        });
-        dropZone.addEventListener('dragleave', () => {
-            dropZone.classList.remove('drop-target');
-        });
-        dropZone.addEventListener('drop', e => {
-            e.preventDefault();
-            dropZone.classList.remove('drop-target');
-            const itemId = e.dataTransfer.getData('text/plain');
-            openScheduleModal('add', null, itemId);
-        });
-        dropZone.dataset.bound = '1';
+    const input = document.getElementById('scheduleFilterInput');
+    const clearBtn = document.getElementById('scheduleFilterClear');
+    if(input && !input.dataset.bound){
+      input.addEventListener('input', () => loadSchedulePage());
+      input.dataset.bound = '1';
     }
-
-    const addBtn = document.getElementById('addScheduleTaskBtn');
+    if(clearBtn && !clearBtn.dataset.bound){
+      clearBtn.addEventListener('click', () => { if(input){ input.value=''; } loadSchedulePage(); });
+      clearBtn.dataset.bound = '1';
+    }
+    const addBtn = document.getElementById('addScheduleBtn');
     if(addBtn && !addBtn.dataset.bound){
-        addBtn.addEventListener('click', () => openScheduleModal('add'));
-        addBtn.dataset.bound = '1';
+      addBtn.addEventListener('click', () => openScheduleModal('add'));
+      addBtn.dataset.bound = '1';
+    }
+    const table = document.getElementById('scheduleTable');
+    if(table && !table.dataset.bound){
+      table.addEventListener('click', async (e)=>{
+        const editBtn  = e.target.closest('.schedule-edit-btn');
+        const toggBtn  = e.target.closest('.schedule-deactivate-btn');
+        if(editBtn){
+          openScheduleModal('edit', Number(editBtn.dataset.id));
+          return;
+        }
+        if(toggBtn){
+          const id = Number(toggBtn.dataset.id);
+          if(!window.SB) return;
+          const { data, error } = await window.SB
+            .from('item_allowed_types')
+            .select('active')
+            .eq('id', id)
+            .single();
+          if(error) return alert(error.message);
+          const next = !data.active;
+          const { error: upErr } = await window.SB
+            .from('item_allowed_types')
+            .update({ active: next })
+            .eq('id', id);
+          if(upErr) return alert(upErr.message);
+          loadSchedulePage();
+        }
+      });
+      table.dataset.bound = '1';
     }
   }
   /* --- end phase 3 --- */
 
   /* --- Schedule page logic (phase 4): modal handlers --- */
-  async function openScheduleModal(mode, id, itemId){
+  async function openScheduleModal(mode, id){
     if(!window.SB || !window.CURRENT_SITE_ID) return;
-    
-    const { data: items, error: itemsError } = await window.SB.from('items').select('id, item_name').eq('site_id', window.CURRENT_SITE_ID);
-    if(itemsError) {
-        console.error(itemsError);
-        return;
-    }
-    _SCHEDULE_ITEMS = items;
-
-    const { data: types, error: typesError } = await window.SB.from('check_types').select('id, name').eq('site_id', window.CURRENT_SITE_ID);
-    if(typesError) {
-        console.error(typesError);
-        return;
-    }
-    _SCHEDULE_TYPES = types;
-
+    await loadSchedulePage(); // refresh lists
 
     const modal     = document.getElementById('scheduleModal');
     const title     = document.getElementById('scheduleModalTitle');
@@ -845,14 +1344,10 @@
     const activeC   = document.getElementById('scheduleActive');
 
     buildOptions(itemSel, _SCHEDULE_ITEMS, o=>o.id, o=>o.item_name, true);
-    buildOptions(typeSel, _SCHEDULE_TYPES, o=>o.id, o=>o.name, true);
+    buildOptions(typeSel, _SCHEDULE_TYPES, o=>o.id, o=>`${o.name} (${o.category})`, true);
 
     modal.dataset.mode = mode;
     delete modal.dataset.id;
-
-    if (itemId) {
-        itemSel.value = itemId;
-    }
 
     if(mode === 'edit' && Number.isFinite(id)){
       title.textContent = 'Edit Schedule';
@@ -875,7 +1370,7 @@
       warnUnit.value = wm ? wm[2].toLowerCase() : 'day';
     }else{
       title.textContent = 'Add Schedule';
-      if(!itemId) itemSel.value = '';
+      itemSel.value = '';
       typeSel.value = '';
       freqNum.value = '7';  freqUnit.value = 'day';
       warnNum.value = '3';  warnUnit.value = 'day';
@@ -899,7 +1394,7 @@
 
     const item_id       = Number(itemSel.value);
     const check_type_id = Number(typeSel.value);
-    if(!item_id || !check_type_id){
+    if(!Number.isFinite(item_id) || !Number.isFinite(check_type_id)){
       alert('Select both an item and a check type.');
       return;
     }
@@ -914,7 +1409,7 @@
       }else{
         const { error } = await window.SB
           .from('item_allowed_types')
-          .insert({
+          .upsert({
             site_id: window.CURRENT_SITE_ID,
             item_id,
             check_type_id,
@@ -922,7 +1417,7 @@
             warn_before: warn,
             required,
             active
-          });
+          }, { onConflict: 'site_id,item_id,check_type_id' });
         if(error) throw error;
       }
       modal.style.display = 'none';
@@ -1059,7 +1554,7 @@
     if(boxes) boxes.style.display = (page === 'boxes') ? 'block' : 'none';
     if(items) items.style.display = (page === 'items') ? 'block' : 'none';
     if(doctor) doctor.style.display = (page === 'doctor') ? 'block' : 'none';
-    if(schedule) schedule.style.display = (page === 'schedule') ? 'grid' : 'none';
+    if(schedule) schedule.style.display = (page === 'schedule') ? 'block' : 'none';
     if(dashboard) dashboard.style.display = (page === 'dashboard') ? 'block' : 'none';
     // Persist last visited page and reflect selection on sidebar buttons
     try { localStorage.setItem('CL_LAST_PAGE', page); } catch(_) {}
@@ -1966,7 +2461,7 @@ showPage = function(page){
     };
     if(input && !input.dataset.bound){ input.addEventListener('input', applyStaffFilter); input.dataset.bound='1'; }
     if(clearBtn && !clearBtn.dataset.bound){ clearBtn.addEventListener('click', ()=>{ if(input){ input.value=''; } applyStaffFilter(); if(input){ input.focus(); } }); clearBtn.dataset.bound='1'; }
-    radios.forEach(r => { if(!r.dataset.bound){ r.addEventListener('change', ()=>{ syncActive(); applyItemsFilter(); }); r.dataset.bound='1'; }});
+    radios.forEach(r => { if(!r.dataset.bound){ r.addEventListener('change', ()=>{ syncActive(); applyStaffFilter(); }); r.dataset.bound='1'; }});
     syncActive();
   }
 
@@ -2026,7 +2521,7 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
   window.onunhandledrejection = function(e){
   };
 
-  const SUPABASE_URL = '[https://unveoqnlqnobufhublyw.supabase.co](https://unveoqnlqnobufhublyw.supabase.co)';
+  const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME';
 
   const form = document.getElementById('loginForm');
@@ -2300,7 +2795,7 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
         return;
       }
       const s = document.createElement('script');
-      s.src = '[https://unpkg.com/@supabase/supabase-js@2](https://unpkg.com/@supabase/supabase-js@2)';
+      s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
       s.async = true;
       s.onload = ()=>{ initAuth(); };
       s.onerror = ()=>{ showError('Unable to load Supabase library.'); };
@@ -2386,118 +2881,4 @@ document.addEventListener('click', (e)=>{
   loadItems();
 </script>
 </body>
-  <!-- Item Edit Modal -->
-  <div id="itemModal" class="modal-overlay">
-    <div class="modal">
-      <h3>Edit Item</h3>
-
-      <div>
-        <label for="itemModalName">Name</label>
-        <input id="itemModalName" type="text" />
-      </div>
-
-      <div>
-        <label for="itemModalId">ID</label>
-        <input id="itemModalId" type="text" />
-      </div>
-
-      <div>
-        <label for="itemModalRoom">Room</label>
-        <select id="itemModalRoom"></select>
-      </div>
-
-      <div class="btn-row">
-        <button id="itemModalCancel" type="button" class="btn-small btn-secondary">Cancel</button>
-        <button id="itemModalSave" type="button" class="btn-small btn-primary">Save</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Schedule Edit/Add Modal -->
-  <div id="scheduleModal" class="modal-overlay">
-    <div class="modal">
-      <h3 id="scheduleModalTitle">Add Schedule</h3>
-
-      <div>
-        <label for="scheduleItemSel">Item</label>
-        <select id="scheduleItemSel"></select>
-      </div>
-
-      <div>
-        <label for="scheduleTypeSel">Check Type</label>
-        <select id="scheduleTypeSel"></select>
-      </div>
-
-      <div>
-        <label>Frequency</label>
-        <div class="pin-row">
-          <input id="freqNum" type="number" min="1" step="1" value="1" style="max-width:90px" />
-          <select id="freqUnit">
-            <option value="minute">minutes</option>
-            <option value="hour">hours</option>
-            <option value="day" selected>days</option>
-            <option value="week">weeks</option>
-            <option value="month">months</option>
-          </select>
-        </div>
-      </div>
-
-      <div>
-        <label>Warn Before</label>
-        <div class="pin-row">
-          <input id="warnNum" type="number" min="0" step="1" value="3" style="max-width:90px" />
-          <select id="warnUnit">
-            <option value="minute">minutes</option>
-            <option value="hour">hours</option>
-            <option value="day" selected>days</option>
-            <option value="week">weeks</option>
-            <option value="month">months</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="pin-row">
-        <label style="margin:0;">Required</label>
-        <input id="scheduleRequired" type="checkbox" checked />
-        <label style="margin-left:12px;">Active</label>
-        <input id="scheduleActive" type="checkbox" checked />
-      </div>
-
-      <div class="btn-row">
-        <button id="scheduleModalCancel" type="button" class="btn-small btn-secondary">Cancel</button>
-        <button id="scheduleModalSave" type="button" class="btn-small btn-primary">Save</button>
-      </div>
-    </div>
-  </div>
-</body>
-  <!-- Staff Edit Modal -->
-  <div id="staffModal" class="modal-overlay">
-    <div class="modal">
-      <h3>Edit Staff</h3>
-
-      <div>
-        <label for="staffModalName">Name</label>
-        <input id="staffModalName" type="text" />
-      </div>
-
-      <div>
-        <label for="staffModalRole">Role</label>
-        <select id="staffModalRole"></select>
-      </div>
-
-      <div>
-        <label>Pin</label>
-        <div class="pin-row">
-          <span id="staffModalPinDisplay">****</span>
-          <button id="staffModalPinChange" type="button" class="btn-small btn-secondary">Change</button>
-        </div>
-        <input id="staffModalPinInput" type="text" placeholder="New PIN" style="display:none;margin-top:6px;" />
-      </div>
-
-      <div class="btn-row">
-        <button id="staffModalCancel" type="button" class="btn-small btn-secondary">Cancel</button>
-        <button id="staffModalSave" type="button" class="btn-small btn-primary">Save</button>
-      </div>
-    </div>
-  </div>
 </html>
