@@ -19,9 +19,11 @@
       if (!window.SB && window.supabase) {
         window.SB = window.supabase.createClient(SB_URL, SB_ANON, {
           auth: {
+            // Always persist session to keep the user logged in
             persistSession: true,
             autoRefreshToken: true,
-            detectSessionInUrl: true
+            detectSessionInUrl: true,
+            storage: window.localStorage // Use localStorage to ensure session survives browser close
           }
         });
       }
@@ -2416,6 +2418,8 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
   const logoutBtn = document.getElementById('logoutBtn');
   const remember = document.getElementById('remember');
   const REMEMBER_KEY = 'remember_me';
+  const SAVED_EMAIL_KEY = 'cl_saved_email';
+  const SAVED_PASS_KEY = 'cl_saved_password';
 
   const wrap = document.querySelector('.wrap');
   const appShell = document.getElementById('appShell');
@@ -2423,19 +2427,6 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
   const profileName = document.getElementById('profileName');
   const profileEmail = document.getElementById('profileEmail');
   const navLogout = document.getElementById('navLogout');
-
-  // In-memory, non-persistent storage (clears on refresh)
-  const inMemoryStorage = (()=>{
-    const m = new Map();
-    return {
-      get length(){ return m.size; },
-      key(i){ return Array.from(m.keys())[i] ?? null; },
-      getItem(k){ const v = m.get(k); return v === undefined ? null : v; },
-      setItem(k,v){ m.set(String(k), String(v)); },
-      removeItem(k){ m.delete(k); },
-      clear(){ m.clear(); }
-    };
-  })();
 
   function clearSupabaseStorage(storage){
     try{
@@ -2502,8 +2493,13 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
   async function doLogout(){
     if (!window.SB) return;
     await window.SB.auth.signOut();
-    clearSupabaseStorage(localStorage);
-    try { localStorage.setItem(REMEMBER_KEY, '0'); } catch {}
+    // Do not clear saved credentials on logout, only clear the session
+    // This allows the user to see their saved email/pass on the login screen next time.
+    // However, we will clear the remember me flag to be safe.
+    try { 
+        localStorage.setItem(REMEMBER_KEY, '0'); 
+    } catch {}
+
     if(window._itemsChannel){
       try { window._itemsChannel.unsubscribe(); } catch {}
       window._itemsChannel = null;
@@ -2513,8 +2509,7 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
     ROOMS = [];
     ROOMS_LOADED = false;
     showAuth();
-    form.reset();
-    remember.checked = false;
+    // The form fields will be pre-filled by the logic in initAuth if credentials were saved
   }
   
   function initAuth(){
@@ -2523,18 +2518,38 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
         throw new Error('Supabase library not loaded');
       }
       let supabase;
-      function storageChoice(){
-        const saved = localStorage.getItem(REMEMBER_KEY);
-        return saved === '1' ? window.localStorage : inMemoryStorage;
-      }
+
+      // This function creates the Supabase client.
+      // It will ALWAYS use localStorage to ensure the session persists,
+      // fulfilling the requirement to stay logged in at all costs.
       function makeClient(){
         return window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-          auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storage: storageChoice() }
+          auth: { 
+            persistSession: true, 
+            autoRefreshToken: true, 
+            detectSessionInUrl: true, 
+            storage: window.localStorage // ALWAYS use persistent storage for the session.
+          }
         });
       }
-      let remembered = false;
-      try { remembered = (localStorage.getItem(REMEMBER_KEY) === '1'); remember.checked = remembered; } catch {}
-      if(!remembered){ clearSupabaseStorage(localStorage); }
+      
+      // On page load, check if we should pre-fill the form fields.
+      try {
+        const remembered = localStorage.getItem(REMEMBER_KEY) === '1';
+        if (remembered) {
+          remember.checked = true;
+          const savedEmail = localStorage.getItem(SAVED_EMAIL_KEY);
+          const savedPass = localStorage.getItem(SAVED_PASS_KEY);
+          if (savedEmail) {
+            email.value = savedEmail;
+          }
+          if (savedPass) {
+            // Note: Storing passwords in localStorage is not recommended for production sites.
+            // This is implemented based on the specific user request.
+            password.value = savedPass;
+          }
+        }
+      } catch(e) { console.warn("Could not load saved credentials.", e); }
       
       supabase = makeClient();
       window.SB = supabase;
@@ -2545,14 +2560,27 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
         btn.disabled = true; btn.textContent = 'Signing in…';
         try{
           const wantRemember = !!remember.checked;
+          // Always set the remember_me flag in localStorage
           try { localStorage.setItem(REMEMBER_KEY, wantRemember ? '1' : '0'); } catch {}
-          if(wantRemember !== (storageChoice() === window.localStorage)) {
-              supabase = makeClient();
-              window.SB = supabase;
-          }
+
+          // Sign in the user
           const { data, error } = await supabase.auth.signInWithPassword({ email: email.value.trim(), password: password.value });
           if(error) throw error;
           if(!data || !data.user || !data.user.id){ throw new Error('No user returned from Supabase.'); }
+
+          // If "Remember me" is checked, save credentials. Otherwise, clear them.
+          if (wantRemember) {
+            try {
+              localStorage.setItem(SAVED_EMAIL_KEY, email.value.trim());
+              localStorage.setItem(SAVED_PASS_KEY, password.value);
+            } catch(e) { console.warn("Could not save credentials.", e); }
+          } else {
+            try {
+              localStorage.removeItem(SAVED_EMAIL_KEY);
+              localStorage.removeItem(SAVED_PASS_KEY);
+            } catch(e) { console.warn("Could not clear saved credentials.", e); }
+          }
+
           await loadUserDetails(supabase);
           showApp('dashboard');
         }catch(ex){
@@ -2644,13 +2672,19 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
             try {
                 const wantRemember = !!remember.checked;
                 try { localStorage.setItem(REMEMBER_KEY, wantRemember ? '1' : '0'); } catch {}
-                if (wantRemember !== (storageChoice() === window.localStorage)) {
-                    supabase = makeClient();
-                    window.SB = supabase;
-                }
+                
                 const { data, error } = await supabase.auth.signInWithPassword({ email: email.value.trim(), password: password.value });
                 if (error) throw error;
                 if (!data || !data.user || !data.user.id) { throw new Error('No user returned from Supabase.'); }
+
+                if (wantRemember) {
+                  localStorage.setItem(SAVED_EMAIL_KEY, email.value.trim());
+                  localStorage.setItem(SAVED_PASS_KEY, password.value);
+                } else {
+                  localStorage.removeItem(SAVED_EMAIL_KEY);
+                  localStorage.removeItem(SAVED_PASS_KEY);
+                }
+
                 await loadUserDetails(supabase);
                 showApp('dashboard');
             } catch (ex) {
