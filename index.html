@@ -306,9 +306,6 @@
     .modal-overlay { position: fixed; inset: 0; background: rgba(30, 41, 59, .6); backdrop-filter: blur(5px); display: none; align-items: center; justify-content: center; z-index: 2000; animation: fadeIn 0.3s ease forwards; }
     .modal { background: #fcfdff; border-radius: 16px; box-shadow: var(--shadow); width: 90%; max-width: 460px; padding: 24px; display: flex; flex-direction: column; gap: 16px; animation: fadeInUp 0.4s cubic-bezier(0.25, 0.8, 0.25, 1) forwards; }
     .modal h3 { margin: 0; font-size: 20px; font-weight: 600;}
-    .modal-grid { display: grid; grid-template-columns: 100px 1fr; gap: 8px 12px; align-items: center;}
-    .modal-grid label { font-weight: 600; color: var(--text-secondary); text-align: right; margin: 0; }
-    .modal-grid span { font-weight: 500; }
     .modal label { font-size: 13px; color: var(--text-secondary); font-weight: 500; margin-bottom: 6px; display: block; }
     .modal input, .modal select { width: 100%; padding: 12px; border: 1px solid #e0e6f0; border-radius: 10px; font: inherit; background: #fff; color: var(--text-primary); }
     .modal .pin-row { display: flex; align-items: center; gap: 10px; }
@@ -585,19 +582,9 @@
             <form id="loginForm">
                 <label for="email">Email</label>
                 <input id="email" type="email" placeholder="you@company.com" autocomplete="email" required />
-                
-                <div id="name-field" style="display: none;">
-                    <div style="height:16px"></div>
-                    <label for="full_name">Full Name</label>
-                    <input id="full_name" type="text" placeholder="Jane Doe" required />
-                </div>
-
-                <div id="password-field">
-                    <div style="height:16px"></div>
-                    <label for="password">Password</label>
-                    <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" required />
-                </div>
-
+                <div style="height:16px"></div>
+                <label for="password">Password</label>
+                <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" required />
                 <div class="form-meta">
                     <label class="checkbox">
                         <input id="remember" type="checkbox" />
@@ -824,7 +811,6 @@
       </div>
     </div>
   </div>
-
   <div id="itemModal" class="modal-overlay">
     <div class="modal">
       <h3>Edit Item</h3>
@@ -852,15 +838,11 @@
       <h3 id="scheduleModalTitle">Add Schedule</h3>
       <div>
         <label for="scheduleItemSel">Item</label>
-        <div style="display: flex; align-items: center; gap: 8px;">
-            <select id="scheduleItemSel" style="flex-grow: 1;"></select>
-            <span id="scheduleItemRoom" style="font-size: 13px; color: var(--text-secondary); white-space: nowrap;"></span>
-        </div>
+        <select id="scheduleItemSel"></select>
       </div>
       <div>
-        <label for="scheduleTypeSearch">Check Type</label>
-        <input id="scheduleTypeSearch" type="text" placeholder="Search check types..." style="margin-bottom: 8px;">
-        <select id="scheduleTypeSel" size="5"></select>
+        <label for="scheduleTypeSel">Check Type</label>
+        <select id="scheduleTypeSel"></select>
       </div>
       <div>
         <label>Frequency</label>
@@ -927,31 +909,6 @@
     </div>
   </div>
 
-    <div id="addStaffTypeModal" class="modal-overlay">
-        <div class="modal">
-            <h3>Add New Staff</h3>
-            <p>Would you like to add an Admin with site access or a User for performing checks?</p>
-            <div class="btn-row" style="justify-content: space-around;">
-                <button id="addStaffAdminBtn" type="button" class="btn-small btn-primary">Admin</button>
-                <button id="addStaffUserBtn" type="button" class="btn-small btn-secondary">User</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="inviteAdminModal" class="modal-overlay">
-        <div class="modal">
-            <h3>Invite New Admin</h3>
-            <div>
-                <label for="inviteAdminEmail">Email</label>
-                <input id="inviteAdminEmail" type="email" placeholder="jane.doe@example.com" />
-            </div>
-            <div class="btn-row">
-                <button id="inviteAdminCancelBtn" type="button" class="btn-small btn-secondary">Cancel</button>
-                <button id="sendInviteBtn" type="button" class="btn-small btn-primary">Send Invite</button>
-            </div>
-        </div>
-    </div>
-
   <!-- ALL JAVASCRIPT IS UNCHANGED BELOW THIS LINE (except schedule page logic) -->
   <script data-app="main">
   
@@ -992,7 +949,7 @@
     selectEl.innerHTML = html;
   }
   
-  /* --- Schedule page logic --- */
+  /* --- NEW Schedule page logic --- */
   async function loadSchedulePage(){
     if(!window.SB || !window.CURRENT_SITE_ID) return;
     const site = window.CURRENT_SITE_ID;
@@ -1097,7 +1054,7 @@
     if (_SCHEDULE_ITEMS.length === 0 || _SCHEDULE_TYPES.length === 0) {
         const site = window.CURRENT_SITE_ID;
         const [{ data: itemsRes }, { data: typesRes }] = await Promise.all([
-            window.SB.from('items').select('id,item_name,room_id,rooms(name)').eq('site_id', site).eq('active', true).order('item_name', { ascending: true }),
+            window.SB.from('items').select('id,item_name').eq('site_id', site).eq('active', true).order('item_name', { ascending: true }),
             window.SB.from('check_types').select('id,name,category,active').eq('site_id', site).eq('active', true).order('name', { ascending: true })
         ]);
         _SCHEDULE_ITEMS = itemsRes || [];
@@ -1107,8 +1064,6 @@
     const modal     = document.getElementById('scheduleModal');
     const title     = document.getElementById('scheduleModalTitle');
     const itemSel   = document.getElementById('scheduleItemSel');
-    const itemRoom  = document.getElementById('scheduleItemRoom');
-    const typeSearch = document.getElementById('scheduleTypeSearch');
     const typeSel   = document.getElementById('scheduleTypeSel');
     const freqNum   = document.getElementById('freqNum');
     const freqUnit  = document.getElementById('freqUnit');
@@ -1118,16 +1073,7 @@
     const activeC   = document.getElementById('scheduleActive');
 
     buildOptions(itemSel, _SCHEDULE_ITEMS, o=>o.id, o=>o.item_name, true);
-    buildOptions(typeSel, _SCHEDULE_TYPES, o=>o.id, o=>o.name, true);
-    
-    typeSearch.value = '';
-    Array.from(typeSel.options).forEach(opt => opt.style.display = '');
-
-    itemSel.onchange = () => {
-        const selectedId = itemSel.value;
-        const selectedItem = _SCHEDULE_ITEMS.find(i => String(i.id) === selectedId);
-        itemRoom.textContent = selectedItem && selectedItem.rooms ? `(${selectedItem.rooms.name})` : '';
-    };
+    buildOptions(typeSel, _SCHEDULE_TYPES, o=>o.id, o=>`${o.name} (${o.category})`, true);
 
     modal.dataset.mode = mode;
     delete modal.dataset.id;
@@ -1138,7 +1084,6 @@
       const { data, error } = await window.SB.from('item_allowed_types').select('item_id,check_type_id,frequency,warn_before,required,active').eq('id', id).single();
       if(error){ alert(error.message); return; }
       itemSel.value = String(data.item_id);
-      itemSel.dispatchEvent(new Event('change'));
       typeSel.value = String(data.check_type_id);
       requiredC.checked = !!data.required;
       activeC.checked   = !!data.active;
@@ -1151,7 +1096,6 @@
     }else{
       title.textContent = 'Add Schedule';
       itemSel.value = '';
-      itemRoom.textContent = '';
       typeSel.value = '';
       freqNum.value = '7';  freqUnit.value = 'day';
       warnNum.value = '3';  warnUnit.value = 'day';
@@ -1196,20 +1140,11 @@
     if(modal && !modal.dataset.boundInit){
       document.getElementById('scheduleModalCancel').addEventListener('click', ()=>{ modal.style.display='none'; });
       document.getElementById('scheduleModalSave').addEventListener('click', saveScheduleModal);
-      const typeSearch = document.getElementById('scheduleTypeSearch');
-      const typeSel = document.getElementById('scheduleTypeSel');
-      typeSearch.addEventListener('input', () => {
-          const searchTerm = typeSearch.value.toLowerCase();
-          Array.from(typeSel.options).forEach(option => {
-              const text = option.textContent.toLowerCase();
-              option.style.display = text.includes(searchTerm) ? '' : 'none';
-          });
-      });
       modal.dataset.boundInit = '1';
     }
   });
   /* --- End Schedule Logic --- */
-
+  
   /* --- Calendar page logic --- */
     let calendarDate = new Date();
     let allSchedules = [];
@@ -1935,20 +1870,17 @@ showPage = function(page){
   origShowPage(page);
 
   if (page === 'items') {
-    loadItemsPage();
+    loadItemsPage();            // refresh Items list/table
   } else if (page === 'boxes') {
     setupRoomsUI();
     ensureRoomsLoaded();
-    loadItems();
+    loadItems();                // refresh unassigned items list
   } else if (page === 'doctor') {
     if (typeof setupStaffUI === 'function') setupStaffUI();
     if (typeof loadStaff   === 'function') loadStaff();
   } else if (page === 'schedule') {
     if (typeof setupScheduleUI   === 'function') setupScheduleUI();
     if (typeof loadSchedulePage === 'function') loadSchedulePage();
-  } else if (page === 'calendar') {
-    if (typeof setupCalendarUI === 'function') setupCalendarUI();
-    if (typeof loadCalendarData === 'function') loadCalendarData();
   } else if (page === 'dashboard') {
     setupDashboardUI();
     loadDashboard();
@@ -1956,6 +1888,7 @@ showPage = function(page){
 }
 
 // --- Restore last page reliably after reload/sign-in ---
+// (Inserted immediately after showPage reassignment)
 </script>
 <script>
 (function setupLastPageRestore(){
@@ -2354,109 +2287,30 @@ showPage = function(page){
     syncActive();
   }
 
-  function setupStaffUI() {
+  function setupStaffUI(){
     const addStaffBtn = document.getElementById('addStaffBtn');
-    if (addStaffBtn && !addStaffBtn.dataset.bound) {
-        addStaffBtn.addEventListener('click', () => {
-            document.getElementById('addStaffTypeModal').style.display = 'flex';
-        });
-        addStaffBtn.dataset.bound = '1';
-    }
-
-    const addStaffAdminBtn = document.getElementById('addStaffAdminBtn');
-    if (addStaffAdminBtn && !addStaffAdminBtn.dataset.bound) {
-        addStaffAdminBtn.addEventListener('click', () => {
-            document.getElementById('addStaffTypeModal').style.display = 'none';
-            document.getElementById('inviteAdminModal').style.display = 'flex';
-        });
-        addStaffAdminBtn.dataset.bound = '1';
-    }
-
-    const addStaffUserBtn = document.getElementById('addStaffUserBtn');
-    if (addStaffUserBtn && !addStaffUserBtn.dataset.bound) {
-        addStaffUserBtn.addEventListener('click', async () => {
-            document.getElementById('addStaffTypeModal').style.display = 'none';
-            if (!window.SB || !window.CURRENT_SITE_ID) {
-                alert('Supabase not ready');
-                return;
-            }
-            const name = prompt('Staff full name?');
-            if (!name) return;
-            const { error } = await window.SB
-                .from('kiosk_users')
-                .insert([{
-                    site_id: window.CURRENT_SITE_ID,
-                    full_name: name.trim(),
-                    active: true,
-                    role: 'user'
-                }]);
-            if (error) {
-                alert(error.message || 'Failed to add staff');
-                return;
-            }
-            await loadStaff();
-        });
-        addStaffUserBtn.dataset.bound = '1';
-    }
-
-    const inviteAdminCancelBtn = document.getElementById('inviteAdminCancelBtn');
-    if (inviteAdminCancelBtn && !inviteAdminCancelBtn.dataset.bound) {
-        inviteAdminCancelBtn.addEventListener('click', () => {
-            document.getElementById('inviteAdminModal').style.display = 'none';
-        });
-        inviteAdminCancelBtn.dataset.bound = '1';
-    }
-
-    const sendInviteBtn = document.getElementById('sendInviteBtn');
-    if (sendInviteBtn && !sendInviteBtn.dataset.bound) {
-        sendInviteBtn.addEventListener('click', async () => {
-            const emailInput = document.getElementById('inviteAdminEmail');
-            const email = emailInput.value.trim();
-
-            if (!email) {
-                alert('Please enter an email.');
-                return;
-            }
-
-            if (!window.SB || !window.CURRENT_SITE_ID) {
-                alert('Supabase not ready');
-                return;
-            }
-            
-            const { data: { user } } = await window.SB.auth.getUser();
-            if (!user) {
-                alert('You must be logged in to invite users.');
-                return;
-            }
-
-            const { error } = await window.SB
-                .from('site_invites')
-                .insert([{
-                    site_id: window.CURRENT_SITE_ID,
-                    email: email,
-                    role: 'admin',
-                    invited_by: user.id
-                }]);
-
-            if (error) {
-                alert(error.message || 'Failed to send invite.');
-            } else {
-                alert('Invite sent! The new admin can now go to the sign-in page, click "Create account", and enter their email to get started.');
-                document.getElementById('inviteAdminModal').style.display = 'none';
-                emailInput.value = '';
-            }
-        });
-        sendInviteBtn.dataset.bound = '1';
+    if(addStaffBtn && !addStaffBtn.dataset.bound){
+      addStaffBtn.addEventListener('click', async ()=>{
+        if(!window.SB || !window.CURRENT_SITE_ID){ alert('Supabase not ready'); return; }
+        const name = prompt('Staff full name?');
+        if(!name) return;
+        const { error } = await window.SB
+          .from('kiosk_users')
+          .insert([{ site_id: window.CURRENT_SITE_ID, full_name: name.trim(), active: true }]);
+        if(error){ alert(error.message || 'Failed to add staff'); return; }
+        await loadStaff();
+      });
+      addStaffBtn.dataset.bound = '1';
     }
 
     const addTeamBtn = document.getElementById('addTeamBtn');
-    if (addTeamBtn && !addTeamBtn.dataset.bound) {
-        addTeamBtn.addEventListener('click', addTeam);
-        addTeamBtn.dataset.bound = '1';
+    if(addTeamBtn && !addTeamBtn.dataset.bound){
+      addTeamBtn.addEventListener('click', addTeam);
+      addTeamBtn.dataset.bound = '1';
     }
+    // ensure filters wired
     setupStaffFilter();
-}
-
+  }
 
 // Ensure listeners are bound after DOM is ready
 if(document.readyState === 'complete' || document.readyState === 'interactive'){
@@ -2498,6 +2352,8 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
   const btn = document.getElementById('signInBtn');
   const err = document.getElementById('err');
   const authCard = document.getElementById('authCard');
+  const successCard = document.getElementById('successCard');
+  const logoutBtn = document.getElementById('logoutBtn');
   const remember = document.getElementById('remember');
   const REMEMBER_KEY = 'remember_me';
 
@@ -2506,6 +2362,7 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
   const profileInitials = document.getElementById('profileInitials');
   const profileName = document.getElementById('profileName');
   const profileEmail = document.getElementById('profileEmail');
+  const navLogout = document.getElementById('navLogout');
 
   // In-memory, non-persistent storage (clears on refresh)
   const inMemoryStorage = (()=>{
@@ -2553,11 +2410,12 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
     const page = defaultPage || last || 'dashboard';
     showPage(page);
   }
-  function showAuth(){ wrap.style.display='flex'; appShell.style.display='none'; }
+  function showAuth(){ wrap.style.display='grid'; appShell.style.display='none'; }
 
   async function loadUserDetails(supabase){
     try{
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: userRes } = await supabase.auth.getUser();
+      const user = userRes && userRes.user;
       if(!user){ return; }
       const { data: profile } = await supabase
         .from('profiles')
@@ -2598,7 +2456,7 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
     form.reset();
     remember.checked = false;
   }
-
+  
   function initAuth(){
     try{
       if(!window.supabase || !window.supabase.createClient){
@@ -2621,30 +2479,30 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
       supabase = makeClient();
       window.SB = supabase;
       
-      const handleSignIn = async (e) => {
-          e.preventDefault();
-          clearError();
-          btn.disabled = true; btn.textContent = 'Signing in…';
-          try{
-            const wantRemember = !!remember.checked;
-            try { localStorage.setItem(REMEMBER_KEY, wantRemember ? '1' : '0'); } catch {}
-            if(wantRemember !== (storageChoice() === window.localStorage)) {
-                supabase = makeClient();
-                window.SB = supabase;
-            }
-            const { data, error } = await supabase.auth.signInWithPassword({ email: email.value.trim(), password: password.value });
-            if(error) throw error;
-            if(!data || !data.user || !data.user.id){ throw new Error('No user returned from Supabase.'); }
-            await loadUserDetails(supabase);
-            showApp('dashboard'); // Force redirect to dashboard on login
-          }catch(ex){
-            showError(ex.message || 'Unable to sign in.');
-          }finally{
-            btn.disabled = false; btn.textContent = 'Sign In';
+      form.addEventListener('submit', async (e)=>{
+        e.preventDefault();
+        clearError();
+        btn.disabled = true; btn.textContent = 'Signing in…';
+        try{
+          const wantRemember = !!remember.checked;
+          try { localStorage.setItem(REMEMBER_KEY, wantRemember ? '1' : '0'); } catch {}
+          if(wantRemember !== (storageChoice() === window.localStorage)) {
+              supabase = makeClient();
+              window.SB = supabase;
           }
-        };
-
-      form.addEventListener('submit', handleSignIn);
+          const { data, error } = await supabase.auth.signInWithPassword({ email: email.value.trim(), password: password.value });
+          if(error) throw error;
+          if(!data || !data.user || !data.user.id){ throw new Error('No user returned from Supabase.'); }
+          await loadUserDetails(supabase);
+          showApp('dashboard');
+        }catch(ex){
+          showError(ex.message || 'Unable to sign in.');
+          // Re-add the listener if sign in fails, so the user can try again.
+          form.addEventListener('submit', arguments.callee, { once: true });
+        }finally{
+          btn.disabled = false; btn.textContent = 'Sign In';
+        }
+      }, { once: true });
 
       supabase.auth.getSession()
         .then(async ({ data }) => {
@@ -2670,38 +2528,29 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
 
       const forgotBtn = document.getElementById('forgotBtn');
       const backBtn = document.getElementById('backBtn');
-      const nameField = document.getElementById('name-field');
-      const passwordField = document.getElementById('password-field');
+      const pwdLabel = document.querySelector('label[for="password"]');
       const formMeta = document.querySelector('.form-meta');
       const altRow = document.querySelector('.alt');
-      const h1 = document.querySelector('#authCard h1');
-      const p = document.querySelector('#authCard p.sub');
 
       function toResetUI(){
-        h1.textContent = 'Reset Password';
-        p.textContent = 'Enter your email to get a reset link.';
-        nameField.style.display = 'none';
-        passwordField.style.display = 'none';
-        formMeta.style.display = 'none';
-        altRow.style.display = 'none';
+        if(pwdLabel) pwdLabel.style.display = 'none';
+        password.style.display = 'none';
+        if(formMeta) formMeta.style.display = 'none';
+        if(altRow) altRow.style.display = 'none';
         btn.textContent = 'Send Password Reset';
         backBtn.style.display = 'inline';
         clearError();
-        form.removeEventListener('submit', handleSignIn);
       }
 
       function toSignInUI(){
-        h1.textContent = 'Sign in';
-        p.textContent = 'Use your email and password.';
-        nameField.style.display = 'none';
-        passwordField.style.display = 'block';
-        formMeta.style.display = 'flex';
-        altRow.style.display = 'flex';
+        if(pwdLabel) pwdLabel.style.display = 'block';
+        password.style.display = 'block';
+        if(formMeta) formMeta.style.display = 'flex';
+        if(altRow) altRow.style.display = 'flex';
         btn.textContent = 'Sign In';
         backBtn.style.display = 'none';
         clearError();
         form.onsubmit = null;
-        form.addEventListener('submit', handleSignIn);
       }
 
       forgotBtn.addEventListener('click', ()=>{
@@ -2725,72 +2574,35 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
         };
       });
 
-      backBtn.addEventListener('click', toSignInUI);
-
-      document.getElementById('createBtn').addEventListener('click', () => {
-            h1.textContent = 'Create Account';
-            p.textContent = 'Enter your email to begin.';
-            nameField.style.display = 'none';
-            passwordField.style.display = 'none';
-            btn.textContent = 'Continue';
-            backBtn.style.display = 'inline';
-            form.removeEventListener('submit', handleSignIn);
-
-            form.onsubmit = async (e) => {
-                e.preventDefault();
-                const emailValue = email.value.trim();
-                const { data, error } = await window.SB
-                    .from('site_invites')
-                    .select('*')
-                    .ilike('email', emailValue)
-                    .single();
-
-                if (error || !data) {
-                    showError('This email has not been invited. Please contact an administrator.');
-                    return;
+      backBtn.addEventListener('click', ()=>{
+        toSignInUI();
+        // Re-attach the main sign-in listener
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            clearError();
+            btn.disabled = true; btn.textContent = 'Signing in…';
+            try {
+                const wantRemember = !!remember.checked;
+                try { localStorage.setItem(REMEMBER_KEY, wantRemember ? '1' : '0'); } catch {}
+                if (wantRemember !== (storageChoice() === window.localStorage)) {
+                    supabase = makeClient();
+                    window.SB = supabase;
                 }
+                const { data, error } = await supabase.auth.signInWithPassword({ email: email.value.trim(), password: password.value });
+                if (error) throw error;
+                if (!data || !data.user || !data.user.id) { throw new Error('No user returned from Supabase.'); }
+                await loadUserDetails(supabase);
+                showApp('dashboard');
+            } catch (ex) {
+                showError(ex.message || 'Unable to sign in.');
+                form.addEventListener('submit', arguments.callee, { once: true });
+            } finally {
+                btn.disabled = false; btn.textContent = 'Sign In';
+            }
+        }, { once: true });
+      });
 
-                p.textContent = 'Enter your name and create a password to continue.';
-                nameField.style.display = 'block';
-                passwordField.style.display = 'block';
-                btn.textContent = 'Create Account';
-
-                form.onsubmit = async (e) => {
-                    e.preventDefault();
-                    const fullNameValue = document.getElementById('full_name').value;
-                    const passwordValue = password.value;
-                    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-                        email: emailValue,
-                        password: passwordValue,
-                        options: {
-                            data: {
-                                full_name: fullNameValue
-                            }
-                        }
-                    });
-
-                    if (signUpError) {
-                        showError(signUpError.message);
-                    } else {
-                        const { error: profileError } = await supabase
-                            .from('profiles')
-                            .insert([{
-                                user_id: signUpData.user.id,
-                                site_id: data.site_id,
-                                role: 'admin',
-                                full_name: fullNameValue
-                            }]);
-
-                        if (profileError) {
-                            showError(profileError.message);
-                        } else {
-                            alert('Account created! Please check your email to confirm your account.');
-                            location.reload();
-                        }
-                    }
-                };
-            };
-        });
+      document.getElementById('createBtn').addEventListener('click', ()=>{ showError('Create account is not wired yet.'); });
 
     }catch(e){
       showError(e.message);
@@ -2806,17 +2618,13 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
       const s = document.createElement('script');
       s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
       s.async = true;
-      s.onload = ()=>{ initAuth(); };
+      s.onload = initAuth;
       s.onerror = ()=>{ showError('Unable to load Supabase library.'); };
       document.head.appendChild(s);
-    }catch(e){}
+    }catch(e){
+        showError(e.message);
+    }
   })();
-
-  if(document.readyState === 'complete' || document.readyState === 'interactive'){
-    setTimeout(()=>{ if(window.supabase && window.supabase.createClient){ initAuth(); } }, 0);
-  } else {
-    document.addEventListener('DOMContentLoaded', ()=>{ if(window.supabase && window.supabase.createClient){ initAuth(); } });
-  }
 
 /* --- Configure item helper --- */
 async function configureItem(itemPk){
