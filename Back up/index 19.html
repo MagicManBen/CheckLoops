@@ -1009,20 +1009,20 @@
   const DOW_MAP = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
   const DOW_FULL = { Sun:'Sunday', Mon:'Monday', Tue:'Tuesday', Wed:'Wednesday', Thu:'Thursday', Fri:'Friday', Sat:'Saturday' };
 
-  function parseFrequencyExtended(freq, day){
-    if(!freq) return null;
-    const m = String(freq).match(/(\d+)\s*(minute|hour|day|week|month)s?/i);
+  function parseFrequencyExtended(s){
+    if(!s) return null;
+    const m = String(s).match(/(\d+)\s*(minute|hour|day|week|month)s?(?:\s*@\s*(Sun|Mon|Tue|Wed|Thu|Fri|Sat))?/i);
     if(!m) return null;
     const n = Number(m[1]);
     const unit = m[2].toLowerCase();
-    const dowAbbr = day || null;
+    const dowAbbr = m[3] ? (m[3].slice(0,1).toUpperCase()+m[3].slice(1,3).toLowerCase()) : null;
     const dayIndex = dowAbbr ? DOW_MAP[dowAbbr] : null;
     return { n, unit, dowAbbr, dayIndex };
   }
 
-  function formatInterval(freq, day){
-    const p = parseFrequencyExtended(freq, day);
-    if(!p) return String(freq||'');
+  function formatInterval(s){
+    const p = parseFrequencyExtended(s);
+    if(!p) return String(s||'');
     
     if(p.dowAbbr){
       const dayName = DOW_FULL[p.dowAbbr] || p.dowAbbr;
@@ -1030,11 +1030,8 @@
           return p.n === 1 ? `Every ${dayName}` : `Every ${p.n} weeks on ${dayName}`;
       }
       if (p.unit === 'day') {
-          if (p.n > 0 && p.n % 7 === 0) {
-              const numWeeks = p.n / 7;
-              return numWeeks === 1 ? `Every ${dayName}` : `Every ${numWeeks} weeks on ${dayName}`;
-          }
-          return `Every ${p.n} days (starting on a ${dayName})`;
+          // This case handles things like "5 days @ Mon".
+          return `Every ${p.n} days (on ${dayName})`;
       }
     }
 
@@ -1046,6 +1043,7 @@
     const row = document.getElementById('scheduleDayRow');
     const unitSel = document.getElementById('freqUnit');
     if(!row || !unitSel) return;
+    // Show the Day selector when the frequency unit is 'weeks' or 'days'
     row.style.display = (unitSel.value === 'week' || unitSel.value === 'day') ? 'block' : 'none';
   }
 
@@ -1062,13 +1060,12 @@
     if(!window.SB || !window.CURRENT_SITE_ID) return;
     const site = window.CURRENT_SITE_ID;
 
-    const { data: rowsRes,  error: rowsErr } = await window.SB.from('item_allowed_types')
-        .select('id,item_id,check_type_id,frequency,scheduled_day,warn_before,required,active')
-        .eq('site_id', site).order('id', { ascending:true });
-
-    const [{ data: itemsRes, error: itemsErr }, { data: typesRes, error: typesErr }] = await Promise.all([
+    const [{ data: itemsRes, error: itemsErr },
+           { data: typesRes, error: typesErr },
+           { data: rowsRes,  error: rowsErr }] = await Promise.all([
       window.SB.from('items').select('id,item_name,room,room_id').eq('site_id', site).eq('active', true).order('item_name', { ascending:true }),
-      window.SB.from('check_types').select('id,name,category,active').eq('site_id', site).eq('active', true).order('name', { ascending:true })
+      window.SB.from('check_types').select('id,name,category,active').eq('site_id', site).eq('active', true).order('name', { ascending:true }),
+      window.SB.from('item_allowed_types').select('id,item_id,check_type_id,frequency,warn_before,required,active').eq('site_id', site).order('id', { ascending:true })
     ]);
 
     if(itemsErr||typesErr||rowsErr){ console.error(itemsErr||typesErr||rowsErr); }
@@ -1088,7 +1085,7 @@
       const typeObj   = typeById.get(Number(r.check_type_id));
       const typeName  = typeObj ? typeObj.name : `Unknown Type`;
       const typeCat   = typeObj ? typeObj.category : '';
-      const freq      = formatInterval(r.frequency, r.scheduled_day);
+      const freq      = formatInterval(r.frequency);
       const rowSearch = `${itemName} ${typeName} ${typeCat}`.toLowerCase();
       const hideRow   = queryText && !rowSearch.includes(queryText);
       
@@ -1159,6 +1156,7 @@
 async function openScheduleModal(mode, id){
   if(!window.SB || !window.CURRENT_SITE_ID) return;
 
+  // Pre-fetch items and types if they are not already loaded
   if (_SCHEDULE_ITEMS.length === 0 || _SCHEDULE_TYPES.length === 0) {
       const site = window.CURRENT_SITE_ID;
       const [{ data: itemsRes }, { data: typesRes }] = await Promise.all([
@@ -1178,6 +1176,7 @@ async function openScheduleModal(mode, id){
   const activeC   = document.getElementById('scheduleActive');
   const daySel    = document.getElementById('scheduleDaySel');
 
+  // Build labels as "Item Name (Room Name)", sorted by Room then Item
   const itemsSorted = (_SCHEDULE_ITEMS||[]).slice().sort((a,b)=>{
     const ra = (a.room||'Unassigned');
     const rb = (b.room||'Unassigned');
@@ -1195,7 +1194,7 @@ async function openScheduleModal(mode, id){
     modal.dataset.id = String(id);
     const { data, error } = await window.SB
       .from('item_allowed_types')
-      .select('item_id,check_type_id,frequency,scheduled_day,active')
+      .select('item_id,check_type_id,frequency,active')
       .eq('id', id)
       .single();
     if(error){ alert(error.message); return; }
@@ -1203,26 +1202,29 @@ async function openScheduleModal(mode, id){
     itemSel.value = String(data.item_id);
     typeSel.value = String(data.check_type_id);
     activeC.checked = !!data.active;
-    daySel.value = data.scheduled_day || '';
     
     const parsedFreq = parseFrequencyExtended(data.frequency);
     if (parsedFreq) {
         freqNum.value = parsedFreq.n;
         freqUnit.value = parsedFreq.unit;
+        daySel.value = parsedFreq.dowAbbr || '';
     } else {
-        freqNum.value = '7';
-        freqUnit.value = 'day';
+        // Fallback for older or unexpected formats
+        const fm = String(data.frequency||'7 days').match(/(\d+)\s*(\w+)/);
+        freqNum.value  = fm ? fm[1] : '7';
+        freqUnit.value = fm ? fm[2].toLowerCase().replace(/s$/,'') : 'day';
+        daySel.value = '';
     }
   } else {
     title.textContent = 'Add Schedule';
     itemSel.value = '';
     typeSel.value = '';
-    freqNum.value = '1';
+    freqNum.value = '7';
     freqUnit.value = 'day';
     activeC.checked = true;
     daySel.value = '';
   }
-  toggleScheduleDayRow();
+  toggleScheduleDayRow(); // Set initial visibility of the day selector
   modal.style.display = 'flex';
 }
 
@@ -1235,34 +1237,42 @@ async function saveScheduleModal(){
   const check_type_id = Number(document.getElementById('scheduleTypeSel').value);
   const num = document.getElementById('freqNum').value;
   const unit = document.getElementById('freqUnit').value;
-  const pickedDay = document.getElementById('scheduleDaySel')?.value || null;
+  const pickedDay = document.getElementById('scheduleDaySel')?.value || '';
   const active = document.getElementById('scheduleActive').checked;
+
+  const numVal = Number(num || 1);
+  let freq;
+
+  if ((unit === 'week' || unit === 'day') && pickedDay) {
+    // For clarity and consistency, if the user picks "7 days" and a specific day,
+    // we convert it to the "1 week @ Day" format.
+    if (unit === 'day' && numVal > 0 && numVal % 7 === 0) {
+      const numWeeks = numVal / 7;
+      freq = `${numWeeks} week${numWeeks > 1 ? 's' : ''} @ ${pickedDay}`;
+    } else {
+      // Otherwise, use the new format, e.g., "5 days @ Mon"
+      freq = `${numVal} ${unit}${numVal !== 1 ? 's' : ''} @ ${pickedDay}`;
+    }
+  } else {
+    freq = intervalFrom(num, unit);
+  }
 
   if(!Number.isFinite(item_id) || !Number.isFinite(check_type_id)){
     alert('Select both an item and a check type.');
     return;
   }
 
-  const scheduleData = {
-      site_id: window.CURRENT_SITE_ID,
-      item_id,
-      check_type_id,
-      frequency: intervalFrom(num, unit),
-      scheduled_day: pickedDay,
-      active
-  };
-
   try{
     if(mode === 'edit' && Number.isFinite(id)){
       const { error } = await window.SB
         .from('item_allowed_types')
-        .update(scheduleData)
+        .update({ item_id, check_type_id, frequency: freq, active })
         .eq('id', id);
       if(error) throw error;
     }else{
       const { error } = await window.SB
         .from('item_allowed_types')
-        .upsert(scheduleData, { onConflict: 'site_id,item_id,check_type_id' });
+        .upsert({ site_id: window.CURRENT_SITE_ID, item_id, check_type_id, frequency: freq, active }, { onConflict: 'site_id,item_id,check_type_id' });
       if(error) throw error;
     }
     modal.style.display = 'none';
@@ -1290,13 +1300,14 @@ async function saveScheduleModal(){
     let calendarDate = new Date();
     let allSchedules = [];
 
+    // This function is still used by the Dashboard, so we keep it.
     function getNextDueDate(schedule) {
         const base = schedule.last_completed_at ? new Date(schedule.last_completed_at) : new Date(schedule.created_at);
-        const p = parseFrequencyExtended(schedule.frequency, schedule.scheduled_day);
+        const m = String(schedule.frequency).match(/(\d+)\s*(minute|hour|day|week|month)/i);
         let next = new Date(base);
-        if (p) {
-            const n = p.n;
-            const unit = p.unit;
+        if (m) {
+            const n = Number(m[1]);
+            const unit = m[2].toLowerCase();
             if (unit.startsWith('minute')) next.setMinutes(next.getMinutes() + n);
             else if (unit.startsWith('hour')) next.setHours(next.getHours() + n);
             else if (unit.startsWith('day')) next.setDate(next.getDate() + n);
@@ -1325,8 +1336,12 @@ async function saveScheduleModal(){
         renderCalendar();
     }
     
+    /**
+     * New function to robustly check if a schedule is due on a specific date,
+     * accounting for all recurrence types.
+     */
     function isCheckDueOn(schedule, checkDate) {
-        const p = parseFrequencyExtended(schedule.frequency, schedule.scheduled_day);
+        const p = parseFrequencyExtended(schedule.frequency);
         if (!p || p.n === 0) return false;
 
         let anchorDate = new Date(schedule.created_at || Date.now());
@@ -1338,39 +1353,44 @@ async function saveScheduleModal(){
         if (currentDay < anchorDate) {
             return false;
         }
-        
-        let firstOccurrence = new Date(anchorDate);
-        if (p.dayIndex != null) {
+
+        if (p.dayIndex != null && (p.unit === 'week' || p.unit === 'day')) {
+            // Rule 1: The check day must match the specified day of the week.
+            if (currentDay.getDay() !== p.dayIndex) return false;
+
+            // Find the very first potential occurrence day on or after the anchor date.
+            let firstOccurrence = new Date(anchorDate);
             let daysToAdd = (p.dayIndex - firstOccurrence.getDay() + 7) % 7;
             firstOccurrence.setDate(firstOccurrence.getDate() + daysToAdd);
-        }
 
-        if (currentDay < firstOccurrence) return false;
-        
-        const diffTime = currentDay.getTime() - firstOccurrence.getTime();
-        const diffDays = Math.round(diffTime / (24 * 60 * 60 * 1000));
+            if (currentDay < firstOccurrence) return false;
+            
+            const diffTime = currentDay.getTime() - firstOccurrence.getTime();
 
-        if (p.unit === 'week') {
-            if (currentDay.getDay() !== p.dayIndex) return false;
-            const diffWeeks = Math.floor(diffDays / 7);
-            return (diffWeeks % p.n === 0);
-        }
-        
-        if (p.unit === 'day') {
-            return (diffDays % p.n === 0);
-        }
-        
-        if (p.unit === 'month') {
-            let monthCount = 0;
-            let tempDate = new Date(firstOccurrence);
-            while(tempDate < currentDay) {
-                tempDate.setMonth(tempDate.getMonth() + p.n);
-                monthCount++;
+            // Rule 2: The difference in time must be an even multiple of the interval.
+            if (p.unit === 'week') {
+                const diffWeeks = Math.round(diffTime / (7 * 24 * 60 * 60 * 1000));
+                return (diffWeeks % p.n === 0);
+            } else { // p.unit === 'day'
+                const diffDays = Math.round(diffTime / (24 * 60 * 60 * 1000));
+                return (diffDays % p.n === 0);
             }
-            return tempDate.getTime() === currentDay.getTime();
+        }
+
+        // For schedules without a specific day (e.g., "every 3 days"), project forward.
+        if (p.unit === 'day' || p.unit === 'week' || p.unit === 'month') {
+            let nextDueDate = new Date(anchorDate);
+            while (nextDueDate < currentDay) {
+                switch (p.unit) {
+                    case 'day':   nextDueDate.setDate(nextDueDate.getDate() + p.n); break;
+                    case 'week':  nextDueDate.setDate(nextDueDate.getDate() + p.n * 7); break;
+                    case 'month': nextDueDate.setMonth(nextDueDate.getMonth() + p.n); break;
+                }
+            }
+            return nextDueDate.getTime() === currentDay.getTime();
         }
         
-        return false;
+        return false; // Minute/hour intervals are not shown on the calendar
     }
 
     function renderCalendar() {
@@ -1390,6 +1410,7 @@ async function saveScheduleModal(){
         const today = new Date();
         today.setHours(0,0,0,0);
 
+        // A calendar grid has 6 rows (weeks) = 42 cells
         for (let i = 0; i < 42; i++) {
             const daySquare = document.createElement('div');
             daySquare.classList.add('calendar-day');
@@ -1434,7 +1455,7 @@ async function saveScheduleModal(){
         document.getElementById('overviewItemName').textContent = schedule.items?.item_name || 'N/A';
         document.getElementById('overviewCheckType').textContent = schedule.check_types?.name || 'N/A';
         document.getElementById('overviewDueDate').textContent = dateString ? new Date(dateString).toLocaleDateString() : 'N/A';
-        document.getElementById('overviewFrequency').textContent = formatInterval(schedule.frequency, schedule.scheduled_day);
+        document.getElementById('overviewFrequency').textContent = formatInterval(schedule.frequency);
         document.getElementById('overviewLastDone').textContent = schedule.last_completed_at ? new Date(schedule.last_completed_at).toLocaleString() : 'Never';
 
         document.getElementById('checkOverviewModal').style.display = 'flex';
