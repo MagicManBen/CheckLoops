@@ -1751,31 +1751,31 @@ async function saveScheduleModal(){
     if(activeBtn) activeBtn.classList.add('selected');
 
     if(page === 'boxes'){
-  setupRoomsUI();
-  ensureRoomsLoaded();
-  loadItems();
-} else if(page === 'items'){
-  setupItemsUI();
-  loadItemsPage();
-} else if(page === 'doctor'){
-  // Prefer the fixed staff loaders that render all teams (even empty)
-  if (typeof setupStaffUIFixed === 'function' && typeof loadStaffFixed === 'function') {
-    setupStaffUIFixed();
-    loadStaffFixed();
-  } else {
-    if (typeof setupStaffUI === 'function') setupStaffUI();
-    if (typeof loadStaff === 'function') loadStaff();
-  }
-} else if(page === 'schedule'){
-  if(typeof setupScheduleUI === 'function') setupScheduleUI();
-  if(typeof loadSchedulePage === 'function') loadSchedulePage();
-} else if (page === 'calendar') {
-  if (typeof setupCalendarUI === 'function') setupCalendarUI();
-  if (typeof loadCalendarData === 'function') loadCalendarData();
-} else if(page === 'dashboard'){
-  setupDashboardUI();
-  loadDashboard();
-}
+      setupRoomsUI();
+      ensureRoomsLoaded();
+      loadItems();
+    } else if(page === 'items'){
+      setupItemsUI();
+      loadItemsPage();
+    } else if(page === 'doctor'){
+      // Prefer the fixed staff loaders that render all teams (even empty)
+      if (typeof setupStaffUIFixed === 'function' && typeof loadStaffFixed === 'function') {
+        setupStaffUIFixed();
+        loadStaffFixed();
+      } else {
+        if(typeof setupStaffUI === 'function') setupStaffUI();
+        if(typeof loadStaff === 'function') loadStaff();
+      }
+    } else if(page === 'schedule'){
+      if(typeof setupScheduleUI === 'function') setupScheduleUI();
+      if(typeof loadSchedulePage === 'function') loadSchedulePage();
+    } else if (page === 'calendar') {
+        if (typeof setupCalendarUI === 'function') setupCalendarUI();
+        if (typeof loadCalendarData === 'function') loadCalendarData();
+    } else if(page === 'dashboard'){
+      setupDashboardUI();
+      loadDashboard();
+    }
   }
   /* --- Staff page logic (FIXED TEAMS RENDER) --- */
   (function(){
@@ -1809,11 +1809,10 @@ async function saveScheduleModal(){
       if(!window.SB || !window.CURRENT_SITE_ID) return;
       const site = window.CURRENT_SITE_ID;
 
-    const [{ data: teams, error: tErr }, { data: staff, error: sErr }] = await Promise.all([
-  window.SB.from('public.teams').select('id,name,site_id').eq('site_id', site).order('name', { ascending: true }),
-  window.SB.from('kiosk_users').select('id,full_name,role,active,team_id,pin').eq('site_id', site).eq('active', true).order('full_name', { ascending: true })
-]);
-console.debug('[Staff] site', site, 'teams:', teams?.length, 'staff:', staff?.length);
+      const [{ data: teams, error: tErr }, { data: staff, error: sErr }] = await Promise.all([
+        window.SB.from('teams').select('id,name').eq('site_id', site).order('name', { ascending: true }),
+        window.SB.from('kiosk_users').select('id,full_name,role,active,team_id,pin').eq('site_id', site).eq('active', true).order('full_name', { ascending: true })
+      ]);
       if (tErr || sErr) { console.error(tErr || sErr); return; }
 
       const rowsEl = document.getElementById('staffRows');
@@ -1848,87 +1847,15 @@ console.debug('[Staff] site', site, 'teams:', teams?.length, 'staff:', staff?.le
         return true; // keep teams even if no member matched when filtering by name/role
       });
 
-     const teamNameById = new Map((teams || []).map(t => [t.id, t.name]));
-
-rowsEl.innerHTML = filteredGroups.map(g => {
-  const membersHtml = g.members.length
-    ? g.members.map(u => `
-        <div class="row-card" data-staff-id="${u.id}" draggable="true">
-          <div class="staff-name">${eh(u.full_name||'')}</div>
-          <div class="staff-role">${eh(u.role||'')}</div>
-          <div class="staff-pin ${u.pin && String(u.pin).trim() !== '' ? 'pin-yes' : 'pin-no'}">
-            ${u.pin && String(u.pin).trim() !== '' ? '••••' : '—'}
-          </div>
-          <button class="staff-config-btn" data-staff-id="${u.id}" title="Edit">⋯</button>
-        </div>
-      `).join('')
-    : `<div class="row-card" style="opacity:.6">No members</div>`;
-  return `
-    <div class="team-header">${eh(g.name)} (${g.members.length})</div>
-    <div class="rows team-group" data-team-id="${g.id==null ? '' : g.id}">
-      ${membersHtml}
-    </div>
-  `;
-}).join('');
-
-// Expose name map for setting team_name on drop (optional cached field)
-window.__CLTeamMap = teamNameById;
-
-function bindDnDForStaff(){
-  // Drag sources
-  const cards = rowsEl.querySelectorAll('.row-card[draggable="true"]');
-  cards.forEach(card => {
-    if (card.dataset.dndBound) return;
-    card.addEventListener('dragstart', e => {
-      card.classList.add('dragging');
-      e.dataTransfer.setData('text/plain', card.getAttribute('data-staff-id'));
-      e.dataTransfer.effectAllowed = 'move';
-    });
-    card.addEventListener('dragend', () => card.classList.remove('dragging'));
-    card.dataset.dndBound = '1';
-  });
-
-  // Drop targets (each team section, plus Unassigned)
-  const groupsEls = rowsEl.querySelectorAll('.team-group');
-  groupsEls.forEach(groupEl => {
-    if (groupEl.dataset.dndBound) return;
-    groupEl.addEventListener('dragover', e => {
-      e.preventDefault();
-      groupEl.classList.add('drop-target');
-      e.dataTransfer.dropEffect = 'move';
-    });
-    groupEl.addEventListener('dragleave', () => groupEl.classList.remove('drop-target'));
-    groupEl.addEventListener('drop', async e => {
-      e.preventDefault();
-      groupEl.classList.remove('drop-target');
-
-      const staffId = Number(e.dataTransfer.getData('text/plain'));
-      if (!Number.isFinite(staffId)) return;
-
-      const teamAttr = groupEl.getAttribute('data-team-id');
-      const teamId = teamAttr === '' ? null : Number(teamAttr);
-      const teamName = teamId == null ? null : (window.__CLTeamMap?.get(teamId) || null);
-
-      try{
-        const update = teamId == null
-          ? { team_id: null, team_name: null }
-          : { team_id: teamId, team_name: teamName };
-
-        const { error: upErr } = await window.SB
-          .from('kiosk_users')
-          .update(update)
-          .eq('id', staffId);
-
-        if (upErr) { alert(upErr.message); return; }
-        // Re-render to reflect new grouping and counts
-        loadStaffFixed();
-      }catch(err){ console.error(err); }
-    });
-    groupEl.dataset.dndBound = '1';
-  });
-}
-
-bindDnDForStaff();
+      rowsEl.innerHTML = filteredGroups.map(g => {
+        const membersHtml = g.members.length
+          ? g.members.map(renderStaffCard).join('')
+          : `<div class="row-card" style="opacity:.6">No members</div>`;
+        return `
+          <div class="team-header">${eh(g.name)} (${g.members.length})</div>
+          ${membersHtml}
+        `;
+      }).join('');
     }
 
     function setupStaffUIFixed(){
