@@ -917,6 +917,164 @@
     if(m) m.style.display = (m.style.display === 'none') ? 'block' : 'none';
   }
 
+  // =========================
+  // Auth Logic v2 (Remember Me + Sticky Session)
+  // =========================
+  const CL_REMEMBER_KEY = 'CL_REMEMBER';
+  const CL_EMAIL_KEY    = 'CL_EMAIL';
+  const CL_PASS_KEY     = 'CL_PASSWORD';
+
+  function $(id){ return document.getElementById(id); }
+
+  function showAuthUI(){
+    const authWrap = document.querySelector('.wrap');
+    const appShell = document.getElementById('appShell');
+    if(authWrap) authWrap.style.display = 'block';
+    if(appShell) appShell.style.display = 'none';
+  }
+
+  function showAppUI(){
+    const authWrap = document.querySelector('.wrap');
+    const appShell = document.getElementById('appShell');
+    if(authWrap) authWrap.style.display = 'none';
+    if(appShell) appShell.style.display = 'grid'; // matches .app-shell grid layout
+  }
+
+  function setProfileFromUser(user){
+    const initialsEl = document.getElementById('profileInitials');
+    const welcomeEl  = document.getElementById('welcomeName');
+    const email = (user && user.email) ? user.email : '';
+    const initials = email ? email.split('@')[0].slice(0,2).toUpperCase() : '--';
+    if(initialsEl) initialsEl.textContent = initials;
+    if(welcomeEl)  welcomeEl.textContent  = email ? `Signed in as ${email}` : '';
+  }
+
+  function prefillRemembered(){
+    try{
+      const remember = localStorage.getItem(CL_REMEMBER_KEY) === '1';
+      const savedEmail = remember ? (localStorage.getItem(CL_EMAIL_KEY) || '') : '';
+      const savedPass  = remember ? (localStorage.getItem(CL_PASS_KEY)  || '') : '';
+      const emailEl = $('email');
+      const passEl  = $('password');
+      const rememberEl = $('remember');
+      if(rememberEl) rememberEl.checked = !!remember;
+      if(emailEl) emailEl.value = savedEmail;
+      if(passEl)  passEl.value  = savedPass;
+    }catch(_){ /* no-op */ }
+  }
+
+  async function handleSignIn(e){
+    e.preventDefault();
+    if(e.stopImmediatePropagation) e.stopImmediatePropagation();
+
+    const email = ($('email')?.value || '').trim();
+    const password = $('password')?.value || '';
+    const remember = !!($('remember')?.checked);
+    const errEl = $('err');
+    const btn = $('signInBtn');
+
+    if(errEl){ errEl.style.display = 'none'; errEl.textContent = ''; }
+
+    if(!window.SB || !window.SB.auth){
+      if(errEl){ errEl.textContent = 'Auth not initialised. Please check Supabase client (window.SB).'; errEl.style.display = 'block'; }
+      return;
+    }
+
+    try{
+      if(btn) btn.disabled = true;
+      const { data, error } = await window.SB.auth.signInWithPassword({ email, password });
+      if(error) throw error;
+
+      // Remember-me only stores form fields (not the auth session)
+      try{
+        if(remember){
+          localStorage.setItem(CL_REMEMBER_KEY, '1');
+          localStorage.setItem(CL_EMAIL_KEY, email);
+          localStorage.setItem(CL_PASS_KEY,  password);
+        }else{
+          localStorage.removeItem(CL_REMEMBER_KEY);
+          localStorage.removeItem(CL_EMAIL_KEY);
+          localStorage.removeItem(CL_PASS_KEY);
+        }
+      }catch(_){}
+
+      onSignedIn(data?.session || null);
+    }catch(ex){
+      if(errEl){ errEl.textContent = ex?.message || 'Sign-in failed'; errEl.style.display = 'block'; }
+    }finally{
+      if(btn) btn.disabled = false;
+    }
+  }
+
+  function startTokenKeepAlive(){
+    // Keep session fresh even across long idle periods
+    if(window._clKeepAlive){ clearInterval(window._clKeepAlive); }
+    window._clKeepAlive = setInterval(async ()=>{
+      try{ await window.SB?.auth.getSession(); }catch(_){/* ignore */}
+    }, 5 * 60 * 1000); // every 5 minutes
+
+    window.addEventListener('visibilitychange', ()=>{ if(!document.hidden){ try{ window.SB?.auth.getSession(); }catch(_){}} });
+    window.addEventListener('online', ()=>{ try{ window.SB?.auth.getSession(); }catch(_){}} );
+  }
+
+  function onSignedIn(session){
+    showAppUI();
+    setProfileFromUser(session?.user || null);
+    try{ if(typeof setupSidebar === 'function') setupSidebar(); }catch(_){ }
+    try{ if(typeof showPage === 'function') showPage('dashboard'); }catch(_){ }
+    startTokenKeepAlive();
+  }
+
+  // Expose logout globally; keeps remembered fields intact
+  window.doLogout = async function(){
+    try{ await window.SB?.auth.signOut(); }catch(_){ }
+    showAuthUI();
+    prefillRemembered();
+  };
+
+  async function initAuth(){
+    prefillRemembered();
+
+    // Bind sign-in form with capture so we can short-circuit any older handlers
+    const form = $('loginForm');
+    if(form && !form.dataset.bound){
+      form.addEventListener('submit', handleSignIn, true);
+      form.dataset.bound = '1';
+    }
+
+    // Optional: Forgot password helper using Supabase
+    const forgotBtn = $('forgotBtn');
+    if(forgotBtn && !forgotBtn.dataset.bound){
+      forgotBtn.addEventListener('click', async ()=>{
+        const email = ($('email')?.value || '').trim();
+        if(!email){ alert('Enter your email first.'); return; }
+        try{
+          const { error } = await window.SB.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + '/reset.html' });
+          if(error) throw error;
+          alert('If the email exists, a reset link has been sent.');
+        }catch(ex){ alert(ex?.message || 'Unable to send reset email'); }
+      });
+      forgotBtn.dataset.bound = '1';
+    }
+
+    // If a session already exists, go straight to app
+    try{
+      const { data: { session } } = await window.SB.auth.getSession();
+      if(session){ onSignedIn(session); } else { showAuthUI(); }
+    }catch(_){ showAuthUI(); }
+
+    // React to auth state changes; ensures we stay in-app as long as user is signed in
+    if(!window._clAuthBound && window.SB?.auth?.onAuthStateChange){
+      window.SB.auth.onAuthStateChange((event, session)=>{
+        if(event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED'){ onSignedIn(session); }
+        if(event === 'SIGNED_OUT'){ showAuthUI(); }
+      });
+      window._clAuthBound = true;
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', initAuth);
+
   /* --- Schedule page helpers --- */
   let _SCHEDULE_ITEMS = [];
   let _SCHEDULE_TYPES = [];
