@@ -2364,17 +2364,31 @@ showPage = function(page){
   }
 
   /* Add a new team for the current site */
-  async function addTeam(){
-    if(!window.SB){ alert('Supabase not ready – please sign in again.'); return; }
-    if(!window.CURRENT_SITE_ID){ alert('No site selected for this user (missing site_id).'); return; }
-    const name = prompt('Team name?');
-    if(!name) return;
+  async function addTeam() {
+  if (!window.SB) {
+    alert('Supabase not ready – please sign in again.');
+    return;
+  }
+  if (!window.CURRENT_SITE_ID) {
+    alert('No site selected for this user (missing site_id).');
+    return;
+  }
+  const name = prompt('Team name?');
+  if (!name) return;
+
+  try {
     const { error } = await window.SB
       .from('teams')
       .insert([{ site_id: window.CURRENT_SITE_ID, name: name.trim() }]);
-    if(error){ console.error('add team', error); alert(error.message); return; }
-    await loadStaff();   // refresh list to show the new team
+
+    if (error) throw error; // If the database returns an error, handle it below.
+
+    await loadStaff(); // Refresh the list only on success.
+  } catch (err) {
+    console.error('Failed to add team:', err); // Logs the error for debugging.
+    alert(`Error: Could not add team. \n\n${err.message}`); // Shows a helpful error message.
   }
+}
 
 
 
@@ -2690,16 +2704,27 @@ showPage = function(page){
   function setupStaffUI(){
     const addStaffBtn = document.getElementById('addStaffBtn');
     if(addStaffBtn && !addStaffBtn.dataset.bound){
-      addStaffBtn.addEventListener('click', async ()=>{
-        if(!window.SB || !window.CURRENT_SITE_ID){ alert('Supabase not ready'); return; }
-        const name = prompt('Staff full name?');
-        if(!name) return;
-        const { error } = await window.SB
-          .from('kiosk_users')
-          .insert([{ site_id: window.CURRENT_SITE_ID, full_name: name.trim(), active: true }]);
-        if(error){ alert(error.message || 'Failed to add staff'); return; }
-        await loadStaff();
-      });
+      addStaffBtn.addEventListener('click', async () => {
+  if (!window.SB || !window.CURRENT_SITE_ID) {
+    alert('Supabase not ready');
+    return;
+  }
+  const name = prompt('Staff full name?');
+  if (!name) return;
+
+  try {
+    const { error } = await window.SB
+      .from('kiosk_users')
+      .insert([{ site_id: window.CURRENT_SITE_ID, full_name: name.trim(), active: true }]);
+
+    if (error) throw error; // If the database returns an error, handle it below.
+
+    await loadStaff(); // Refresh the list only on success.
+  } catch (err) {
+    console.error('Failed to add staff:', err); // Logs the error for debugging.
+    alert(`Error: Could not add staff member. \n\n${err.message}`); // Shows a helpful error message.
+  }
+});
       addStaffBtn.dataset.bound = '1';
     }
 
@@ -2737,11 +2762,7 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
   document.addEventListener('DOMContentLoaded', setupTeamCollapse);
 }
 
- // Global error hooks -> debug box
-  window.onerror = function(message, source, lineno, colno, error){
-  };
-  window.onunhandledrejection = function(e){
-  };
+
 
   const form = document.getElementById('loginForm');
   const email = document.getElementById('email');
