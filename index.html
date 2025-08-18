@@ -8,6 +8,75 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script id="auth-bootstrap">
+    (function(){
+      if (window.__CLAuthBootstrapped) return;
+      window.__CLAuthBootstrapped = true;
+
+      const SB_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
+      const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME';
+
+      // Initialize the Supabase client and attach it to the window object.
+      // This will be the single source of truth for the client instance.
+      if (!window.SB && window.supabase) {
+        window.SB = window.supabase.createClient(SB_URL, SB_ANON, {
+          auth: {
+            // Always persist session to keep the user logged in
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true,
+            storage: window.localStorage // Use localStorage to ensure session survives browser close
+          }
+        });
+      }
+
+      function showAuth(){
+        const authWrap = document.querySelector('.wrap');
+        const app = document.getElementById('appShell');
+        if (authWrap) authWrap.style.display = '';
+        if (app) app.style.display = 'none';
+      }
+      function showApp(){
+        const authWrap = document.querySelector('.wrap');
+        const app = document.getElementById('appShell');
+        if (authWrap) authWrap.style.display = 'none';
+        if (app) app.style.display = 'grid';
+        try {
+          const last = localStorage.getItem('CL_LAST_PAGE') || 'dashboard';
+          if (typeof showPage === 'function') showPage(last);
+        } catch(_) {}
+      }
+
+      // This function runs as soon as the DOM is loaded to check the session
+      // and quickly show the correct view (app or login).
+      document.addEventListener('DOMContentLoaded', async () => {
+        try {
+          if (!window.SB) { showAuth(); return; }
+          const { data: { session } } = await window.SB.auth.getSession();
+          if (session && session.user) {
+            await loadUserDetails(window.SB); // Load details early
+            showApp();
+          } else {
+            showAuth();
+          }
+        } catch (_) {
+          showAuth();
+        }
+
+        // Listen for auth state changes to handle login/logout events in real-time.
+        if (window.SB) {
+          window.SB.auth.onAuthStateChange(async (_event, session) => {
+            if (session && session.user) {
+              await loadUserDetails(window.SB);
+              showApp();
+            } else {
+              showAuth();
+            }
+          });
+        }
+      });
+    })();
+  </script>
   <style>
     /* --- macOS Bright Style Redesign v2 --- */
     :root {
@@ -916,164 +985,6 @@
     const m = document.getElementById('profileMenu');
     if(m) m.style.display = (m.style.display === 'none') ? 'block' : 'none';
   }
-
-  // =========================
-  // Auth Logic v2 (Remember Me + Sticky Session)
-  // =========================
-  const CL_REMEMBER_KEY = 'CL_REMEMBER';
-  const CL_EMAIL_KEY    = 'CL_EMAIL';
-  const CL_PASS_KEY     = 'CL_PASSWORD';
-
-  function $(id){ return document.getElementById(id); }
-
-  function showAuthUI(){
-    const authWrap = document.querySelector('.wrap');
-    const appShell = document.getElementById('appShell');
-    if(authWrap) authWrap.style.display = 'block';
-    if(appShell) appShell.style.display = 'none';
-  }
-
-  function showAppUI(){
-    const authWrap = document.querySelector('.wrap');
-    const appShell = document.getElementById('appShell');
-    if(authWrap) authWrap.style.display = 'none';
-    if(appShell) appShell.style.display = 'grid'; // matches .app-shell grid layout
-  }
-
-  function setProfileFromUser(user){
-    const initialsEl = document.getElementById('profileInitials');
-    const welcomeEl  = document.getElementById('welcomeName');
-    const email = (user && user.email) ? user.email : '';
-    const initials = email ? email.split('@')[0].slice(0,2).toUpperCase() : '--';
-    if(initialsEl) initialsEl.textContent = initials;
-    if(welcomeEl)  welcomeEl.textContent  = email ? `Signed in as ${email}` : '';
-  }
-
-  function prefillRemembered(){
-    try{
-      const remember = localStorage.getItem(CL_REMEMBER_KEY) === '1';
-      const savedEmail = remember ? (localStorage.getItem(CL_EMAIL_KEY) || '') : '';
-      const savedPass  = remember ? (localStorage.getItem(CL_PASS_KEY)  || '') : '';
-      const emailEl = $('email');
-      const passEl  = $('password');
-      const rememberEl = $('remember');
-      if(rememberEl) rememberEl.checked = !!remember;
-      if(emailEl) emailEl.value = savedEmail;
-      if(passEl)  passEl.value  = savedPass;
-    }catch(_){ /* no-op */ }
-  }
-
-  async function handleSignIn(e){
-    e.preventDefault();
-    if(e.stopImmediatePropagation) e.stopImmediatePropagation();
-
-    const email = ($('email')?.value || '').trim();
-    const password = $('password')?.value || '';
-    const remember = !!($('remember')?.checked);
-    const errEl = $('err');
-    const btn = $('signInBtn');
-
-    if(errEl){ errEl.style.display = 'none'; errEl.textContent = ''; }
-
-    if(!window.SB || !window.SB.auth){
-      if(errEl){ errEl.textContent = 'Auth not initialised. Please check Supabase client (window.SB).'; errEl.style.display = 'block'; }
-      return;
-    }
-
-    try{
-      if(btn) btn.disabled = true;
-      const { data, error } = await window.SB.auth.signInWithPassword({ email, password });
-      if(error) throw error;
-
-      // Remember-me only stores form fields (not the auth session)
-      try{
-        if(remember){
-          localStorage.setItem(CL_REMEMBER_KEY, '1');
-          localStorage.setItem(CL_EMAIL_KEY, email);
-          localStorage.setItem(CL_PASS_KEY,  password);
-        }else{
-          localStorage.removeItem(CL_REMEMBER_KEY);
-          localStorage.removeItem(CL_EMAIL_KEY);
-          localStorage.removeItem(CL_PASS_KEY);
-        }
-      }catch(_){}
-
-      onSignedIn(data?.session || null);
-    }catch(ex){
-      if(errEl){ errEl.textContent = ex?.message || 'Sign-in failed'; errEl.style.display = 'block'; }
-    }finally{
-      if(btn) btn.disabled = false;
-    }
-  }
-
-  function startTokenKeepAlive(){
-    // Keep session fresh even across long idle periods
-    if(window._clKeepAlive){ clearInterval(window._clKeepAlive); }
-    window._clKeepAlive = setInterval(async ()=>{
-      try{ await window.SB?.auth.getSession(); }catch(_){/* ignore */}
-    }, 5 * 60 * 1000); // every 5 minutes
-
-    window.addEventListener('visibilitychange', ()=>{ if(!document.hidden){ try{ window.SB?.auth.getSession(); }catch(_){}} });
-    window.addEventListener('online', ()=>{ try{ window.SB?.auth.getSession(); }catch(_){}} );
-  }
-
-  function onSignedIn(session){
-    showAppUI();
-    setProfileFromUser(session?.user || null);
-    try{ if(typeof setupSidebar === 'function') setupSidebar(); }catch(_){ }
-    try{ if(typeof showPage === 'function') showPage('dashboard'); }catch(_){ }
-    startTokenKeepAlive();
-  }
-
-  // Expose logout globally; keeps remembered fields intact
-  window.doLogout = async function(){
-    try{ await window.SB?.auth.signOut(); }catch(_){ }
-    showAuthUI();
-    prefillRemembered();
-  };
-
-  async function initAuth(){
-    prefillRemembered();
-
-    // Bind sign-in form with capture so we can short-circuit any older handlers
-    const form = $('loginForm');
-    if(form && !form.dataset.bound){
-      form.addEventListener('submit', handleSignIn, true);
-      form.dataset.bound = '1';
-    }
-
-    // Optional: Forgot password helper using Supabase
-    const forgotBtn = $('forgotBtn');
-    if(forgotBtn && !forgotBtn.dataset.bound){
-      forgotBtn.addEventListener('click', async ()=>{
-        const email = ($('email')?.value || '').trim();
-        if(!email){ alert('Enter your email first.'); return; }
-        try{
-          const { error } = await window.SB.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + '/reset.html' });
-          if(error) throw error;
-          alert('If the email exists, a reset link has been sent.');
-        }catch(ex){ alert(ex?.message || 'Unable to send reset email'); }
-      });
-      forgotBtn.dataset.bound = '1';
-    }
-
-    // If a session already exists, go straight to app
-    try{
-      const { data: { session } } = await window.SB.auth.getSession();
-      if(session){ onSignedIn(session); } else { showAuthUI(); }
-    }catch(_){ showAuthUI(); }
-
-    // React to auth state changes; ensures we stay in-app as long as user is signed in
-    if(!window._clAuthBound && window.SB?.auth?.onAuthStateChange){
-      window.SB.auth.onAuthStateChange((event, session)=>{
-        if(event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED'){ onSignedIn(session); }
-        if(event === 'SIGNED_OUT'){ showAuthUI(); }
-      });
-      window._clAuthBound = true;
-    }
-  }
-
-  document.addEventListener('DOMContentLoaded', initAuth);
 
   /* --- Schedule page helpers --- */
   let _SCHEDULE_ITEMS = [];
@@ -2440,8 +2351,8 @@ showPage = function(page){
       if(sel){ const label = sel.closest('.radio-pill'); if(label) label.classList.add('active'); }
     };
     if(input && !input.dataset.bound){ input.addEventListener('input', applyStaffFilter); input.dataset.bound='1'; }
-    if(clearBtn && !clearBtn.dataset.bound){ clearBtn.addEventListener('click', ()=>{ if(input){ input.value=''; } applyStaffFilter(); if(input){ input.focus(); } }); clearBtn.dataset.bound='1'; }
-    radios.forEach(r => { if(!r.dataset.bound){ r.addEventListener('change', ()=>{ syncActive(); applyStaffFilter(); }); r.dataset.bound='1'; }});
+    if(clearBtn && !clearBtn.dataset.bound){ clearBtn.addEventListener('click', ()=>{ if(input){ input.value=''; } applyItemsFilter(); if(input){ input.focus(); } }); clearBtn.dataset.bound='1'; }
+    radios.forEach(r => { if(!r.dataset.bound){ r.addEventListener('change', ()=>{ syncActive(); applyItemsFilter(); }); r.dataset.bound='1'; }});
     syncActive();
   }
 
@@ -2501,53 +2412,24 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
   window.onunhandledrejection = function(e){
   };
 
-  const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
-  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME';
-
   const form = document.getElementById('loginForm');
   const email = document.getElementById('email');
   const password = document.getElementById('password');
   const btn = document.getElementById('signInBtn');
   const err = document.getElementById('err');
-  const authCard = document.getElementById('authCard');
-  const successCard = document.getElementById('successCard');
-  const logoutBtn = document.getElementById('logoutBtn');
   const remember = document.getElementById('remember');
   const REMEMBER_KEY = 'remember_me';
+  const SAVED_EMAIL_KEY = 'cl_saved_email';
+  const SAVED_PASS_KEY = 'cl_saved_password';
 
   const wrap = document.querySelector('.wrap');
   const appShell = document.getElementById('appShell');
   const profileInitials = document.getElementById('profileInitials');
-  const profileName = document.getElementById('profileName');
-  const profileEmail = document.getElementById('profileEmail');
-  const navLogout = document.getElementById('navLogout');
-
-  // In-memory, non-persistent storage (clears on refresh)
-  const inMemoryStorage = (()=>{
-    const m = new Map();
-    return {
-      get length(){ return m.size; },
-      key(i){ return Array.from(m.keys())[i] ?? null; },
-      getItem(k){ const v = m.get(k); return v === undefined ? null : v; },
-      setItem(k,v){ m.set(String(k), String(v)); },
-      removeItem(k){ m.delete(k); },
-      clear(){ m.clear(); }
-    };
-  })();
-
-  function clearSupabaseStorage(storage){
-    try{
-      for(let i = storage.length - 1; i >= 0; i--){
-        const k = storage.key(i);
-        if(k && k.startsWith('sb-')){ storage.removeItem(k); }
-      }
-    }catch{}
-  }
 
   function showError(msg){ err.textContent = msg; err.style.display = 'block'; }
   function clearError(){ err.style.display='none'; err.textContent=''; }
 
-  function getInitials(name, email){
+  function getInitials(name, emailAddr){
     const n = (name||'').trim();
     if(n){
       const parts = n.split(/\s+/);
@@ -2556,24 +2438,13 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
       const str = (first+last) || first;
       return (str||'?').toUpperCase();
     }
-    const em = (email||'').trim();
+    const em = (emailAddr||'').trim();
     return em ? em[0].toUpperCase() : '?';
   }
-  function showApp(defaultPage){
-    wrap.style.display='none';
-    appShell.style.display='grid';
-    const last = (function(){
-      try { return localStorage.getItem('CL_LAST_PAGE'); } catch(_) { return null; }
-    })();
-    const page = defaultPage || last || 'dashboard';
-    showPage(page);
-  }
-  function showAuth(){ wrap.style.display='grid'; appShell.style.display='none'; }
-
+  
   async function loadUserDetails(supabase){
     try{
-      const { data: userRes } = await supabase.auth.getUser();
-      const user = userRes && userRes.user;
+      const { data: { user } } = await supabase.auth.getUser();
       if(!user){ return; }
       const { data: profile } = await supabase
         .from('profiles')
@@ -2589,7 +2460,6 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
       if(profileInitials) profileInitials.textContent = getInitials(profile?.full_name, user.email);
       
       window.CURRENT_SITE_ID = profile?.site_id || null;
-      window.SB = supabase;
 
       if(window.CURRENT_SITE_ID){
         initRealtimeItems();
@@ -2600,90 +2470,45 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
   async function doLogout(){
     if (!window.SB) return;
     await window.SB.auth.signOut();
-    clearSupabaseStorage(localStorage);
-    try { localStorage.setItem(REMEMBER_KEY, '0'); } catch {}
+    try { 
+        localStorage.removeItem(REMEMBER_KEY); 
+    } catch {}
+
     if(window._itemsChannel){
       try { window._itemsChannel.unsubscribe(); } catch {}
       window._itemsChannel = null;
     }
-    window.SB = null;
     window.CURRENT_SITE_ID = null;
     ROOMS = [];
     ROOMS_LOADED = false;
-    showAuth();
-    form.reset();
-    remember.checked = false;
+    
+    const authWrap = document.querySelector('.wrap');
+    const app = document.getElementById('appShell');
+    if (authWrap) authWrap.style.display = 'flex';
+    if (app) app.style.display = 'none';
   }
   
   function initAuth(){
     try{
-      if(!window.supabase || !window.supabase.createClient){
-        throw new Error('Supabase library not loaded');
+      if (!window.SB) {
+        showError("Authentication service failed to load. Please refresh.");
+        return;
       }
-      let supabase;
-      function storageChoice(){
-        const saved = localStorage.getItem(REMEMBER_KEY);
-        return saved === '1' ? window.localStorage : inMemoryStorage;
-      }
-      function makeClient(){
-        return window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-          auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storage: storageChoice() }
-        });
-      }
-      let remembered = false;
-      try { remembered = (localStorage.getItem(REMEMBER_KEY) === '1'); remember.checked = remembered; } catch {}
-      if(!remembered){ clearSupabaseStorage(localStorage); }
       
-      supabase = makeClient();
-      window.SB = supabase;
+      let authMode = 'signin';
+
+      // On page load, check if we should pre-fill the form fields.
+      try {
+        const remembered = localStorage.getItem(REMEMBER_KEY) === '1';
+        if (remembered) {
+          remember.checked = true;
+          const savedEmail = localStorage.getItem(SAVED_EMAIL_KEY);
+          const savedPass = localStorage.getItem(SAVED_PASS_KEY);
+          if (savedEmail) email.value = savedEmail;
+          if (savedPass) password.value = savedPass;
+        }
+      } catch(e) { console.warn("Could not load saved credentials.", e); }
       
-      form.addEventListener('submit', async (e)=>{
-        e.preventDefault();
-        clearError();
-        btn.disabled = true; btn.textContent = 'Signing in…';
-        try{
-          const wantRemember = !!remember.checked;
-          try { localStorage.setItem(REMEMBER_KEY, wantRemember ? '1' : '0'); } catch {}
-          if(wantRemember !== (storageChoice() === window.localStorage)) {
-              supabase = makeClient();
-              window.SB = supabase;
-          }
-          const { data, error } = await supabase.auth.signInWithPassword({ email: email.value.trim(), password: password.value });
-          if(error) throw error;
-          if(!data || !data.user || !data.user.id){ throw new Error('No user returned from Supabase.'); }
-          await loadUserDetails(supabase);
-          showApp('dashboard');
-        }catch(ex){
-          showError(ex.message || 'Unable to sign in.');
-          // Re-add the listener if sign in fails, so the user can try again.
-          form.addEventListener('submit', arguments.callee, { once: true });
-        }finally{
-          btn.disabled = false; btn.textContent = 'Sign In';
-        }
-      }, { once: true });
-
-      supabase.auth.getSession()
-        .then(async ({ data }) => {
-          if (data && data.session) {
-            await loadUserDetails(supabase);
-            showApp();
-          } else {
-            showAuth();
-          }
-        })
-        .catch(() => {
-          showAuth();
-        });
-
-      supabase.auth.onAuthStateChange(async (_event, session) => {
-        if (session) {
-          await loadUserDetails(supabase);
-          showApp();
-        } else {
-          showAuth();
-        }
-      });
-
       const forgotBtn = document.getElementById('forgotBtn');
       const backBtn = document.getElementById('backBtn');
       const pwdLabel = document.querySelector('label[for="password"]');
@@ -2708,81 +2533,85 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
         btn.textContent = 'Sign In';
         backBtn.style.display = 'none';
         clearError();
-        form.onsubmit = null;
       }
-
+      
       forgotBtn.addEventListener('click', ()=>{
+        authMode = 'reset';
         toResetUI();
-        form.onsubmit = async (e) => {
-          e.preventDefault();
-          const emailValue = email.value.trim();
-          if (!emailValue) {
-            showError('Enter your email to reset password.');
-            return;
-          }
-          try {
-            const { error } = await supabase.auth.resetPasswordForEmail(emailValue, {
-              redirectTo: window.location.href
-            });
-            if (error) throw error;
-            showError('Check your email for the reset link.');
-          } catch (ex) {
-            showError(ex.message || 'Failed to initiate reset.');
-          }
-        };
       });
 
       backBtn.addEventListener('click', ()=>{
+        authMode = 'signin';
         toSignInUI();
-        // Re-attach the main sign-in listener
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            clearError();
-            btn.disabled = true; btn.textContent = 'Signing in…';
-            try {
-                const wantRemember = !!remember.checked;
-                try { localStorage.setItem(REMEMBER_KEY, wantRemember ? '1' : '0'); } catch {}
-                if (wantRemember !== (storageChoice() === window.localStorage)) {
-                    supabase = makeClient();
-                    window.SB = supabase;
-                }
-                const { data, error } = await supabase.auth.signInWithPassword({ email: email.value.trim(), password: password.value });
-                if (error) throw error;
-                if (!data || !data.user || !data.user.id) { throw new Error('No user returned from Supabase.'); }
-                await loadUserDetails(supabase);
-                showApp('dashboard');
-            } catch (ex) {
-                showError(ex.message || 'Unable to sign in.');
-                form.addEventListener('submit', arguments.callee, { once: true });
-            } finally {
-                btn.disabled = false; btn.textContent = 'Sign In';
-            }
-        }, { once: true });
       });
 
-      document.getElementById('createBtn').addEventListener('click', ()=>{ showError('Create account is not wired yet.'); });
+      document.getElementById('createBtn').addEventListener('click', ()=>{ showError('Account creation is not available.'); });
 
+      form.addEventListener('submit', async (e)=>{
+        e.preventDefault();
+        if (btn.disabled) return;
+
+        clearError();
+        btn.disabled = true;
+
+        if (authMode === 'signin') {
+            btn.textContent = 'Signing in…';
+            try {
+                const wantRemember = !!remember.checked;
+                localStorage.setItem(REMEMBER_KEY, wantRemember ? '1' : '0');
+
+                const { data, error } = await window.SB.auth.signInWithPassword({ 
+                    email: email.value.trim(), 
+                    password: password.value 
+                });
+
+                if(error) throw error;
+                if(!data || !data.user || !data.user.id){ throw new Error('Authentication failed. Please try again.'); }
+
+                if (wantRemember) {
+                    localStorage.setItem(SAVED_EMAIL_KEY, email.value.trim());
+                    localStorage.setItem(SAVED_PASS_KEY, password.value);
+                } else {
+                    localStorage.removeItem(SAVED_EMAIL_KEY);
+                    localStorage.removeItem(SAVED_PASS_KEY);
+                }
+                // Auth state change listener in bootstrap script will handle showing the app
+            } catch(ex) {
+                showError(ex.message || 'Unable to sign in.');
+                btn.disabled = false;
+                btn.textContent = 'Sign In';
+            }
+        } else { // Reset mode
+            btn.textContent = 'Sending…';
+            const emailValue = email.value.trim();
+            if (!emailValue) {
+                showError('Enter your email to reset password.');
+                btn.disabled = false;
+                btn.textContent = 'Send Password Reset';
+                return;
+            }
+            try {
+                const { error } = await window.SB.auth.resetPasswordForEmail(emailValue, {
+                    redirectTo: window.location.href
+                });
+                if (error) throw error;
+                showError('Check your email for the reset link.');
+            } catch (ex) {
+                showError(ex.message || 'Failed to initiate reset.');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Send Password Reset';
+            }
+        }
+      });
     }catch(e){
       showError(e.message);
     }
   }
-
-  (function ensureSupabase(){
-    try{
-      if(window.supabase && window.supabase.createClient){
-        initAuth();
-        return;
-      }
-      const s = document.createElement('script');
-      s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
-      s.async = true;
-      s.onload = initAuth;
-      s.onerror = ()=>{ showError('Unable to load Supabase library.'); };
-      document.head.appendChild(s);
-    }catch(e){
-        showError(e.message);
-    }
-  })();
+  
+  // The bootstrap script handles Supabase client creation.
+  // We just need to initialize the form logic once the DOM is ready.
+  document.addEventListener('DOMContentLoaded', initAuth);
 
 /* --- Configure item helper --- */
 async function configureItem(itemPk){
@@ -2849,10 +2678,5 @@ document.addEventListener('click', (e)=>{
 });
 </script>
 
-<script >
-  // Call loadRooms and loadItems after script load (for demo/test)
-  loadRooms();
-  loadItems();
-</script>
 </body>
 </html>
