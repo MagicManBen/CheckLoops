@@ -1821,38 +1821,42 @@
             roomCard.classList.remove('highlight');
           }, true);
 
-          z.addEventListener('drop', async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            roomCard.classList.remove('highlight');
-            const itemIdStr = e.dataTransfer.getData('text/plain');
-            const itemId = parseInt(itemIdStr, 10);
-            const roomId = roomCard.dataset.roomId;
-            const roomIdNum = parseInt(roomId, 10);
-            if (!Number.isFinite(itemId) || !Number.isFinite(roomIdNum)) return;
+         z.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    roomCard.classList.remove('highlight');
 
-            // If the dragged element is already in this room, skip DB update
-            const existingNode = document.querySelector(`.room-item[data-item-id="${itemId}"]`);
-            if (existingNode) {
-              const currentRoomEl = existingNode.closest('.room-card');
-              const currentRoomId = currentRoomEl ? currentRoomEl.dataset.roomId : null;
-              if (currentRoomId && Number(currentRoomId) === roomIdNum) {
-                return;
-              }
-            }
+    const itemIdStr = e.dataTransfer.getData('text/plain');
+    const itemId = parseInt(itemIdStr, 10);
+    const roomId = roomCard.dataset.roomId;
+    const roomIdNum = parseInt(roomId, 10);
+    if (!Number.isFinite(itemId) || !Number.isFinite(roomIdNum)) return;
 
-            const { error } = await window.SB
-              .from('items')
-              .update({ room_id: roomIdNum })
-              .eq('id', itemId)
-              .eq('site_id', window.CURRENT_SITE_ID);
-            if (error) {
-              console.error('Error updating item room:', error);
-            } else {
-              await loadRooms();
-              await loadItems();
-            }
-          }, true);
+    // Find the room's name from our cached room data.
+    const room = ROOMS.find(r => r.id === roomIdNum);
+    const roomName = room ? room.name : 'Unknown';
+
+    // 1. Optimistic UI Update: Immediately remove the card from the "Unassigned" list.
+    const unassignedCard = document.querySelector(`#rightRows .row-card[data-item-id="${itemIdStr}"]`);
+    if (unassignedCard) {
+        unassignedCard.remove();
+    }
+
+    // 2. Update Supabase with both the room_id and the room name.
+    const { error } = await window.SB
+      .from('items')
+      .update({ room_id: roomIdNum, room: roomName }) // Update both fields
+      .eq('id', itemId)
+      .eq('site_id', window.CURRENT_SITE_ID);
+
+    if (error) {
+      console.error('Error updating item room:', error);
+    }
+    
+    // 3. Reload data to ensure the UI is perfectly in sync with the database.
+    await loadRooms();
+    await loadItems();
+}, true);
         });
       });
     }
@@ -1881,12 +1885,11 @@
         zone.addEventListener('dragleave', ()=>{
           zone.classList.remove('drop-target');
         }, true);
-        zone.addEventListener('drop', async (e)=>{
+     zone.addEventListener('drop', async (e)=>{
   e.preventDefault();
   e.stopPropagation();
   zone.classList.remove('drop-target');
 
-  // 1. Ensure we have everything we need before proceeding.
   if (!window.SB || !window.CURRENT_SITE_ID) {
     console.error("Supabase client or site ID not available for drop operation.");
     return;
@@ -1896,7 +1899,6 @@
   const itemId = parseInt(itemIdStr, 10);
   if(!Number.isFinite(itemId)) return;
 
-  // 2. Provide immediate visual feedback (the "snap").
   const draggedElement = document.querySelector(`.room-item[data-item-id="${itemIdStr}"]`);
   if (draggedElement) {
     const unassignedList = document.getElementById('rightRows');
@@ -1912,10 +1914,13 @@
     draggedElement.remove();
   }
 
-  // 3. Update the database to make the change permanent.
+  // This is the corrected database update call.
   const { error } = await window.SB
     .from('items')
-    .update({ room_id: null }) // Set the room_id to null
+    .update({ 
+        room_id: null, 
+        room: 'Unassigned' // Explicitly set the 'room' text column
+    })
     .eq('id', itemId)
     .eq('site_id', window.CURRENT_SITE_ID);
 
@@ -1923,7 +1928,6 @@
     console.error('Unassign item error:', error); 
   }
 
-  // 4. Reload both lists from the database to ensure everything is consistent.
   await loadRooms();
   await loadItems();
 }, true);
@@ -1934,33 +1938,27 @@
     // --- End: Add rightRows drop handler for unassigning ---
   });
 
-  // --- Items page population ---
-  async function loadItems(){
-    try {
-      const sb = window.SB || window.supabase;
-      if(!sb) return;
-      const { data, error } = await sb
-        .from('items')
-        .select('id,item_id,item_name,room,room_id')
-        .eq('site_id', window.CURRENT_SITE_ID)
-        .eq('active', true)
-        .order('item_name', { ascending: true });
-      if(error){ console.error(error); return; }
-      const tbody = document.querySelector('#itemsTable tbody');
-      if(!tbody) return;
-      tbody.innerHTML = '';
-      (data||[]).forEach(it => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${escapeHtml(it.item_name || '')}</td>
-          <td>${escapeHtml(it.item_id || '')}</td>
-          <td>${escapeHtml(it.room || 'Unassigned')}</td>
-          <td><button class="config-btn" data-item-id="${it.id}">Configure</button></td>
-        `;
-        tbody.appendChild(tr);
-      });
-      if (typeof applyItemsFilter === 'function') { applyItemsFilter(); }
-    } catch(e){ console.error(e); }
+  // --- CORRECTED FUNCTION to load ONLY unassigned items ---
+  async function loadItems() {
+    if (!window.SB || !window.CURRENT_SITE_ID) return;
+    const { data, error } = await window.SB
+      .from('items')
+      .select('id,item_name,room_id')
+      .eq('site_id', window.CURRENT_SITE_ID)
+      .eq('active', true)
+      .is('room_id', null) // This line is the key fix: it only gets unassigned items.
+      .order('item_name', { ascending: true });
+
+    if (error) {
+      console.error('Error loading items:', error);
+      return;
+    }
+
+    const rightRows = document.getElementById('rightRows');
+    if (!rightRows) return;
+    rightRows.innerHTML = (data || []).map(item => (
+      `<div class="row-card" draggable="true" data-item-id="${item.id}">${escapeHtml(item.item_name || 'Item')}</div>`
+    )).join('');
   }
 
 // ensure each page sets itself up even when restored after a reload
