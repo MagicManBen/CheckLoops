@@ -1305,6 +1305,94 @@
     }
   /* --- End Calendar Logic --- */
 
+  /* --- Auth / Login Helpers --- */
+  function setProfileInitialsFromUser(user){
+    const el = document.getElementById('profileInitials');
+    let initials = '--';
+    try{
+      const email = (user?.email || '').trim();
+      if(email){
+        const namePart = email.split('@')[0];
+        const parts = namePart.replace(/[^a-z]/gi,' ').trim().split(/\s+/);
+        if(parts.length){
+          const a = (parts[0][0]||'').toUpperCase();
+          const b = (parts[1]?.[0]||'').toUpperCase();
+          initials = a + (b||'');
+        }
+      }
+    }catch(_){/* noop */}
+    if(el) el.textContent = initials || '--';
+  }
+
+  function bootAppAfterLogin(user){
+    // Hide auth, show app shell
+    const wrap = document.querySelector('.wrap');
+    const shell = document.getElementById('appShell');
+    if(wrap) wrap.style.display = 'none';
+    if(shell) shell.style.display = 'grid';
+
+    // Populate small UI bits
+    setProfileInitialsFromUser(user);
+    const welcome = document.getElementById('welcomeName');
+    if(welcome){ welcome.textContent = user?.email ? `Signed in as ${user.email}` : ''; }
+
+    // Wire base navigation & filters
+    setupSidebar();
+    setupItemsFilter();
+    setupScheduleUI();
+    setupDashboardUI();
+
+    // Land on dashboard
+    showPage('dashboard');
+  }
+
+  async function handleLoginSubmit(e){
+    e.preventDefault();
+    const email = (document.getElementById('email')?.value || '').trim();
+    const password = (document.getElementById('password')?.value || '').trim();
+    const btn = document.getElementById('signInBtn');
+    const errEl = document.getElementById('err');
+
+    if(errEl){ errEl.style.display='none'; errEl.textContent=''; }
+    if(btn){ btn.disabled = true; btn.textContent = 'Signing in…'; }
+
+    try{
+      if(!window.SB) throw new Error('Not connected to database (SB missing).');
+      const { data, error } = await window.SB.auth.signInWithPassword({ email, password });
+      if(error) throw error;
+      const user = data?.user || (await window.SB.auth.getUser()).data?.user;
+      if(!user) throw new Error('Signed in, but no user returned.');
+      bootAppAfterLogin(user);
+    }catch(err){
+      if(errEl){
+        errEl.textContent = err?.message || 'Sign-in failed.';
+        errEl.style.display = 'block';
+      }else{
+        alert(err?.message || 'Sign-in failed.');
+      }
+    }finally{
+      if(btn){ btn.disabled = false; btn.textContent = 'Sign In'; }
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', async ()=>{
+    // Bind login form once
+    const form = document.getElementById('loginForm');
+    if(form && !form.dataset.bound){
+      form.addEventListener('submit', handleLoginSubmit);
+      form.dataset.bound = '1';
+    }
+
+    // If already signed in, take the user straight in
+    try{
+      if(window.SB?.auth){
+        const { data } = await window.SB.auth.getSession();
+        if(data?.session?.user){ bootAppAfterLogin(data.session.user); }
+      }
+    }catch(_){/* ignore */}
+  });
+  /* --- End Auth / Login Helpers --- */
+
 
   /* --- Dashboard helpers --- */
   async function loadDashboard() {
@@ -1434,6 +1522,7 @@
       ensureRoomsLoaded();
       loadItems();
     } else if(page === 'items'){
+      if (typeof setupItemsUI === 'function') setupItemsUI();
       loadItemsPage();
     } else if(page === 'doctor'){
       if(typeof setupStaffUI === 'function') setupStaffUI();
@@ -1449,6 +1538,86 @@
       loadDashboard();
     }
   }
+  // --- Items page modal + button wiring ---
+  function setupItemsUI(){
+    const addBtn = document.getElementById('addItemBtn');
+    if(addBtn && !addBtn.dataset.bound){
+      addBtn.addEventListener('click', ()=> openItemModal('add'));
+      addBtn.dataset.bound = '1';
+    }
+
+    const modal = document.getElementById('itemModal');
+    const cancelBtn = document.getElementById('itemModalCancel');
+    const saveBtn   = document.getElementById('itemModalSave');
+
+    if(cancelBtn && !cancelBtn.dataset.bound){
+      cancelBtn.addEventListener('click', ()=>{ if(modal) modal.style.display='none'; });
+      cancelBtn.dataset.bound = '1';
+    }
+    if(saveBtn && !saveBtn.dataset.bound){
+      saveBtn.addEventListener('click', saveItemModal);
+      saveBtn.dataset.bound = '1';
+    }
+  }
+
+  async function openItemModal(mode){
+    // Ensure rooms are loaded to populate the dropdown
+    if(!ROOMS_LOADED){ await loadRooms(); }
+
+    const modal = document.getElementById('itemModal');
+    const nameInput = document.getElementById('itemModalName');
+    const idInput   = document.getElementById('itemModalId');
+    const roomSel   = document.getElementById('itemModalRoom');
+
+    if(roomSel){
+      const current = roomSel.value;
+      roomSel.innerHTML = '<option value="">Unassigned</option>' + (ROOMS||[])
+        .map(r=>`<option value="${String(r.id)}">${escapeHtml(r.name||'Room')}</option>`)
+        .join('');
+      if(current) roomSel.value = current;
+    }
+
+    if(nameInput) nameInput.value = '';
+    if(idInput)   idInput.value   = '';
+    if(roomSel)   roomSel.value   = '';
+
+    if(modal){
+      modal.dataset.mode = mode || 'add';
+      modal.style.display = 'flex';
+    }
+  }
+
+  async function saveItemModal(){
+    if(!window.SB || !window.CURRENT_SITE_ID) { alert('Not connected.'); return; }
+
+    const modal = document.getElementById('itemModal');
+    const name  = (document.getElementById('itemModalName')?.value || '').trim();
+    const idTxt = (document.getElementById('itemModalId')?.value   || '').trim();
+    const roomV = (document.getElementById('itemModalRoom')?.value || '').trim();
+
+    if(!name){ alert('Please enter a name.'); return; }
+
+    const payload = {
+      site_id: window.CURRENT_SITE_ID,
+      item_name: name,
+      item_id: idTxt || null,
+      room_id: roomV ? Number(roomV) : null,
+      active: true
+    };
+
+    try{
+      const { error } = await window.SB.from('items').insert([payload]);
+      if(error) throw error;
+      if(modal) modal.style.display = 'none';
+      // Refresh relevant views
+      loadItemsPage();
+      loadItems();
+      renderRoomAssignments();
+    }catch(e){
+      alert(e.message || 'Save failed');
+    }
+  }
+
   // Items page table loader
   async function loadItemsPage(){
     if(!window.SB || !window.CURRENT_SITE_ID) return;
