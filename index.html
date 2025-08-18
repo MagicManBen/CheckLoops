@@ -8,6 +8,66 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script id="auth-bootstrap">
+    (function(){
+      if (window.__CLAuthBootstrapped) return;
+      window.__CLAuthBootstrapped = true;
+
+      const SB_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
+      const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME';
+
+      if (!window.SB && window.supabase) {
+        window.SB = window.supabase.createClient(SB_URL, SB_ANON, {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true
+          }
+        });
+      }
+
+      function showAuth(){
+        const authWrap = document.querySelector('.wrap');
+        const app = document.getElementById('appShell');
+        if (authWrap) authWrap.style.display = '';
+        if (app) app.style.display = 'none';
+      }
+      function showApp(){
+        const authWrap = document.querySelector('.wrap');
+        const app = document.getElementById('appShell');
+        if (authWrap) authWrap.style.display = 'none';
+        if (app) app.style.display = 'grid';
+        try {
+          const last = localStorage.getItem('CL_LAST_PAGE') || 'dashboard';
+          if (typeof showPage === 'function') showPage(last);
+        } catch(_) {}
+      }
+
+      document.addEventListener('DOMContentLoaded', async () => {
+        try {
+          if (!window.SB) { showAuth(); return; }
+          const { data: { session } } = await window.SB.auth.getSession();
+          if (session && session.user) {
+            showApp();
+          } else {
+            showAuth();
+          }
+        } catch (_) {
+          showAuth();
+        }
+
+        if (window.SB) {
+          window.SB.auth.onAuthStateChange((_event, session) => {
+            if (session && session.user) {
+              showApp();
+            } else {
+              showAuth();
+            }
+          });
+        }
+      });
+    })();
+  </script>
   <style>
     /* --- macOS Bright Style Redesign v2 --- */
     :root {
