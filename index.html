@@ -1882,21 +1882,51 @@
           zone.classList.remove('drop-target');
         }, true);
         zone.addEventListener('drop', async (e)=>{
-          e.preventDefault();
-          e.stopPropagation();
-          zone.classList.remove('drop-target');
-          const itemIdStr = e.dataTransfer.getData('text/plain');
-          const itemId = parseInt(itemIdStr, 10);
-          if(!Number.isFinite(itemId) || !window.SB) return;
-          const { error } = await window.SB
-            .from('items')
-            .update({ room_id: null })
-            .eq('id', itemId)
-            .eq('site_id', window.CURRENT_SITE_ID);
-          if(error){ console.error('Unassign item error:', error); }
-          await loadRooms();
-          await loadItems();
-        }, true);
+  e.preventDefault();
+  e.stopPropagation();
+  zone.classList.remove('drop-target');
+
+  // 1. Ensure we have everything we need before proceeding.
+  if (!window.SB || !window.CURRENT_SITE_ID) {
+    console.error("Supabase client or site ID not available for drop operation.");
+    return;
+  }
+
+  const itemIdStr = e.dataTransfer.getData('text/plain');
+  const itemId = parseInt(itemIdStr, 10);
+  if(!Number.isFinite(itemId)) return;
+
+  // 2. Provide immediate visual feedback (the "snap").
+  const draggedElement = document.querySelector(`.room-item[data-item-id="${itemIdStr}"]`);
+  if (draggedElement) {
+    const unassignedList = document.getElementById('rightRows');
+    const newCard = document.createElement('div');
+    newCard.className = 'row-card';
+    newCard.draggable = true;
+    newCard.dataset.itemId = itemIdStr;
+    newCard.textContent = draggedElement.textContent;
+
+    if (unassignedList) {
+        unassignedList.appendChild(newCard);
+    }
+    draggedElement.remove();
+  }
+
+  // 3. Update the database to make the change permanent.
+  const { error } = await window.SB
+    .from('items')
+    .update({ room_id: null }) // Set the room_id to null
+    .eq('id', itemId)
+    .eq('site_id', window.CURRENT_SITE_ID);
+
+  if(error){ 
+    console.error('Unassign item error:', error); 
+  }
+
+  // 4. Reload both lists from the database to ensure everything is consistent.
+  await loadRooms();
+  await loadItems();
+}, true);
         zone.dataset.boundUnassign = '1';
       });
     }
