@@ -541,15 +541,6 @@
       /* animation disabled */
     }
     .fab { position: fixed; right: 22px; bottom: 22px; width:56px; height:56px; border-radius:50%; background: var(--primary); border: none; color:#fff; font-size:28px; display:flex; justify-content:center; align-items:center; box-shadow: 0 10px 26px rgba(0, 113, 227, 0.3); }
-    .fab.fab-add {
-      left: 22px;
-      right: auto;
-      background: #34c759; /* iOS green */
-      box-shadow: 0 10px 26px rgba(52, 199, 89, 0.3);
-      font-size: 32px;
-      line-height: 1;
-      cursor: pointer;
-    }
     .footer {
       position: fixed;
       bottom: 14px;
@@ -773,7 +764,7 @@
   <div class="topbar">
     <div class="pill" id="status">Not signed in</div>
     <div class="row">
-      <button class="btn" id="btnLogout" style="display: none; position: fixed; top: 6px; right: 12px; z-index: 120;">Logout</button>
+      <button class="btn" id="btnLogout">Logout</button>
     </div>
   </div>
 
@@ -809,28 +800,6 @@
       <div class="pad"><button class="btn" id="btnClearPin">Clear</button></div>
       <div class="art"><img src="WristBand.png" alt="Wrist band / safety reminder"></div>
       <p id="pinMsg" class="muted"></p>
-    </div>
-    <button class="fab fab-add" id="btnPinSetup" aria-label="Set or Reset PIN">+</button>
-  </div>
-
-  <div class="wrap hidden" id="screen-pin-setup">
-    <div class="panel">
-      <h2 class="center">Set/Reset PIN</h2>
-      <p class="muted center">Select a staff member and enter a new 4-digit PIN.</p>
-      <div class="pad">
-        <select id="pinSetupUser" class="rowType"></select>
-      </div>
-      <div class="pad">
-        <input id="pinSetupNew" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="New 4-digit PIN">
-      </div>
-      <div class="pad">
-        <input id="pinSetupConfirm" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="Confirm PIN">
-      </div>
-      <div class="pad row" style="justify-content:center; gap:12px;">
-        <button class="btn" id="btnPinSetupCancel">Cancel</button>
-        <button class="btn primary" id="btnPinSetupSave">Save PIN</button>
-      </div>
-      <p id="pinSetupMsg" class="muted center"></p>
     </div>
   </div>
 
@@ -933,31 +902,23 @@
     // Helpers
     function $(id) { return document.getElementById(id); }
     let currentScreen = 'screen-login';
-    function setTopbarFor(id){
+function setTopbarFor(id){
       if (id === 'screen-begin') startDoubleDeepCycle(); else stopDoubleDeepCycle();
       if (id === 'screen-scanning') startScanTrollyCycle(); else stopScanTrollyCycle();
       currentScreen = id;
-      // Hide the footer only on the login screen
+      // Hide the footer on the login and PIN screens (no logged‑in user shown)
       const footer = document.querySelector('.footer');
       if (footer) {
-        const hideFooter = (id === 'screen-login');
-        footer.style.display = hideFooter ? 'none' : 'block';
+        const hideFooter = (id === 'screen-login' || id === 'screen-pin');
+        footer.style.display = hideFooter ? 'none' : '';
       }
       const btn = $('btnLogout');
       if (!btn) return;
 
-      const isAuditScreen = ['screen-begin', 'screen-scanning', 'screen-upload', 'screen-review'].includes(id);
-      const isPinScreen = (id === 'screen-pin');
-
-      if (isAuditScreen) {
-        btn.style.display = 'inline-flex';
-        btn.textContent = 'Exit Audit';
-      } else if (isPinScreen) {
-        btn.style.display = 'inline-flex';
-        btn.textContent = 'Logout';
-      } else {
-        btn.style.display = 'none';
-      }
+      // Show Exit Audit only on these screens: begin, scanning, upload, review
+      const showExit = (id === 'screen-begin' || id === 'screen-scanning' || id === 'screen-upload' || id === 'screen-review');
+      btn.style.display = showExit ? 'inline-flex' : 'none';
+      btn.textContent = showExit ? 'Exit Audit' : 'Logout';
 
       // Manage persistent focus for the hidden upload input
       if (id === 'screen-upload') {
@@ -968,10 +929,11 @@
         const u = $('uploadInput');
         if (u) u.blur();
       }
+
     }
 
     function show(id) {
-      ['screen-login','screen-pin','screen-begin','screen-scanning','screen-upload','screen-review','screen-reset','screen-pin-setup']
+      ['screen-login','screen-pin','screen-begin','screen-scanning','screen-upload','screen-review','screen-reset']
         .forEach(x => $(x).classList.add('hidden'));
       $(id).classList.remove('hidden');
       setTopbarFor(id);
@@ -1308,24 +1270,22 @@ function stopScanTrollyCycle(){
     // PIN keypad
     let pin = '';
     function onTopbarButton(){
-      const isAuditing = ['screen-begin', 'screen-scanning', 'screen-upload', 'screen-review'].includes(currentScreen);
-      if (isAuditing) {
+      const auditing = (currentScreen !== 'screen-login');
+      if (auditing) {
         if (!confirm('Are you sure? All progress will be lost.')) return;
         // Reset audit state
         S.scans = [];
         pin = '';
         pinDots(0);
         resetUploadUI();
+        const sl = $('scanList'); if (sl) sl.innerHTML = '';
+        const sc = $('scanCount'); if (sc) sc.textContent = '0';
         if (resetInterval) { clearInterval(resetInterval); resetInterval = null; }
         show('screen-pin');
         return;
       }
-      // Full sign-out when not in an audit (e.g., on PIN screen)
-      sb.auth.signOut().then(()=>{ 
-        $('footerWho').textContent = '—';
-        // Use location.reload() to ensure a clean state after logout
-        location.reload(); 
-      });
+      // Full sign-out when not in an audit
+      sb.auth.signOut().then(()=>{ $('footerWho').textContent = '—'; location.reload(); });
     }
     $('pad').addEventListener('click', async (e)=>{
       const k = e.target.closest('.key'); if (!k) return;
@@ -1384,86 +1344,8 @@ function stopScanTrollyCycle(){
     $('uploadInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); const raw=e.target.value.trim(); e.target.value=''; const m=raw.match(/^\d{10}$/); if(!m){ scheduleUploadAutoContinue(); return; } const code=m[0]; if(!S.scans.includes(code)){ const wasEmpty = S.scans.length === 0; S.scans.push(code); if (wasEmpty) { showUploadCounter(); } updateUploadCounter(); } scheduleUploadAutoContinue(); }});
     $('btnResetDone').addEventListener('click', () => { if (resetInterval) { clearInterval(resetInterval); resetInterval = null; } show('screen-pin'); });
 
-    // --- PIN Setup Screen Logic ---
-    async function populateKioskUsers() {
-        const selectEl = $('pinSetupUser');
-        selectEl.innerHTML = '<option value="">Select Staff Member...</option>';
-        if (!S.siteId) {
-            $('pinSetupMsg').textContent = 'Error: Site not loaded.';
-            return;
-        }
-        const { data: users, error } = await readClient()
-            .from('kiosk_users')
-            .select('id, full_name')
-            .eq('site_id', S.siteId)
-            .order('full_name');
-        if (error) {
-            $('pinSetupMsg').textContent = 'Could not load staff list.';
-            return;
-        }
-        if (users) {
-            users.forEach(user => {
-                const option = document.createElement('option');
-                option.value = user.id;
-                option.textContent = user.full_name;
-                selectEl.appendChild(option);
-            });
-        }
-    }
 
-    $('btnPinSetup').addEventListener('click', () => {
-      populateKioskUsers();
-      show('screen-pin-setup');
-    });
 
-    $('btnPinSetupCancel').addEventListener('click', () => {
-      $('pinSetupUser').selectedIndex = 0;
-      $('pinSetupNew').value = '';
-      $('pinSetupConfirm').value = '';
-      $('pinSetupMsg').textContent = '';
-      show('screen-pin');
-    });
-
-    $('btnPinSetupSave').addEventListener('click', async () => {
-        const msgEl = $('pinSetupMsg');
-        msgEl.textContent = 'Saving...';
-        const userId = $('pinSetupUser').value;
-        const newPin = $('pinSetupNew').value;
-        const confirmPin = $('pinSetupConfirm').value;
-
-        if (!userId) {
-            msgEl.textContent = 'Please select a staff member.';
-            return;
-        }
-        if (!/^\d{4}$/.test(newPin)) {
-            msgEl.textContent = 'PIN must be exactly 4 digits.';
-            return;
-        }
-        if (newPin !== confirmPin) {
-            msgEl.textContent = 'PINs do not match.';
-            return;
-        }
-
-        const { error } = await sb
-            .from('kiosk_users')
-            .update({ pin: newPin })
-            .eq('id', userId)
-            .eq('site_id', S.siteId);
-
-        if (error) {
-            msgEl.textContent = `Error: ${error.message}`;
-        } else {
-            msgEl.textContent = 'PIN updated successfully!';
-            toast('PIN Saved!');
-            setTimeout(() => {
-                $('pinSetupUser').selectedIndex = 0;
-                $('pinSetupNew').value = '';
-                $('pinSetupConfirm').value = '';
-                msgEl.textContent = '';
-                show('screen-pin');
-            }, 1500);
-        }
-    });
 
     async function refreshReview() {
       // Normalise scanned codes (strings, trimmed, unique)
