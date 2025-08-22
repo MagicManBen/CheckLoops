@@ -157,7 +157,7 @@
       justify-content:center;
       padding: calc(var(--space-4) + env(safe-area-inset-top, 12px));
     }
-    
+
     .panel {
       width: min(520px, 95vw);
       /* frosted macOS-style glass */
@@ -215,7 +215,7 @@
 
     .grid { display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; width:min(360px, 92%); margin:8px auto 0; }
     .pad { margin-top:14px; }
-    
+
     .key {
       height: 72px;
       padding: 0;
@@ -337,7 +337,7 @@
       color: var(--primary);
       text-shadow: 0 0 12px rgba(0, 113, 227, 0.4), 0 0 24px rgba(0, 113, 227, 0.2);
     }
-    
+
     #screen-review #reviewTable {
       flex: 1 1 auto;
       display: block;
@@ -355,7 +355,7 @@
     #screen-review .review-actions{ margin-top:auto; display:flex; justify-content:center; align-items:center; gap:12px; }
     #btnSubmit.big{ padding:16px 28px; font-size:1.15rem; border-radius:14px; }
     .btn.icon { padding: 6px 10px; min-width: 36px; height: 36px; font-size: 20px; line-height: 1; border-radius: 10px; }
-    
+
     .topbar {
       position: fixed;
       left: 0; right: 0; top: 0;
@@ -521,7 +521,7 @@
       color: var(--primary);
       text-shadow: 0 0 8px rgba(10,132,255,0.25);
     }
-    
+
     #btnBegin, #btnSubmit {
       position: relative;
       background: var(--primary) !important;
@@ -557,7 +557,7 @@
       box-shadow: 0 4px 12px rgba(0,0,0,0.08);
       z-index: 120;
     }
-    
+
     .audit-hero{
       position:relative;
       height:100vh;
@@ -600,7 +600,7 @@
     .audit-title{ position:absolute; text-align:center; padding:0 24px; z-index:220; }
     .audit-title .big{ font-size:clamp(1.6rem, 3.8vw, 2.2rem); font-weight:700; letter-spacing:.3px; text-shadow:0 1px 4px rgba(0,0,0,.1); }
     .audit-title .sub{ margin-top:8px; font-size:clamp(1rem, 2.4vw, 1.15rem); color: var(--text-secondary); line-height:1.35; }
-    
+
     .upload-counter{ position:relative; width:220px; height:220px; border-radius:50%; display:flex; align-items:center; justify-content:center; background: #fff; }
     .upload-counter:before{
       content:"";
@@ -618,7 +618,7 @@
     .upload-title{ position:absolute; text-align:center; padding:0 12px; z-index:5; }
     .upload-title .num{ font-size:clamp(1.8rem, 5vw, 2.8rem); font-weight:700; color:var(--text-primary); }
     .upload-title .sub{ margin-top:4px; font-size:clamp(.9rem, 2.2vw, 1rem); color:var(--text-secondary); }
-    
+
     @keyframes pulseExpand{ 0%{ transform:scale(.95) } 50%{ transform:scale(1.05) } 100%{ transform:scale(.95) } }
     @keyframes ripple{ 0%{ box-shadow:0 0 0 0 rgba(0, 113, 227, .3); opacity:1 } 100%{ box-shadow:0 0 0 24px rgba(0, 113, 227, 0); opacity:0 } }
     .scan-bottom{
@@ -637,7 +637,7 @@
     }
     /* ensure the white‑line sketch fills the card */
     .scan-bottom img{ width:100%; height:auto; display:block; }
-    
+
     #screen-reset h2 { font-size: clamp(2rem, 6vw, 2.6rem); }
     #screen-reset #resetInstruction { font-size: clamp(1.2rem, 4vw, 1.6rem); }
     #screen-reset #resetCountdown { font-size: clamp(1.1rem, 3.6vw, 1.4rem); }
@@ -721,7 +721,7 @@
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 1px 3px rgba(16,24,40,0.06);
       font-weight:600;
       color: var(--text-primary);
-      background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="%236B7785" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>');
+      background-image: url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%236B7785\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"6 9 12 15 18 9\"/></svg>');
       background-repeat: no-repeat;
       background-position: right 10px center;
     }
@@ -944,8 +944,7 @@ function setTopbarFor(id){
       const b = document.getElementById('btnSubmit');
       const m = document.getElementById('submitMsg');
       if (!b) return;
-      // At least one category has types
-      const ok = S.typesByCategory && Object.values(S.typesByCategory).some(arr => Array.isArray(arr) && arr.length > 0);
+      const ok = Array.isArray(S.types) && S.types.length > 0;
       b.disabled = !ok;
       if (!ok && m) m.textContent = 'No check types available for this site. Please contact an admin.';
       else if (m) m.textContent = '';
@@ -1181,6 +1180,37 @@ function stopScanTrollyCycle(){
 
       return [];
     }
+
+    // New helper: fetch next-due check type per scanned item
+    async function fetchNextDueMap(siteId, codes){
+      const ids = Array.from(new Set((codes||[]).map(c => String(c).trim())));
+      const map = new Map();
+      if (!ids.length) return map;
+      try{
+        const { data, error } = await readClient()
+          .from('v_item_check_status')
+          .select('item_code, check_type, next_due_at')
+          .eq('site_id', siteId)
+          .in('item_code', ids);
+        if (error || !Array.isArray(data)) return map;
+        const byCode = {};
+        for (const r of data){
+          const code = String(r.item_code || '').trim();
+          if (!code) continue;
+          (byCode[code] ||= []).push(r);
+        }
+        for (const code of Object.keys(byCode)){
+          let best = null; let bestTs = Number.POSITIVE_INFINITY;
+          for (const r of byCode[code]){
+            const ts = r.next_due_at ? new Date(r.next_due_at).getTime() : Number.POSITIVE_INFINITY;
+            if (ts < bestTs){ bestTs = ts; best = r; }
+          }
+          if (best && isFinite(bestTs)) map.set(code, best.check_type);
+        }
+      }catch(_){ /* noop */ }
+      return map;
+    }
+
     async function init() {
       const { data: { session } } = await sb.auth.getSession();
       if (!session) { show('screen-login'); $('status').textContent = 'Not signed in'; return; }
@@ -1211,9 +1241,11 @@ function stopScanTrollyCycle(){
     async function preloadCache() {
       const i = await readClient().from('items').select('item_id, item_name, room, default_check_type, category').eq('site_id', S.siteId).order('item_name');
       if (!i.error) { S.itemsById.clear(); (i.data||[]).forEach(r=>S.itemsById.set(r.item_id, r)); }
-      // Get check_types with category, and group by category
+      // Load all active check types for this site
       const t = await readClient().from('check_types').select('name, category').eq('site_id', S.siteId).order('name');
       if (!t.error) {
+        S.types = (t.data || []).map(r => r.name);
+        // keep grouped map available if needed elsewhere
         S.typesByCategory = {};
         (t.data || []).forEach(r => {
           if (!S.typesByCategory[r.category]) S.typesByCategory[r.category] = [];
@@ -1342,6 +1374,8 @@ function stopScanTrollyCycle(){
 
       // Fetch ONLY the scanned items for this site
       const rows = await fetchItemsByIds(siteId, codes);
+      // Also fetch what is due next for each item
+      const dueMap = await fetchNextDueMap(siteId, codes);
 
       // Build a quick lookup map (string keys)
       const byId = new Map();
@@ -1379,15 +1413,18 @@ function stopScanTrollyCycle(){
         sel.setAttribute('data-item-id', code);
         sel.setAttribute('aria-label', `Check type for ${nameEl.textContent}`);
 
-        // Determine types for this item's category
-        const category = it?.category || 'general';
-        const types = S.typesByCategory?.[category] || S.typesByCategory?.general || [];
+        // List all check types for the site
+        const types = Array.isArray(S.types) ? S.types : [];
         for (const n of types) {
           const o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o);
         }
-        // Prefer per-item default if present and valid; otherwise fall back to first type
+        // Defaults: next due for this item, else item default, else first option
+        const due = dueMap.get(code);
         const def = it && it.default_check_type;
-        if (def && types.includes(def)) sel.value = def; else if (types.length) sel.value = types[0];
+        if (due && types.includes(due)) sel.value = due;
+        else if (def && types.includes(def)) sel.value = def;
+        else if (types.length) sel.value = types[0];
+
         typeWrap.appendChild(sel);
 
         const removeBtn = document.createElement('button');
