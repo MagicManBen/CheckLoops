@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CheckLoop — Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script defer src="https://unpkg.com/@supabase/supabase-js@2.45.3/dist/umd/supabase.js"></script>
+  <style>
+    :root{
+      --bg1:#0b3b86;
+      --bg2:#0e5bb8;
+      --bg3:#0a2d66;
+      --card:#133d7a;
+      --card-2:#1b4f95;
+      --text:#eaf3ff;
+      --muted:#b9d1ff;
+      --accent:#8ec5ff;
+      --ok:#21d19f;
+      --warn:#ffd166;
+      --bad:#ff6b6b;
+      --glass: rgba(255,255,255,0.06);
+      --glass-2: rgba(255,255,255,0.12);
+      --shadow: 0 10px 30px rgba(2,12,44,.35);
+      --radius: 18px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family:Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      color:var(--text);
+      overflow:hidden;
+      background: radial-gradient(1200px 700px at 20% 0%, rgba(255,255,255,.08), transparent 60%),
+                  radial-gradient(1200px 700px at 80% 100%, rgba(255,255,255,.06), transparent 60%),
+                  linear-gradient(135deg, var(--bg1), var(--bg2));
+    }
+
+    /* Silky moving waves */
+    .waves{
+      position:fixed; inset:0; overflow:hidden; z-index:-1;
+      filter: blur(28px) saturate(120%) brightness(110%);
+      opacity:.85;
+    }
+    .wave{
+      position:absolute; width:160%; height:160%;
+      left:-30%; top:-30%;
+      background: radial-gradient(closest-side, rgba(255,255,255,.15), transparent 70%);
+      animation: float 26s linear infinite;
+      mix-blend-mode: overlay;
+    }
+    .wave.w2{ animation-duration: 34s; transform: rotate(40deg); }
+    .wave.w3{ animation-duration: 42s; transform: rotate(-25deg); }
+    @keyframes float{
+      0%{ transform: translateY(0) rotate(0deg) }
+      50%{ transform: translateY(6%) rotate(180deg) }
+      100%{ transform: translateY(0) rotate(360deg) }
+    }
+
+    .app{display:flex; height:100vh; gap:18px; padding:18px}
+    .sidebar{
+      width:240px; background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:14px;
+    }
+    .brand{display:flex; align-items:center; gap:10px; padding:8px 10px 14px 10px; margin-bottom:6px}
+    .logo{width:28px;height:28px;border-radius:10px;background:linear-gradient(145deg,#a3d1ff,#2b78ff); box-shadow: inset 0 0 20px rgba(255,255,255,.6);}
+    .brand h1{font-size:16px;margin:0;color:#f7fbff;letter-spacing:.2px}
+    .nav{display:flex; flex-direction:column; gap:6px; margin-top:8px}
+    .nav button{
+      all:unset; display:flex; gap:10px; align-items:center; padding:10px 12px;
+      color:var(--text); opacity:.9; border-radius:12px; cursor:pointer;
+    }
+    .nav button:hover{ background: var(--glass) }
+    .nav button.active{ background: var(--glass-2); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+
+    .main{
+      flex:1; background:linear-gradient(180deg, rgba(4,18,42,.45), rgba(9,30,76,.35));
+      border:1px solid rgba(255,255,255,.08); border-radius:var(--radius);
+      box-shadow:var(--shadow); padding:18px; overflow:auto; position:relative;
+    }
+
+    .topbar{display:flex; align-items:center; gap:10px; justify-content:space-between; padding:6px 6px 12px 6px}
+    .search{flex:1; max-width:520px; position:relative}
+    .search input{
+      width:100%; padding:12px 14px; border-radius:12px; border:1px solid rgba(255,255,255,.08);
+      background:rgba(255,255,255,.06); color:var(--text);
+    }
+    .pill{display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border-radius:999px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.1); font-size:12px}
+    .btn{
+      all:unset; cursor:pointer; display:inline-flex; align-items:center; gap:8px; padding:10px 14px;
+      background:linear-gradient(180deg,#7fb7ff,#3d89ff); color:#06122b; font-weight:600; border-radius:12px;
+      box-shadow: 0 8px 18px rgba(0,0,0,.25), inset 0 0 0 1px rgba(255,255,255,.4);
+    }
+    .btn.secondary{ background:rgba(255,255,255,.08); color:var(--text); box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); }
+    .grid{display:grid; gap:14px}
+    .grid.cols-2{ grid-template-columns: 1fr 1fr}
+    .card{
+      background:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.04));
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:16px; padding:14px; box-shadow:var(--shadow);
+    }
+    h2{margin:8px 0 10px 0; font-size:20px}
+    table{width:100%; border-collapse:collapse}
+    th,td{padding:10px 8px; border-bottom:1px dashed rgba(255,255,255,.08); font-size:14px}
+    th{text-align:left; color:#dcebff; font-weight:600}
+    tr:hover td{ background: rgba(255,255,255,.04) }
+    .row-actions{ display:flex; gap:6px }
+    .tag{font-size:12px; padding:4px 8px; border-radius:999px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12)}
+
+    .toolbar{display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px}
+
+    /* Modal */
+    dialog{
+      border:none; border-radius:16px; padding:0; background:transparent; color:var(--text);
+    }
+    dialog::backdrop{ background: rgba(4,12,38,.6) }
+    .modal{
+      min-width: min(680px, 92vw);
+      background: linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.05));
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:16px; padding:16px; box-shadow: var(--shadow);
+    }
+    .form-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:10px }
+    .form-grid label{ font-size:12px; color: var(--muted) }
+    .form-grid input, .form-grid select, .form-grid textarea{
+      width:100%; padding:10px 12px; border-radius:10px; border:1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.08); color:var(--text)
+    }
+    .form-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:12px }
+    .tiny{ font-size:12px; opacity:.8 }
+
+    .signin{
+      position:absolute; inset:0; display:flex; align-items:center; justify-content:center; backdrop-filter: blur(6px);
+      background: linear-gradient(180deg, rgba(2,10,34,.75), rgba(3,14,40,.65));
+    }
+    .signin-card{ width:min(440px,90vw); }
+    .hidden{ display:none !important }
+  </style>
+</head>
+<body>
+  <div class="waves">
+    <div class="wave w1"></div>
+    <div class="wave w2"></div>
+    <div class="wave w3"></div>
+  </div>
+
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo"></div>
+        <h1>CheckLoop</h1>
+      </div>
+      <div class="nav" id="nav">
+        <button data-route="dashboard" class="active">🏠 Dashboard</button>
+        <button data-route="items">📦 Items</button>
+        <button data-route="rooms">🏥 Rooms</button>
+        <button data-route="check-types">✅ Check Types</button>
+        <button data-route="schedules">🗓️ Schedules</button>
+        <button data-route="staff">👥 Staff (Kiosk)</button>
+        <button data-route="submissions">📝 Submissions (read‑only)</button>
+        <button data-route="settings">⚙️ Settings</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div class="search"><input id="searchBox" placeholder="Search anything on this page…" /></div>
+        <span class="pill tiny">Kiosk disabled on admin</span>
+        <span class="pill" id="userPill">Signed out</span>
+        <button class="btn secondary" id="signInBtn">Sign In</button>
+        <button class="btn secondary hidden" id="signOutBtn">Sign Out</button>
+      </div>
+
+      <section id="view-dashboard" class="grid">
+        <div class="card" style="min-height:220px">
+          <div class="toolbar">
+            <span class="tag">Admin Console</span>
+            <button class="btn" id="quickAddItem">Add Item</button>
+            <button class="btn" id="quickAddCheckType">Add Check Type</button>
+          </div>
+          <h2>Simple, fast, and clean. <br/>A calmer CheckLoop for GP surgeries.</h2>
+          <p class="tiny">Set up your site, rooms, items, schedules and staff in minutes. Staff use the iPad in Kiosk mode to scan items and log checks. (No checks from admin.)</p>
+        </div>
+        <div class="grid cols-2">
+          <div class="card">
+            <h2>Status at a glance</h2>
+            <div id="statusGlance" class="tiny">Sign in to load data…</div>
+          </div>
+          <div class="card">
+            <h2>Recent Activity</h2>
+            <div id="recentActivity" class="tiny">Sign in to load data…</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-items" class="hidden">
+        <div class="card">
+          <div class="toolbar">
+            <h2 style="margin-right:auto">Items</h2>
+            <button class="btn" id="addItemBtn">Add Item</button>
+          </div>
+          <div class="tiny">Fields: item_id (code), item_name, category, room_id, default_check_type_id, active</div>
+          <div id="itemsTableWrap"></div>
+        </div>
+      </section>
+
+      <section id="view-rooms" class="hidden">
+        <div class="card">
+          <div class="toolbar">
+            <h2 style="margin-right:auto">Rooms</h2>
+            <button class="btn" id="addRoomBtn">Add Room</button>
+          </div>
+          <div id="roomsTableWrap"></div>
+        </div>
+      </section>
+
+      <section id="view-check-types" class="hidden">
+        <div class="card">
+          <div class="toolbar">
+            <h2 style="margin-right:auto">Check Types</h2>
+            <button class="btn" id="addCheckTypeBtn">Add Check Type</button>
+          </div>
+          <div id="checkTypesTableWrap"></div>
+        </div>
+      </section>
+
+      <section id="view-schedules" class="hidden">
+        <div class="card">
+          <div class="toolbar">
+            <h2 style="margin-right:auto">Schedules</h2>
+            <button class="btn" id="addScheduleBtn">Add Schedule</button>
+          </div>
+          <div class="tiny">Backed by <b>item_allowed_types</b>. Set frequency like <i>7 days</i> or <i>1 month</i>, warn_before, required, and link to item & check type.</div>
+          <div id="schedulesTableWrap"></div>
+        </div>
+      </section>
+
+      <section id="view-staff" class="hidden">
+        <div class="card">
+          <div class="toolbar">
+            <h2 style="margin-right:auto">Staff (Kiosk users)</h2>
+            <button class="btn" id="addStaffBtn">Add Staff</button>
+          </div>
+          <div class="tiny">Fields: full_name, role, active, team (optional). PINs are managed on the iPad and are not shown here.</div>
+          <div id="staffTableWrap"></div>
+        </div>
+      </section>
+
+      <section id="view-submissions" class="hidden">
+        <div class="card">
+          <h2>Recent Submissions</h2>
+          <div class="tiny">Read-only on admin.</div>
+          <div id="submissionsTableWrap"></div>
+        </div>
+      </section>
+
+      <section id="view-settings" class="hidden">
+        <div class="card">
+          <h2>Settings</h2>
+          <p class="tiny">Site: <b>Harley Street Medical Centre</b> (id: 2) — hard-wired for now.</p>
+          <div class="form-grid">
+            <label>Supabase URL
+              <input id="cfgUrl" disabled>
+            </label>
+            <label>Anon Key
+              <input id="cfgKey" disabled>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <!-- Sign-in Overlay -->
+      <div id="signinOverlay" class="signin hidden">
+        <div class="card signin-card">
+          <h2>Sign in</h2>
+          <div class="form-grid">
+            <label>Email
+              <input id="email" placeholder="you@practice.nhs.uk" autocomplete="username">
+            </label>
+            <label>Password
+              <input id="password" type="password" placeholder="••••••••" autocomplete="current-password">
+            </label>
+          </div>
+          <div class="form-actions">
+            <button class="btn secondary" id="closeSignin">Close</button>
+            <button class="btn" id="doSignin">Sign In</button>
+          </div>
+          <p class="tiny">Don’t have an account? Ask a Super User to invite you from <i>Settings → Staff</i>.</p>
+        </div>
+      </div>
+
+      <!-- Generic modal -->
+      <dialog id="modal">
+        <div class="modal">
+          <form id="modalForm"></form>
+        </div>
+      </dialog>
+
+    </main>
+  </div>
+
+<script>
+  const SUPABASE_URL = "https://unveoqnlqnobufhublyw.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME";
+  const DEFAULT_SITE_ID = 2;
+
+  const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: true, detectSessionInUrl: true },
+    global: { headers: { "x-application-name": "checkloop-admin-spa" } }
+  });
+
+  // UI helpers
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+  function setLoading(el, is=true){ el.dataset.loading = is ? "1":"0"; el.style.opacity = is ? .5 : 1; }
+  function toast(txt){
+    const t = document.createElement('div');
+    t.textContent = txt;
+    t.style.position='fixed'; t.style.bottom='16px'; t.style.right='16px';
+    t.style.background='rgba(255,255,255,.95)'; t.style.color='#06224a';
+    t.style.padding='10px 14px'; t.style.borderRadius='10px'; t.style.boxShadow='0 8px 22px rgba(0,0,0,.35)';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(), 2200);
+  }
+  function modalForm({title, fields=[], submitText="Save", onSubmit}){
+    const dlg = $("#modal");
+    const form = $("#modalForm");
+    form.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
+        <h3 style="margin:0">${title}</h3>
+        <button type="button" id="closeModal" class="btn secondary">Close</button>
+      </div>
+      <div class="form-grid">
+        ${fields.map(f => `
+          <label>${f.label}
+            ${f.type === "select" ? `
+              <select name="${f.name}" ${f.required?'required':''}>
+                ${(f.options||[]).map(o=>`<option value="${o.value}" ${o.value==f.value?'selected':''}>${o.label}</option>`).join('')}
+              </select>` :
+            f.type === "textarea" ? `
+              <textarea name="${f.name}" rows="4" ${f.required?'required':''}>${f.value??''}</textarea>` :
+            `<input name="${f.name}" value="${f.value??''}" placeholder="${f.placeholder||''}" ${f.required?'required':''} />`}
+          </label>
+        `).join('')}
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn">${submitText}</button>
+      </div>
+    `;
+    form.onsubmit = async (e)=>{ e.preventDefault(); const data = Object.fromEntries(new FormData(form).entries()); await onSubmit(data, dlg); };
+    dlg.showModal();
+    $("#closeModal").onclick = ()=> dlg.close();
+  }
+
+  // Routing
+  const routes = ["dashboard","items","rooms","check-types","schedules","staff","submissions","settings"];
+  function show(route){
+    routes.forEach(r=>{
+      $("#view-"+r.replace(/_/g,'-').replace('check-types','check-types')).classList.add("hidden");
+    });
+    $("#view-"+route).classList.remove("hidden");
+    $$("#nav button").forEach(b=>b.classList.toggle("active", b.dataset.route===route));
+    localStorage.setItem("route", route);
+    // load on enter
+    switch(route){
+      case "dashboard": loadDashboard(); break;
+      case "items": loadItems(); break;
+      case "rooms": loadRooms(); break;
+      case "check-types": loadCheckTypes(); break;
+      case "schedules": loadSchedules(); break;
+      case "staff": loadStaff(); break;
+      case "submissions": loadSubmissions(); break;
+      case "settings": loadSettings(); break;
+    }
+  }
+  $$("#nav button").forEach(b=> b.addEventListener("click", ()=>show(b.dataset.route)));
+
+  // Auth
+  async function refreshAuthUI(){
+    const { data: { user } } = await client.auth.getUser();
+    if(user){
+      $("#userPill").textContent = user.email;
+      $("#signInBtn").classList.add("hidden");
+      $("#signOutBtn").classList.remove("hidden");
+      $("#signinOverlay").classList.add("hidden");
+    }else{
+      $("#userPill").textContent = "Signed out";
+      $("#signInBtn").classList.remove("hidden");
+      $("#signOutBtn").classList.add("hidden");
+      $("#signinOverlay").classList.remove("hidden");
+    }
+  }
+  $("#signInBtn").onclick = ()=> $("#signinOverlay").classList.remove("hidden");
+  $("#closeSignin").onclick = ()=> $("#signinOverlay").classList.add("hidden");
+  $("#doSignin").onclick = async ()=>{
+    const email = $("#email").value.trim();
+    const password = $("#password").value;
+    const { error } = await client.auth.signInWithPassword({ email, password });
+    if(error){ toast("Sign in failed: " + error.message); return; }
+    toast("Signed in");
+    await refreshAuthUI();
+    // reload current view
+    show(localStorage.getItem("route") || "dashboard");
+  };
+  $("#signOutBtn").onclick = async ()=>{
+    await client.auth.signOut();
+    toast("Signed out");
+    await refreshAuthUI();
+    show("dashboard");
+  };
+  client.auth.onAuthStateChange((_event,_session)=> refreshAuthUI());
+
+  // Filters
+  $("#searchBox").addEventListener("input", ()=>{
+    const q = $("#searchBox").value.toLowerCase();
+    $$("table tbody tr").forEach(tr=>{
+      tr.style.display = tr.textContent.toLowerCase().includes(q) ? "" : "none";
+    });
+  });
+
+  // DASHBOARD
+  async function loadDashboard(){
+    const glance = $("#statusGlance");
+    const recent = $("#recentActivity");
+    const { data: items } = await client.from("items").select("id").eq("site_id", DEFAULT_SITE_ID).limit(1);
+    const { data: rooms } = await client.from("rooms").select("id").eq("site_id", DEFAULT_SITE_ID).limit(1);
+    const { data: cts } = await client.from("check_types").select("id").eq("site_id", DEFAULT_SITE_ID).limit(1);
+    glance.innerHTML = `Site ID: <b>${DEFAULT_SITE_ID}</b> — Items: <b>${items?items.length:0}</b>, Rooms: <b>${rooms?rooms.length:0}</b>, Check Types: <b>${cts?cts.length:0}</b>`;
+    const { data: subs } = await client.from("submissions").select("*").eq("site_id", DEFAULT_SITE_ID).order("submitted_at",{ascending:false}).limit(5);
+    recent.innerHTML = (subs||[]).map(s=>`<div class="tag">#${s.id} • ${new Date(s.submitted_at).toLocaleString()} • ${s.staff_name||"—"}</div>`).join(" ") || "<span class=tiny>No activity yet.</span>";
+  }
+  $("#quickAddItem").onclick = ()=> openItemModal();
+  $("#quickAddCheckType").onclick = ()=> openCheckTypeModal();
+
+  // TABLE RENDER HELPER
+  function renderTable(wrapperSel, { columns, rows, onEdit, onDelete }){
+    const wrap = $(wrapperSel);
+    wrap.innerHTML = `
+      <div style="overflow:auto">
+        <table>
+          <thead><tr>${columns.map(c=>`<th style="min-width:${c.minWidth||'100px'}">${c.label}</th>`).join('')}<th>Actions</th></tr></thead>
+          <tbody>
+            ${(rows||[]).map(r=>`
+              <tr data-id="${r.id}">
+                ${columns.map(c=>`<td>${c.render?c.render(r[c.key], r): (r[c.key] ?? "")}</td>`).join('')}
+                <td class="row-actions">
+                  <button class="btn secondary" data-edit="${r.id}">Edit</button>
+                  <button class="btn secondary" data-delete="${r.id}">Delete</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+    wrap.querySelectorAll("[data-edit]").forEach(b=> b.onclick = ()=> onEdit(b.dataset.edit));
+    wrap.querySelectorAll("[data-delete]").forEach(b=> b.onclick = ()=> onDelete(b.dataset.delete));
+  }
+
+  // ITEMS CRUD
+  async function loadItems(){
+    const { data: rooms } = await client.from("rooms").select("id,name").eq("site_id", DEFAULT_SITE_ID).order("name");
+    const { data: check_types } = await client.from("check_types").select("id,name").eq("site_id", DEFAULT_SITE_ID).order("name");
+    const { data, error } = await client.from("v_items_admin").select("*").eq("site_id", DEFAULT_SITE_ID).order("item_name");
+    if(error){ toast(error.message); return; }
+    renderTable("#itemsTableWrap", {
+      columns: [
+        { key:"item_id", label:"Code", minWidth:"120px" },
+        { key:"item_name", label:"Name", minWidth:"180px" },
+        { key:"room_name", label:"Room" },
+        { key:"category", label:"Category" },
+        { key:"default_check_type_name", label:"Default Check Type" },
+        { key:"active", label:"Active", render:(v)=> v? "Yes":"No" },
+      ],
+      rows: data,
+      onEdit: (id)=> openItemModal(+id, { rooms, check_types }),
+      onDelete: async(id)=>{
+        if(!confirm("Delete this item?")) return;
+        const { error } = await client.from("items").delete().eq("id", id);
+        if(error){ toast(error.message); return; }
+        toast("Item deleted"); loadItems();
+      }
+    });
+    // Context for creating
+    $("#addItemBtn").onclick = ()=> openItemModal(null, { rooms, check_types });
+  }
+  function openItemModal(id=null, ctx={}){
+    (async()=>{
+      const isEdit = !!id;
+      let row = { item_id:"", item_name:"", category:"general", room_id:null, default_check_type_id:null, active:true };
+      if(isEdit){
+        const { data } = await client.from("items").select("*").eq("id", id).single();
+        row = data;
+      }
+      modalForm({
+        title: (isEdit?"Edit":"Add")+" Item",
+        submitText: isEdit?"Save":"Create",
+        fields:[
+          { label:"Item Code", name:"item_id", value:row.item_id, required:true },
+          { label:"Name", name:"item_name", value:row.item_name, required:true },
+          { label:"Category", name:"category", value:row.category||"general" },
+          { label:"Room", name:"room_id", type:"select", value:row.room_id||"", options:[{value:"", label:"—"}].concat((ctx.rooms||[]).map(r=>({value:r.id, label:r.name}))) },
+          { label:"Default Check Type", name:"default_check_type_id", type:"select", value:row.default_check_type_id||"", options:[{value:"", label:"—"}].concat((ctx.check_types||[]).map(c=>({value:c.id, label:c.name}))) },
+          { label:"Active (true/false)", name:"active", value:String(row.active) }
+        ],
+        onSubmit: async (data, dlg)=>{
+          const payload = {
+            site_id: DEFAULT_SITE_ID,
+            item_id: data.item_id, item_name: data.item_name,
+            category: data.category||"general",
+            room_id: data.room_id? Number(data.room_id): null,
+            default_check_type_id: data.default_check_type_id? Number(data.default_check_type_id): null,
+            active: String(data.active).toLowerCase() !== "false"
+          };
+          let resp;
+          if(isEdit){ resp = await client.from("items").update(payload).eq("id", id).select("id").single(); }
+          else{ resp = await client.from("items").insert(payload).select("id").single(); }
+          if(resp.error){ toast(resp.error.message); return; }
+          dlg.close(); toast("Saved");
+          loadItems();
+        }
+      });
+    })();
+  }
+
+  // ROOMS CRUD
+  async function loadRooms(){
+    const { data, error } = await client.from("rooms").select("*").eq("site_id", DEFAULT_SITE_ID).order("name");
+    if(error){ toast(error.message); return; }
+    renderTable("#roomsTableWrap", {
+      columns: [
+        { key:"name", label:"Name", minWidth:"180px" },
+        { key:"id", label:"ID" },
+      ],
+      rows: data,
+      onEdit: (id)=> openRoomModal(+id),
+      onDelete: async(id)=>{
+        if(!confirm("Delete room? Items linked to this room will keep the old room_id.")) return;
+        const { error } = await client.from("rooms").delete().eq("id", id);
+        if(error){ toast(error.message); return; }
+        toast("Room deleted"); loadRooms();
+      }
+    });
+    $("#addRoomBtn").onclick = ()=> openRoomModal();
+  }
+  function openRoomModal(id=null){
+    (async()=>{
+      const isEdit = !!id;
+      let row = { name:"" };
+      if(isEdit){ const { data } = await client.from("rooms").select("*").eq("id", id).single(); row = data; }
+      modalForm({
+        title:(isEdit?"Edit":"Add")+" Room",
+        fields:[
+          { label:"Name", name:"name", value:row.name, required:true }
+        ],
+        onSubmit: async (data, dlg)=>{
+          const payload = { name: data.name, site_id: DEFAULT_SITE_ID };
+          let resp;
+          if(isEdit){ resp = await client.from("rooms").update(payload).eq("id", id).select("id").single(); }
+          else{ resp = await client.from("rooms").insert(payload).select("id").single(); }
+          if(resp.error){ toast(resp.error.message); return; }
+          dlg.close(); toast("Saved"); loadRooms();
+        }
+      });
+    })();
+  }
+
+  // CHECK TYPES CRUD
+  async function loadCheckTypes(){
+    const { data, error } = await client.from("check_types").select("*").eq("site_id", DEFAULT_SITE_ID).order("name");
+    if(error){ toast(error.message); return; }
+    renderTable("#checkTypesTableWrap", {
+      columns: [
+        { key:"name", label:"Name", minWidth:"180px" },
+        { key:"category", label:"Category" },
+        { key:"active", label:"Active", render:(v)=> v?"Yes":"No" }
+      ],
+      rows: data,
+      onEdit: (id)=> openCheckTypeModal(+id),
+      onDelete: async(id)=>{
+        if(!confirm("Delete this check type?")) return;
+        const { error } = await client.from("check_types").delete().eq("id", id);
+        if(error){ toast(error.message); return; }
+        toast("Check Type deleted"); loadCheckTypes();
+      }
+    });
+    $("#addCheckTypeBtn").onclick = ()=> openCheckTypeModal();
+  }
+  function openCheckTypeModal(id=null){
+    (async()=>{
+      const isEdit = !!id;
+      let row = { name:"", category:"general", active:true };
+      if(isEdit){ const { data } = await client.from("check_types").select("*").eq("id", id).single(); row = data; }
+      modalForm({
+        title:(isEdit?"Edit":"Add")+" Check Type",
+        fields:[
+          { label:"Name", name:"name", value:row.name, required:true },
+          { label:"Category", name:"category", value:row.category||"general" },
+          { label:"Active (true/false)", name:"active", value:String(row.active) }
+        ],
+        onSubmit: async (data, dlg)=>{
+          const payload = { name:data.name, category: data.category||"general", active: String(data.active).toLowerCase()!=="false", site_id: DEFAULT_SITE_ID };
+          let resp;
+          if(isEdit){ resp = await client.from("check_types").update(payload).eq("id", id).select("id").single(); }
+          else{ resp = await client.from("check_types").insert(payload).select("id").single(); }
+          if(resp.error){ toast(resp.error.message); return; }
+          dlg.close(); toast("Saved"); loadCheckTypes();
+        }
+      });
+    })();
+  }
+
+  // SCHEDULES (item_allowed_types) CRUD
+  async function loadSchedules(){
+    const { data: items } = await client.from("items").select("id,item_name,item_id").eq("site_id", DEFAULT_SITE_ID).order("item_name");
+    const { data: check_types } = await client.from("check_types").select("id,name").eq("site_id", DEFAULT_SITE_ID).order("name");
+    const { data, error } = await client.from("item_allowed_types").select("*").eq("site_id", DEFAULT_SITE_ID).order("created_at",{ascending:false});
+    if(error){ toast(error.message); return; }
+    renderTable("#schedulesTableWrap", {
+      columns: [
+        { key:"item_id", label:"Item", render:(v,r)=>{
+          const it = (items||[]).find(i=>i.id===r.item_id); return it ? `${it.item_name} (${it.item_id})` : r.item_id;
+        }, minWidth:"220px"},
+        { key:"check_type_id", label:"Check Type", render:(v)=>{
+          const ct=(check_types||[]).find(c=>c.id===v); return ct? ct.name : v;
+        }},
+        { key:"frequency", label:"Frequency" },
+        { key:"warn_before", label:"Warn Before" },
+        { key:"required", label:"Required", render:(v)=> v?"Yes":"No" },
+        { key:"active", label:"Active", render:(v)=> v?"Yes":"No" },
+        { key:"scheduled_day", label:"Scheduled Day" }
+      ],
+      rows: data,
+      onEdit: (id)=> openScheduleModal(+id,{items,check_types}),
+      onDelete: async(id)=>{
+        if(!confirm("Delete schedule?")) return;
+        const { error } = await client.from("item_allowed_types").delete().eq("id", id);
+        if(error){ toast(error.message); return; }
+        toast("Schedule deleted"); loadSchedules();
+      }
+    });
+    $("#addScheduleBtn").onclick = ()=> openScheduleModal(null,{items,check_types});
+  }
+  function openScheduleModal(id=null, ctx={}){
+    (async()=>{
+      const isEdit=!!id;
+      let row = { item_id:null, check_type_id:null, frequency:"7 days", warn_before:"3 days", required:true, active:true, scheduled_day:"" };
+      if(isEdit){ const { data } = await client.from("item_allowed_types").select("*").eq("id", id).single(); row=data; }
+      modalForm({
+        title:(isEdit?"Edit":"Add")+" Schedule",
+        fields:[
+          { label:"Item", name:"item_id", type:"select", value:row.item_id||"", required:true, options:[{value:"",label:"— choose —"}].concat((ctx.items||[]).map(i=>({value:i.id,label:`${i.item_name} (${i.item_id})`}))) },
+          { label:"Check Type", name:"check_type_id", type:"select", value:row.check_type_id||"", required:true, options:[{value:"",label:"— choose —"}].concat((ctx.check_types||[]).map(c=>({value:c.id,label:c.name}))) },
+          { label:"Frequency (interval)", name:"frequency", value:row.frequency||"7 days", required:true },
+          { label:"Warn Before (interval)", name:"warn_before", value:row.warn_before||"3 days", required:true },
+          { label:"Required (true/false)", name:"required", value:String(row.required) },
+          { label:"Active (true/false)", name:"active", value:String(row.active) },
+          { label:"Scheduled Day (Mon..Sun or blank)", name:"scheduled_day", value:row.scheduled_day||"" }
+        ],
+        onSubmit: async (data, dlg)=>{
+          const payload = {
+            site_id: DEFAULT_SITE_ID,
+            item_id: Number(data.item_id),
+            check_type_id: Number(data.check_type_id),
+            frequency: data.frequency, warn_before: data.warn_before,
+            required: String(data.required).toLowerCase()!=="false",
+            active: String(data.active).toLowerCase()!=="false",
+            scheduled_day: data.scheduled_day||null
+          };
+          let resp;
+          if(isEdit){ resp = await client.from("item_allowed_types").update(payload).eq("id", id).select("id").single(); }
+          else{ resp = await client.from("item_allowed_types").insert(payload).select("id").single(); }
+          if(resp.error){ toast(resp.error.message); return; }
+          dlg.close(); toast("Saved"); loadSchedules();
+        }
+      });
+    })();
+  }
+
+  // STAFF (kiosk_users) CRUD
+  async function loadStaff(){
+    const { data, error } = await client.from("kiosk_users").select("*").eq("site_id", DEFAULT_SITE_ID).order("full_name");
+    if(error){ toast(error.message); return; }
+    renderTable("#staffTableWrap", {
+      columns: [
+        { key:"full_name", label:"Full Name", minWidth:"180px" },
+        { key:"role", label:"Role" },
+        { key:"active", label:"Active", render:(v)=> v?"Yes":"No" },
+        { key:"team_name", label:"Team" }
+      ],
+      rows: data,
+      onEdit: (id)=> openStaffModal(+id),
+      onDelete: async(id)=>{
+        if(!confirm("Delete staff user?")) return;
+        const { error } = await client.from("kiosk_users").delete().eq("id", id);
+        if(error){ toast(error.message); return; }
+        toast("Deleted"); loadStaff();
+      }
+    });
+    $("#addStaffBtn").onclick = ()=> openStaffModal();
+  }
+  function openStaffModal(id=null){
+    (async()=>{
+      const isEdit = !!id;
+      let row = { full_name:"", role:"staff", active:true, team_id:null, team_name:null };
+      if(isEdit){ const { data } = await client.from("kiosk_users").select("*").eq("id", id).single(); row=data; }
+      modalForm({
+        title:(isEdit?"Edit":"Add")+" Staff",
+        fields:[
+          { label:"Full Name", name:"full_name", value:row.full_name, required:true },
+          { label:"Role", name:"role", value:row.role||"staff" },
+          { label:"Team Name (optional)", name:"team_name", value:row.team_name||"" },
+          { label:"Active (true/false)", name:"active", value:String(row.active) }
+        ],
+        onSubmit: async (data, dlg)=>{
+          const payload = {
+            full_name: data.full_name, role: data.role||"staff",
+            team_name: data.team_name||null, active: String(data.active).toLowerCase()!=="false",
+            site_id: DEFAULT_SITE_ID
+          };
+          let resp;
+          if(isEdit){ resp = await client.from("kiosk_users").update(payload).eq("id", id).select("id").single(); }
+          else{ resp = await client.from("kiosk_users").insert(payload).select("id").single(); }
+          if(resp.error){ toast(resp.error.message); return; }
+          dlg.close(); toast("Saved"); loadStaff();
+        }
+      });
+    })();
+  }
+
+  // SUBMISSIONS (read only)
+  async function loadSubmissions(){
+    const { data, error } = await client.from("v_submission_detail").select("*").eq("site_id", DEFAULT_SITE_ID).order("submitted_at",{ascending:false}).limit(100);
+    if(error){ toast(error.message); return; }
+    const rows = data || [];
+    const wrap = "#submissionsTableWrap";
+    renderTable(wrap, {
+      columns: [
+        { key:"submission_id", label:"Submission" },
+        { key:"session_id", label:"Session" },
+        { key:"submitted_at", label:"Submitted", render:(v)=> new Date(v).toLocaleString() },
+        { key:"staff_name", label:"Staff" },
+        { key:"item_name", label:"Item" },
+        { key:"room", label:"Room" },
+        { key:"check_type", label:"Check Type" },
+        { key:"check_value", label:"Value" }
+      ],
+      rows,
+      onEdit: ()=> toast("Read-only"), onDelete: ()=> toast("Read-only")
+    });
+  }
+
+  // SETTINGS
+  function loadSettings(){
+    $("#cfgUrl").value = SUPABASE_URL;
+    $("#cfgKey").value = SUPABASE_ANON_KEY.slice(0,8)+"…"+SUPABASE_ANON_KEY.slice(-6);
+  }
+
+  // INIT
+  (async function init(){
+    await refreshAuthUI();
+    const route = localStorage.getItem("route") || "dashboard";
+    show(route);
+  })();
+</script>
+</body>
+</html>

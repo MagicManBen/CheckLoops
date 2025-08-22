@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CheckLoop — Admin</title>
+  <meta name="color-scheme" content="light dark" />
+  <style>
+    /* -------------------------
+       macOS / Apple-inspired UI
+       ------------------------- */
+    :root{
+      --bg: #0b1220;
+      --bg-2: #0e1628;
+      --surface: rgba(255,255,255,0.08);
+      --surface-2: rgba(255,255,255,0.06);
+      --panel: rgba(255,255,255,0.12);
+      --border: rgba(255,255,255,0.14);
+      --text: #e6ecff;
+      --muted: #b6c2e2;
+      --primary: #0a84ff;  /* iOS blue */
+      --primary-2: #5ac8fa;/* iOS sky */
+      --success: #30d158;
+      --warning: #ffd60a;
+      --danger: #ff453a;
+      --shadow: 0 10px 30px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06);
+      --radius: 16px;
+      --radius-sm: 12px;
+      --radius-lg: 24px;
+      --blur: 20px;
+      --nav-w: 280px;
+      --transition: 200ms cubic-bezier(.2,.8,.2,1);
+    }
+
+    @media (prefers-color-scheme: light){
+      :root{
+        --bg: #f5f7ff;
+        --bg-2: #eef2ff;
+        --surface: rgba(255,255,255,0.75);
+        --surface-2: rgba(255,255,255,0.65);
+        --panel: rgba(255,255,255,0.85);
+        --border: rgba(14,22,40,0.08);
+        --text: #0b1220;
+        --muted: #3b4b74;
+        --shadow: 0 12px 30px rgba(9, 16, 34, 0.08), inset 0 1px 0 rgba(255,255,255,0.5);
+      }
+    }
+
+    html,body{height:100%;}
+    body{
+      margin:0;
+      font: 15px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--text);
+      background: radial-gradient(1200px 700px at 85% -10%, rgba(10,132,255,0.25), transparent 60%),
+                  radial-gradient(800px 400px at -10% 20%, rgba(90,200,250,0.25), transparent 60%),
+                  linear-gradient(180deg, var(--bg), var(--bg-2));
+      overflow: hidden;
+    }
+
+    /* Subtle animated background blobs */
+    .bg-blobs{
+      position: fixed; inset: -20vmax;
+      filter: blur(80px) saturate(120%);
+      pointer-events: none;
+      z-index: 0;
+      opacity: .35;
+    }
+    .blob{
+      position: absolute; width: 55vmax; height: 55vmax; border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, var(--primary), transparent 65%);
+      animation: drift 26s ease-in-out infinite;
+      mix-blend-mode: screen;
+    }
+    .blob:nth-child(2){ left:20%; top:40%; animation-duration: 32s; background: radial-gradient(circle at 70% 70%, var(--primary-2), transparent 55%);}
+    .blob:nth-child(3){ right:5%; top:10%; animation-duration: 40s; background: radial-gradient(circle at 30% 70%, #7df, transparent 55%);}
+    @keyframes drift{ 0%,100%{ transform: translate(0,0) scale(1);} 50%{ transform: translate(6%, -4%) scale(1.08);} }
+
+    /* Layout */
+    .app{ position: relative; z-index: 1; display:flex; height:100%; }
+    nav{
+      width: var(--nav-w);
+      backdrop-filter: blur(var(--blur));
+      -webkit-backdrop-filter: blur(var(--blur));
+      background: linear-gradient(180deg, var(--panel), transparent),
+                  linear-gradient(180deg, rgba(255,255,255,0.06), transparent);
+      border-right: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      padding: 20px;
+      overflow-y: auto;
+    }
+    .brand{
+      display:flex; align-items:center; gap:12px; margin-bottom:14px;
+      padding: 10px 12px; border-radius: 999px; background: var(--surface-2);
+      border: 1px solid var(--border);
+    }
+    .brand .traffic{ display:flex; gap:8px; margin-right:2px}
+    .dot{ width:10px; height:10px; border-radius:50%; }
+    .dot.red{background:#ff605c; box-shadow: 0 0 0 2px rgba(255,96,92,.25);}
+    .dot.amber{background:#ffbd44; box-shadow: 0 0 0 2px rgba(255,189,68,.25);}
+    .dot.green{background:#00ca4e; box-shadow: 0 0 0 2px rgba(0,202,78,.25);}
+
+    .brand-title{ font-weight:700; letter-spacing:.2px}
+    .brand-sub{ font-size:12px; opacity:.9; color:var(--muted)}
+
+    .nav-section{ margin-top:16px; }
+    .nav-label{ font-size:12px; text-transform:uppercase; letter-spacing:.12em; color:var(--muted); margin:14px 12px 8px; }
+    .nav-item{
+      display:flex; align-items:center; gap:12px; width:100%;
+      padding:10px 12px; border-radius: 12px; color:inherit; text-decoration:none;
+      border:1px solid transparent; transition: transform var(--transition), background var(--transition), border var(--transition);
+    }
+    .nav-item:hover{ background: var(--surface-2); transform: translateY(-1px); border-color: var(--border); }
+    .nav-item.active{ background: linear-gradient(180deg, rgba(10,132,255,.18), rgba(10,132,255,.06)); border-color: rgba(10,132,255,.35); }
+
+    .nav-item svg{ width:18px; height:18px; opacity:.9 }
+    .spacer{ height:12px; }
+
+    main{
+      flex:1; display:flex; flex-direction:column; overflow:hidden;
+    }
+    header.appbar{
+      position: sticky; top:0; z-index: 5; display:flex; align-items:center; gap:12px; justify-content: space-between;
+      padding: 14px 20px;
+      backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur));
+      background: linear-gradient(180deg, var(--panel), rgba(10,10,10,0));
+      border-bottom: 1px solid var(--border);
+    }
+    .site-pill{
+      display:flex; align-items:center; gap:10px;
+      padding:10px 14px; border-radius: 999px; background: var(--surface);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      animation: fadeIn 300ms ease;
+    }
+    .gradient-text{ background: linear-gradient(90deg, var(--primary), var(--primary-2)); -webkit-background-clip:text; background-clip:text; color: transparent; font-weight:700;}
+    .actions{ display:flex; align-items:center; gap:8px }
+    .btn{
+      appearance:none; border:1px solid var(--border); background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
+      color:inherit; padding: 10px 14px; border-radius: 12px; cursor:pointer;
+      transition: transform var(--transition), border var(--transition), box-shadow var(--transition), background var(--transition);
+      box-shadow: var(--shadow);
+    }
+    .btn:hover{ transform: translateY(-1px); border-color: rgba(10,132,255,.5); box-shadow: 0 10px 30px rgba(10,132,255,.18);}
+    .btn.primary{ background: linear-gradient(180deg, rgba(10,132,255,.85), rgba(10,132,255,.6)); color:white; border-color: rgba(10,132,255,.7); }
+    .btn.destructive{ background: linear-gradient(180deg, rgba(255,69,58,.9), rgba(255,69,58,.7)); color:white; border-color: rgba(255,69,58,.8); }
+
+    .content{ position:relative; overflow:auto; padding: 18px 22px 60px; }
+    .page{ display:none; animation: slideUp 280ms ease; }
+    .page.active{ display:block; }
+
+    @keyframes fadeIn{ from{opacity:0} to{opacity:1} }
+    @keyframes slideUp{ from{ opacity:0; transform: translateY(6px);} to{opacity:1; transform:none;} }
+
+    /* Cards / panels */
+    .card{
+      background: var(--surface); border:1px solid var(--border); border-radius: var(--radius);
+      box-shadow: var(--shadow); padding: 16px; margin-bottom: 14px;
+    }
+    .card-header{ display:flex; align-items:center; justify-content: space-between; margin-bottom:6px; gap:10px }
+    .h1{ font-weight:800; font-size:22px; letter-spacing:.2px }
+    .h2{ font-weight:700; font-size:16px; letter-spacing:.2px }
+    .sub{ color: var(--muted); font-size:12px }
+    .grid{ display:grid; gap:12px }
+    .grid.cols-2{ grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .grid.cols-3{ grid-template-columns: repeat(3, minmax(0,1fr)); }
+    .grid.cols-4{ grid-template-columns: repeat(4, minmax(0,1fr)); }
+    @media (max-width: 1100px){ .grid.cols-4{ grid-template-columns: repeat(2, minmax(0,1fr)); } }
+    @media (max-width: 800px){ .grid.cols-3, .grid.cols-2{ grid-template-columns: 1fr; } nav{ width: 82px; } .nav-label{ display:none } .brand-sub{ display:none } .brand-title{ font-size:14px } .nav-item span{ display:none } }
+
+    /* Tables */
+    .table-wrap{ border:1px solid var(--border); border-radius: 14px; overflow:hidden; background: var(--surface); box-shadow: var(--shadow) }
+    table{ width:100%; border-collapse: collapse; font-size:14px; }
+    thead{ background: linear-gradient(180deg, rgba(255,255,255,.1), rgba(255,255,255,.04)); }
+    th, td{ padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tbody tr:hover{ background: rgba(255,255,255,.06); }
+    tbody tr:last-child td{ border-bottom: none }
+
+    /* Forms */
+    .field{ display:flex; flex-direction:column; gap:8px }
+    .field label{ font-size:12px; letter-spacing:.06em; text-transform: uppercase; color: var(--muted) }
+    .input, .select, .textarea{
+      border:1px solid var(--border); border-radius: 12px; padding: 10px 12px; background: rgba(255,255,255,.06); color: inherit;
+      transition: border var(--transition), box-shadow var(--transition), transform var(--transition); outline: none;
+    }
+    .input:focus, .select:focus, .textarea:focus{ border-color: rgba(10,132,255,.6); box-shadow: 0 0 0 3px rgba(10,132,255,.2); transform: translateY(-1px); }
+    .row{ display:flex; gap: 12px; align-items: center; }
+    .row.wrap{ flex-wrap: wrap; }
+    .grow{ flex:1 }
+    .muted{ color: var(--muted) }
+
+    /* Badges */
+    .badge{ font-size:12px; padding: 6px 9px; border-radius:999px; border:1px solid var(--border); background: rgba(255,255,255,.06); }
+    .badge.ok{ background: rgba(48,209,88,.12); border-color: rgba(48,209,88,.3); color:#e6fff0 }
+    .badge.warn{ background: rgba(255,214,10,.12); border-color: rgba(255,214,10,.3); color:#fff6d6 }
+    .badge.danger{ background: rgba(255,69,58,.12); border-color: rgba(255,69,58,.3); color:#ffe8e6 }
+
+    /* Skeletons */
+    .skeleton{ position:relative; overflow:hidden; background: linear-gradient(90deg, rgba(255,255,255,.06), rgba(255,255,255,.12), rgba(255,255,255,.06)); background-size:200% 100%; animation: shimmer 1.6s infinite; border-radius: 10px; }
+    @keyframes shimmer{ 0%{ background-position: 200% 0 } 100%{ background-position: -200% 0 } }
+
+    /* Toast */
+    .toast{
+      position: fixed; right: 24px; bottom: 24px; z-index:100; display:none;
+      min-width: 260px; max-width: 420px;
+      padding: 12px 14px; border-radius: 12px; background: linear-gradient(180deg, rgba(10,132,255,.95), rgba(10,132,255,.75)); color:white;
+      box-shadow: 0 12px 32px rgba(10,132,255,.35);
+    }
+    .toast.show{ display:flex; gap:12px; align-items:center; animation: fadeIn 160ms ease; }
+
+    /* Modal */
+    .modal{ position: fixed; inset:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,.3); z-index: 50; }
+    .modal.show{ display:flex; animation: fadeIn 160ms ease; }
+    .modal-card{ width:min(720px, 92vw); background: var(--surface); border:1px solid var(--border); border-radius: 18px; box-shadow: var(--shadow); padding: 16px; }
+    .modal-head{ display:flex; align-items:center; justify-content: space-between; margin-bottom:12px }
+    .modal-body{ display:grid; gap:12px; }
+
+    /* Chips */
+    .chip{ display:inline-flex; align-items:center; gap:8px; padding:8px 10px; border-radius:999px; border:1px solid var(--border); background: rgba(255,255,255,.06); }
+
+    /* Footer note */
+    .footer-note{ font-size:12px; color: var(--muted); text-align:center; margin-top: 10px; }
+  </style>
+
+  <!-- Supabase client -->
+  <script type="module">
+    import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm";
+
+    // ------------------------
+    // Simple state management
+    // ------------------------
+    const $ = (q,root=document)=>root.querySelector(q);
+    const $$ = (q,root=document)=>Array.from(root.querySelectorAll(q));
+    const state = {
+      supa: null,
+      user: null,
+      profile: null, // { user_id, site_id, role }
+      siteId: null,
+      role: null,
+      configOpen: false,
+      currentPage: 'dashboard',
+    };
+
+    const storage = {
+      get url(){ return localStorage.getItem('CL_SUPA_URL') || ''; },
+      set url(v){ localStorage.setItem('CL_SUPA_URL', v||''); },
+      get key(){ return localStorage.getItem('CL_SUPA_KEY') || ''; },
+      set key(v){ localStorage.setItem('CL_SUPA_KEY', v||''); },
+    };
+
+    function toast(msg, type='info'){
+      const t = $('#toast');
+      t.textContent = msg;
+      t.className = 'toast show';
+      if(type==='error'){ t.style.background = 'linear-gradient(180deg, rgba(255,69,58,.95), rgba(255,69,58,.8))'; }
+      setTimeout(()=> t.classList.remove('show'), 2600);
+    }
+
+    // ------------------------
+    // Supabase init & auth
+    // ------------------------
+    async function initSupabase(){
+      const url = $('#cfg-url').value.trim();
+      const key = $('#cfg-key').value.trim();
+      if(!url || !key){ toast('Add your Supabase URL & anon key first','error'); return; }
+      storage.url = url; storage.key = key;
+      state.supa = createClient(url, key);
+      bindAuth();
+      await checkSession();
+      toast('Connected to Supabase');
+    }
+
+    function bindAuth(){
+      if(!state.supa) return;
+      state.supa.auth.onAuthStateChange(async (_event, session) => {
+        state.user = session?.user || null;
+        await afterLogin();
+      });
+    }
+
+    async function checkSession(){
+      const { data:{ session } } = await state.supa.auth.getSession();
+      state.user = session?.user || null;
+      await afterLogin();
+    }
+
+    async function signIn(e){
+      e?.preventDefault();
+      const email = $('#email').value.trim();
+      const password = $('#password').value.trim();
+      if(!email || !password) return toast('Email & password required','error');
+      const { error } = await state.supa.auth.signInWithPassword({ email, password });
+      if(error) return toast(error.message || 'Sign-in failed','error');
+      toast('Signed in');
+    }
+
+    async function signOut(){
+      await state.supa.auth.signOut();
+      state.user = null; state.profile = null; state.siteId = null; state.role = null;
+      renderAuth();
+      toast('Signed out');
+    }
+
+    async function afterLogin(){
+      renderAuth();
+      if(!state.user){ return; }
+      // Load profile/site via view
+      const { data, error } = await state.supa.from('v_my_profile').select('user_id, site_id, role').eq('user_id', state.user.id).maybeSingle();
+      if(error){ console.warn(error); }
+      state.profile = data || null;
+      state.siteId = data?.site_id || null;
+      state.role   = data?.role || null;
+      // If site missing, try last used site from localStorage or first site visible
+      if(!state.siteId){
+        const saved = localStorage.getItem('CL_SITE_ID');
+        if(saved){ state.siteId = Number(saved); }
+        else{
+          const { data: sites } = await state.supa.from('sites').select('id,name').limit(1);
+          if(sites?.[0]) state.siteId = sites[0].id;
+        }
+      }
+      if(state.siteId) localStorage.setItem('CL_SITE_ID', String(state.siteId));
+      renderHeader();
+      // Load dashboard by default
+      navigate(state.currentPage);
+    }
+
+    // ------------------------
+    // Navigation
+    // ------------------------
+    function navigate(page){
+      state.currentPage = page;
+      $$('.nav-item').forEach(el=> el.classList.toggle('active', el.dataset.page===page));
+      $$('.page').forEach(el=> el.classList.remove('active'));
+      const pane = $('#page-' + page);
+      if(pane){ pane.classList.add('active'); }
+      // Load corresponding content
+      switch(page){
+        case 'dashboard': loadDashboard(); break;
+        case 'rooms': loadRooms(); break;
+        case 'items': loadItems(); break;
+        case 'checks': loadCheckTypes(); break;
+        case 'schedules': loadSchedules(); break;
+        case 'staff': loadStaff(); break;
+        case 'invites': loadInvites(); break;
+        case 'settings': /* nothing yet */ break;
+      }
+    }
+
+    // ------------------------
+    // Render header/auth
+    // ------------------------
+    function renderHeader(){
+      const who = state.user ? (state.user.email || 'Signed in') : 'Not signed in';
+      $('#whoami').textContent = who;
+      const sitePill = $('#site-pill');
+      if(state.siteId){
+        sitePill.innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 24 24"><path fill="currentColor" d="M4 6h16v12H4zM2 8l10-6l10 6"/></svg>
+          <span class="gradient-text">Site #${state.siteId}</span>
+        `;
+      }else{
+        sitePill.innerHTML = '<span class="muted">No site selected</span>';
+      }
+    }
+
+    function renderAuth(){
+      const authed = !!state.user;
+      $('#auth-panel').style.display = authed ? 'none' : 'block';
+      $('#authed-ui').style.display = authed ? 'block' : 'none';
+    }
+
+    // ------------------------
+    // Dashboard
+    // ------------------------
+    async function loadDashboard(){
+      if(!state.supa || !state.siteId) return;
+      $('#dash-summary').innerHTML = '<div class="skeleton" style="height:120px"></div>';
+      // Grab counts from views/tables
+      const [ items, rooms, checks, due ] = await Promise.all([
+        state.supa.from('items').select('id', { count:'exact', head:true }).eq('site_id', state.siteId),
+        state.supa.from('rooms').select('id', { count:'exact', head:true }).eq('site_id', state.siteId),
+        state.supa.from('check_types').select('id', { count:'exact', head:true }).eq('site_id', state.siteId),
+        state.supa.from('v_item_check_summary').select('status,count').eq('site_id', state.siteId)
+      ]);
+      const iCount = items.count ?? 0;
+      const rCount = rooms.count ?? 0;
+      const cCount = checks.count ?? 0;
+      const dueRows = (due.data||[]).reduce((acc, r)=> (acc[r.status]=r.count, acc), {});
+      const overdue = dueRows['overdue']||0, dueSoon = dueRows['due_soon']||0;
+
+      $('#dash-summary').innerHTML = `
+        <div class="grid cols-4">
+          <div class="card"><div class="h2">Items</div><div class="h1">${iCount}</div><div class="sub">Tracked assets</div></div>
+          <div class="card"><div class="h2">Rooms</div><div class="h1">${rCount}</div><div class="sub">Clinical spaces</div></div>
+          <div class="card"><div class="h2">Check Types</div><div class="h1">${cCount}</div><div class="sub">Configured checks</div></div>
+          <div class="card"><div class="h2">Alerts</div>
+            <div class="row" style="margin-top:6px">
+              <span class="badge danger">${overdue} Overdue</span>
+              <span class="badge warn">${dueSoon} Due soon</span>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // ------------------------
+    // Rooms
+    // ------------------------
+    async function loadRooms(){
+      if(!state.supa || !state.siteId) return;
+      const wrap = $('#rooms-list');
+      wrap.innerHTML = '<div class="skeleton" style="height:180px"></div>';
+      const { data, error } = await state.supa.from('rooms').select('id,name,occupied_by,created_at').eq('site_id', state.siteId).order('name');
+      if(error){ wrap.innerHTML = '<div class="sub">Error loading rooms</div>'; return; }
+      const rows = data.map(r=> `
+        <tr>
+          <td>#${r.id}</td>
+          <td>${r.name}</td>
+          <td>${r.occupied_by ?? ''}</td>
+          <td>${new Date(r.created_at).toLocaleString()}</td>
+          <td class="row">
+            <button class="btn" onclick="editRoom(${r.id}, '${escapeHtml(r.name)}')">Edit</button>
+            <button class="btn destructive" onclick="deleteRoom(${r.id})">Delete</button>
+          </td>
+        </tr>`).join('');
+      wrap.innerHTML = `
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>Name</th><th>Occupied by</th><th>Created</th><th></th></tr></thead>
+            <tbody>${rows || ''}</tbody>
+          </table>
+        </div>`;
+    }
+
+    async function addRoom(){
+      const name = prompt('Room name');
+      if(!name) return;
+      const { error } = await state.supa.from('rooms').insert({ name, site_id: state.siteId });
+      if(error) return toast(error.message,'error');
+      toast('Room added'); loadRooms();
+    }
+    async function editRoom(id, name){
+      const newName = prompt('Update name', unescapeHtml(name));
+      if(!newName) return;
+      const { error } = await state.supa.from('rooms').update({ name: newName }).eq('id', id).eq('site_id', state.siteId);
+      if(error) return toast(error.message,'error');
+      toast('Room updated'); loadRooms();
+    }
+    async function deleteRoom(id){
+      if(!confirm('Delete this room?')) return;
+      const { error } = await state.supa.from('rooms').delete().eq('id', id).eq('site_id', state.siteId);
+      if(error) return toast(error.message,'error');
+      toast('Room deleted'); loadRooms();
+    }
+
+    // ------------------------
+    // Items
+    // ------------------------
+    async function loadItems(){
+      if(!state.supa || !state.siteId) return;
+      const wrap = $('#items-list');
+      wrap.innerHTML = '<div class="skeleton" style="height:200px"></div>';
+      const { data, error } = await state.supa.from('v_items_admin').select('*').eq('site_id', state.siteId).order('item_name');
+      if(error){ wrap.innerHTML = '<div class="sub">Error loading items</div>'; return; }
+      const rows = data.map(it=> `
+        <tr>
+          <td class="muted">${it.item_id}</td>
+          <td>${it.item_name}</td>
+          <td>${it.room_name ?? it.room ?? ''}</td>
+          <td>${it.default_check_type_name ?? ''}</td>
+          <td>${it.category ?? 'general'}</td>
+          <td class="row">
+            <button class="btn" onclick="editItem(${it.id})">Edit</button>
+            <button class="btn destructive" onclick="deleteItem(${it.id})">Delete</button>
+          </td>
+        </tr>`).join('');
+      wrap.innerHTML = `
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Code</th><th>Name</th><th>Room</th><th>Default check</th><th>Category</th><th></th></tr></thead>
+          <tbody>${rows || ''}</tbody>
+        </table>
+      </div>`;
+    }
+
+    async function addItem(){
+      // Simple modal
+      $('#modal').classList.add('show');
+      $('#modal-title').textContent = 'Add Item';
+      $('#modal-body').innerHTML = `
+        <div class="grid cols-2">
+          <div class="field"><label>Item code (barcode)</label><input id="f-item-code" class="input" placeholder="e.g. 4408649992"/></div>
+          <div class="field"><label>Name</label><input id="f-item-name" class="input" placeholder="e.g. ECG trolley"/></div>
+          <div class="field"><label>Room</label><input id="f-item-room" class="input" placeholder="e.g. Room 1"/></div>
+          <div class="field"><label>Category</label><input id="f-item-cat" class="input" placeholder="general"/></div>
+        </div>
+      `;
+      $('#modal-okay').onclick = async () => {
+        const item_id = $('#f-item-code').value.trim();
+        const item_name = $('#f-item-name').value.trim();
+        const room = $('#f-item-room').value.trim() || 'Unassigned';
+        const category = $('#f-item-cat').value.trim() || 'general';
+        if(!item_id || !item_name) return toast('Code & Name required','error');
+        const { error } = await state.supa.from('items').insert({ site_id: state.siteId, item_id, item_name, room, category, active:true });
+        if(error) return toast(error.message,'error');
+        closeModal(); toast('Item added'); loadItems();
+      };
+      $('#modal-cancel').onclick = closeModal;
+    }
+    async function editItem(id){
+      const { data, error } = await state.supa.from('items').select('*').eq('id', id).maybeSingle();
+      if(error || !data) return toast('Cannot load item','error');
+      $('#modal').classList.add('show');
+      $('#modal-title').textContent = 'Edit Item';
+      $('#modal-body').innerHTML = `
+        <div class="grid cols-2">
+          <div class="field"><label>Item code</label><input id="f-item-code" class="input" value="${escapeHtml(data.item_id)}"/></div>
+          <div class="field"><label>Name</label><input id="f-item-name" class="input" value="${escapeHtml(data.item_name)}"/></div>
+          <div class="field"><label>Room (text)</label><input id="f-item-room" class="input" value="${escapeHtml(data.room||'')}"/></div>
+          <div class="field"><label>Category</label><input id="f-item-cat" class="input" value="${escapeHtml(data.category||'general')}"/></div>
+        </div>`;
+      $('#modal-okay').onclick = async () => {
+        const item_id = $('#f-item-code').value.trim();
+        const item_name = $('#f-item-name').value.trim();
+        const room = $('#f-item-room').value.trim();
+        const category = $('#f-item-cat').value.trim() || 'general';
+        const { error:err2 } = await state.supa.from('items').update({ item_id, item_name, room, category }).eq('id', id).eq('site_id', state.siteId);
+        if(err2) return toast(err2.message,'error');
+        closeModal(); toast('Item updated'); loadItems();
+      };
+      $('#modal-cancel').onclick = closeModal;
+    }
+    async function deleteItem(id){
+      if(!confirm('Delete this item?')) return;
+      const { error } = await state.supa.from('items').delete().eq('id', id).eq('site_id', state.siteId);
+      if(error) return toast(error.message,'error');
+      toast('Item deleted'); loadItems();
+    }
+
+    // ------------------------
+    // Check types
+    // ------------------------
+    async function loadCheckTypes(){
+      if(!state.supa || !state.siteId) return;
+      const wrap = $('#checks-list');
+      wrap.innerHTML = '<div class="skeleton" style="height:160px"></div>';
+      const { data, error } = await state.supa.from('check_types').select('id,name,category,active').eq('site_id', state.siteId).order('name');
+      if(error){ wrap.innerHTML = '<div class="sub">Error loading check types</div>'; return; }
+      const rows = data.map(ct=> `
+        <tr>
+          <td>#${ct.id}</td>
+          <td>${ct.name}</td>
+          <td>${ct.category}</td>
+          <td>${ct.active ? '<span class="badge ok">Active</span>' : '<span class="badge">Inactive</span>'}</td>
+          <td class="row">
+            <button class="btn" onclick="editCheckType(${ct.id})">Edit</button>
+            <button class="btn destructive" onclick="deleteCheckType(${ct.id})">Delete</button>
+          </td>
+        </tr>`).join('');
+      wrap.innerHTML = `
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>Name</th><th>Category</th><th>Status</th><th></th></tr></thead>
+            <tbody>${rows || ''}</tbody>
+          </table>
+        </div>`;
+    }
+
+    async function addCheckType(){
+      $('#modal').classList.add('show');
+      $('#modal-title').textContent = 'Add Check Type';
+      $('#modal-body').innerHTML = `
+        <div class="grid cols-2">
+          <div class="field"><label>Name</label><input id="f-name" class="input" placeholder="e.g. Battery check"/></div>
+          <div class="field"><label>Category</label><input id="f-cat" class="input" placeholder="general"/></div>
+        </div>`;
+      $('#modal-okay').onclick = async () => {
+        const name = $('#f-name').value.trim(); const category = ($('#f-cat').value.trim()) || 'general';
+        if(!name) return toast('Name required','error');
+        const { error } = await state.supa.from('check_types').insert({ site_id: state.siteId, name, category, active:true });
+        if(error) return toast(error.message,'error');
+        closeModal(); toast('Check type added'); loadCheckTypes();
+      };
+      $('#modal-cancel').onclick = closeModal;
+    }
+    async function editCheckType(id){
+      const { data, error } = await state.supa.from('check_types').select('*').eq('id', id).maybeSingle();
+      if(error || !data) return toast('Cannot load check type','error');
+      $('#modal').classList.add('show');
+      $('#modal-title').textContent = 'Edit Check Type';
+      $('#modal-body').innerHTML = `
+        <div class="grid cols-2">
+          <div class="field"><label>Name</label><input id="f-name" class="input" value="${escapeHtml(data.name)}"/></div>
+          <div class="field"><label>Category</label><input id="f-cat" class="input" value="${escapeHtml(data.category)}"/></div>
+          <div class="field"><label>Active</label>
+            <select id="f-active" class="select">
+              <option value="true" ${data.active?'selected':''}>Active</option>
+              <option value="false" ${!data.active?'selected':''}>Inactive</option>
+            </select>
+          </div>
+        </div>`;
+      $('#modal-okay').onclick = async () => {
+        const name = $('#f-name').value.trim(); const category = $('#f-cat').value.trim() || 'general'; const active = $('#f-active').value === 'true';
+        const { error:err2 } = await state.supa.from('check_types').update({ name, category, active }).eq('id', id).eq('site_id', state.siteId);
+        if(err2) return toast(err2.message,'error');
+        closeModal(); toast('Check type updated'); loadCheckTypes();
+      };
+      $('#modal-cancel').onclick = closeModal;
+    }
+    async function deleteCheckType(id){
+      if(!confirm('Delete this check type?')) return;
+      const { error } = await state.supa.from('check_types').delete().eq('id', id).eq('site_id', state.siteId);
+      if(error) return toast(error.message,'error');
+      toast('Check type deleted'); loadCheckTypes();
+    }
+
+    // ------------------------
+    // Schedules
+    // ------------------------
+    async function loadSchedules(){
+      if(!state.supa || !state.siteId) return;
+      const wrap = $('#schedules-list');
+      wrap.innerHTML = '<div class="skeleton" style="height:180px"></div>';
+      const { data, error } = await state.supa.from('schedules_view')
+        .select('id,item_id, item_name, room_name, check_type_name, frequency, warn_before, required, active')
+        .eq('site_id', state.siteId);
+      if(error){ wrap.innerHTML = '<div class="sub">Error loading schedules</div>'; return; }
+      const rows = (data||[]).map(s=> `
+        <tr>
+          <td>${s.item_name}</td>
+          <td class="muted">${s.room_name || ''}</td>
+          <td>${s.check_type_name}</td>
+          <td>${s.frequency || ''}</td>
+          <td>${s.warn_before || ''}</td>
+          <td>${s.required ? 'Yes' : 'No'}</td>
+          <td>${s.active ? '<span class="badge ok">Active</span>' : '<span class="badge">Inactive</span>'}</td>
+          <td class="row">
+            <button class="btn" onclick="editSchedule(${s.id})">Edit</button>
+            <button class="btn destructive" onclick="deleteSchedule(${s.id})">Delete</button>
+          </td>
+        </tr>`).join('');
+      wrap.innerHTML = `
+        <div class="table-wrap"><table>
+          <thead><tr><th>Item</th><th>Room</th><th>Check</th><th>Every</th><th>Warn</th><th>Required</th><th>Status</th><th></th></tr></thead>
+          <tbody>${rows || ''}</tbody>
+        </table></div>`;
+    }
+    async function addSchedule(){
+      // Need items and check types for selects
+      const [ items, checks ] = await Promise.all([
+        state.supa.from('items').select('id,item_name').eq('site_id', state.siteId).order('item_name'),
+        state.supa.from('check_types').select('id,name').eq('site_id', state.siteId).order('name'),
+      ]);
+      const itemOpts = (items.data||[]).map(i=> `<option value="${i.id}">${escapeHtml(i.item_name)}</option>`).join('');
+      const checkOpts = (checks.data||[]).map(c=> `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+      $('#modal').classList.add('show');
+      $('#modal-title').textContent = 'Add Schedule';
+      $('#modal-body').innerHTML = `
+        <div class="grid cols-2">
+          <div class="field"><label>Item</label><select id="f-item" class="select">${itemOpts}</select></div>
+          <div class="field"><label>Check type</label><select id="f-ct" class="select">${checkOpts}</select></div>
+          <div class="field"><label>Frequency (interval)</label><input id="f-freq" class="input" placeholder="e.g. 7 days"/></div>
+          <div class="field"><label>Warn before</label><input id="f-warn" class="input" placeholder="e.g. 3 days"/></div>
+          <div class="field"><label>Required</label>
+            <select id="f-req" class="select">
+              <option value="true" selected>Yes</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+          <div class="field"><label>Scheduled day (optional)</label><input id="f-day" class="input" placeholder="Mon/Tue/..."/></div>
+        </div>`;
+      $('#modal-okay').onclick = async () => {
+        const item_id = Number($('#f-item').value);
+        const check_type_id = Number($('#f-ct').value);
+        const frequency = $('#f-freq').value.trim() || '7 days';
+        const warn_before = $('#f-warn').value.trim() || '3 days';
+        const required = $('#f-req').value === 'true';
+        const scheduled_day = $('#f-day').value.trim() || null;
+        const payload = { site_id: state.siteId, item_id, check_type_id, frequency, warn_before, required, active:true, scheduled_day };
+        const { error } = await state.supa.from('item_allowed_types').insert(payload);
+        if(error) return toast(error.message,'error');
+        closeModal(); toast('Schedule added'); loadSchedules();
+      };
+      $('#modal-cancel').onclick = closeModal;
+    }
+    async function editSchedule(id){
+      const { data, error } = await state.supa.from('item_allowed_types').select('*').eq('id', id).maybeSingle();
+      if(error || !data) return toast('Cannot load schedule','error');
+      const [ items, checks ] = await Promise.all([
+        state.supa.from('items').select('id,item_name').eq('site_id', state.siteId).order('item_name'),
+        state.supa.from('check_types').select('id,name').eq('site_id', state.siteId).order('name'),
+      ]);
+      const itemOpts = (items.data||[]).map(i=> `<option value="${i.id}" ${i.id===data.item_id?'selected':''}>${escapeHtml(i.item_name)}</option>`).join('');
+      const checkOpts = (checks.data||[]).map(c=> `<option value="${c.id}" ${c.id===data.check_type_id?'selected':''}>${escapeHtml(c.name)}</option>`).join('');
+      $('#modal').classList.add('show');
+      $('#modal-title').textContent = 'Edit Schedule';
+      $('#modal-body').innerHTML = `
+        <div class="grid cols-2">
+          <div class="field"><label>Item</label><select id="f-item" class="select">${itemOpts}</select></div>
+          <div class="field"><label>Check type</label><select id="f-ct" class="select">${checkOpts}</select></div>
+          <div class="field"><label>Frequency</label><input id="f-freq" class="input" value="${escapeHtml(String(data.frequency||''))}"/></div>
+          <div class="field"><label>Warn before</label><input id="f-warn" class="input" value="${escapeHtml(String(data.warn_before||''))}"/></div>
+          <div class="field"><label>Required</label>
+            <select id="f-req" class="select">
+              <option value="true" ${data.required?'selected':''}>Yes</option>
+              <option value="false" ${!data.required?'selected':''}>No</option>
+            </select>
+          </div>
+          <div class="field"><label>Scheduled day</label><input id="f-day" class="input" value="${escapeHtml(data.scheduled_day||'')}"/></div>
+          <div class="field"><label>Active</label>
+            <select id="f-active" class="select">
+              <option value="true" ${data.active?'selected':''}>Active</option>
+              <option value="false" ${!data.active?'selected':''}>Inactive</option>
+            </select>
+          </div>
+        </div>`;
+      $('#modal-okay').onclick = async () => {
+        const payload = {
+          item_id: Number($('#f-item').value),
+          check_type_id: Number($('#f-ct').value),
+          frequency: $('#f-freq').value.trim(),
+          warn_before: $('#f-warn').value.trim(),
+          required: $('#f-req').value === 'true',
+          scheduled_day: $('#f-day').value.trim() || null,
+          active: $('#f-active').value === 'true',
+        };
+        const { error:err2 } = await state.supa.from('item_allowed_types').update(payload).eq('id', id).eq('site_id', state.siteId);
+        if(err2) return toast(err2.message,'error');
+        closeModal(); toast('Schedule updated'); loadSchedules();
+      };
+      $('#modal-cancel').onclick = closeModal;
+    }
+    async function deleteSchedule(id){
+      if(!confirm('Delete this schedule?')) return;
+      const { error } = await state.supa.from('item_allowed_types').delete().eq('id', id).eq('site_id', state.siteId);
+      if(error) return toast(error.message,'error');
+      toast('Schedule deleted'); loadSchedules();
+    }
+
+    // ------------------------
+    // Staff (kiosk users)
+    // ------------------------
+    async function loadStaff(){
+      if(!state.supa || !state.siteId) return;
+      const wrap = $('#staff-list');
+      wrap.innerHTML = '<div class="skeleton" style="height:160px"></div>';
+      const { data, error } = await state.supa.from('kiosk_users').select('id,full_name,role,active,team_name,created_at').eq('site_id', state.siteId).order('full_name');
+      if(error){ wrap.innerHTML = '<div class="sub">Error loading staff</div>'; return; }
+      const rows = data.map(s=> `
+        <tr>
+          <td>${s.full_name}</td>
+          <td class="muted">${s.role || ''}</td>
+          <td class="muted">${s.team_name || ''}</td>
+          <td>${s.active ? '<span class="badge ok">Active</span>' : '<span class="badge">Inactive</span>'}</td>
+          <td>${new Date(s.created_at).toLocaleDateString()}</td>
+          <td class="row">
+            <button class="btn" onclick="editStaff(${s.id})">Edit</button>
+            <button class="btn destructive" onclick="deleteStaff(${s.id})">Delete</button>
+          </td>
+        </tr>`).join('');
+      wrap.innerHTML = `
+        <div class="table-wrap"><table>
+          <thead><tr><th>Name</th><th>Role</th><th>Team</th><th>Status</th><th>Added</th><th></th></tr></thead>
+          <tbody>${rows || ''}</tbody>
+        </table></div>`;
+    }
+    async function addStaff(){
+      $('#modal').classList.add('show');
+      $('#modal-title').textContent = 'Add Staff';
+      $('#modal-body').innerHTML = `
+        <div class="grid cols-2">
+          <div class="field"><label>Full name</label><input id="f-name" class="input"/></div>
+          <div class="field"><label>Role (e.g. Nurse, GP)</label><input id="f-role" class="input"/></div>
+          <div class="field"><label>Team (optional)</label><input id="f-team" class="input"/></div>
+        </div>`;
+      $('#modal-okay').onclick = async () => {
+        const full_name = $('#f-name').value.trim(); const role = $('#f-role').value.trim() || 'staff'; const team_name = $('#f-team').value.trim() || null;
+        if(!full_name) return toast('Name required','error');
+        const { error } = await state.supa.from('kiosk_users').insert({ site_id: state.siteId, full_name, role, team_name, active:true });
+        if(error) return toast(error.message,'error');
+        closeModal(); toast('Staff added'); loadStaff();
+      };
+      $('#modal-cancel').onclick = closeModal;
+    }
+    async function editStaff(id){
+      const { data, error } = await state.supa.from('kiosk_users').select('*').eq('id', id).maybeSingle();
+      if(error || !data) return toast('Cannot load staff','error');
+      $('#modal').classList.add('show');
+      $('#modal-title').textContent = 'Edit Staff';
+      $('#modal-body').innerHTML = `
+        <div class="grid cols-2">
+          <div class="field"><label>Full name</label><input id="f-name" class="input" value="${escapeHtml(data.full_name)}"/></div>
+          <div class="field"><label>Role</label><input id="f-role" class="input" value="${escapeHtml(data.role||'')}"/></div>
+          <div class="field"><label>Team</label><input id="f-team" class="input" value="${escapeHtml(data.team_name||'')}"/></div>
+          <div class="field"><label>Active</label>
+            <select id="f-active" class="select">
+              <option value="true" ${data.active?'selected':''}>Active</option>
+              <option value="false" ${!data.active?'selected':''}>Inactive</option>
+            </select>
+          </div>
+        </div>`;
+      $('#modal-okay').onclick = async () => {
+        const payload = { full_name: $('#f-name').value.trim(), role: $('#f-role').value.trim(), team_name: $('#f-team').value.trim()||null, active: $('#f-active').value==='true' };
+        const { error:err2 } = await state.supa.from('kiosk_users').update(payload).eq('id', id).eq('site_id', state.siteId);
+        if(err2) return toast(err2.message,'error');
+        closeModal(); toast('Staff updated'); loadStaff();
+      };
+      $('#modal-cancel').onclick = closeModal;
+    }
+    async function deleteStaff(id){
+      if(!confirm('Delete this staff member?')) return;
+      const { error } = await state.supa.from('kiosk_users').delete().eq('id', id).eq('site_id', state.siteId);
+      if(error) return toast(error.message,'error');
+      toast('Staff deleted'); loadStaff();
+    }
+
+    // ------------------------
+    // Invites (admin)
+    // ------------------------
+    async function loadInvites(){
+      if(!state.supa || !state.siteId) return;
+      const wrap = $('#invites-list');
+      wrap.innerHTML = '<div class="skeleton" style="height:140px"></div>';
+      const { data, error } = await state.supa.from('site_invites').select('id,email,role,status,created_at,expires_at').eq('site_id', state.siteId).order('created_at',{ascending:false});
+      if(error){ wrap.innerHTML = '<div class="sub">Error loading invites</div>'; return; }
+      const rows = data.map(v=> `
+        <tr>
+          <td>${v.email}</td>
+          <td>${v.role}</td>
+          <td>${v.status}</td>
+          <td>${new Date(v.created_at).toLocaleString()}</td>
+          <td>${new Date(v.expires_at).toLocaleDateString()}</td>
+          <td class="row">
+            <button class="btn destructive" onclick="deleteInvite(${v.id})">Delete</button>
+          </td>
+        </tr>`).join('');
+      wrap.innerHTML = `<div class="table-wrap"><table>
+        <thead><tr><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th>Expires</th><th></th></tr></thead>
+        <tbody>${rows||''}</tbody></table></div>`;
+    }
+    async function addInvite(){
+      $('#modal').classList.add('show');
+      $('#modal-title').textContent = 'Invite Admin';
+      $('#modal-body').innerHTML = `
+        <div class="grid cols-2">
+          <div class="field"><label>Email</label><input id="f-email" class="input" placeholder="name@example.com"/></div>
+          <div class="field"><label>Role</label>
+            <select id="f-role" class="select">
+              <option value="admin">Admin</option>
+              <option value="owner">Owner (super)</option>
+            </select>
+          </div>
+          <div class="field"><label>Full name (optional)</label><input id="f-full" class="input"/></div>
+        </div>`;
+      $('#modal-okay').onclick = async () => {
+        const email = $('#f-email').value.trim(); const role = $('#f-role').value; const full_name = $('#f-full').value.trim() || null;
+        if(!email) return toast('Email required','error');
+        const { error } = await state.supa.from('site_invites').insert({ site_id: state.siteId, email, role, full_name });
+        if(error) return toast(error.message,'error');
+        closeModal(); toast('Invite added'); loadInvites();
+      };
+      $('#modal-cancel').onclick = closeModal;
+    }
+    async function deleteInvite(id){
+      if(!confirm('Delete this invite?')) return;
+      const { error } = await state.supa.from('site_invites').delete().eq('id', id).eq('site_id', state.siteId);
+      if(error) return toast(error.message,'error');
+      toast('Invite deleted'); loadInvites();
+    }
+
+    // ------------------------
+    // Modal helpers
+    // ------------------------
+    function closeModal(){ $('#modal').classList.remove('show'); }
+    window.closeModal = closeModal;
+
+    // ------------------------
+    // Small helpers
+    // ------------------------
+    function escapeHtml(s=''){ return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'); }
+    function unescapeHtml(s=''){ return s.replaceAll('&lt;','<').replaceAll('&gt;','>').replaceAll('&quot;','"').replaceAll('&amp;','&'); }
+
+    // Expose actions globally for inline handlers
+    window.navigate = navigate;
+    window.initSupabase = initSupabase;
+    window.signIn = signIn;
+    window.signOut = signOut;
+    window.addRoom = addRoom;
+    window.editRoom = editRoom;
+    window.deleteRoom = deleteRoom;
+    window.addItem = addItem;
+    window.editItem = editItem;
+    window.deleteItem = deleteItem;
+    window.addCheckType = addCheckType;
+    window.editCheckType = editCheckType;
+    window.deleteCheckType = deleteCheckType;
+    window.addSchedule = addSchedule;
+    window.editSchedule = editSchedule;
+    window.deleteSchedule = deleteSchedule;
+    window.addStaff = addStaff;
+    window.editStaff = editStaff;
+    window.deleteStaff = deleteStaff;
+    window.addInvite = addInvite;
+    window.deleteInvite = deleteInvite;
+
+    // On first load, set stored config
+    window.addEventListener('DOMContentLoaded', () => {
+      $('#cfg-url').value = storage.url;
+      $('#cfg-key').value = storage.key;
+      if(storage.url && storage.key){
+        // auto-init, but don't auto-sign in
+        state.supa = createClient(storage.url, storage.key);
+        bindAuth();
+        checkSession();
+      }
+      // default page
+      navigate('dashboard');
+    });
+  </script>
+</head>
+<body>
+  <div class="bg-blobs" aria-hidden="true">
+    <div class="blob"></div>
+    <div class="blob"></div>
+    <div class="blob"></div>
+  </div>
+
+  <div class="app">
+    <!-- Sidebar -->
+    <nav>
+      <div class="brand">
+        <div class="traffic" aria-hidden="true">
+          <div class="dot red"></div>
+          <div class="dot amber"></div>
+          <div class="dot green"></div>
+        </div>
+        <div>
+          <div class="brand-title">CheckLoop</div>
+          <div class="brand-sub">GP surgery checks</div>
+        </div>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-label">Main</div>
+        <a class="nav-item active" data-page="dashboard" onclick="navigate('dashboard')">
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 3l9 9h-3v9H6v-9H3z"/></svg>
+          <span>Dashboard</span>
+        </a>
+        <a class="nav-item" data-page="rooms" onclick="navigate('rooms')">
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 6h16v12H4zM2 8l10-6l10 6"/></svg>
+          <span>Rooms</span>
+        </a>
+        <a class="nav-item" data-page="items" onclick="navigate('items')">
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M7 5h10v2H7zm-2 4h14v10H5z"/></svg>
+          <span>Items</span>
+        </a>
+        <a class="nav-item" data-page="checks" onclick="navigate('checks')">
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M9 16.2l-3.5-3.5l1.4-1.4L9 13.4l7.1-7.1l1.4 1.41z"/></svg>
+          <span>Check Types</span>
+        </a>
+        <a class="nav-item" data-page="schedules" onclick="navigate('schedules')">
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M7 3h2v2h6V3h2v2h4v16H3V5h4zM5 7v2h14V7z"/></svg>
+          <span>Schedules</span>
+        </a>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-label">People</div>
+        <a class="nav-item" data-page="staff" onclick="navigate('staff')">
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 12a5 5 0 1 0-5-5a5 5 0 0 0 5 5m-7 8a7 7 0 0 1 14 0z"/></svg>
+          <span>Staff (iPad)</span>
+        </a>
+        <a class="nav-item" data-page="invites" onclick="navigate('invites')">
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 12a5 5 0 0 0 4.2-2.2L22 15v4h-4l-5.2-5.8A5 5 0 0 0 12 12"/></svg>
+          <span>Admin Invites</span>
+        </a>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-label">System</div>
+        <a class="nav-item" data-page="settings" onclick="navigate('settings')">
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 8a4 4 0 1 1 0 8a4 4 0 0 1 0-8m0-6l2 4l4 1l-3 3l1 4l-4-2l-4 2l1-4L6 7l4-1z"/></svg>
+          <span>Settings</span>
+        </a>
+      </div>
+
+      <div class="spacer"></div>
+      <div class="footer-note">v2 — polished blue theme</div>
+    </nav>
+
+    <!-- Main -->
+    <main>
+      <header class="appbar">
+        <div class="row">
+          <div id="site-pill" class="site-pill"></div>
+          <div class="chip"><span class="muted">User</span> <strong id="whoami">Not signed in</strong></div>
+        </div>
+        <div class="actions">
+          <button class="btn" onclick="document.querySelector('#config-card').scrollIntoView({behavior:'smooth'})">Config</button>
+          <button class="btn" onclick="navigate('settings')">Settings</button>
+          <button class="btn primary" onclick="signOut()">Sign out</button>
+        </div>
+      </header>
+
+      <div class="content">
+        <!-- Auth panel -->
+        <div id="auth-panel" class="card">
+          <div class="card-header"><div>
+            <div class="h1 gradient-text">Welcome to CheckLoop Admin</div>
+            <div class="sub">Sign in to your Supabase-backed CheckLoop workspace.</div>
+          </div></div>
+          <div class="grid cols-3">
+            <div class="card">
+              <div class="h2">1) Supabase connection</div>
+              <div class="sub">Paste your Project URL and anon key (saved locally).</div>
+              <div class="grid cols-2" style="margin-top:8px">
+                <div class="field"><label>Project URL</label><input id="cfg-url" class="input" placeholder="https://xyzcompany.supabase.co"/></div>
+                <div class="field"><label>Anon key</label><input id="cfg-key" class="input" placeholder="eyJhbGciOi..."/></div>
+              </div>
+              <div class="row" style="margin-top:10px"><button class="btn primary" onclick="initSupabase()">Save & Connect</button></div>
+            </div>
+            <div class="card">
+              <div class="h2">2) Sign in</div>
+              <div class="grid cols-2" style="margin-top:8px">
+                <div class="field"><label>Email</label><input id="email" class="input" placeholder="you@clinic.nhs.uk"/></div>
+                <div class="field"><label>Password</label><input id="password" class="input" type="password" placeholder="••••••••"/></div>
+              </div>
+              <div class="row" style="margin-top:10px"><button class="btn primary" onclick="signIn(event)">Sign in</button></div>
+            </div>
+            <div class="card">
+              <div class="h2">Notes</div>
+              <ul class="sub">
+                <li>Only <strong>Owner</strong> (super user) and <strong>Admin</strong> users can access this site.</li>
+                <li>iPad staff use the kiosk app; they don’t log into this site.</li>
+                <li>You can manage <em>rooms, items, check types, schedules, staff</em>, and <em>invites</em>.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- Authenticated UI -->
+        <div id="authed-ui" style="display:none">
+          <!-- Dashboard -->
+          <section id="page-dashboard" class="page active">
+            <div class="card-header"><div class="h1">Dashboard</div><div class="sub">Overview at a glance</div></div>
+            <div id="dash-summary"></div>
+          </section>
+
+          <!-- Rooms -->
+          <section id="page-rooms" class="page">
+            <div class="card-header">
+              <div>
+                <div class="h1">Rooms</div>
+                <div class="sub">Manage clinical rooms and spaces</div>
+              </div>
+              <div class="row"><button class="btn primary" onclick="addRoom()">Add room</button></div>
+            </div>
+            <div id="rooms-list"></div>
+          </section>
+
+          <!-- Items -->
+          <section id="page-items" class="page">
+            <div class="card-header">
+              <div>
+                <div class="h1">Items</div>
+                <div class="sub">Assets to be checked</div>
+              </div>
+              <div class="row"><button class="btn primary" onclick="addItem()">Add item</button></div>
+            </div>
+            <div id="items-list"></div>
+          </section>
+
+          <!-- Check Types -->
+          <section id="page-checks" class="page">
+            <div class="card-header">
+              <div>
+                <div class="h1">Check Types</div>
+                <div class="sub">What staff record on the iPad</div>
+              </div>
+              <div class="row"><button class="btn primary" onclick="addCheckType()">Add check type</button></div>
+            </div>
+            <div id="checks-list"></div>
+          </section>
+
+          <!-- Schedules -->
+          <section id="page-schedules" class="page">
+            <div class="card-header">
+              <div>
+                <div class="h1">Schedules</div>
+                <div class="sub">Which checks apply to which items, and how often</div>
+              </div>
+              <div class="row"><button class="btn primary" onclick="addSchedule()">Add schedule</button></div>
+            </div>
+            <div id="schedules-list"></div>
+          </section>
+
+          <!-- Staff -->
+          <section id="page-staff" class="page">
+            <div class="card-header">
+              <div>
+                <div class="h1">Staff (Kiosk)</div>
+                <div class="sub">People who perform checks on the iPad</div>
+              </div>
+              <div class="row"><button class="btn primary" onclick="addStaff()">Add staff</button></div>
+            </div>
+            <div id="staff-list"></div>
+          </section>
+
+          <!-- Invites -->
+          <section id="page-invites" class="page">
+            <div class="card-header">
+              <div>
+                <div class="h1">Admin Invites</div>
+                <div class="sub">Invite admins to help manage CheckLoop</div>
+              </div>
+              <div class="row"><button class="btn primary" onclick="addInvite()">Invite admin</button></div>
+            </div>
+            <div id="invites-list"></div>
+          </section>
+
+          <!-- Settings -->
+          <section id="page-settings" class="page">
+            <div class="card-header"><div>
+              <div class="h1">Settings</div>
+              <div class="sub">Project connection</div>
+            </div></div>
+            <div id="config-card" class="card">
+              <div class="grid cols-2">
+                <div class="field"><label>Project URL</label><input id="cfg-url" class="input" placeholder="https://xyzcompany.supabase.co"/></div>
+                <div class="field"><label>Anon key</label><input id="cfg-key" class="input" placeholder="eyJhbGciOi..."/></div>
+              </div>
+              <div class="row" style="margin-top:10px"><button class="btn primary" onclick="initSupabase()">Save & Reconnect</button></div>
+              <div class="sub" style="margin-top:8px">Saved in your browser. Switching environments? Paste new values and reconnect.</div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal -->
+  <div id="modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="h2" id="modal-title">Modal</div>
+        <div class="row">
+          <button id="modal-cancel" class="btn">Cancel</button>
+          <button id="modal-okay" class="btn primary">Save</button>
+        </div>
+      </div>
+      <div id="modal-body" class="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast">Saved</div>
+</body>
+</html>

@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CheckLoop — Admin</title>
+  <meta name="color-scheme" content="light dark">
+  <style>
+    :root{
+      --bg1: #0b2a5a;
+      --bg2: #0f3a7a;
+      --bg3: #1b6ad9;
+      --glass: rgba(255,255,255,0.08);
+      --glass-strong: rgba(255,255,255,0.14);
+      --card: rgba(255,255,255,0.10);
+      --ink: #0a0f1e;
+      --ink-on: #eef6ff;
+      --accent: #87b7ff;
+      --ok: #2ecc71;
+      --warn: #f1c40f;
+      --bad: #e74c3c;
+      --muted: #b3c6e6;
+      --shadow: 0 10px 30px rgba(0,0,0,.25);
+      --radius: 20px;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji";
+      color: var(--ink-on);
+      overflow-x:hidden;
+      background: radial-gradient(1200px 800px at 10% 10%, rgba(135,183,255,.2), transparent 60%),
+                  radial-gradient(1000px 700px at 80% 20%, rgba(27,106,217,.18), transparent 60%),
+                  radial-gradient(900px 600px at 50% 90%, rgba(11,42,90,.35), transparent 60%),
+                  linear-gradient(160deg, var(--bg1), var(--bg2) 50%, var(--bg3));
+    }
+    /* Silky, wavy, always-moving animated background */
+    .waves{
+      position: fixed;
+      inset: -20vh -20vw;
+      z-index: -1;
+      filter: blur(30px) saturate(120%);
+      opacity:.85;
+      pointer-events: none;
+    }
+    .blob{
+      position:absolute;
+      width: 80vmax;
+      height: 80vmax;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, rgba(135,183,255,.35), rgba(135,183,255,.05) 60%) ;
+      mix-blend-mode: screen;
+      animation: float 24s ease-in-out infinite alternate;
+    }
+    .blob.b2{ left: 40%; top: -10%; animation-duration: 28s; background: radial-gradient(circle at 60% 40%, rgba(27,106,217,.35), rgba(27,106,217,.06) 60%);}
+    .blob.b3{ left: -10%; top: 45%; animation-duration: 32s; background: radial-gradient(circle at 40% 60%, rgba(11,42,90,.4), rgba(11,42,90,.08) 60%);}
+    @keyframes float{
+      0%   { transform: translate3d(0,0,0) scale(1); }
+      50%  { transform: translate3d(-6%, 4%, 0) scale(1.08); }
+      100% { transform: translate3d(6%,-6%,0) scale(1.15); }
+    }
+
+    .noise{
+      position: fixed; inset:0; z-index:-1; pointer-events:none; opacity:.06; mix-blend-mode: overlay;
+      background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="140" height="140" viewBox="0 0 140 140"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="2" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(%23n)"/></svg>');
+      background-size: 300px 300px;
+      animation: grain 1.6s steps(2) infinite;
+    }
+    @keyframes grain { 0%{transform:translate(0)} 100%{transform:translate(-5px,5px)} }
+
+    header.appbar{
+      position: sticky; top: 0;
+      display:flex; align-items:center; gap:12px;
+      padding: 14px 20px; backdrop-filter: saturate(140%) blur(14px);
+      background: linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.06));
+      border-bottom: 1px solid rgba(255,255,255,.12);
+      box-shadow: var(--shadow);
+      z-index: 20;
+    }
+    .logo{
+      display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:.2px;
+    }
+    .logo-badge{
+      width:36px;height:36px;border-radius:12px;
+      background: linear-gradient(160deg, #7bb3ff, #3a7fe7 60%, #0b2a5a);
+      box-shadow: inset 0 10px 20px rgba(255,255,255,.25), inset 0 -12px 20px rgba(0,0,0,.25), 0 8px 20px rgba(59,113,202,.45);
+    }
+    .spacer{ flex:1 }
+    .top-actions{ display:flex; gap:10px; align-items:center; }
+    .btn, button, input[type="submit"]{
+      background: linear-gradient(180deg, rgba(255,255,255,.18), rgba(255,255,255,.08));
+      border: 1px solid rgba(255,255,255,.22);
+      color: var(--ink-on);
+      padding: 10px 14px; border-radius: 12px; cursor: pointer;
+      transition: .2s ease; box-shadow: 0 6px 16px rgba(0,0,0,.18);
+      font-weight:600;
+    }
+    .btn:hover{ transform: translateY(-1px); background: linear-gradient(180deg, rgba(255,255,255,.25), rgba(255,255,255,.12));}
+    .btn:active{ transform: translateY(0); }
+    .btn.ghost{ background: transparent; border-color: rgba(255,255,255,.16); }
+    .btn.danger{ border-color: rgba(231,76,60,.55); background: rgba(231,76,60,.15);}
+    .btn.primary{ background: linear-gradient(180deg, #5ea1ff, #3f82e6); border-color:#3f82e6; color:white; }
+    .btn.primary:hover{ filter: brightness(1.05); }
+
+    .layout{ display:grid; grid-template-columns: 270px 1fr; min-height: calc(100vh - 70px); }
+    nav.sidenav{
+      position: sticky; top: 70px; align-self:start;
+      display:flex; flex-direction:column; gap:8px; padding:18px; 
+      backdrop-filter: blur(16px) saturate(160%);
+      background: linear-gradient(160deg, rgba(0,0,0,.25), rgba(255,255,255,.08));
+      border-right: 1px solid rgba(255,255,255,.12);
+    }
+    .nav-item{
+      display:flex; align-items:center; gap:10px;
+      padding: 12px 12px; border-radius: 12px;
+      background: transparent; border: 1px solid transparent;
+      cursor:pointer; transition:.2s; font-weight:600; color: var(--muted);
+    }
+    .nav-item.active, .nav-item:hover{
+      color:white;
+      border-color: rgba(255,255,255,.16);
+      background: rgba(255,255,255,.08);
+      transform: translateX(2px);
+    }
+    main{ padding: 22px; }
+    .page{ display:none; animation: fade .25s ease; }
+    .page.active{ display:block; }
+    @keyframes fade{ from{opacity:0; transform: translateY(4px)} to{opacity:1; transform: none} }
+
+    .card{
+      background: linear-gradient(160deg, rgba(255,255,255,.14), rgba(255,255,255,.07));
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow);
+    }
+    .grid{ display:grid; gap:16px; }
+    .grid.cols-2{ grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .grid.cols-3{ grid-template-columns: repeat(3, minmax(0,1fr)); }
+    .grid.cols-4{ grid-template-columns: repeat(4, minmax(0,1fr)); }
+    @media (max-width: 1100px){ .layout{ grid-template-columns: 1fr } nav.sidenav{ position:static; top:auto; } .grid.cols-3,.grid.cols-4{ grid-template-columns:1fr 1fr } }
+    @media (max-width: 700px){ .grid.cols-2,.grid.cols-3,.grid.cols-4{ grid-template-columns:1fr } }
+
+    table{ width:100%; border-collapse: collapse; }
+    th, td{ padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.14); vertical-align: middle; }
+    th{ text-align:left; font-size:.9rem; color: var(--muted); font-weight:700; }
+    tr:hover td{ background: rgba(255,255,255,.05); }
+    input, select, textarea{
+      width: 100%; padding: 10px 12px; border-radius: 12px; outline:none;
+      border:1px solid rgba(255,255,255,.22); background: rgba(0,0,0,.25); color: var(--ink-on);
+    }
+    .field{ display:grid; gap:6px; }
+    .row{ display:flex; gap:10px; align-items:center; }
+    .row > *{ flex:1 }
+    .pill{ padding:6px 10px; border-radius: 999px; font-weight:700; font-size:.8rem; border: 1px solid rgba(255,255,255,.2) }
+    .pill.ok{ background: rgba(46,204,113,.15); color: #c9f5df; border-color: rgba(46,204,113,.4) }
+    .pill.warn{ background: rgba(241,196,15,.15); color: #faeaa6; border-color: rgba(241,196,15,.4) }
+    .pill.bad{ background: rgba(231,76,60,.15); color: #ffd1cc; border-color: rgba(231,76,60,.4) }
+
+    .muted{ color: var(--muted); }
+    .tight{ margin:0; }
+    .section-title{ margin: 6px 0 14px; opacity:.9; }
+    .mini{ font-size:.85rem; color: var(--muted) }
+    .tag{ font-size:.75rem; opacity:.85; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2); padding:4px 8px; border-radius: 999px }
+
+    .signin, .banner{ display:flex; gap:16px; align-items:center; justify-content:center; min-height: 55vh; text-align:center; }
+    .hero{
+      font-weight:800; font-size: clamp(28px, 3.2vw, 44px);
+      letter-spacing: .2px; line-height: 1.1; margin: 10px 0;
+      text-shadow: 0 10px 30px rgba(0,0,0,.45);
+    }
+    .sub{ font-size: clamp(14px, 1.5vw, 18px); opacity: .9; }
+
+    .scan-input{ max-width: 420px; }
+    .kbd{
+      padding: 4px 8px; border: 1px solid rgba(255,255,255,.2); border-bottom-width: 3px; border-radius: 8px; background: rgba(0,0,0,.25);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-weight:700;
+    }
+    .strip{ display:flex; gap:10px; align-items:center; flex-wrap:wrap }
+
+    .notice { background: rgba(255,255,255,.08); border: 1px dashed rgba(255,255,255,.25); padding: 10px 12px; border-radius: 12px; }
+    .danger-text{ color: #ffd0d0; font-weight:700 }
+
+    .footer-note{ text-align:center; padding: 14px; color: var(--muted); }
+
+  </style>
+</head>
+<body>
+  <div class="waves">
+    <div class="blob b1"></div>
+    <div class="blob b2"></div>
+    <div class="blob b3"></div>
+  </div>
+  <div class="noise"></div>
+
+  <header class="appbar">
+    <div class="logo">
+      <div class="logo-badge"></div>
+      <div>CheckLoop</div>
+    </div>
+    <div class="spacer"></div>
+    <div class="top-actions">
+      <input id="global-scan" class="scan-input" placeholder="Scan or type an item code... (press Enter)" />
+      <button class="btn ghost" id="btn-kiosk-mode" title="Open kiosk mode">Kiosk</button>
+      <span id="whoami" class="tag">Signed out</span>
+      <button class="btn" id="btn-signin">Sign In</button>
+      <button class="btn ghost" id="btn-signout" style="display:none">Sign Out</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="sidenav">
+      <div class="nav-item active" data-page="dashboard">🏠 Dashboard</div>
+      <div class="nav-item" data-page="items">📦 Items</div>
+      <div class="nav-item" data-page="rooms">🚪 Rooms</div>
+      <div class="nav-item" data-page="checks">✅ Check Types</div>
+      <div class="nav-item" data-page="schedules">🗓️ Schedules</div>
+      <div class="nav-item" data-page="staff">👥 Staff (Kiosk)</div>
+      <div class="nav-item" data-page="submissions">🧾 Submissions</div>
+      <div class="nav-item" data-page="settings">⚙️ Settings</div>
+    </nav>
+
+    <main>
+      <!-- Dashboard -->
+      <section class="page active" id="page-dashboard">
+        <div class="banner card">
+          <div style="max-width:800px">
+            <div class="tag">Admin Console</div>
+            <h1 class="hero">Simple, fast, and clean.<br/> A calmer CheckLoop for GP surgeries.</h1>
+            <p class="sub">Set up your site, rooms, items, schedules and staff in minutes. Staff use the iPad in Kiosk mode to scan items and log checks.</p>
+            <div class="strip">
+              <button class="btn primary" data-goto="items">Add Item</button>
+              <button class="btn" data-goto="checks">Add Check Type</button>
+              <span class="mini">Tip: press <span class="kbd">/</span> then scan or type an item code.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid cols-3" style="margin-top:16px">
+          <div class="card">
+            <h3 class="section-title tight">Status at a glance</h3>
+            <div id="summary-chips" class="strip"></div>
+          </div>
+          <div class="card">
+            <h3 class="section-title tight">Due / Overdue (next 7 days)</h3>
+            <div id="due-list" class="grid" style="gap:8px"></div>
+          </div>
+          <div class="card">
+            <h3 class="section-title tight">Recent Activity</h3>
+            <div id="recent-activity"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Items -->
+      <section class="page" id="page-items">
+        <div class="grid cols-2">
+          <div class="card">
+            <h3 class="section-title">Items</h3>
+            <div class="row">
+              <input id="item-search" placeholder="Search items…" />
+              <button class="btn" id="btn-item-refresh">Refresh</button>
+            </div>
+            <div style="overflow:auto; max-height: 58vh; margin-top:10px">
+              <table>
+                <thead>
+                  <tr><th>Code</th><th>Name</th><th>Room</th><th>Active</th><th></th></tr>
+                </thead>
+                <tbody id="items-table"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <h3 class="section-title">Add / Edit Item</h3>
+            <div class="grid">
+              <div class="row">
+                <div class="field"><label>Item Code</label><input id="f-item-code"/></div>
+                <div class="field"><label>Name</label><input id="f-item-name"/></div>
+              </div>
+              <div class="row">
+                <div class="field"><label>Room</label><select id="f-item-room"></select></div>
+                <div class="field"><label>Category</label><input id="f-item-category" placeholder="general"/></div>
+              </div>
+              <div class="row">
+                <div class="field"><label>Active</label><select id="f-item-active"><option value="true">true</option><option value="false">false</option></select></div>
+                <div class="field"><label>Default Check Type</label><select id="f-item-default-check"></select></div>
+              </div>
+              <div class="strip">
+                <button class="btn primary" id="btn-item-save">Save</button>
+                <button class="btn ghost" id="btn-item-clear">Clear</button>
+                <button class="btn danger" id="btn-item-delete" title="Delete selected item">Delete</button>
+                <span class="mini" id="item-form-status"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Rooms -->
+      <section class="page" id="page-rooms">
+        <div class="grid cols-2">
+          <div class="card">
+            <h3 class="section-title">Rooms</h3>
+            <div style="overflow:auto; max-height: 58vh">
+              <table>
+                <thead><tr><th>Name</th><th></th></tr></thead>
+                <tbody id="rooms-table"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <h3 class="section-title">Add Room</h3>
+            <div class="grid">
+              <div class="field"><label>Room Name</label><input id="f-room-name"/></div>
+              <div class="strip">
+                <button class="btn primary" id="btn-room-add">Add</button>
+                <span class="mini" id="room-form-status"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Check Types -->
+      <section class="page" id="page-checks">
+        <div class="grid cols-2">
+          <div class="card">
+            <h3 class="section-title">Check Types</h3>
+            <div style="overflow:auto; max-height: 58vh">
+              <table>
+                <thead><tr><th>Name</th><th>Category</th><th>Active</th><th></th></tr></thead>
+                <tbody id="checktypes-table"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <h3 class="section-title">Add / Edit Check Type</h3>
+            <div class="grid">
+              <div class="row">
+                <div class="field"><label>Name</label><input id="f-ct-name"/></div>
+                <div class="field"><label>Category</label><input id="f-ct-category" placeholder="general"/></div>
+              </div>
+              <div class="row">
+                <div class="field"><label>Active</label>
+                  <select id="f-ct-active"><option value="true">true</option><option value="false">false</option></select>
+                </div>
+              </div>
+              <div class="strip">
+                <button class="btn primary" id="btn-ct-save">Save</button>
+                <button class="btn ghost" id="btn-ct-clear">Clear</button>
+                <button class="btn danger" id="btn-ct-delete">Delete</button>
+                <span class="mini" id="ct-form-status"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Schedules -->
+      <section class="page" id="page-schedules">
+        <div class="grid cols-2">
+          <div class="card">
+            <h3 class="section-title">Schedules (Item → Check Type)</h3>
+            <div style="overflow:auto; max-height: 58vh">
+              <table>
+                <thead><tr><th>Item</th><th>Check</th><th>Frequency</th><th>Warn Before</th><th>Required</th><th>Active</th><th>Day</th><th></th></tr></thead>
+                <tbody id="schedules-table"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <h3 class="section-title">Add / Edit Schedule</h3>
+            <div class="grid">
+              <div class="row">
+                <div class="field"><label>Item</label><select id="f-sch-item"></select></div>
+                <div class="field"><label>Check Type</label><select id="f-sch-ct"></select></div>
+              </div>
+              <div class="row">
+                <div class="field"><label>Frequency</label><input id="f-sch-frequency" placeholder="e.g. 7 days"/></div>
+                <div class="field"><label>Warn Before</label><input id="f-sch-warn" placeholder="e.g. 3 days"/></div>
+              </div>
+              <div class="row">
+                <div class="field"><label>Required</label><select id="f-sch-required"><option value="true">true</option><option value="false">false</option></select></div>
+                <div class="field"><label>Active</label><select id="f-sch-active"><option value="true">true</option><option value="false">false</option></select></div>
+              </div>
+              <div class="row">
+                <div class="field"><label>Scheduled Day (optional)</label><input id="f-sch-day" placeholder="Mon/Tue..."/></div>
+                <div class="field"><label>Responsible Team (id)</label><input id="f-sch-team"/></div>
+              </div>
+              <div class="strip">
+                <button class="btn primary" id="btn-sch-save">Save</button>
+                <button class="btn ghost" id="btn-sch-clear">Clear</button>
+                <button class="btn danger" id="btn-sch-delete">Delete</button>
+                <span class="mini" id="sch-form-status"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Staff -->
+      <section class="page" id="page-staff">
+        <div class="grid cols-2">
+          <div class="card">
+            <h3 class="section-title">Kiosk Staff</h3>
+            <div style="overflow:auto; max-height: 58vh">
+              <table>
+                <thead><tr><th>Name</th><th>Role</th><th>Active</th><th></th></tr></thead>
+                <tbody id="staff-table"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <h3 class="section-title">Add Staff</h3>
+            <div class="grid">
+              <div class="row">
+                <div class="field"><label>Full Name</label><input id="f-staff-name"/></div>
+                <div class="field"><label>Role</label><input id="f-staff-role" placeholder="Nurse / GP / Reception"/></div>
+              </div>
+              <div class="row">
+                <div class="field"><label>Active</label><select id="f-staff-active"><option value="true">true</option><option value="false">false</option></select></div>
+              </div>
+              <div class="strip">
+                <button class="btn primary" id="btn-staff-save">Save</button>
+                <button class="btn ghost" id="btn-staff-clear">Clear</button>
+                <button class="btn danger" id="btn-staff-delete">Delete</button>
+                <span class="mini" id="staff-form-status"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Submissions -->
+      <section class="page" id="page-submissions">
+        <div class="grid cols-2">
+          <div class="card">
+            <h3 class="section-title">Recent Submissions</h3>
+            <div style="overflow:auto; max-height: 58vh">
+              <table>
+                <thead><tr><th>Time</th><th>Staff</th><th>Session</th><th>Comment</th></tr></thead>
+                <tbody id="subs-table"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <h3 class="section-title">Details</h3>
+            <div style="overflow:auto; max-height: 58vh">
+              <table>
+                <thead><tr><th>Item</th><th>Room</th><th>Check</th><th>Value</th></tr></thead>
+                <tbody id="subdetail-table"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Settings -->
+      <section class="page" id="page-settings">
+        <div class="card">
+          <h3 class="section-title">Supabase Connection</h3>
+          <div class="grid">
+            <div class="row">
+              <div class="field"><label>URL</label><input id="sb-url"/></div>
+              <div class="field"><label>Anon Key</label><input id="sb-key"/></div>
+            </div>
+            <div class="notice">
+              <strong>Security note:</strong> <span class="danger-text">Never embed the service_role key in client-side apps.</span> It's powerful and bypasses RLS. This app uses your <em>anon</em> key only.
+            </div>
+            <div class="strip">
+              <button class="btn primary" id="btn-save-conn">Save & Reconnect</button>
+              <span class="mini">Reload after saving if things look odd.</span>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <h3 class="section-title">About roles</h3>
+          <p class="mini">CheckLoop keeps it simple: <strong>Superuser</strong> (the person who signs up), can invite <strong>Admins</strong>. Staff don’t use this admin site — they appear as <strong>Kiosk Staff</strong> and use the iPad to create a PIN and scan items.</p>
+        </div>
+      </section>
+
+      <!-- Kiosk Mode -->
+      <section class="page" id="page-kiosk">
+        <div class="card">
+          <h3 class="section-title">Kiosk — Staff Check Logging</h3>
+          <div class="grid">
+            <div class="row">
+              <div class="field"><label>Staff</label><select id="kiosk-staff"></select></div>
+              <div class="field"><label>PIN (4–6 digits)</label><input id="kiosk-pin" type="password" inputmode="numeric" maxlength="6"/></div>
+            </div>
+            <div class="strip">
+              <button class="btn primary" id="btn-kiosk-enter">Enter</button>
+              <span class="mini" id="kiosk-status"></span>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <div class="row">
+            <div class="field"><label>Scan Item Code</label><input id="kiosk-scan" placeholder="Focus here and scan..." /></div>
+            <div class="field"><label>Check Type</label><select id="kiosk-ct"></select></div>
+            <div class="field"><label>&nbsp;</label><button class="btn" id="btn-kiosk-log">Log Check</button></div>
+          </div>
+          <div class="mini" id="kiosk-session"></div>
+          <div style="overflow:auto; max-height: 50vh; margin-top:12px">
+            <table>
+              <thead><tr><th>When</th><th>Item</th><th>Check</th><th>Value</th></tr></thead>
+              <tbody id="kiosk-log"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <p class="footer-note mini">© CheckLoop • Built for GP surgeries • Silky blue UI ✨</p>
+    </main>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.6/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bcryptjs@2.4.3/dist/bcrypt.min.js"></script>
+  <script>
+  (function(){
+    // === Hardwired Supabase (anon) ===
+    const DEFAULT_URL = "https://unveoqnlqnobufhublyw.supabase.co";
+    const DEFAULT_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME";
+    // DO NOT embed service_role in a frontend app. Ever.
+    const LS_KEY = "checkloop_conn";
+    const conn = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
+    const sbUrl = conn.url || DEFAULT_URL;
+    const sbKey = conn.key || DEFAULT_ANON;
+    const supabase = window.supabase.createClient(sbUrl, sbKey);
+
+    // === App State ===
+    const state = {
+      user: null,
+      siteId: null,
+      profile: null,
+      selected: { item: null, room: null, checktype: null, schedule: null, staff: null },
+      kiosk: { staff: null, sessionId: null, staffName: null }
+    };
+
+    // === Helpers ===
+    const $ = sel => document.querySelector(sel);
+    const $$ = sel => Array.from(document.querySelectorAll(sel));
+    function toast(el, msg){ el.textContent = msg; setTimeout(()=> el.textContent = "", 3000); }
+    function fmtDate(s){ return new Date(s).toLocaleString(); }
+    function uuid(){ return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)); }
+
+    // === Navigation ===
+    $$(".nav-item").forEach(n => n.addEventListener("click", ()=> goto(n.dataset.page)));
+    $$("[data-goto]").forEach(b => b.addEventListener("click", ()=> goto(b.dataset.goto)));
+    function goto(page){
+      $$(".nav-item").forEach(n => n.classList.toggle("active", n.dataset.page===page));
+      $$(".page").forEach(p => p.classList.toggle("active", p.id === "page-"+page));
+      if(page==="kiosk") initKiosk();
+      if(page==="dashboard") refreshDashboard();
+      if(page==="items") { refreshRoomsDDL(); refreshCheckDDL(); refreshItems(); }
+      if(page==="rooms") refreshRooms();
+      if(page==="checks") refreshCheckTypes();
+      if(page==="schedules") { refreshSchedules(); refreshItemsDDL(); refreshCheckDDL(); }
+      if(page==="staff") refreshStaff();
+      if(page==="submissions") refreshSubmissions();
+      if(page==="settings") { $("#sb-url").value = sbUrl; $("#sb-key").value = sbKey; }
+      history.replaceState(null, "", "#"+page);
+    }
+    if(location.hash){ goto(location.hash.substring(1)); }
+
+    // === Auth ===
+    $("#btn-signin").addEventListener("click", async ()=>{
+      const email = prompt("Email:");
+      const password = prompt("Password:");
+      if(!email || !password) return;
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if(error) return alert(error.message);
+      // handled by listener
+    });
+    $("#btn-signout").addEventListener("click", async ()=>{
+      await supabase.auth.signOut();
+    });
+    $("#btn-save-conn").addEventListener("click", ()=>{
+      localStorage.setItem(LS_KEY, JSON.stringify({ url: $("#sb-url").value.trim(), key: $("#sb-key").value.trim() }));
+      alert("Saved. Reload the page to reconnect.");
+    });
+
+    supabase.auth.onAuthStateChange(async (_evt, session)=>{
+      state.user = session?.user || null;
+      $("#btn-signin").style.display = state.user ? "none":"inline-flex";
+      $("#btn-signout").style.display = state.user ? "inline-flex":"none";
+      $("#whoami").textContent = state.user ? (state.user.email || "Signed in") : "Signed out";
+      if(state.user){
+        await loadMyProfile();
+        refreshAll();
+      }else{
+        state.siteId = null;
+        state.profile = null;
+      }
+    });
+
+    async function loadMyProfile(){
+      // Prefer view v_my_profile if exists; else profiles
+      let siteId = null, role = null;
+      let { data, error } = await supabase.from("v_my_profile").select("*").maybeSingle();
+      if(!error && data){ siteId = data.site_id; role = data.role; }
+      if(!siteId){
+        const { data: p } = await supabase.from("profiles").select("*").eq("user_id", state.user.id).maybeSingle();
+        siteId = p?.site_id || null; role = p?.role || null;
+      }
+      state.siteId = siteId;
+      state.profile = { role };
+    }
+
+    function refreshAll(){
+      refreshDashboard();
+      refreshRoomsDDL(); refreshCheckDDL(); refreshItemsDDL();
+      refreshItems(); refreshRooms(); refreshCheckTypes(); refreshSchedules();
+      refreshStaff(); refreshSubmissions(); initKiosk();
+    }
+
+    // === Dashboard ===
+    async function refreshDashboard(){
+      if(!state.siteId) return;
+      // Summary
+      const { data: summary } = await supabase.from("v_item_check_summary").select("*").eq("site_id", state.siteId);
+      const wrap = $("#summary-chips"); wrap.innerHTML = "";
+      const colors = { OK:"ok", Due:"warn", Overdue:"bad", Missing:"bad" };
+      (summary||[]).forEach(s=>{
+        const d = document.createElement("span");
+        d.className = "pill " + (colors[s.status] || "ok");
+        d.textContent = `${s.status}: ${s.count}`;
+        wrap.appendChild(d);
+      });
+      // Due / Overdue
+      const { data: due } = await supabase.from("v_item_check_status").select("*").eq("site_id", state.siteId).in("status",["Due","Overdue"]).limit(15);
+      const dlist = $("#due-list"); dlist.innerHTML = "";
+      (due||[]).forEach(x=>{
+        const c = document.createElement("div"); c.className = "notice";
+        c.innerHTML = `<strong>${x.item_name}</strong> <span class="mini">in ${x.room_name}</span><br/>
+        <span class="tag">${x.check_type}</span> <span class="mini">next due: ${x.next_due_at ? fmtDate(x.next_due_at):"—"}</span>`;
+        dlist.appendChild(c);
+      });
+      // Recent activity
+      const { data: recent } = await supabase.from("submissions").select("*").eq("site_id", state.siteId).order("submitted_at",{ascending:false}).limit(5);
+      const ra = $("#recent-activity"); ra.innerHTML = "";
+      (recent||[]).forEach(r=>{
+        const div = document.createElement("div"); div.className="mini";
+        div.textContent = `${fmtDate(r.submitted_at)} • ${r.staff_name} • Session ${r.session_id}`;
+        ra.appendChild(div);
+      });
+    }
+
+    // === Items ===
+    async function refreshItems(query=""){
+      if(!state.siteId) return;
+      let req = supabase.from("v_items_admin").select("*").eq("site_id", state.siteId).order("item_name");
+      if(query) req = req.ilike("item_name", `%${query}%`);
+      const { data } = await req;
+      const tbody = $("#items-table"); tbody.innerHTML="";
+      (data||[]).forEach(row=>{
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td><code>${row.item_id}</code></td>
+          <td>${row.item_name||""}</td>
+          <td>${row.room_name||"—"}</td>
+          <td>${row.active? "Yes":"No"}</td>
+          <td><button class="btn ghost btn-mini">Edit</button></td>`;
+        tr.querySelector("button").addEventListener("click", ()=> loadItemToForm(row));
+        tbody.appendChild(tr);
+      });
+    }
+    $("#btn-item-refresh").addEventListener("click", ()=> refreshItems($("#item-search").value.trim()));
+    $("#item-search").addEventListener("input", e => refreshItems(e.target.value.trim()));
+
+    function loadItemToForm(row){
+      state.selected.item = row;
+      $("#f-item-code").value = row.item_id||"";
+      $("#f-item-name").value = row.item_name||"";
+      $("#f-item-category").value = row.category||"general";
+      $("#f-item-active").value = (row.active ? "true":"false");
+      $("#f-item-room").value = row.room_id || "";
+      $("#f-item-default-check").value = row.default_check_type_id || "";
+    }
+    $("#btn-item-clear").addEventListener("click", ()=>{
+      state.selected.item = null;
+      ["#f-item-code","#f-item-name","#f-item-category"].forEach(s=> $(s).value="");
+      $("#f-item-active").value="true"; $("#f-item-room").value=""; $("#f-item-default-check").value="";
+    });
+    $("#btn-item-save").addEventListener("click", async ()=>{
+      const msg = $("#item-form-status");
+      const payload = {
+        site_id: state.siteId,
+        item_id: $("#f-item-code").value.trim(),
+        item_name: $("#f-item-name").value.trim(),
+        room: "Unassigned",
+        room_id: $("#f-item-room").value ? Number($("#f-item-room").value): null,
+        category: $("#f-item-category").value.trim() || "general",
+        active: $("#f-item-active").value === "true",
+        default_check_type_id: $("#f-item-default-check").value ? Number($("#f-item-default-check").value) : null
+      };
+      if(state.selected.item){
+        const { error } = await supabase.from("items").update(payload).eq("id", state.selected.item.id);
+        if(error) return toast(msg, error.message);
+        toast(msg, "Updated");
+      }else{
+        const { error } = await supabase.from("items").insert(payload);
+        if(error) return toast(msg, error.message);
+        toast(msg, "Added");
+      }
+      refreshItems(); refreshItemsDDL();
+    });
+    $("#btn-item-delete").addEventListener("click", async ()=>{
+      if(!state.selected.item) return;
+      if(!confirm("Delete item?")) return;
+      const { error } = await supabase.from("items").delete().eq("id", state.selected.item.id);
+      if(error) return alert(error.message);
+      $("#btn-item-clear").click(); refreshItems(); refreshItemsDDL();
+    });
+
+    // Rooms
+    async function refreshRooms(){
+      if(!state.siteId) return;
+      const { data } = await supabase.from("rooms").select("*").eq("site_id", state.siteId).order("name");
+      const tbody = $("#rooms-table"); tbody.innerHTML = "";
+      (data||[]).forEach(r=>{
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${r.name}</td><td style="text-align:right"><button class="btn ghost">Delete</button></td>`;
+        tr.querySelector("button").addEventListener("click", async()=>{
+          if(!confirm("Delete room?")) return;
+          const { error } = await supabase.from("rooms").delete().eq("id", r.id);
+          if(error) return alert(error.message);
+          refreshRooms(); refreshRoomsDDL();
+        });
+        tbody.appendChild(tr);
+      });
+    }
+    $("#btn-room-add").addEventListener("click", async ()=>{
+      const name = $("#f-room-name").value.trim();
+      if(!name) return;
+      const { error } = await supabase.from("rooms").insert({ name, site_id: state.siteId });
+      if(error) return toast($("#room-form-status"), error.message);
+      $("#f-room-name").value = ""; toast($("#room-form-status"), "Added");
+      refreshRooms(); refreshRoomsDDL();
+    });
+
+    async function refreshRoomsDDL(){
+      if(!state.siteId) return;
+      const { data } = await supabase.from("rooms").select("id,name").eq("site_id", state.siteId).order("name");
+      const sel = $("#f-item-room"); sel.innerHTML = `<option value="">Unassigned</option>`;
+      (data||[]).forEach(r=> sel.innerHTML += `<option value="${r.id}">${r.name}</option>`);
+    }
+    async function refreshItemsDDL(){
+      if(!state.siteId) return;
+      const { data } = await supabase.from("items").select("id,item_name,item_id").eq("site_id", state.siteId).order("item_name");
+      const sel = $("#f-sch-item"); sel.innerHTML = `<option value=""></option>`;
+      (data||[]).forEach(i=> sel.innerHTML += `<option value="${i.id}">${i.item_name} • ${i.item_id}</option>`);
+    }
+
+    // Check Types
+    async function refreshCheckTypes(){
+      if(!state.siteId) return;
+      const { data } = await supabase.from("check_types").select("*").eq("site_id", state.siteId).order("name");
+      const tbody = $("#checktypes-table"); tbody.innerHTML="";
+      (data||[]).forEach(ct=>{
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${ct.name}</td><td>${ct.category}</td><td>${ct.active?"Yes":"No"}</td>
+        <td><button class="btn ghost">Edit</button></td>`;
+        tr.querySelector("button").addEventListener("click", ()=>{
+          state.selected.checktype = ct;
+          $("#f-ct-name").value = ct.name;
+          $("#f-ct-category").value = ct.category;
+          $("#f-ct-active").value = ct.active ? "true":"false";
+        });
+        tbody.appendChild(tr);
+      });
+    }
+    $("#btn-ct-clear").addEventListener("click", ()=>{
+      state.selected.checktype = null;
+      ["#f-ct-name","#f-ct-category"].forEach(s=> $(s).value="");
+      $("#f-ct-active").value = "true";
+    });
+    $("#btn-ct-save").addEventListener("click", async ()=>{
+      const payload = {
+        site_id: state.siteId,
+        name: $("#f-ct-name").value.trim(),
+        category: $("#f-ct-category").value.trim() || "general",
+        active: $("#f-ct-active").value === "true"
+      };
+      if(state.selected.checktype){
+        const { error } = await supabase.from("check_types").update(payload).eq("id", state.selected.checktype.id);
+        if(error) return toast($("#ct-form-status"), error.message);
+        toast($("#ct-form-status"), "Updated");
+      }else{
+        const { error } = await supabase.from("check_types").insert(payload);
+        if(error) return toast($("#ct-form-status"), error.message);
+        toast($("#ct-form-status"), "Added");
+      }
+      refreshCheckTypes(); refreshCheckDDL();
+    });
+    $("#btn-ct-delete").addEventListener("click", async ()=>{
+      if(!state.selected.checktype) return;
+      if(!confirm("Delete check type?")) return;
+      const { error } = await supabase.from("check_types").delete().eq("id", state.selected.checktype.id);
+      if(error) return alert(error.message);
+      $("#btn-ct-clear").click(); refreshCheckTypes(); refreshCheckDDL();
+    });
+    async function refreshCheckDDL(){
+      if(!state.siteId) return;
+      const { data } = await supabase.from("check_types").select("id,name").eq("site_id", state.siteId).order("name");
+      const sel1 = $("#f-item-default-check"); sel1.innerHTML = `<option value=""></option>`;
+      const sel2 = $("#f-sch-ct"); sel2.innerHTML = `<option value=""></option>`;
+      const sel3 = $("#kiosk-ct"); sel3.innerHTML = `<option value=""></option>`;
+      (data||[]).forEach(ct=>{
+        sel1.innerHTML += `<option value="${ct.id}">${ct.name}</option>`;
+        sel2.innerHTML += `<option value="${ct.id}">${ct.name}</option>`;
+        sel3.innerHTML += `<option value="${ct.id}">${ct.name}</option>`;
+      });
+    }
+
+    // Schedules (item_allowed_types)
+    async function refreshSchedules(){
+      if(!state.siteId) return;
+      const { data } = await supabase.from("item_allowed_types").select("*, items:item_id(item_name), check_types:check_type_id(name)").eq("site_id", state.siteId).order("created_at", { ascending: false });
+      const tbody = $("#schedules-table"); tbody.innerHTML="";
+      (data||[]).forEach(s=>{
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${s.items?.item_name || s.item_id}</td>
+        <td>${s.check_types?.name || s.check_type_id}</td>
+        <td>${s.frequency}</td>
+        <td>${s.warn_before}</td>
+        <td>${s.required? "Yes":"No"}</td>
+        <td>${s.active? "Yes":"No"}</td>
+        <td>${s.scheduled_day || "—"}</td>
+        <td><button class="btn ghost">Edit</button></td>`;
+        tr.querySelector("button").addEventListener("click", ()=>{
+          state.selected.schedule = s;
+          $("#f-sch-item").value = s.item_id;
+          $("#f-sch-ct").value = s.check_type_id;
+          $("#f-sch-frequency").value = s.frequency || "";
+          $("#f-sch-warn").value = s.warn_before || "3 days";
+          $("#f-sch-required").value = s.required ? "true":"false";
+          $("#f-sch-active").value = s.active ? "true":"false";
+          $("#f-sch-day").value = s.scheduled_day || "";
+          $("#f-sch-team").value = s.responsible_team_id || "";
+        });
+        tbody.appendChild(tr);
+      });
+    }
+    $("#btn-sch-clear").addEventListener("click", ()=>{
+      state.selected.schedule = null;
+      ["#f-sch-frequency","#f-sch-warn","#f-sch-day","#f-sch-team"].forEach(s=> $(s).value="");
+      $("#f-sch-item").value=""; $("#f-sch-ct").value="";
+      $("#f-sch-required").value="true"; $("#f-sch-active").value="true";
+    });
+    $("#btn-sch-save").addEventListener("click", async ()=>{
+      const payload = {
+        site_id: state.siteId,
+        item_id: Number($("#f-sch-item").value),
+        check_type_id: Number($("#f-sch-ct").value),
+        frequency: $("#f-sch-frequency").value || "0 days",
+        warn_before: $("#f-sch-warn").value || "3 days",
+        required: $("#f-sch-required").value === "true",
+        active: $("#f-sch-active").value === "true",
+        scheduled_day: $("#f-sch-day").value || null,
+        responsible_team_id: $("#f-sch-team").value ? Number($("#f-sch-team").value) : null
+      };
+      if(state.selected.schedule){
+        const { error } = await supabase.from("item_allowed_types").update(payload).eq("id", state.selected.schedule.id);
+        if(error) return toast($("#sch-form-status"), error.message);
+        toast($("#sch-form-status"), "Updated");
+      }else{
+        const { error } = await supabase.from("item_allowed_types").insert(payload);
+        if(error) return toast($("#sch-form-status"), error.message);
+        toast($("#sch-form-status"), "Added");
+      }
+      refreshSchedules();
+    });
+    $("#btn-sch-delete").addEventListener("click", async ()=>{
+      if(!state.selected.schedule) return;
+      if(!confirm("Delete schedule?")) return;
+      const { error } = await supabase.from("item_allowed_types").delete().eq("id", state.selected.schedule.id);
+      if(error) return alert(error.message);
+      $("#btn-sch-clear").click(); refreshSchedules();
+    });
+
+    // Staff (kiosk_users)
+    async function refreshStaff(){
+      if(!state.siteId) return;
+      const { data } = await supabase.from("kiosk_users").select("*").eq("site_id", state.siteId).order("full_name");
+      const tbody = $("#staff-table"); tbody.innerHTML="";
+      (data||[]).forEach(s=>{
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${s.full_name}</td><td>${s.role}</td><td>${s.active?"Yes":"No"}</td>
+        <td><button class="btn ghost">Edit</button></td>`;
+        tr.querySelector("button").addEventListener("click", ()=>{
+          state.selected.staff = s;
+          $("#f-staff-name").value = s.full_name;
+          $("#f-staff-role").value = s.role;
+          $("#f-staff-active").value = s.active ? "true":"false";
+        });
+        tbody.appendChild(tr);
+      });
+      // Kiosk staff DDL
+      const sel = $("#kiosk-staff"); sel.innerHTML = `<option value=""></option>`;
+      (data||[]).forEach(s=> sel.innerHTML += `<option value="${s.id}">${s.full_name} • ${s.role||""}</option>`);
+    }
+    $("#btn-staff-clear").addEventListener("click", ()=>{
+      state.selected.staff = null;
+      $("#f-staff-name").value=""; $("#f-staff-role").value=""; $("#f-staff-active").value="true";
+    });
+    $("#btn-staff-save").addEventListener("click", async ()=>{
+      const payload = {
+        site_id: state.siteId,
+        full_name: $("#f-staff-name").value.trim(),
+        role: $("#f-staff-role").value.trim() || "staff",
+        active: $("#f-staff-active").value === "true"
+      };
+      if(state.selected.staff){
+        const { error } = await supabase.from("kiosk_users").update(payload).eq("id", state.selected.staff.id);
+        if(error) return toast($("#staff-form-status"), error.message);
+        toast($("#staff-form-status"), "Updated");
+      }else{
+        const { error } = await supabase.from("kiosk_users").insert(payload);
+        if(error) return toast($("#staff-form-status"), error.message);
+        toast($("#staff-form-status"), "Added");
+      }
+      refreshStaff();
+    });
+    $("#btn-staff-delete").addEventListener("click", async ()=>{
+      if(!state.selected.staff) return;
+      if(!confirm("Delete staff?")) return;
+      const { error } = await supabase.from("kiosk_users").delete().eq("id", state.selected.staff.id);
+      if(error) return alert(error.message);
+      $("#btn-staff-clear").click(); refreshStaff();
+    });
+
+    // Submissions
+    async function refreshSubmissions(){
+      if(!state.siteId) return;
+      const { data } = await supabase.from("submissions").select("*").eq("site_id", state.siteId).order("submitted_at",{ascending:false}).limit(50);
+      const tbody = $("#subs-table"); tbody.innerHTML="";
+      (data||[]).forEach(s=>{
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${fmtDate(s.submitted_at)}</td><td>${s.staff_name}</td><td><code>${s.session_id}</code></td><td>${s.comment||""}</td>`;
+        tr.addEventListener("click", ()=> loadSubmissionDetails(s.id));
+        tbody.appendChild(tr);
+      });
+      if((data||[])[0]) loadSubmissionDetails(data[0].id);
+    }
+    async function loadSubmissionDetails(id){
+      const { data } = await supabase.from("v_submission_detail").select("*").eq("submission_id", id).order("row_id");
+      const tbody = $("#subdetail-table"); tbody.innerHTML="";
+      (data||[]).forEach(r=>{
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${r.item_name||r.scanned_code}</td><td>${r.room||"—"}</td><td>${r.check_type}</td><td>${r.check_value}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // Global Scan
+    $("#global-scan").addEventListener("keydown", e=>{
+      if(e.key==="Enter"){
+        e.preventDefault();
+        const code = e.target.value.trim();
+        e.target.value="";
+        if(!code) return;
+        goto("items");
+        // Try to find item and open editor
+        findItemByCode(code).then(row => {
+          if(row){ loadItemToForm(row); } else { alert("Item not found. Add it?"); $("#f-item-code").value = code; }
+        });
+      }
+    });
+    document.addEventListener("keydown", e=>{
+      if(e.key === "/"){ e.preventDefault(); $("#global-scan").focus(); }
+    });
+
+    async function findItemByCode(code){
+      const { data } = await supabase.from("v_items_admin").select("*").eq("site_id", state.siteId).eq("item_id", code).maybeSingle();
+      return data;
+    }
+
+    // Kiosk Mode
+    $("#btn-kiosk-mode").addEventListener("click", ()=> goto("kiosk"));
+    async function initKiosk(){
+      $("#kiosk-session").textContent = state.kiosk.sessionId ? ("Session " + state.kiosk.sessionId) : "No session yet";
+      refreshStaff(); // also fills kiosk-staff select
+      refreshCheckDDL(); // fills kiosk-ct
+    }
+    $("#btn-kiosk-enter").addEventListener("click", async ()=>{
+      const staffId = $("#kiosk-staff").value;
+      const pin = $("#kiosk-pin").value.trim();
+      if(!staffId || !pin) return toast($("#kiosk-status"), "Pick staff & enter PIN");
+      // load staff
+      const { data: s } = await supabase.from("kiosk_users").select("*").eq("id", staffId).maybeSingle();
+      if(!s) return toast($("#kiosk-status"), "Staff not found");
+      // If no pin hash set, set it now (create pin)
+      if(!s.pin_hash){
+        const hash = bcrypt.hashSync(pin, 6);
+        const { error } = await supabase.from("kiosk_users").update({ pin_hash: hash }).eq("id", s.id);
+        if(error) return toast($("#kiosk-status"), error.message);
+        toast($("#kiosk-status"), "PIN created ✔");
+      }else{
+        const ok = bcrypt.compareSync(pin, s.pin_hash);
+        if(!ok) return toast($("#kiosk-status"), "Wrong PIN");
+      }
+      state.kiosk.staff = s.id;
+      state.kiosk.staffName = s.full_name;
+      state.kiosk.sessionId = state.kiosk.sessionId || uuid();
+      $("#kiosk-session").textContent = `Session ${state.kiosk.sessionId} • ${state.kiosk.staffName}`;
+      $("#kiosk-pin").value = "";
+      $("#kiosk-scan").focus();
+    });
+    $("#btn-kiosk-log").addEventListener("click", ()=> kioskLog());
+    $("#kiosk-scan").addEventListener("keydown", e=>{
+      if(e.key==="Enter"){ e.preventDefault(); kioskLog(); }
+    });
+
+    async function kioskLog(){
+      if(!state.kiosk.staff) return toast($("#kiosk-status"), "Enter kiosk first");
+      const code = $("#kiosk-scan").value.trim();
+      const ctId = Number($("#kiosk-ct").value);
+      if(!code || !ctId) return toast($("#kiosk-status"), "Scan & select check");
+      $("#kiosk-scan").value = "";
+      // Resolve item
+      const { data: item } = await supabase.from("items").select("*").eq("site_id", state.siteId).eq("item_id", code).maybeSingle();
+      if(!item) return toast($("#kiosk-status"), "Item not found");
+      // Resolve check type name
+      const { data: ct } = await supabase.from("check_types").select("*").eq("id", ctId).maybeSingle();
+      const checkName = ct?.name || "Check";
+      // Ensure submission row
+      if(!state.kiosk.sessionId){
+        state.kiosk.sessionId = uuid();
+        $("#kiosk-session").textContent = `Session ${state.kiosk.sessionId} • ${state.kiosk.staffName}`;
+      }
+      // Insert submission if first time in this session
+      const exists = await supabase.from("submissions").select("id").eq("session_id", state.kiosk.sessionId).maybeSingle();
+      if(!exists.data){
+        const ins = await supabase.from("submissions").insert({
+          site_id: state.siteId, session_id: state.kiosk.sessionId, staff_name: state.kiosk.staffName, comment: ""
+        }).select("id").single();
+        if(ins.error) return toast($("#kiosk-status"), ins.error.message);
+      }
+      // Insert row
+      const { error } = await supabase.from("submission_rows").insert({
+        site_id: state.siteId, submission_id: exists.data?.id || (await supabase.from("submissions").select("id").eq("session_id", state.kiosk.sessionId).single()).data.id,
+        item_id: code, scanned_code: code, item_pk: item.id, check_type: checkName, check_type_id: ctId, check_value: "Done", row_comment: null
+      });
+      if(error) return toast($("#kiosk-status"), error.message);
+      // Update kiosk log table
+      const tr = document.createElement("tr");
+      const now = new Date().toLocaleString();
+      tr.innerHTML = `<td>${now}</td><td>${item.item_name} • ${code}</td><td>${checkName}</td><td>Done</td>`;
+      $("#kiosk-log").prepend(tr);
+      toast($("#kiosk-status"), "Logged ✔");
+      refreshDashboard(); refreshSubmissions();
+    }
+
+    // Restore session on load
+    (async function init(){
+      // Try to get current session (if already signed in)
+      const { data: { session } } = await supabase.auth.getSession();
+      if(session?.user){ state.user = session.user; $("#whoami").textContent = session.user.email; $("#btn-signin").style.display="none"; $("#btn-signout").style.display="inline-flex"; await loadMyProfile(); refreshAll(); }
+    })();
+
+  })();
+  </script>
+</body>
+</html>
