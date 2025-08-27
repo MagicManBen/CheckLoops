@@ -541,8 +541,8 @@
         <div class="panel">
           <div style="display:flex; justify-content:space-between; align-items:center"><div class="h1" style="margin:0 0 10px">Schedules</div><button class="btn" id="btn-new-sched">Add Schedule</button></div>
           <div class="table-wrap"><table>
-            <thead><tr><th>Item</th><th>Room</th><th>Check</th><th>Frequency</th><th>Required</th></tr></thead>
-            <tbody id="sched-tbody" data-entity="item_allowed_types"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+            <thead><tr><th>Item</th><th>Check</th><th>Frequency</th><th>Required</th></tr></thead>
+            <tbody id="sched-tbody" data-entity="item_allowed_types"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
           </table></div>
         </div>
       </section>
@@ -852,35 +852,22 @@ async function loadSchedules(){
     .select("id,item_id,check_type_id,frequency,required")
     .eq("site_id", ctx.site_id)
     .order("id", { ascending: true });
-  if(error){ tb.innerHTML = `<tr><td colspan="5" class="muted">${error.message}</td></tr>`; return; }
-  if(!scheds?.length){ tb.innerHTML = `<tr><td colspan="5" class="muted">No schedules yet.</td></tr>`; return; }
+  if(error){ tb.innerHTML = `<tr><td colspan="4" class="muted">${error.message}</td></tr>`; return; }
+  if(!scheds?.length){ tb.innerHTML = `<tr><td colspan="4" class="muted">No schedules yet.</td></tr>`; return; }
 
   const itemIds = [...new Set(scheds.map(s=>s.item_id).filter(Boolean))];
   const ctIds   = [...new Set(scheds.map(s=>s.check_type_id).filter(Boolean))];
 
   const [itemsRes, ctsRes] = await Promise.all([
-    itemIds.length ? supabase.from("items").select("id,item_name,room_id").in("id", itemIds) : Promise.resolve({ data: [] }),
+    itemIds.length ? supabase.from("items").select("id,item_name").in("id", itemIds) : Promise.resolve({ data: [] }),
     ctIds.length   ? supabase.from("check_types").select("id,name").in("id", ctIds)   : Promise.resolve({ data: [] }),
   ]);
-
-  const itemsById = {};
-  const itemRoomIdByItemId = {};
-  (itemsRes.data||[]).forEach(r=> { itemsById[r.id] = r.item_name; itemRoomIdByItemId[r.id] = r.room_id; });
-
-  // Fetch room names for referenced room_ids
-  const roomIds = [...new Set(Object.values(itemRoomIdByItemId).filter(Boolean))];
-  let roomsById = {};
-  if (roomIds.length){
-    const { data: rooms } = await supabase.from("rooms").select("id,name").in("id", roomIds);
-    (rooms||[]).forEach(r=> { roomsById[r.id] = r.name; });
-  }
-
+  const itemsById = {}; (itemsRes.data||[]).forEach(r=> itemsById[r.id] = r.item_name);
   const ctsById   = {}; (ctsRes.data||[]).forEach(r=> ctsById[r.id]   = r.name);
 
   tb.innerHTML = scheds.map(s=>`
     <tr data-id="${s.id}">
       <td>${esc(itemsById[s.item_id] || '—')}</td>
-      <td>${esc(roomsById[itemRoomIdByItemId[s.item_id]] || '—')}</td>
       <td>${esc(ctsById[s.check_type_id] || '—')}</td>
       <td>${esc(intervalToText(s.frequency))}</td>
       <td>${s.required ? 'Yes' : 'No'}</td>
