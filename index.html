@@ -88,7 +88,19 @@
   }
   .nav button:hover{ transform: translateY(-1px); background: #ffffff14; opacity:1; }
   .nav button.active{ background:var(--accent); color:var(--white); opacity:1; font-weight:600; }
-  .nav .icon{ width:18px; height:18px; object-fit:contain; opacity:.9 }
+  .nav .icon{
+    width:18px; height:18px; object-fit:contain; opacity:.95;
+    color: var(--white) !important; /* SVGs use currentColor */
+    filter: brightness(0) invert(1); /* Make bitmap icons white */
+  }
+
+  .nav button.active .icon{
+    color: var(--success) !important; /* SVGs turn green on active */
+    /* Approximate green for bitmap icons */
+    filter: invert(64%) sepia(41%) saturate(498%) hue-rotate(98deg) brightness(92%) contrast(92%);
+  }
+
+  .nav button:hover .icon{ opacity:1; }
 
   .content{ padding:6px; }
   .topbar{
@@ -762,37 +774,46 @@
   }
 
   async function loadItems(){
-  const tb = document.getElementById("items-tbody");
-  let q = supabase.from("v_items_admin").select("*").eq("site_id", ctx.site_id);
+    const tb = document.getElementById("items-tbody");
+    let q = supabase.from("v_items_admin").select("*").eq("site_id", ctx.site_id);
 
-  if(itemsQuery){
-    const qi = `%${itemsQuery}%`;
-    q = q.or(`item_id.ilike.${qi},item_name.ilike.${qi},room_name.ilike.${qi},default_check_type_name.ilike.${qi}`);
+    if(itemsQuery){
+      const qi = `%${itemsQuery}%`;
+      q = q.or([
+        `item_id.ilike.${qi}`,
+        `item_name.ilike.${qi}`,
+        `room_name.ilike.${qi}`,
+        `default_check_type_name.ilike.${qi}`,
+        // fallbacks for raw items table fields
+        `room.ilike.${qi}`,
+        `default_check_type.ilike.${qi}`
+      ].join(','));
+    }
+
+    const col = itemsSort.col || "item_name";
+    const ascending = (itemsSort.dir !== "desc");
+    q = q.order(col, { ascending });
+
+    const { data, error } = await q;
+    if(error){ tb.innerHTML = `<tr><td colspan="5" class="muted">${error.message}</td></tr>`; return; }
+    if(!data?.length){ tb.innerHTML = `<tr><td colspan="5" class="muted">No items yet.</td></tr>`; return; }
+
+    ["item_id","item_name","room_name","default_check_type_name","active"].forEach(k=>{
+      const el = document.getElementById(`sort-${k}`);
+      if(!el) return;
+      if(k === col){ el.textContent = ascending ? "▲" : "▼"; }
+      else { el.textContent = ""; }
+    });
+
+    tb.innerHTML = data.map(r => `<tr data-id="${r.id}">
+      <td>${esc(r.item_id)}</td>
+      <td>${esc(r.item_name)}</td>
+      <td>${esc((r.room_name ?? r.room) || "—")}</td>
+      <td>${esc((r.default_check_type_name ?? r.default_check_type) || "—")}</td>
+      <td>${r.active ? "Yes" : "No"}</td>
+    </tr>`).join("");
   }
-
-  const col = itemsSort.col || "item_name";
-  const ascending = (itemsSort.dir !== "desc");
-  q = q.order(col, { ascending });
-
-  const { data, error } = await q;
-  if(error){ tb.innerHTML = `<tr><td colspan="5" class="muted">${error.message}</td></tr>`; return; }
-  if(!data?.length){ tb.innerHTML = `<tr><td colspan="5" class="muted">No items yet.</td></tr>`; return; }
-
-  ["item_id","item_name","room_name","default_check_type_name","active"].forEach(k=>{
-    const el = document.getElementById(`sort-${k}`);
-    if(!el) return;
-    if(k === col){ el.textContent = ascending ? "▲" : "▼"; }
-    else { el.textContent = ""; }
-  });
-
-  tb.innerHTML = data.map(r => `<tr data-id="${r.id}">
-    <td>${esc(r.item_id)}</td>
-    <td>${esc(r.item_name)}</td>
-    <td>${esc(r.room_name || "—")}</td>
-    <td>${esc(r.default_check_type_name || "—")}</td>
-    <td>${r.active ? "Yes" : "No"}</td>
-  </tr>`).join("");
-}async function loadRooms(){
+async function loadRooms(){
   const tb = document.getElementById("rooms-tbody");
   const { data, error } = await supabase.from("rooms").select("id,name,occupied_by").eq("site_id", ctx.site_id).order("name");
   if(error){ tb.innerHTML = `<tr><td colspan="2" class="muted">${error.message}</td></tr>`; return; }
