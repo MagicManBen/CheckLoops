@@ -846,46 +846,67 @@ async function loadRooms(){
   tb.innerHTML = data.map(r => `<tr data-id="${r.id}"><td>${esc(r.name)}</td><td>${r.active ? "Yes" : "No"}</td></tr>`).join("");
 }
 async function loadSchedules(){
-  const tb = document.getElementById("sched-tbody");
-  const { data: scheds, error } = await supabase
-    .from("item_allowed_types")
-    .select("id,item_id,check_type_id,frequency,required")
-    .eq("site_id", ctx.site_id)
-    .order("id", { ascending: true });
-  if(error){ tb.innerHTML = `<tr><td colspan="5" class="muted">${error.message}</td></tr>`; return; }
-  if(!scheds?.length){ tb.innerHTML = `<tr><td colspan="5" class="muted">No schedules yet.</td></tr>`; return; }
+      const tb = document.getElementById("sched-tbody");
+      if(!ctx.site_id || !tb){ return; }
+      tb.innerHTML = `<tr><td colspan="5" class="muted">Loading...</td></tr>`;
 
-  const itemIds = [...new Set(scheds.map(s=>s.item_id).filter(Boolean))];
-  const ctIds   = [...new Set(scheds.map(s=>s.check_type_id).filter(Boolean))];
+      // Load schedules, include scheduled_day
+      const { data, error } = await supabase
+        .from("item_allowed_types")
+        .select("id, item_id, check_type_id, frequency, required, scheduled_day, created_at")
+        .eq("site_id", ctx.site_id)
+        .order("created_at", { ascending:false });
+      if(error){ tb.innerHTML = `<tr><td colspan="5" class="error">${esc(error.message)}</td></tr>`; return; }
+      if(!data?.length){ tb.innerHTML = `<tr><td colspan="5" class="muted">No schedules yet.</td></tr>`; return; }
 
-  const [itemsRes, ctsRes] = await Promise.all([
-    itemIds.length ? supabase.from("items").select("id,item_name,room_id").in("id", itemIds) : Promise.resolve({ data: [] }),
-    ctIds.length   ? supabase.from("check_types").select("id,name").in("id", ctIds)   : Promise.resolve({ data: [] }),
-  ]);
+      // Fetch items with room
+      const itemIds = [...new Set(data.map(d=>d.item_id))];
+      const { data: itemsRes } = await supabase
+        .from("items")
+        .select("id, item_name, room_id")
+        .in("id", itemIds);
+      const itemsById = {}; (itemsRes||[]).forEach(i => itemsById[i.id] = i);
 
-  const itemsById = {};
-  const itemRoomIdByItemId = {};
-  (itemsRes.data||[]).forEach(r=> { itemsById[r.id] = r.item_name; itemRoomIdByItemId[r.id] = r.room_id; });
+      // Fetch rooms
+      const roomIds = [...new Set((itemsRes||[]).map(i => i.room_id).filter(Boolean))];
+      let roomsById = {};
+      if(roomIds.length){
+        const { data: roomsRes } = await supabase
+          .from("rooms")
+          .select("id, name")
+          .in("id", roomIds)
+          .eq("site_id", ctx.site_id);
+        (roomsRes||[]).forEach(r => roomsById[r.id] = r);
+      }
 
-  // Fetch room names for referenced room_ids
-  const roomIds = [...new Set(Object.values(itemRoomIdByItemId).filter(Boolean))];
-  let roomsById = {};
-  if (roomIds.length){
-    const { data: rooms } = await supabase.from("rooms").select("id,name").in("id", roomIds);
-    (rooms||[]).forEach(r=> { roomsById[r.id] = r.name; });
-  }
+      // Check types
+      const ctIds = [...new Set(data.map(d=>d.check_type_id))];
+      const { data: ctRes } = await supabase
+        .from("check_types")
+        .select("id, name")
+        .in("id", ctIds);
+      const checkTypesById = {}; (ctRes||[]).forEach(c => checkTypesById[c.id] = c);
 
-  const ctsById   = {}; (ctsRes.data||[]).forEach(r=> ctsById[r.id]   = r.name);
+      // Render rows with Room column
+      tb.innerHTML = data.map(s=>{
+        const it = itemsById[s.item_id];
+        const ct = checkTypesById[s.check_type_id];
+        const freq = intervalToText(s.frequency) || "—";
+        const roomName = it?.room_id ? (roomsById[it.room_id]?.name || "—") : "—";
+        return `<tr data-id="${s.id}">
+          <td>${esc(it?.item_name||"—")}</td>
+          <td>${esc(roomName)}</td>
+          <td>${esc(ct?.name||"—")}</td>
+          <td>${freq}${s.scheduled_day ? ` (on ${esc(s.scheduled_day)})` : ""}</td>
+          <td><span class="chip ${s.required? 'success':''}">${s.required? 'Yes':'No'}</span></td>
+        </tr>`;
+      }).join("");
 
-  tb.innerHTML = scheds.map(s=>`
-    <tr data-id="${s.id}">
-      <td>${esc(itemsById[s.item_id] || '—')}</td>
-      <td>${esc(roomsById[itemRoomIdByItemId[s.item_id]] || '—')}</td>
-      <td>${esc(ctsById[s.check_type_id] || '—')}</td>
-      <td>${esc(intervalToText(s.frequency))}</td>
-      <td>${s.required ? 'Yes' : 'No'}</td>
-    </tr>`).join("");
-}
+      // Row click -> edit
+      tb.querySelectorAll("tr[data-id]").forEach(tr=>{
+        tr.addEventListener("click", ()=> openCRUD("item_allowed_types", tr.getAttribute("data-id")) );
+      });
+    }
 
   async function loadStaff(){
     const tb = document.getElementById("staff-tbody");
@@ -920,6 +941,22 @@ async function loadSchedules(){
   }
 
   async function loadWeekCalendar(){
+    // Required schedules per weekday (treat no specific day as every day)
+    const { data: scheds } = await supabase
+      .from("item_allowed_types")
+      .select("id, required, scheduled_day")
+      .eq("site_id", ctx.site_id)
+      .eq("required", true);
+    const requiredCounts = Array(7).fill(0);
+    (scheds||[]).forEach(s => {
+      if (!s.scheduled_day) {
+        for (let i=0;i<7;i++) requiredCounts[i]++;
+      } else {
+        const idx = dayNameToIndex(s.scheduled_day);
+        if (idx != null) requiredCounts[idx]++;
+      }
+    });
+    
     if(!ctx.site_id) return;
     const now = new Date();
     const wkStart = startOfWeek(now);
@@ -934,7 +971,7 @@ async function loadSchedules(){
 
     // Required schedules (treat as expected each day)
     const { data: scheds } = await supabase.from("item_allowed_types").select("id,required").eq("site_id", ctx.site_id).eq("required", true);
-    const requiredCount = (scheds||[]).length;
+    const (requiredCounts[i]||0) = (scheds||[]).length;
 
     // Submissions in the week
     const { data: subs, error } = await supabase
@@ -972,9 +1009,9 @@ async function loadSchedules(){
       const dayDate = new Date(wkStart); dayDate.setDate(wkStart.getDate()+i);
       const isPast = dayDate < new Date(new Date().setHours(0,0,0,0));
       const done = donePerDay[i] || 0;
-      const missed = isPast ? Math.max(requiredCount - done, 0) : 0;
+      const missed = isPast ? Math.max((requiredCounts[i]||0) - done, 0) : 0;
       
-      const totalScheduled = isPast ? requiredCount : 0;
+      const totalScheduled = isPast ? (requiredCounts[i]||0) : 0;
       
       // Get elements
       const doneValEl = document.getElementById(`d${i}-done-val`);
@@ -990,8 +1027,8 @@ async function loadSchedules(){
 
       if(barEl) {
         let percentage = 0;
-        if (isPast && requiredCount > 0) {
-          percentage = (done / requiredCount) * 100;
+        if (isPast && (requiredCounts[i]||0) > 0) {
+          percentage = (done / (requiredCounts[i]||0)) * 100;
         } else if (!isPast && done > 0) {
           percentage = 100;
         }
@@ -1008,6 +1045,8 @@ async function loadSchedules(){
       .from("item_allowed_types")
       .select(`
         id,
+         scheduled_day,
+         
         items (id, item_name),
         check_types (id, name)
       `)
@@ -1093,6 +1132,11 @@ async function loadSchedules(){
             <div class="cal-tasks">`;
         
         requiredSchedulesCache.forEach(task => {
+         // If a specific weekday is set, only show on that day
+         if (task.scheduled_day) {
+           const want = dayNameToIndex(task.scheduled_day);
+           if (want !== thisDate.getDay()) return;
+         }
           const taskKey = `${task.items.id}-${task.check_types.id}`;
           const isDone = completedTasks.has(taskKey);
           let statusClass = '';
@@ -1150,6 +1194,18 @@ async function loadSchedules(){
     }
     return parts.join(', ') || i;
   }
+
+function dayNameToIndex(name){
+  if(!name) return null;
+  const s = String(name).trim().toLowerCase();
+  const map = { sun:0, mon:1, tue:2, wed:3, thu:4, fri:5, sat:6,
+                sunday:0, monday:1, tuesday:2, wednesday:3, thursday:4, friday:5, saturday:6 };
+  if (s in map) return map[s];
+  const k = s.slice(0,3);
+  return (k in map) ? map[k] : null;
+}
+
+
 
   // Bootstrap
   async function bootstrap(){
@@ -1240,10 +1296,11 @@ async function loadSchedules(){
       label: "Schedule",
       pk: "id",
       fields: [
-        {name:"item_id", label:"Item", type:"select", source:"items", sourceLabel:"item_name", required:true},
-        {name:"check_type_id", label:"Check Type", type:"select", source:"check_types", sourceLabel:"name", required:true},
-        {name:"frequency", label:"Every", type:"frequency", required:true},
-        {name:"required", label:"Required", type:"checkbox", default:true},
+         { name:"item_id", label:"Item", type:"select", source:"items" },
+         { name:"check_type_id", label:"Check Type", type:"select", source:"check_types" },
+         { name:"frequency", label:"Frequency", type:"frequency" },
+         { name:"scheduled_day", label:"On (optional day)", type:"weekday" },
+         { name:"required", label:"Required", type:"boolean" }
       ]
     },
     submission_rows: {
@@ -1550,6 +1607,8 @@ async function loadSchedules(){
 
     const date = new Date(dateKey + 'T12:00:00Z'); // Use UTC noon to avoid timezone shifts
     dayDetailTitle.textContent = `Details for ${date.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`;
+    const detailDow = new Date(dateKey).getDay();
+
     
     // 1. Fetch completed checks for that specific day
     const dayStart = new Date(dateKey);
@@ -1584,7 +1643,16 @@ async function loadSchedules(){
     if (requiredSchedulesCache.length === 0) {
       contentHtml += `<tr><td colspan="5" class="muted">No required schedules are set up.</td></tr>`;
     } else {
-      requiredSchedulesCache.forEach(task => {
+      \1
+    if (task.scheduled_day) {
+      const want = dayNameToIndex(task.scheduled_day);
+      if (want !== detailDow) return;
+    }
+         // If a specific weekday is set, only show on that day
+         if (task.scheduled_day) {
+           const want = dayNameToIndex(task.scheduled_day);
+           if (want !== thisDate.getDay()) return;
+         }
         const key = `${task.items.id}-${task.check_types.id}`;
         const submission = completedMap.get(key);
         const status = submission ? '<span class="chip success">Done</span>' : (isPast ? '<span class="chip danger">Missed</span>' : '<span class="chip">Pending</span>');
