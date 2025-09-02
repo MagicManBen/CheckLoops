@@ -359,22 +359,7 @@
   .doc-category { margin-bottom: 20px; }
   .doc-category-title { font-size: 16px; font-weight: 600; color: var(--accent-2); border-bottom: 1px solid var(--border-color); padding-bottom: 8px; margin-bottom: 12px; }
   #pir-tbody tr { cursor: pointer; }
-
-  /* Pre‑Inspection panel should fill viewport and allow inner scrolling */
-  #view-pre-inspection .panel {
-    min-height: calc(100vh - 190px);
-    display: flex;
-    flex-direction: column;
-  }
-  /* Make the documents container the scrollable area */
-  #view-pre-inspection #pir-docs-container {
-    flex: 1 1 auto;
-    overflow-y: auto;
-    max-height: none;            /* override .table-wrap default 420px cap */
-    -webkit-overflow-scrolling: touch; /* iOS/Safari momentum scroll */
-    overscroll-behavior: contain;      /* prevent scroll chaining */
-  }
-
+  
   /* Dynamic & Multi-Input Form Styles */
   .multi-input-container { display: flex; gap: 12px; align-items: flex-start; }
   .multi-input-container .field { flex: 1; margin-top: 0; }
@@ -383,232 +368,6 @@
 </style>
 
 <script>
-// === NEW .EML GENERATION LOGIC START ===
-window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
-    const btn = document.getElementById('btn-generate-emails');
-    if (!btn) return;
-
-    // This new listener runs in the 'capture' phase to override the old one.
-    btn.addEventListener('click', async (e) => {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        try {
-            await generateAndDownloadPIRAsEmails();
-        } catch (err) {
-            console.error(err);
-            alert('Sorry, generating the email files failed: ' + (err?.message || err));
-        }
-    }, { capture: true });
-
-    // --- Helper Functions for EML creation ---
-
-    // Ensure strings use CRLF line endings
-    function crlf(str) { return str.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n'); }
-    // Fold long lines (for base64) as per RFC 2045
-    function fold76(s) { return s.replace(/(.{1,76})/g, '$&\r\n'); }
-    // Create a URL-friendly slug from a string
-    function slug(s) { return (s || '').toString().replace(/[^a-z0-9]+/gi, '-').replace(/(^-|-$)/g, '').toLowerCase(); }
-    
-    // Create a unique boundary string for multipart emails
-    function makeBoundary() { return '=====_CheckLoop_Boundary_' + Math.random().toString(36).slice(2) + '====='; }
-
-    // Convert a Blob object (from a file fetch) to a base64 string
-    function blobToBase64(blob) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-                const res = String(reader.result || '');
-                const idx = res.indexOf('base64,');
-                resolve(idx >= 0 ? res.slice(idx + 7) : '');
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-    }
-    
-    // Generate the plain text body for an email
-    function buildPlainTextBody(categoryTitle, items) {
-        const lines = [];
-        lines.push(`Dear CQC Inspection Team,`);
-        lines.push(``);
-        lines.push(`Please find attached the requested information for the "${categoryTitle}" section.`);
-        lines.push(``);
-        lines.push('Summary of evidence provided:');
-        
-        const itemDefinitions = window.PIR_DEFINITIONS_DATA || [];
-        for (const it of items) {
-            // Find the definition to get the email_blurb
-            const def = itemDefinitions.find(d => d.title === it.title);
-            const blurb = def?.email_blurb || it.title;
-            lines.push(`• ${blurb}`);
-        }
-        
-        lines.push(``);
-        lines.push('Kind regards,');
-        const practiceName = (typeof ctx === 'object' && ctx?.site_name) ? `The Team at ${ctx.site_name}` : 'The Practice';
-        lines.push(practiceName);
-        return lines.join('\n');
-    }
-
-    // Assemble a full .eml file string from its parts
-    function assembleEml({ from, to, subject, textBody, attachments }) {
-        const boundary = makeBoundary();
-        const date = new Date().toUTCString();
-        
-        // Basic email headers
-        const headers = [
-            `From: ${from}`,
-            `To: ${to || ''}`, // CQC email can be filled in by user
-            `Subject: ${subject}`,
-            `Date: ${date}`,
-            `MIME-Version: 1.0`,
-            `Content-Type: multipart/mixed; boundary="${boundary}"`
-        ].join('\r\n');
-
-        const parts = [];
-        
-        // 1. The plain text part of the email
-        parts.push([
-            `--${boundary}`,
-            'Content-Type: text/plain; charset=UTF-8',
-            'Content-Transfer-Encoding: 7bit',
-            '',
-            crlf(textBody)
-        ].join('\r\n'));
-
-        // 2. The attachment parts (if any)
-        for (const a of (attachments || [])) {
-            const filename = a.filename || 'attachment';
-            const mime = a.mime || 'application/octet-stream';
-            const b64 = fold76(a.base64 || '');
-            parts.push([
-                `--${boundary}`,
-                `Content-Type: ${mime}; name="${filename}"`,
-                'Content-Transfer-Encoding: base64',
-                `Content-Disposition: attachment; filename="${filename}"`,
-                '',
-                b64
-            ].join('\r\n'));
-        }
-
-        // 3. The closing boundary
-        parts.push(`--${boundary}--`);
-
-        return headers + '\r\n\r\n' + parts.join('\r\n');
-    }
-    
-    // Takes a list of document items, fetches their files, and prepares them for attachment
-    async function prepareAttachments(items) {
-        const out = [];
-        const itemDefinitions = window.PIR_DEFINITIONS_DATA || [];
-
-        for (const it of items) {
-            // A) Handle file uploads
-            if (it.file_path) {
-                try {
-                    const { data: blob, error } = await supabase.storage.from('pir_attachments').download(it.file_path);
-                    if (error) throw error;
-                    
-                    const base64 = await blobToBase64(blob);
-                    const filename = it.file_path.split('/').pop() || 'file';
-                    out.push({ filename, mime: blob.type, base64 });
-                } catch (e) {
-                    console.warn('Attachment fetch failed', it.file_path, e);
-                }
-            }
-
-            // B) Handle data entries (convert to a .txt file)
-            const data = it.data || {};
-            if (Object.keys(data).length > 0 && JSON.stringify(data) !== '{}') {
-                const itemDef = itemDefinitions.find(d => d.title === it.title) || {};
-                let content = `DOCUMENT: ${it.title}\nCATEGORY: ${it.category}\n\n---\n\n`;
-
-                if (data.answers && itemDef.questions) {
-                    itemDef.questions.forEach((q, i) => {
-                        content += `Q: ${q}\nA: ${data.answers[i] || 'Not answered'}\n\n`;
-                    });
-                }
-                if (data.table_data && itemDef.headers) {
-                    content += itemDef.headers.join('\t') + '\n';
-                    content += data.table_data.map(row => row.join('\t')).join('\n') + '\n';
-                }
-                const labels = itemDef.labels || ['Value 1', 'Value 2', 'Value 3'];
-                 ['num1', 'num2', 'num3', 'text1', 'text2'].forEach((key, idx) => {
-                    if(data[key] != null && data[key] !== '') {
-                        content += `${labels[idx] || key}: ${data[key]}\n`;
-                    }
-                });
-
-                const txtBlob = new Blob([content], { type: 'text/plain' });
-                const base64 = await blobToBase64(txtBlob);
-                const filename = `${slug(it.title)}.txt`;
-                out.push({ filename, mime: 'text/plain', base64 });
-            }
-        }
-        return out;
-    }
-    
-    // Group items by their email category
-    function groupByCategory(items) {
-        const map = new Map();
-        for (const it of items) {
-            const cat = it.category || 'Uncategorised';
-            if (!map.has(cat)) map.set(cat, []);
-            map.get(cat).push(it);
-        }
-        return map;
-    }
-
-    // --- Main Function ---
-    async function generateAndDownloadPIRAsEmails() {
-        // Use pirDocsCache if available, as it holds the live data from the page
-        const items = Array.isArray(window.pirDocsCache) ? window.pirDocsCache : [];
-        const readyItems = items.filter(it => it.status === 'Ready');
-
-        if (!readyItems.length) {
-            throw new Error('No Pre-Inspection items are marked as "Ready". Please update the status of items you wish to include.');
-        }
-
-        const zip = new JSZip();
-        const from = (typeof ctx === 'object' && ctx?.user?.email) ? ctx.user.email : 'practice@nhs.net';
-        const practiceName = (typeof ctx === 'object' && ctx?.site_name) ? ` for ${ctx.site_name}` : '';
-
-        // Group the "Ready" items by their category
-        const groups = groupByCategory(readyItems);
-        
-        for (const [category, catItems] of groups) {
-            if (!catItems.length) continue;
-
-            const categoryTitle = category.replace(/EMAIL \d+: /i, '').trim();
-            const subject = `CQC Pre-Inspection Information - ${category}${practiceName}`;
-            
-            const textBody = buildPlainTextBody(categoryTitle, catItems);
-            const attachments = await prepareAttachments(catItems);
-            
-            const emlContent = assembleEml({ from, to: '', subject, textBody, attachments });
-            
-            // e.g., "EMAIL 1 - GOVERNANCE, POLICIES AND PROCEDURES.eml"
-            const fname = `${category.replace(/[^a-zA-Z0-9 ]/g, '').replace(/ /g, '_')}.eml`;
-            zip.file(fname, emlContent);
-        }
-
-        const blob = await zip.generateAsync({ type: 'blob' });
-        const y = new Date().getFullYear();
-        const m = String(new Date().getMonth() + 1).padStart(2, '0');
-        const d = String(new Date().getDate()).padStart(2, '0');
-        const zipName = `CQC_PIR_Emails_${y}-${m}-${d}.zip`;
-
-        // Trigger the download
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = zipName;
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
-    }
-});
-// === NEW .EML GENERATION LOGIC END ===
-
 (function () {
   var ua = navigator.userAgent || "";
   var isIOSiPad = /iPad|iPhone|iPod/.test(ua) ||
@@ -775,7 +534,8 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
                 </div>
             </div>
             
-            <div id="pir-docs-container" class="table-wrap"></div>
+            <div id="pir-docs-container" class="table-wrap" style="max-height: calc(100vh - 320px);">
+                </div>
         </div>
       </section>
 
@@ -909,561 +669,6 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
     </div>
   </div>
 
-<script>
-  // --- PRE-INSPECTION (PIR) DATA DEFINITIONS (v2 - Enhanced for Email Generation) ---
-// This block contains the definitions for all CQC pre-inspection items.
-// It has been updated with an `email_blurb` for each item to facilitate automatic email generation.
-window.PIR_DEFINITIONS_DATA = [
-    // EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Statement of purpose", 
-        item_type: "guided_questions", 
-        questions: [
-            "Core Aims & Objectives: What are the fundamental goals of the practice in terms of patient care, safety, and quality?", 
-            "Scope of Services: List the regulated activities and describe the full range of clinical and non-clinical services provided.", 
-            "Patient Population Profile: Describe your service users, including key demographics, common health needs, and any specific community characteristics."
-        ],
-        email_blurb: "Provides our Statement of Purpose, detailing the practice's aims, services, and patient population."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Copy of Major incident/business continuity", 
-        item_type: "file_only",
-        email_blurb: "Attached is our Major Incident and Business Continuity Plan."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Medical emergencies policy", 
-        item_type: "file_only",
-        email_blurb: "Attached is our policy for handling medical emergencies within the practice."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Chaperone policy", 
-        item_type: "file_only",
-        email_blurb: "Attached is our Chaperone Policy for patient consultations."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Induction process", 
-        item_type: "guided_questions_and_file", 
-        questions: [
-            "Induction Structure: Describe the phases and timeline of your induction process for different staff roles (clinical, admin).", 
-            "Key Content & Policies: What essential topics are covered (e.g., safeguarding, H&S, IPC, confidentiality, chaperone policy)?", 
-            "Competency Assessment: How do you verify and document that new staff are competent and confident in their role at the end of the induction period?"
-        ], 
-        description: "Describe the process and/or attach the induction pack/checklist.",
-        email_blurb: "Provides a summary of our staff induction process, with the induction pack attached."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Online services policy", 
-        item_type: "file_only",
-        email_blurb: "Attached is our policy for the provision and use of online patient services."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Access policy", 
-        item_type: "file_only",
-        email_blurb: "Attached is our Patient Access Policy, detailing how patients can access our services."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Registration policy (incl access to medical records)", 
-        item_type: "file_only",
-        email_blurb: "Attached is our policy for patient registration and access to medical records."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Home visits/care home protocol", 
-        item_type: "file_only",
-        email_blurb: "Attached is our protocol for conducting home visits and supporting care homes."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Process for supporting carers", 
-        item_type: "guided_questions_and_file", 
-        questions: [
-            "Identification Strategy: How do you proactively identify patients who are carers?", 
-            "Support & Signposting: What specific support is offered and which local/national services do you signpost to?", 
-            "Recording & Flagging: How do you maintain an up-to-date carers' register in the clinical system?"
-        ], 
-        description: "Describe the process and attach any relevant leaflets or policies.",
-        email_blurb: "Details our process for identifying and supporting carers, with relevant leaflets attached."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Number of carers identified and percentage", 
-        item_type: "dual_number", 
-        labels: ["Number Identified", "Percentage (%)"],
-        email_blurb: "Provides the current number and percentage of identified carers on our patient list."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Process for bereaved patients", 
-        item_type: "guided_questions_and_file", 
-        questions: [
-            "Immediate Steps: What are the immediate administrative and clinical steps upon notification of a patient death?",
-            "Family Communication: How and when do you make contact with the bereaved family, and what support is offered?",
-            "Record Management: What is the process for updating and managing the deceased patient's records?",
-            "Signposting: Which bereavement support services are patients and their families signposted to?",
-            "Staff Support: How are staff who were involved in the patient's care supported?"
-        ], 
-        description: "Describe the process and attach any relevant protocols.",
-        email_blurb: "Outlines our process for supporting bereaved patients and their families."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "ICO registration certificate", 
-        item_type: "file_only",
-        email_blurb: "Attached is our current ICO registration certificate."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Provider liability/MD insurance", 
-        item_type: "file_only",
-        email_blurb: "Attached is our certificate of provider liability/medical defence insurance."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Information leaflet for online services", 
-        item_type: "file_only",
-        email_blurb: "Attached is the information leaflet we provide to patients regarding our online services."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Safety and drug alerts process and evidence of management and actions.", 
-        item_type: "guided_questions_and_file", 
-        questions: [
-            "Receipt & Dissemination: How are alerts received and promptly distributed to all relevant staff?", 
-            "Action & Responsibility: Who is the designated lead, and what is the process for actioning alerts and documenting in patient records?", 
-            "Audit & Learning: How do you maintain a central log to track alerts, actions, and outcomes?"
-        ], 
-        description: "Describe the process and attach evidence (e.g., completed logs, screenshots).",
-        email_blurb: "Details our process for managing safety and drug alerts, with evidence of actions attached."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Policy and process for ensuring staff are recruited safely including DBS and registration checks.", 
-        item_type: "file_only",
-        email_blurb: "Attached is our policy for safe staff recruitment, including DBS and registration checks."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Policy and process to ensure practice oversight of other staff not directly employed by the practice.", 
-        item_type: "file_only",
-        email_blurb: "Attached is our policy for the oversight of non-practice staff with access to patients or records."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Process for supervision and competency oversight of clinical staff.", 
-        item_type: "guided_questions_and_file", 
-        questions: [
-            "Supervision Framework: Describe your system for clinical supervision for different roles (e.g., Nurses, HCAs), including frequency and format.", 
-            "Competency Assessment: How are competencies for advanced roles (e.g., prescribing) assessed, documented, and reviewed?", 
-            "Governance & Record Keeping: Where are supervision and competency records kept and how do they inform appraisals?"
-        ], 
-        description: "Describe the process and attach any relevant policy.",
-        email_blurb: "Outlines our process for clinical supervision and competency oversight, with the relevant policy attached."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Policy for ensuring PGDs and PSDs are appropriately reviewed and signed.", 
-        item_type: "file_only",
-        email_blurb: "Attached is our policy for the management of PGDs and PSDs."
-    },
-
-    // EMAIL 2: TRAINING
-    { 
-        category: "EMAIL 2: TRAINING", 
-        title: "Number of current staff by role and WTE.", 
-        item_type: "dynamic_table", 
-        headers: ["Role", "Number of Staff", "WTE"],
-        email_blurb: "Provides a breakdown of current staff by role and Whole Time Equivalent (WTE)."
-    },
-    { 
-        category: "EMAIL 2: TRAINING", 
-        title: "List of staff and their extended role(s).", 
-        item_type: "dynamic_table", 
-        headers: ["Staff Name", "Extended Role(s)"],
-        email_blurb: "Provides a list of staff members and their designated extended roles."
-    },
-    { 
-        category: "EMAIL 2: TRAINING", 
-        title: "Policy of training for staff and process to manage and monitor.", 
-        item_type: "file_only",
-        email_blurb: "Attached is our staff training policy, including our process for management and monitoring."
-    },
-    { 
-        category: "EMAIL 2: TRAINING", 
-        title: "Matrix of staff training.", 
-        item_type: "file_only",
-        description: "Attach the training matrix which should include all mandatory and role-specific training.",
-        email_blurb: "Attached is our comprehensive staff training matrix."
-    },
-
-    // EMAIL 3: SAFEGUARDING
-    { 
-        category: "EMAIL 3: SAFEGUARDING", 
-        title: "Safeguarding adults' policy", 
-        item_type: "file_only",
-        email_blurb: "Attached is our policy for the safeguarding of adults."
-    },
-    { 
-        category: "EMAIL 3: SAFEGUARDING", 
-        title: "Safeguarding children policy", 
-        item_type: "file_only",
-        email_blurb: "Attached is our policy for the safeguarding of children."
-    },
-    { 
-        category: "EMAIL 3: SAFEGUARDING", 
-        title: "Sample of minutes of MDT meetings", 
-        item_type: "file_only",
-        description: "Attach a recent, anonymised sample of MDT meeting minutes where safeguarding was discussed.",
-        email_blurb: "Attached is a sample of minutes from multidisciplinary team meetings."
-    },
-    { 
-        category: "EMAIL 3: SAFEGUARDING", 
-        title: "Policy/process to ensure information is shared with others.", 
-        item_type: "file_only",
-        description: "e.g. coding of medical records",
-        email_blurb: "Attached is our policy on information sharing, including the coding of medical records."
-    },
-
-    // EMAIL 4: RISK ASSESSMENTS
-    { 
-        category: "EMAIL 4: RISK ASSESSMENTS", 
-        title: "Latest fire risk assessment and any action log", 
-        item_type: "file_only",
-        email_blurb: "Attached is our latest fire risk assessment and corresponding action log."
-    },
-    { 
-        category: "EMAIL 4: RISK ASSESSMENTS", 
-        title: "Evidence and date of fire extinguisher check", 
-        item_type: "file_only",
-        email_blurb: "Attached is evidence of our latest fire extinguisher checks."
-    },
-    { 
-        category: "EMAIL 4: RISK ASSESSMENTS", 
-        title: "Evidence of latest service for emergency lights and alarm test", 
-        item_type: "file_only",
-        email_blurb: "Attached is evidence of the latest service for our emergency lights and fire alarm."
-    },
-    { 
-        category: "EMAIL 4: RISK ASSESSMENTS", 
-        title: "Copy of the latest fire drill and actions taken.", 
-        item_type: "file_only",
-        email_blurb: "Attached is the record of our latest fire drill and any actions taken."
-    },
-    { 
-        category: "EMAIL 4: RISK ASSESSMENTS", 
-        title: "Sample of weekly fire alarm checks", 
-        item_type: "guided_questions_and_file",
-        questions: ["Please confirm the month for which the sample checks are provided (e.g., 'March 2025')."],
-        description: "Attach the log of weekly fire alarm tests for the specified month.",
-        email_blurb: "Attached is a sample of our weekly fire alarm checks for the month specified."
-    },
-    { 
-        category: "EMAIL 4: RISK ASSESSMENTS", 
-        title: "Latest health and safety risk assessment and any action log", 
-        item_type: "file_only",
-        email_blurb: "Attached is our latest health and safety risk assessment and action log."
-    },
-    { 
-        category: "EMAIL 4: RISK ASSESSMENTS", 
-        title: "Latest legionella assessment and sample water temperature checks", 
-        item_type: "guided_questions_and_file",
-        questions: ["Please confirm the month for which the sample temperature checks are provided (e.g., 'March 2025')."],
-        description: "Attach the latest full assessment and the water temperature logs for the specified month.",
-        email_blurb: "Attached is our latest legionella risk assessment and sample water temperature checks."
-    },
-    { 
-        category: "EMAIL 4: RISK ASSESSMENTS", 
-        title: "Copy of any other general risk assessments.", 
-        item_type: "file_only",
-        description: "e.g. wheelchair access, monitoring of waiting areas etc.",
-        email_blurb: "Attached are copies of other general risk assessments undertaken by the practice."
-    },
-    { 
-        category: "EMAIL 4: RISK ASSESSMENTS", 
-        title: "Equipment calibration dates and copy of certificate", 
-        item_type: "file_only",
-        email_blurb: "Attached is evidence of our equipment calibration."
-    },
-    { 
-        category: "EMAIL 4: RISK ASSESSMENTS", 
-        title: "PAT testing dates and copy of certificate", 
-        item_type: "file_only",
-        email_blurb: "Attached is our latest PAT testing certificate."
-    },
-    { 
-        category: "EMAIL 4: RISK ASSESSMENTS", 
-        title: "Evidence of immunisation status of staff.", 
-        item_type: "file_only",
-        email_blurb: "Attached is evidence regarding the immunisation status of our staff."
-    },
-
-    // EMAIL 5: INFECTION PREVENTION AND CONTROL
-    { 
-        category: "EMAIL 5: INFECTION PREVENTION AND CONTROL", 
-        title: "Name and role of IPC lead", 
-        item_type: "dual_text", 
-        labels: ["Name of Lead", "Role"],
-        email_blurb: "Provides the name and role of our designated Infection Prevention and Control (IPC) lead."
-    },
-    { 
-        category: "EMAIL 5: INFECTION PREVENTION AND CONTROL", 
-        title: "Latest Infection control policy", 
-        item_type: "file_only",
-        email_blurb: "Attached is our latest Infection Prevention and Control policy."
-    },
-    { 
-        category: "EMAIL 5: INFECTION PREVENTION AND CONTROL", 
-        title: "Latest Infection prevention control audit and action log.", 
-        item_type: "file_only",
-        email_blurb: "Attached is our latest IPC audit and corresponding action log."
-    },
-    { 
-        category: "EMAIL 5: INFECTION PREVENTION AND CONTROL", 
-        title: "Copies of any meetings where IPC has been discussed", 
-        item_type: "file_only",
-        description: "Include any shared learning and changes since last inspection.",
-        email_blurb: "Attached are minutes from meetings where IPC was discussed, showing shared learning."
-    },
-    { 
-        category: "EMAIL 5: INFECTION PREVENTION AND CONTROL", 
-        title: "Summary of vaccine fridge management", 
-        item_type: "guided_questions", 
-        questions: [
-            "Policy & Responsibility: Who is the named lead for vaccine storage and what are the core principles of your cold chain policy?", 
-            "Equipment & Location: How many vaccine fridges do you have, where are they located, and how are they maintained?", 
-            "Monitoring & Recording: Describe your process for daily temperature monitoring, including logging and acceptable ranges.", 
-            "Action on Excursion: What is the procedure for a cold chain incident?", 
-            "Stock Management: How do you manage vaccine stock to ensure rotation and minimise wastage?"
-        ],
-        email_blurb: "Provides a summary of our vaccine fridge and cold chain management procedures."
-    },
-    { 
-        category: "EMAIL 5: INFECTION PREVENTION AND CONTROL", 
-        title: "Sample of vaccine fridge temperature recordings", 
-        item_type: "guided_questions_and_file",
-        questions: ["Please confirm the month for which the temperature logs are provided (e.g., 'March 2025')."],
-        description: "Attach the temperature recordings for the specified month.",
-        email_blurb: "Attached are the vaccine fridge temperature recordings for the month specified."
-    },
-
-    // EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS
-    { 
-        category: "EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS", 
-        title: "Significant events policy", 
-        item_type: "file_only",
-        email_blurb: "Attached is our policy for the management of significant events."
-    },
-    { 
-        category: "EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS", 
-        title: "Complaint’s policy and leaflet available to patients", 
-        item_type: "file_only",
-        email_blurb: "Attached is our complaints policy and the accompanying patient information leaflet."
-    },
-    { 
-        category: "EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS", 
-        title: "A summary of significant events within the last 12 months", 
-        item_type: "guided_questions_and_number", 
-        questions: [
-            "Process for Reporting & Grading: How are significant events (SEs) reported, recorded, and graded?", 
-            "Investigation & Themes: Describe your investigation process. What were the main themes from events in the last 12 months?", 
-            "Learning & Actions: What were the critical learning points and what specific changes have been implemented as a result?"
-        ], 
-        label: "Number of events (12 months)",
-        email_blurb: "Provides a summary of significant events from the last 12 months, including learning and actions taken."
-    },
-    { 
-        category: "EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS", 
-        title: "A summary of complaints received within the last 12 months", 
-        item_type: "guided_questions_and_number", 
-        questions: [
-            "Process for Handling Complaints: Briefly describe your complaints procedure, from receipt to final response.", 
-            "Analysis & Themes: What were the main themes from complaints received in the last 12 months?", 
-            "Service Improvement: What specific changes to services have been made in response to patient complaints?"
-        ], 
-        label: "Number of complaints (12 months)",
-        email_blurb: "Provides a summary of complaints from the last 12 months, detailing themes and resulting improvements."
-    },
-    { 
-        category: "EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS", 
-        title: "Sample meetings minutes where SEAs and/or complaints have been discussed.", 
-        item_type: "file_only",
-        description: "From the past 6 months.",
-        email_blurb: "Attached is a sample of meeting minutes showing discussion of significant events and complaints."
-    },
-    { 
-        category: "EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS", 
-        title: "Sample of compliments received in the past 6 months.", 
-        item_type: "file_only",
-        email_blurb: "Attached is a sample of compliments received from patients."
-    },
-
-    // EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK
-    { 
-        category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", 
-        title: "Summary of the quality of care you provide for the six population groups", 
-        item_type: "guided_questions", 
-        questions: [
-            "Older people: How do you tailor services for older people (e.g., proactive care, frailty assessments)?", 
-            "People with long-term conditions: Describe your approach to managing patients with LTCs (e.g., recall systems, care planning).", 
-            "Families, children and young people: How do you provide accessible services for this group (e.g., immunisation clinics, safeguarding)?", 
-            "Working age people: How do you ensure access for working people (e.g., online services, extended hours)?", 
-            "Vulnerable people: What provisions do you have for vulnerable groups (e.g., homeless, learning disabilities, carers)?", 
-            "People experiencing poor mental health: Describe your approach to supporting patients with mental health needs (e.g., access to IAPT)."
-        ],
-        email_blurb: "Provides a summary of how we tailor our care for the six key population groups."
-    },
-    {
-        category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK",
-        title: "Summary of clinical audits (last 2 years)",
-        item_type: "textarea",
-        description: "Provide a summary list of clinical audits completed in the last two years and explain how you decide on audit topics.",
-        email_blurb: "Provides a summary of clinical audit activity undertaken in the last two years."
-    },
-    { 
-        category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", 
-        title: "Full Cycle Audit Example 1", 
-        item_type: "guided_questions_and_file", 
-        questions: [
-            "Audit Topic & Standard: What was the topic of the audit and what standard was measured against?",
-            "Initial Findings: What were the results of the first data collection cycle?",
-            "Changes Implemented: What specific changes were made to practice as a result of the findings?",
-            "Re-Audit Results: What were the results of the second data collection cycle, and was there an improvement?"
-        ],
-        description: "Describe the audit and attach the full audit document as evidence.",
-        email_blurb: "Details our first example of a completed two-cycle clinical audit, with the full report attached."
-    },
-    { 
-        category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", 
-        title: "Full Cycle Audit Example 2", 
-        item_type: "guided_questions_and_file", 
-        questions: [
-            "Audit Topic & Standard: What was the topic of the audit and what standard was measured against?",
-            "Initial Findings: What were the results of the first data collection cycle?",
-            "Changes Implemented: What specific changes were made to practice as a result of the findings?",
-            "Re-Audit Results: What were the results of the second data collection cycle, and was there an improvement?"
-        ],
-        description: "Describe the audit and attach the full audit document as evidence.",
-        email_blurb: "Details our second example of a completed two-cycle clinical audit, with the full report attached."
-    },
-    { 
-        category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", 
-        title: "Summary of any other quality improvement work undertaken over the last two years.", 
-        item_type: "guided_questions", 
-        questions: [
-            "Project Overview: Describe any significant Quality Improvement (QI) projects undertaken that are not clinical audits.", 
-            "Methodology & Outcomes: What QI methodology was used (e.g., PDSA) and what were the measured outcomes?", 
-            "Learning & Sustainability: What was learned and how have the improvements been sustained?"
-        ],
-        email_blurb: "Provides a summary of other non-audit Quality Improvement (QI) work from the last two years."
-    },
-    { 
-        category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", 
-        title: "Evidence of how you have responded to patient feedback (last 12 months).", 
-        item_type: "guided_questions_and_file", 
-        questions: [
-            "Collection Methods: What formal and informal methods do you use to gather patient feedback?", 
-            "Analysis & Key Themes: Provide a summary of the key themes, both positive and negative, from patient feedback.", 
-            "Action & 'You Said, We Did': Provide specific examples of changes made in direct response to patient feedback."
-        ], 
-        description: "Summarise and attach evidence (e.g., survey results, FFT data, action logs).",
-        email_blurb: "Shows how we have collected, analysed, and acted upon patient feedback, with evidence attached."
-    },
-    { 
-        category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", 
-        title: "Patient survey results and action log (if not included above)", 
-        item_type: "file_only",
-        email_blurb: "Attached are the results and action log from our own patient survey."
-    },
-    { 
-        category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", 
-        title: "Evidence of how you have responded to staff feedback (last 12 months).", 
-        item_type: "guided_questions_and_file", 
-        questions: [
-            "Collection Methods: What mechanisms are in place for staff to provide feedback?", 
-            "Analysis & Key Themes: What were the key themes from staff feedback over the last 12 months?", 
-            "Action & Response: Provide specific examples of changes made in response to staff feedback."
-        ], 
-        description: "Summarise and attach evidence (e.g., staff survey results).",
-        email_blurb: "Shows how we have collected, analysed, and acted upon staff feedback, with evidence attached."
-    },
-
-    // EMAIL 8: PATIENT RECORD KEEPING AND MEDICINES
-    { 
-        category: "EMAIL 8: PATIENT RECORD KEEPING AND MEDICINES", 
-        title: "Discharge (medicine reconciliation) process and any audits/checks undertaken.", 
-        item_type: "guided_questions_and_file", 
-        questions: [
-            "Process Workflow: Describe the end-to-end process from receiving a discharge summary to updating the patient's record.", 
-            "Roles & Responsibilities: Who is responsible for each step of the process (e.g., admin, clinical pharmacist, GP)?", 
-            "Quality Assurance: How do you audit compliance? Provide a summary of any recent audit findings."
-        ], 
-        description: "Describe the process and attach audits/checks.",
-        email_blurb: "Details our process for medicine reconciliation following patient discharge, with recent audits attached."
-    },
-    { 
-        category: "EMAIL 8: PATIENT RECORD KEEPING AND MEDICINES", 
-        title: "Policy and process for the management of repeat prescriptions and medicine reviews.", 
-        item_type: "file_only",
-        email_blurb: "Attached is our policy for the management of repeat prescriptions and medication reviews."
-    },
-    { 
-        category: "EMAIL 8: PATIENT RECORD KEEPING AND MEDICINES", 
-        title: "Patient summarising/coding in medical records policy/process and any audits.", 
-        item_type: "guided_questions_and_file", 
-        questions: [
-            "New Patient Record Summarising: Describe your process and target timeframe for summarising new patient records.", 
-            "Clinical Correspondence Workflow: How is incoming correspondence processed, read, coded, and actioned?", 
-            "Quality Assurance: What systems are in place to ensure coding is accurate, consistent, and timely?"
-        ], 
-        description: "Describe the process and attach audits/checks.",
-        email_blurb: "Outlines our process for summarising and coding patient records, with recent audits attached."
-    },
-    { 
-        category: "EMAIL 8: PATIENT RECORD KEEPING AND MEDICINES", 
-        title: "Number of patient records that have not been fully summarised.", 
-        item_type: "number", 
-        label: "Number of records",
-        email_blurb: "Provides the current number of patient records awaiting full summarisation."
-    },
-
-    // EMAIL 9: DATA FOR THE REPORT
-    { 
-        category: "EMAIL 9: DATA FOR THE REPORT", 
-        title: "NHS health checks data (last 12 months)", 
-        item_type: "triple_number", 
-        labels: ["Eligible", "Offered", "Completed"],
-        email_blurb: "Provides our NHS Health Checks data for the last 12 months."
-    },
-    { 
-        category: "EMAIL 9: DATA FOR THE REPORT", 
-        title: "Learning Disability check data (last 12 months)", 
-        item_type: "triple_number", 
-        labels: ["Eligible", "Offered", "Completed"],
-        email_blurb: "Provides our Learning Disability Health Checks data for the last 12 months."
-    },
-    { 
-        category: "EMAIL 9: DATA FOR THE REPORT", 
-        title: "Cervical cancer screening and child immunisation coverage data.", 
-        item_type: "guided_questions_and_file", 
-        questions: [
-            "Cervical Screening Uptake Strategy: Describe the specific actions you have taken to improve cervical screening uptake.", 
-            "Childhood Immunisation Uptake Strategy: Describe the specific actions you have taken to improve childhood immunisation rates.", 
-            "Data & Outcomes: What has been the impact of these actions on your uptake data?"
-        ], 
-        description: "Summarise actions and attach coverage data.",
-        email_blurb: "Provides our latest uptake data for cervical screening and childhood immunisations, along with actions taken to improve coverage."
-    },
-];
-
-</script>
-
 <script type="module">
   // Supabase v2 client
   import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -1474,9 +679,6 @@ window.PIR_DEFINITIONS_DATA = [
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
   });
-  // Expose to global for non-module scripts
-  window.JSZip = JSZip;
-  window.supabase = supabase;
 
   // SPA navigation
   const nav = document.getElementById("nav");
@@ -1519,13 +721,11 @@ window.PIR_DEFINITIONS_DATA = [
     setActiveSection(id);
   });
 
-  // Restore last active section on load (always trigger loader)
+  // Restore last active section on load (defaults to dashboard if none)
   try {
     const saved = localStorage.getItem("cl_active_section");
-    setActiveSection(saved || "dashboard");
-  } catch(_) {
-    setActiveSection("dashboard");
-  }
+    if(saved) setActiveSection(saved);
+  } catch(_) {}
 
   // Restore sidebar collapsed state
   try {
@@ -1606,7 +806,6 @@ window.PIR_DEFINITIONS_DATA = [
     if(ctx.site_id){
       const { data: site } = await supabase.from("sites").select("name").eq("id", ctx.site_id).maybeSingle();
       sitePill.textContent = site?.name ? `Site: ${site.name}` : `Site ID: ${ctx.site_id}`;
-      ctx.site_name = site?.name || null;
     }else{
       sitePill.textContent = "Site: —";
     }
@@ -1704,9 +903,9 @@ async function loadMissed(){
   if(!missed.length){ tb.innerHTML = emptyMsg; return; }
   missed.forEach(r=>{ r.__date = r.next_due_at; });
 
-  // group by item, room, and date — use the filtered `missed` array (was incorrectly using `data`)
+  // group by item, room, and date
   const grouped = {};
-  (missed||[]).forEach(r=>{
+  (data||[]).forEach(r=>{
     const dStr = new Date(r.__date).toLocaleDateString(undefined, { weekday: 'short', month: 'numeric', day: 'numeric' });
     const key = `${r.item_name}|${r.room_name||'—'}|${dStr}`;
     if(!grouped[key]) grouped[key] = { item:r.item_name, room:r.room_name||'—', date:dStr, checks:[] };
@@ -2557,7 +1756,73 @@ async function loadSchedules(){
   
   // --- PRE-INSPECTION (PIR) LOGIC ---
     
-    const PIR_DEFINITIONS = window.PIR_DEFINITIONS_DATA;
+    const PIR_DEFINITIONS = [
+        // EMAIL 1
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Statement of purpose", item_type: "guided_questions", questions: ["What are the aims and objectives of the practice?", "Describe the services you provide.", "Who are the service users (e.g., patient population demographics and needs)?"] },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Copy of Major incident/business continuity", item_type: "file_only" },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Medical emergencies policy", item_type: "file_only" },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Chaperone policy", item_type: "file_only" },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Induction process", item_type: "guided_questions_and_file", questions: ["Briefly describe your induction process for new staff.", "What key policies are covered during induction (e.g., safeguarding, health & safety)?", "How is competency assessed at the end of the induction period?"], description: "Describe the process and/or attach the induction pack/checklist." },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Online services policy", item_type: "file_only" },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Access policy", item_type: "file_only" },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Registration policy (incl access to medical records)", item_type: "file_only" },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Home visits/care home protocol", item_type: "file_only" },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Process for supporting carers", item_type: "guided_questions_and_file", questions: ["How does the practice identify patients who are carers?", "What support, information, or signposting is offered to carers?", "How are carers' needs recorded and flagged in the clinical system?"], description: "Describe the process and attach any relevant leaflets or policies." },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Number of carers identified and percentage", item_type: "dual_number", labels: ["Number Identified", "Percentage (%)"] },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Process for bereaved patients", item_type: "guided_questions_and_file", questions: ["What is the immediate procedure following notification of a patient's death (e.g., GP contact, record updates)?", "How do you communicate with and provide support to the bereaved family (e.g., condolences, signposting to services)?", "What is the follow-up process, and how is this documented?"], description: "Describe the process and attach any relevant protocols." },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "ICO registration certificate", item_type: "file_only" },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Provider liability/MD insurance", item_type: "file_only" },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Information leaflet for online services", item_type: "file_only" },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Safety and drug alerts process and evidence of management and actions.", item_type: "guided_questions_and_file", questions: ["How do you receive and disseminate safety/drug alerts?", "Who is responsible for actioning alerts and conducting searches?", "How do you document actions taken and share learning from these alerts?"], description: "Describe the process and attach evidence (e.g., completed logs, screenshots)." },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Policy and process for ensuring staff are recruited safely including DBS and registration checks.", item_type: "file_only" },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Policy and process to ensure practice oversight of other staff not directly employed by the practice who have access to patients or their records.", item_type: "file_only" },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Process for supervision and competency oversight of clinical staff including staff with a prescribing qualification.", item_type: "guided_questions_and_file", questions: ["Describe your system for clinical supervision.", "How are competencies for advanced roles (e.g., prescribing) assessed and monitored?", "How frequently do supervisions or reviews occur?"], description: "Describe the process and attach any relevant policy." },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Policy for ensuring PGDs and PSDs are appropriately reviewed and signed.", item_type: "file_only" },
+        { category: "EMAIL 2: TRAINING", title: "Number of current staff by role and WTE.", item_type: "dynamic_table", headers: ["Role", "Number of Staff", "WTE"] },
+        { category: "EMAIL 2: TRAINING", title: "List of staff and their extended role(s) eg cervical screening, diabetes, immunisations", item_type: "dynamic_table", headers: ["Staff Name", "Extended Role(s)"] },
+        { category: "EMAIL 2: TRAINING", title: "Policy of training for staff and process to manage and monitor", item_type: "file_only" },
+        { category: "EMAIL 2: TRAINING", title: "Matrix of staff training which should include...", item_type: "file_only" },
+        { category: "EMAIL 3: SAFEGUARDING", title: "Safeguarding adults' policy", item_type: "file_only" },
+        { category: "EMAIL 3: SAFEGUARDING", title: "Safeguarding children policy", item_type: "file_only" },
+        { category: "EMAIL 3: SAFEGUARDING", title: "Sample of minutes of MDT meetings", item_type: "file_only" },
+        { category: "EMAIL 3: SAFEGUARDING", title: "Policy/process to ensure information is shared with others such as coding of medical records.", item_type: "file_only" },
+        { category: "EMAIL 4: RISK ASSESSMENTS", title: "Latest fire risk assessment and any action log", item_type: "file_only" },
+        { category: "EMAIL 4: RISK ASSESSMENTS", title: "Evidence and date of fire extinguish check", item_type: "file_only" },
+        { category: "EMAIL 4: RISK ASSESSMENTS", title: "Evidence of latest service for emergency lights and alarm test", item_type: "file_only" },
+        { category: "EMAIL 4: RISK ASSESSMENTS", title: "Copy of the latest fire drill and actions taken.", item_type: "file_only" },
+        { category: "EMAIL 4: RISK ASSESSMENTS", title: "Sample of fire alarm checks undertaken in the month of March 2025", item_type: "file_only" },
+        { category: "EMAIL 4: RISK ASSESSMENTS", title: "Latest health and safety risk assessment and any action log", item_type: "file_only" },
+        { category: "EMAIL 4: RISK ASSESSMENTS", title: "Latest legionella assessment and water temperature checks undertaken in the month of March 2025", item_type: "file_only" },
+        { category: "EMAIL 4: RISK ASSESSMENTS", title: "Copy of any risk assessments the practice has taken such as wheelchair access, monitoring of waiting areas etc.", item_type: "file_only" },
+        { category: "EMAIL 4: RISK ASSESSMENTS", title: "Equipment calibration dates and copy of certificate", item_type: "file_only" },
+        { category: "EMAIL 4: RISK ASSESSMENTS", title: "PAT testing dates and copy of certificate", item_type: "file_only" },
+        { category: "EMAIL 4: RISK ASSESSMENTS", title: "Evidence of immunisation status of staff.", item_type: "file_only" },
+        { category: "EMAIL 5: INFECTION PREVENTION AND CONTROL", title: "Name and role of IPC lead", item_type: "dual_text", labels: ["Name of Lead", "Role"] },
+        { category: "EMAIL 5: INFECTION PREVENTION AND CONTROL", title: "Latest Infection control policy", item_type: "file_only" },
+        { category: "EMAIL 5: INFECTION PREVENTION AND CONTROL", title: "Latest Infection prevention control audit and action log.", item_type: "file_only" },
+        { category: "EMAIL 5: INFECTION PREVENTION AND CONTROL", title: "Copies of any meetings where IPC has been discussed, any shared learning and changes since last inspection", item_type: "file_only" },
+        { category: "EMAIL 5: INFECTION PREVENTION AND CONTROL", title: "Summary of vaccine fridge management including number and location of vaccine fridges", item_type: "textarea" },
+        { category: "EMAIL 5: INFECTION PREVENTION AND CONTROL", title: "Copy of the temperature recordings for March 2025", item_type: "file_only" },
+        { category: "EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS", title: "Significant events policy", item_type: "file_only" },
+        { category: "EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS", title: "Complaint’s policy and leaflet available to patients", item_type: "file_only" },
+        { category: "EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS", title: "A summary of significant events within the last 12 months...", item_type: "guided_questions_and_number", questions: ["What were the key themes from significant events in the last 12 months?", "What were the most important learning points?", "What changes have you implemented as a result?"], label: "Number of events (12 months)" },
+        { category: "EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS", title: "A summary of complaints received within the last 12 months...", item_type: "guided_questions_and_number", questions: ["What were the key themes from complaints in the last 12 months?", "What were the most important learning points?", "What changes have you implemented as a result of complaints?"], label: "Number of complaints (12 months)" },
+        { category: "EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS", title: "Sample meetings minutes where significant events and /or complaints have been discussed in the past 6 months.", item_type: "file_only" },
+        { category: "EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS", title: "Sample of compliments received in the past 6 months.", item_type: "file_only" },
+        { category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", title: "Summary of the quality of care you provide for the six population groups", item_type: "textarea" },
+        { category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", title: "Details of how you have monitored and improved care and treatment", item_type: "guided_questions_and_file", questions: ["Provide a summary of clinical audits from the last two years.", "Describe two full-cycle audits, including actions taken and outcomes achieved."], description: "Attach the full audit documents as evidence." },
+        { category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", title: "Summary of any other quality improvement work undertaken over the last two years.", item_type: "textarea" },
+        { category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", title: "Evidence of how you have collected, analysed and responded to patient feedback during the last 12 months...", item_type: "guided_questions_and_file", questions: ["How do you collect patient feedback (e.g., FFT, surveys)?", "Provide a summary of the feedback received.", "What specific actions or improvements have you made in response to feedback?"], description: "Summarise and attach evidence (e.g., survey results, action logs)." },
+        { category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", title: "If not included above – If you have undertaken your own Patient survey...", item_type: "file_only" },
+        { category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", title: "Evidence of how you have collected, analysed and responded to staff feedback during the last 12 months...", item_type: "guided_questions_and_file", questions: ["How do you collect staff feedback (e.g., meetings, surveys)?", "Provide a summary of the feedback received.", "What specific actions or improvements have you made in response to staff feedback?"], description: "Summarise and attach evidence." },
+        { category: "EMAIL 8: PATIENT RECORD KEEPING AND MEDICINES", title: "Discharge (medicine reconciliation) process and any audits/checks undertaken.", item_type: "guided_questions_and_file", questions: ["Describe your process for reconciling medicines following a patient's discharge from hospital.", "How do you audit or check compliance with this process?"], description: "Describe the process and attach audits/checks." },
+        { category: "EMAIL 8: PATIENT RECORD KEEPING AND MEDICINES", title: "Policy and process for the management of repeat prescriptions and medicine reviews.", item_type: "file_only" },
+        { category: "EMAIL 8: PATIENT RECORD KEEPING AND MEDICINES", title: "Patient summarising/coding in medical records policy/process and any audits/checks undertaken.", item_type: "guided_questions_and_file", questions: ["Describe your process for summarising new patient records.", "How do you ensure clinical correspondence is coded accurately and in a timely manner?"], description: "Describe the process and attach audits/checks." },
+        { category: "EMAIL 8: PATIENT RECORD KEEPING AND MEDICINES", title: "Number of patient records that have not been fully summarised.", item_type: "number", label: "Number of records" },
+        { category: "EMAIL 9: DATA FOR THE REPORT", title: "NHS health checks data, how many eligible, how many offered, how many completed in last 12 months", item_type: "triple_number", labels: ["Eligible", "Offered", "Completed"] },
+        { category: "EMAIL 9: DATA FOR THE REPORT", title: "Learning Disability check data, how many eligible, how many offered, how many completed in last 12 months", item_type: "triple_number", labels: ["Eligible", "Offered", "Completed"] },
+        { category: "EMAIL 9: DATA FOR THE REPORT", title: "Cervical cancer screening and child immunisation coverage data and action to improve uptake.", item_type: "guided_questions_and_file", questions: ["What actions have you taken to improve the uptake of cervical screening?", "What actions have you taken to improve the uptake of childhood immunisations?"], description: "Summarise actions and attach coverage data." },
+    ];
 
     async function seedInitialPIRDocs() {
         if (!ctx.site_id) return;
@@ -2653,38 +1918,116 @@ async function loadSchedules(){
     }
 
     const pirEmailModal = document.getElementById('pir-email-modal');
-    // NOTE: The logic for the modal pop-up is now handled by the .eml generator script.
-    // The old modal logic is left here but is not triggered by the main button anymore.
+    const btnGenerateEmails = document.getElementById('btn-generate-emails');
     const btnConfirmGenerate = document.getElementById('btn-confirm-generate');
     const btnCancelGenerate = document.getElementById('btn-cancel-generate');
+
+    if (btnGenerateEmails) btnGenerateEmails.addEventListener('click', () => {
+        const readyCount = pirDocsCache.filter(d => d.status === 'Ready').length;
+        document.getElementById('pir-email-summary').innerHTML = `You have <strong style="color: var(--success);">${readyCount}</strong> of ${pirDocsCache.length} items marked as 'Ready'.<br>Only these will be included in the download.`;
+        document.getElementById('pir-email-body').style.display = 'block';
+        document.getElementById('pir-email-progress').style.display = 'none';
+        btnConfirmGenerate.style.display = 'inline-block';
+        pirEmailModal.classList.add('show');
+    });
 
     if (btnCancelGenerate) btnCancelGenerate.addEventListener('click', () => pirEmailModal.classList.remove('show'));
     if (pirEmailModal) pirEmailModal.addEventListener('click', (e) => { if (e.target === pirEmailModal) pirEmailModal.classList.remove('show'); });
 
-    // Helper function to format data from JSON into a readable text file string
-    function formatDataForTxt(doc, itemDef) {
-        let content = `DOCUMENT: ${doc.title}\nCATEGORY: ${doc.category}\n\n--------------------\n\n`;
+    if (btnConfirmGenerate) btnConfirmGenerate.addEventListener('click', async () => {
+        const progressStatus = document.getElementById('pir-progress-status');
+        const progressDetails = document.getElementById('pir-progress-details');
+        
+        document.getElementById('pir-email-body').style.display = 'none';
+        btnConfirmGenerate.style.display = 'none';
+        document.getElementById('pir-email-progress').style.display = 'block';
+        progressStatus.textContent = "Generating...";
+        progressDetails.textContent = "Please wait, preparing zip file...";
 
-        if (doc.data.answers && itemDef.questions) {
-            itemDef.questions.forEach((q, index) => {
-                content += `Q: ${q}\nA: ${doc.data.answers[index] || 'Not answered'}\n\n`;
-            });
-        } else if (doc.data.text_content) {
-            content += `${doc.data.text_content}\n`;
-        } else if (doc.item_type === 'dynamic_table' && doc.data.table_data) {
-            content += itemDef.headers.join('\t') + '\n';
-            content += '--------------------\n';
-            content += doc.data.table_data.map(row => row.join('\t')).join('\n');
-        } else {
-            const labels = itemDef.labels || ['Value 1', 'Value 2', 'Value 3'];
-             ['num1', 'num2', 'num3', 'text1', 'text2'].forEach((key, idx) => {
-                if(doc.data[key] != null && doc.data[key] !== '') {
-                    content += `${labels[idx] || key}: ${doc.data[key]}\n`;
+        try {
+            const zip = new JSZip();
+            const practiceName = document.getElementById('site-pill').textContent.replace('Site: ','');
+            const readyDocs = pirDocsCache.filter(d => d.status === 'Ready');
+            const categoryOrder = [...new Set(PIR_DEFINITIONS.map(d => d.category))];
+
+            for (const [i, category] of categoryOrder.entries()) {
+                const emailNum = `EMAIL ${i + 1}`;
+                const emailTitle = category.replace(/EMAIL \d+: /i, '').trim();
+                const folder = zip.folder(`${emailNum} - ${emailTitle}`);
+                const docsForCat = readyDocs.filter(d => d.category === category);
+                
+                let emailBody = `SUGGESTED SUBJECT: ${emailNum} ${emailTitle.toUpperCase()}\n\n------------------------------------------------------\n\nDear CQC Inspection Team,\n\nPlease find attached the requested information for the "${emailTitle}" section of the pre-inspection information request.\n`;
+                let summaryList = '';
+                let dataSummary = '';
+
+                if (docsForCat.length > 0) {
+                    docsForCat.forEach(doc => {
+                        summaryList += `- ${doc.title}`;
+                        const itemDef = PIR_DEFINITIONS.find(d => d.title === doc.title) || {};
+
+                        if (doc.file_path) summaryList += ` (File Attached)\n`;
+                        else summaryList += ` (Data Provided)\n`;
+                        
+                        const hasData = doc.data && Object.keys(doc.data).length > 0 && JSON.stringify(doc.data) !== '{}';
+                        if (hasData) {
+                            dataSummary += `\n\n--- ${doc.title} ---\n`;
+                            if (doc.data.answers && itemDef.questions) {
+                                itemDef.questions.forEach((q, index) => {
+                                    dataSummary += `Q: ${q}\nA: ${doc.data.answers[index] || 'Not answered'}\n\n`;
+                                });
+                            } else if (doc.data.text_content) {
+                                dataSummary += `${doc.data.text_content}\n`;
+                            } else if (doc.item_type === 'dynamic_table') {
+                                dataSummary += itemDef.headers.join('\t') + '\n';
+                                dataSummary += doc.data.table_data.map(row => row.join('\t')).join('\n');
+                            } else {
+                                const labels = itemDef.labels || ['Value 1', 'Value 2', 'Value 3'];
+                                ['num1', 'num2', 'num3', 'text1', 'text2'].forEach((key, idx) => {
+                                    if(doc.data[key] != null && doc.data[key] !== '') dataSummary += `${labels[idx]}: ${doc.data[key]}\n`;
+                                });
+                            }
+                        }
+                    });
+                    emailBody += `\nA summary of the provided information is below:\n${summaryList}`;
+                    if(dataSummary) emailBody += `\n\n--- DATA & SUMMARIES ---${dataSummary}`;
+                } else {
+                    emailBody += `\nNo documents or data were marked as 'Ready' for this section.\n`;
                 }
-            });
+                
+                emailBody += `\n\nKind regards,\n\nThe Team at ${practiceName}`;
+                folder.file('email_body.txt', emailBody);
+
+                const filesToFetch = docsForCat.filter(d => d.file_path);
+                if (filesToFetch.length > 0) {
+                    await Promise.all(filesToFetch.map(async (doc) => {
+                        try {
+                             const { data, error } = await supabase.storage.from('pir_attachments').download(doc.file_path);
+                             if (error) throw error;
+                             folder.file(doc.file_path.split('/').pop(), data);
+                        } catch (e) {
+                             folder.file(`FAILED_TO_DOWNLOAD_${doc.file_path.split('/').pop()}.txt`, `Error: ${e.message}`);
+                        }
+                    }));
+                }
+                progressDetails.textContent = `Processing: ${i + 1} of ${categoryOrder.length} emails...`;
+            }
+
+            progressStatus.textContent = "Compressing...";
+            const content = await zip.generateAsync({ type: "blob" });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(content);
+            link.download = `CQC_Pre-Inspection_Emails_${new Date().toISOString().slice(0,10)}.zip`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+            pirEmailModal.classList.remove('show');
+        } catch (err) {
+            progressStatus.textContent = "Error!";
+            progressDetails.textContent = err.message;
+            document.getElementById('pir-email-body').style.display = 'block';
         }
-        return content;
-    }
+    });
 
     function buildPirForm(item, data, filePath) {
         const itemDef = PIR_DEFINITIONS.find(d => d.title === item.title) || {};
@@ -3033,23 +2376,21 @@ async function loadSchedules(){
   </div>
 
   <div id="pir-email-modal" class="auth" aria-hidden="true">
-    <div class="card" style="width:min(700px, 95vw)">
-      <h2 id="pir-email-title">Generate Inspection Emails & Attachments</h2>
+    <div class="card" style="width:min(520px, 95vw)">
+      <h2 id="pir-email-title">Generate Inspection Emails</h2>
       <div id="pir-email-body">
-        <p class="muted">This will download a .zip file containing a folder for each of the 10 emails. Only items marked as 'Ready' will be included. Please review the contents below before proceeding.</p>
-        
-        <div id="pir-email-preview" style="margin: 16px 0; max-height: 40vh; overflow-y: auto; padding: 12px; background: var(--glass); border-radius: 12px; font-size: 13px; border: 1px solid var(--border-color);">
-            Loading preview...
+        <p class="muted">This will download a .zip file containing a folder for each of the 9 required CQC emails. Each folder will include the documents you have marked as 'Ready'.</p>
+        <div id="pir-email-summary" style="margin: 16px 0; padding: 12px; background: var(--glass); border-radius: 12px; font-size: 14px;">
+            Loading summary...
         </div>
-
-        <div class="hint">After downloading, you will need to create each email in your email client, copy the text from the 'email_body.txt' file, and attach the corresponding documents from that email's folder.</div>
+        <div class="hint">After downloading, you will need to create each email in your email client, copy the text from the 'email_body.txt' file, and attach the corresponding documents.</div>
       </div>
       <div id="pir-email-progress" style="display:none; text-align:center; padding: 20px;">
           <div class="h1" style="margin:0" id="pir-progress-status">Generating...</div>
           <div class="muted" id="pir-progress-details">Preparing files. Please wait.</div>
       </div>
       <div style="display:flex; gap:8px; margin-top:12px">
-        <button type="button" class="btn" id="btn-confirm-generate">Yes, Generate & Download</button>
+        <button type="button" class="btn" id="btn-confirm-generate">Confirm & Download</button>
         <button type="button" class="btn secondary" id="btn-cancel-generate">Cancel</button>
       </div>
     </div>

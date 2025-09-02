@@ -161,8 +161,6 @@
   .chip{ padding:4px 8px; background:#ffffff20; border-radius:999px; font-size:12px; display:inline-block }
   .chip.success { background: var(--stat-2-bg); color: var(--stat-2-color); }
   .chip.danger { background: var(--stat-4-bg); color: var(--stat-4-color); }
-  .chip.warning { background: var(--stat-3-bg); color: var(--stat-3-color); }
-
 
   /* Sections (SPA) */
   section.view{ display:none; }
@@ -353,262 +351,9 @@
     border-color: var(--accent);
     color: var(--white);
   }
-  /* Pre-inspection View Styles */
-  .progress-bar-bg { background: var(--glass-2); border-radius: 99px; height: 10px; overflow: hidden; }
-  .progress-bar-fg { background: var(--success); height: 100%; width: 0%; border-radius: 99px; transition: width .4s ease; }
-  .doc-category { margin-bottom: 20px; }
-  .doc-category-title { font-size: 16px; font-weight: 600; color: var(--accent-2); border-bottom: 1px solid var(--border-color); padding-bottom: 8px; margin-bottom: 12px; }
-  #pir-tbody tr { cursor: pointer; }
-
-  /* Pre‑Inspection panel should fill viewport and allow inner scrolling */
-  #view-pre-inspection .panel {
-    min-height: calc(100vh - 190px);
-    display: flex;
-    flex-direction: column;
-  }
-  /* Make the documents container the scrollable area */
-  #view-pre-inspection #pir-docs-container {
-    flex: 1 1 auto;
-    overflow-y: auto;
-    max-height: none;            /* override .table-wrap default 420px cap */
-    -webkit-overflow-scrolling: touch; /* iOS/Safari momentum scroll */
-    overscroll-behavior: contain;      /* prevent scroll chaining */
-  }
-
-  /* Dynamic & Multi-Input Form Styles */
-  .multi-input-container { display: flex; gap: 12px; align-items: flex-start; }
-  .multi-input-container .field { flex: 1; margin-top: 0; }
-  .dynamic-table-row { display: flex; gap: 8px; align-items: center; }
-  .dynamic-table-row input { flex: 1; }
 </style>
 
 <script>
-// === NEW .EML GENERATION LOGIC START ===
-window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
-    const btn = document.getElementById('btn-generate-emails');
-    if (!btn) return;
-
-    // This new listener runs in the 'capture' phase to override the old one.
-    btn.addEventListener('click', async (e) => {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        try {
-            await generateAndDownloadPIRAsEmails();
-        } catch (err) {
-            console.error(err);
-            alert('Sorry, generating the email files failed: ' + (err?.message || err));
-        }
-    }, { capture: true });
-
-    // --- Helper Functions for EML creation ---
-
-    // Ensure strings use CRLF line endings
-    function crlf(str) { return str.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n'); }
-    // Fold long lines (for base64) as per RFC 2045
-    function fold76(s) { return s.replace(/(.{1,76})/g, '$&\r\n'); }
-    // Create a URL-friendly slug from a string
-    function slug(s) { return (s || '').toString().replace(/[^a-z0-9]+/gi, '-').replace(/(^-|-$)/g, '').toLowerCase(); }
-    
-    // Create a unique boundary string for multipart emails
-    function makeBoundary() { return '=====_CheckLoop_Boundary_' + Math.random().toString(36).slice(2) + '====='; }
-
-    // Convert a Blob object (from a file fetch) to a base64 string
-    function blobToBase64(blob) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-                const res = String(reader.result || '');
-                const idx = res.indexOf('base64,');
-                resolve(idx >= 0 ? res.slice(idx + 7) : '');
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-    }
-    
-    // Generate the plain text body for an email
-    function buildPlainTextBody(categoryTitle, items) {
-        const lines = [];
-        lines.push(`Dear CQC Inspection Team,`);
-        lines.push(``);
-        lines.push(`Please find attached the requested information for the "${categoryTitle}" section.`);
-        lines.push(``);
-        lines.push('Summary of evidence provided:');
-        
-        const itemDefinitions = window.PIR_DEFINITIONS_DATA || [];
-        for (const it of items) {
-            // Find the definition to get the email_blurb
-            const def = itemDefinitions.find(d => d.title === it.title);
-            const blurb = def?.email_blurb || it.title;
-            lines.push(`• ${blurb}`);
-        }
-        
-        lines.push(``);
-        lines.push('Kind regards,');
-        const practiceName = (typeof ctx === 'object' && ctx?.site_name) ? `The Team at ${ctx.site_name}` : 'The Practice';
-        lines.push(practiceName);
-        return lines.join('\n');
-    }
-
-    // Assemble a full .eml file string from its parts
-    function assembleEml({ from, to, subject, textBody, attachments }) {
-        const boundary = makeBoundary();
-        const date = new Date().toUTCString();
-        
-        // Basic email headers
-        const headers = [
-            `From: ${from}`,
-            `To: ${to || ''}`, // CQC email can be filled in by user
-            `Subject: ${subject}`,
-            `Date: ${date}`,
-            `MIME-Version: 1.0`,
-            `Content-Type: multipart/mixed; boundary="${boundary}"`
-        ].join('\r\n');
-
-        const parts = [];
-        
-        // 1. The plain text part of the email
-        parts.push([
-            `--${boundary}`,
-            'Content-Type: text/plain; charset=UTF-8',
-            'Content-Transfer-Encoding: 7bit',
-            '',
-            crlf(textBody)
-        ].join('\r\n'));
-
-        // 2. The attachment parts (if any)
-        for (const a of (attachments || [])) {
-            const filename = a.filename || 'attachment';
-            const mime = a.mime || 'application/octet-stream';
-            const b64 = fold76(a.base64 || '');
-            parts.push([
-                `--${boundary}`,
-                `Content-Type: ${mime}; name="${filename}"`,
-                'Content-Transfer-Encoding: base64',
-                `Content-Disposition: attachment; filename="${filename}"`,
-                '',
-                b64
-            ].join('\r\n'));
-        }
-
-        // 3. The closing boundary
-        parts.push(`--${boundary}--`);
-
-        return headers + '\r\n\r\n' + parts.join('\r\n');
-    }
-    
-    // Takes a list of document items, fetches their files, and prepares them for attachment
-    async function prepareAttachments(items) {
-        const out = [];
-        const itemDefinitions = window.PIR_DEFINITIONS_DATA || [];
-
-        for (const it of items) {
-            // A) Handle file uploads
-            if (it.file_path) {
-                try {
-                    const { data: blob, error } = await supabase.storage.from('pir_attachments').download(it.file_path);
-                    if (error) throw error;
-                    
-                    const base64 = await blobToBase64(blob);
-                    const filename = it.file_path.split('/').pop() || 'file';
-                    out.push({ filename, mime: blob.type, base64 });
-                } catch (e) {
-                    console.warn('Attachment fetch failed', it.file_path, e);
-                }
-            }
-
-            // B) Handle data entries (convert to a .txt file)
-            const data = it.data || {};
-            if (Object.keys(data).length > 0 && JSON.stringify(data) !== '{}') {
-                const itemDef = itemDefinitions.find(d => d.title === it.title) || {};
-                let content = `DOCUMENT: ${it.title}\nCATEGORY: ${it.category}\n\n---\n\n`;
-
-                if (data.answers && itemDef.questions) {
-                    itemDef.questions.forEach((q, i) => {
-                        content += `Q: ${q}\nA: ${data.answers[i] || 'Not answered'}\n\n`;
-                    });
-                }
-                if (data.table_data && itemDef.headers) {
-                    content += itemDef.headers.join('\t') + '\n';
-                    content += data.table_data.map(row => row.join('\t')).join('\n') + '\n';
-                }
-                const labels = itemDef.labels || ['Value 1', 'Value 2', 'Value 3'];
-                 ['num1', 'num2', 'num3', 'text1', 'text2'].forEach((key, idx) => {
-                    if(data[key] != null && data[key] !== '') {
-                        content += `${labels[idx] || key}: ${data[key]}\n`;
-                    }
-                });
-
-                const txtBlob = new Blob([content], { type: 'text/plain' });
-                const base64 = await blobToBase64(txtBlob);
-                const filename = `${slug(it.title)}.txt`;
-                out.push({ filename, mime: 'text/plain', base64 });
-            }
-        }
-        return out;
-    }
-    
-    // Group items by their email category
-    function groupByCategory(items) {
-        const map = new Map();
-        for (const it of items) {
-            const cat = it.category || 'Uncategorised';
-            if (!map.has(cat)) map.set(cat, []);
-            map.get(cat).push(it);
-        }
-        return map;
-    }
-
-    // --- Main Function ---
-    async function generateAndDownloadPIRAsEmails() {
-        // Use pirDocsCache if available, as it holds the live data from the page
-        const items = Array.isArray(window.pirDocsCache) ? window.pirDocsCache : [];
-        const readyItems = items.filter(it => it.status === 'Ready');
-
-        if (!readyItems.length) {
-            throw new Error('No Pre-Inspection items are marked as "Ready". Please update the status of items you wish to include.');
-        }
-
-        const zip = new JSZip();
-        const from = (typeof ctx === 'object' && ctx?.user?.email) ? ctx.user.email : 'practice@nhs.net';
-        const practiceName = (typeof ctx === 'object' && ctx?.site_name) ? ` for ${ctx.site_name}` : '';
-
-        // Group the "Ready" items by their category
-        const groups = groupByCategory(readyItems);
-        
-        for (const [category, catItems] of groups) {
-            if (!catItems.length) continue;
-
-            const categoryTitle = category.replace(/EMAIL \d+: /i, '').trim();
-            const subject = `CQC Pre-Inspection Information - ${category}${practiceName}`;
-            
-            const textBody = buildPlainTextBody(categoryTitle, catItems);
-            const attachments = await prepareAttachments(catItems);
-            
-            const emlContent = assembleEml({ from, to: '', subject, textBody, attachments });
-            
-            // e.g., "EMAIL 1 - GOVERNANCE, POLICIES AND PROCEDURES.eml"
-            const fname = `${category.replace(/[^a-zA-Z0-9 ]/g, '').replace(/ /g, '_')}.eml`;
-            zip.file(fname, emlContent);
-        }
-
-        const blob = await zip.generateAsync({ type: 'blob' });
-        const y = new Date().getFullYear();
-        const m = String(new Date().getMonth() + 1).padStart(2, '0');
-        const d = String(new Date().getDate()).padStart(2, '0');
-        const zipName = `CQC_PIR_Emails_${y}-${m}-${d}.zip`;
-
-        // Trigger the download
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = zipName;
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
-    }
-});
-// === NEW .EML GENERATION LOGIC END ===
-
 (function () {
   var ua = navigator.userAgent || "";
   var isIOSiPad = /iPad|iPhone|iPod/.test(ua) ||
@@ -641,7 +386,6 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
       </div>
       <nav class="nav" id="nav">
         <button class="active" data-section="dashboard"><img class="icon" alt="" src="dashboard.png"><span class="menu-item-label">Dashboard</span></button>
-        <button data-section="pre-inspection"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg><span class="menu-item-label">Pre-inspection</span></button>
         <button data-section="calendar"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg><span class="menu-item-label">Calendar</span></button>
         <button data-section="items"><svg class="icon" style="color: var(--muted);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.73z"/>
@@ -754,29 +498,6 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
         </div>
 
         <div class="footer">© CheckLoop • Built for GP surgeries • Silky blue UI ✨</div>
-      </section>
-
-      <section class="view" id="view-pre-inspection">
-        <div class="panel">
-            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-              <div class="h1" style="margin:0 0 10px">CQC Pre-Inspection Readiness</div>
-              <button class="btn" id="btn-generate-emails">Generate & Download Emails</button>
-            </div>
-            <div class="grid" style="align-items: center; margin-bottom: 24px;">
-                <div class="g-8">
-                    <div class="muted">Overall Progress (Ready Items)</div>
-                    <div class="progress-bar-bg" style="margin-top: 8px;">
-                        <div class="progress-bar-fg" id="pir-progress-bar" style="width: 0%;"></div>
-                    </div>
-                </div>
-                <div class="g-4" style="text-align: right;">
-                    <div id="pir-progress-text" style="font-size: 24px; font-weight: 700;">0 / 0</div>
-                    <div class="muted">Items Ready</div>
-                </div>
-            </div>
-            
-            <div id="pir-docs-container" class="table-wrap"></div>
-        </div>
       </section>
 
       <section class="view" id="view-calendar">
@@ -909,574 +630,15 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
     </div>
   </div>
 
-<script>
-  // --- PRE-INSPECTION (PIR) DATA DEFINITIONS (v2 - Enhanced for Email Generation) ---
-// This block contains the definitions for all CQC pre-inspection items.
-// It has been updated with an `email_blurb` for each item to facilitate automatic email generation.
-window.PIR_DEFINITIONS_DATA = [
-    // EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Statement of purpose", 
-        item_type: "guided_questions", 
-        questions: [
-            "Core Aims & Objectives: What are the fundamental goals of the practice in terms of patient care, safety, and quality?", 
-            "Scope of Services: List the regulated activities and describe the full range of clinical and non-clinical services provided.", 
-            "Patient Population Profile: Describe your service users, including key demographics, common health needs, and any specific community characteristics."
-        ],
-        email_blurb: "Provides our Statement of Purpose, detailing the practice's aims, services, and patient population."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Copy of Major incident/business continuity", 
-        item_type: "file_only",
-        email_blurb: "Attached is our Major Incident and Business Continuity Plan."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Medical emergencies policy", 
-        item_type: "file_only",
-        email_blurb: "Attached is our policy for handling medical emergencies within the practice."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Chaperone policy", 
-        item_type: "file_only",
-        email_blurb: "Attached is our Chaperone Policy for patient consultations."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Induction process", 
-        item_type: "guided_questions_and_file", 
-        questions: [
-            "Induction Structure: Describe the phases and timeline of your induction process for different staff roles (clinical, admin).", 
-            "Key Content & Policies: What essential topics are covered (e.g., safeguarding, H&S, IPC, confidentiality, chaperone policy)?", 
-            "Competency Assessment: How do you verify and document that new staff are competent and confident in their role at the end of the induction period?"
-        ], 
-        description: "Describe the process and/or attach the induction pack/checklist.",
-        email_blurb: "Provides a summary of our staff induction process, with the induction pack attached."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Online services policy", 
-        item_type: "file_only",
-        email_blurb: "Attached is our policy for the provision and use of online patient services."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Access policy", 
-        item_type: "file_only",
-        email_blurb: "Attached is our Patient Access Policy, detailing how patients can access our services."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Registration policy (incl access to medical records)", 
-        item_type: "file_only",
-        email_blurb: "Attached is our policy for patient registration and access to medical records."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Home visits/care home protocol", 
-        item_type: "file_only",
-        email_blurb: "Attached is our protocol for conducting home visits and supporting care homes."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Process for supporting carers", 
-        item_type: "guided_questions_and_file", 
-        questions: [
-            "Identification Strategy: How do you proactively identify patients who are carers?", 
-            "Support & Signposting: What specific support is offered and which local/national services do you signpost to?", 
-            "Recording & Flagging: How do you maintain an up-to-date carers' register in the clinical system?"
-        ], 
-        description: "Describe the process and attach any relevant leaflets or policies.",
-        email_blurb: "Details our process for identifying and supporting carers, with relevant leaflets attached."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Number of carers identified and percentage", 
-        item_type: "dual_number", 
-        labels: ["Number Identified", "Percentage (%)"],
-        email_blurb: "Provides the current number and percentage of identified carers on our patient list."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Process for bereaved patients", 
-        item_type: "guided_questions_and_file", 
-        questions: [
-            "Immediate Steps: What are the immediate administrative and clinical steps upon notification of a patient death?",
-            "Family Communication: How and when do you make contact with the bereaved family, and what support is offered?",
-            "Record Management: What is the process for updating and managing the deceased patient's records?",
-            "Signposting: Which bereavement support services are patients and their families signposted to?",
-            "Staff Support: How are staff who were involved in the patient's care supported?"
-        ], 
-        description: "Describe the process and attach any relevant protocols.",
-        email_blurb: "Outlines our process for supporting bereaved patients and their families."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "ICO registration certificate", 
-        item_type: "file_only",
-        email_blurb: "Attached is our current ICO registration certificate."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Provider liability/MD insurance", 
-        item_type: "file_only",
-        email_blurb: "Attached is our certificate of provider liability/medical defence insurance."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Information leaflet for online services", 
-        item_type: "file_only",
-        email_blurb: "Attached is the information leaflet we provide to patients regarding our online services."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Safety and drug alerts process and evidence of management and actions.", 
-        item_type: "guided_questions_and_file", 
-        questions: [
-            "Receipt & Dissemination: How are alerts received and promptly distributed to all relevant staff?", 
-            "Action & Responsibility: Who is the designated lead, and what is the process for actioning alerts and documenting in patient records?", 
-            "Audit & Learning: How do you maintain a central log to track alerts, actions, and outcomes?"
-        ], 
-        description: "Describe the process and attach evidence (e.g., completed logs, screenshots).",
-        email_blurb: "Details our process for managing safety and drug alerts, with evidence of actions attached."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Policy and process for ensuring staff are recruited safely including DBS and registration checks.", 
-        item_type: "file_only",
-        email_blurb: "Attached is our policy for safe staff recruitment, including DBS and registration checks."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Policy and process to ensure practice oversight of other staff not directly employed by the practice.", 
-        item_type: "file_only",
-        email_blurb: "Attached is our policy for the oversight of non-practice staff with access to patients or records."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Process for supervision and competency oversight of clinical staff.", 
-        item_type: "guided_questions_and_file", 
-        questions: [
-            "Supervision Framework: Describe your system for clinical supervision for different roles (e.g., Nurses, HCAs), including frequency and format.", 
-            "Competency Assessment: How are competencies for advanced roles (e.g., prescribing) assessed, documented, and reviewed?", 
-            "Governance & Record Keeping: Where are supervision and competency records kept and how do they inform appraisals?"
-        ], 
-        description: "Describe the process and attach any relevant policy.",
-        email_blurb: "Outlines our process for clinical supervision and competency oversight, with the relevant policy attached."
-    },
-    { 
-        category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
-        title: "Policy for ensuring PGDs and PSDs are appropriately reviewed and signed.", 
-        item_type: "file_only",
-        email_blurb: "Attached is our policy for the management of PGDs and PSDs."
-    },
-
-    // EMAIL 2: TRAINING
-    { 
-        category: "EMAIL 2: TRAINING", 
-        title: "Number of current staff by role and WTE.", 
-        item_type: "dynamic_table", 
-        headers: ["Role", "Number of Staff", "WTE"],
-        email_blurb: "Provides a breakdown of current staff by role and Whole Time Equivalent (WTE)."
-    },
-    { 
-        category: "EMAIL 2: TRAINING", 
-        title: "List of staff and their extended role(s).", 
-        item_type: "dynamic_table", 
-        headers: ["Staff Name", "Extended Role(s)"],
-        email_blurb: "Provides a list of staff members and their designated extended roles."
-    },
-    { 
-        category: "EMAIL 2: TRAINING", 
-        title: "Policy of training for staff and process to manage and monitor.", 
-        item_type: "file_only",
-        email_blurb: "Attached is our staff training policy, including our process for management and monitoring."
-    },
-    { 
-        category: "EMAIL 2: TRAINING", 
-        title: "Matrix of staff training.", 
-        item_type: "file_only",
-        description: "Attach the training matrix which should include all mandatory and role-specific training.",
-        email_blurb: "Attached is our comprehensive staff training matrix."
-    },
-
-    // EMAIL 3: SAFEGUARDING
-    { 
-        category: "EMAIL 3: SAFEGUARDING", 
-        title: "Safeguarding adults' policy", 
-        item_type: "file_only",
-        email_blurb: "Attached is our policy for the safeguarding of adults."
-    },
-    { 
-        category: "EMAIL 3: SAFEGUARDING", 
-        title: "Safeguarding children policy", 
-        item_type: "file_only",
-        email_blurb: "Attached is our policy for the safeguarding of children."
-    },
-    { 
-        category: "EMAIL 3: SAFEGUARDING", 
-        title: "Sample of minutes of MDT meetings", 
-        item_type: "file_only",
-        description: "Attach a recent, anonymised sample of MDT meeting minutes where safeguarding was discussed.",
-        email_blurb: "Attached is a sample of minutes from multidisciplinary team meetings."
-    },
-    { 
-        category: "EMAIL 3: SAFEGUARDING", 
-        title: "Policy/process to ensure information is shared with others.", 
-        item_type: "file_only",
-        description: "e.g. coding of medical records",
-        email_blurb: "Attached is our policy on information sharing, including the coding of medical records."
-    },
-
-    // EMAIL 4: RISK ASSESSMENTS
-    { 
-        category: "EMAIL 4: RISK ASSESSMENTS", 
-        title: "Latest fire risk assessment and any action log", 
-        item_type: "file_only",
-        email_blurb: "Attached is our latest fire risk assessment and corresponding action log."
-    },
-    { 
-        category: "EMAIL 4: RISK ASSESSMENTS", 
-        title: "Evidence and date of fire extinguisher check", 
-        item_type: "file_only",
-        email_blurb: "Attached is evidence of our latest fire extinguisher checks."
-    },
-    { 
-        category: "EMAIL 4: RISK ASSESSMENTS", 
-        title: "Evidence of latest service for emergency lights and alarm test", 
-        item_type: "file_only",
-        email_blurb: "Attached is evidence of the latest service for our emergency lights and fire alarm."
-    },
-    { 
-        category: "EMAIL 4: RISK ASSESSMENTS", 
-        title: "Copy of the latest fire drill and actions taken.", 
-        item_type: "file_only",
-        email_blurb: "Attached is the record of our latest fire drill and any actions taken."
-    },
-    { 
-        category: "EMAIL 4: RISK ASSESSMENTS", 
-        title: "Sample of weekly fire alarm checks", 
-        item_type: "guided_questions_and_file",
-        questions: ["Please confirm the month for which the sample checks are provided (e.g., 'March 2025')."],
-        description: "Attach the log of weekly fire alarm tests for the specified month.",
-        email_blurb: "Attached is a sample of our weekly fire alarm checks for the month specified."
-    },
-    { 
-        category: "EMAIL 4: RISK ASSESSMENTS", 
-        title: "Latest health and safety risk assessment and any action log", 
-        item_type: "file_only",
-        email_blurb: "Attached is our latest health and safety risk assessment and action log."
-    },
-    { 
-        category: "EMAIL 4: RISK ASSESSMENTS", 
-        title: "Latest legionella assessment and sample water temperature checks", 
-        item_type: "guided_questions_and_file",
-        questions: ["Please confirm the month for which the sample temperature checks are provided (e.g., 'March 2025')."],
-        description: "Attach the latest full assessment and the water temperature logs for the specified month.",
-        email_blurb: "Attached is our latest legionella risk assessment and sample water temperature checks."
-    },
-    { 
-        category: "EMAIL 4: RISK ASSESSMENTS", 
-        title: "Copy of any other general risk assessments.", 
-        item_type: "file_only",
-        description: "e.g. wheelchair access, monitoring of waiting areas etc.",
-        email_blurb: "Attached are copies of other general risk assessments undertaken by the practice."
-    },
-    { 
-        category: "EMAIL 4: RISK ASSESSMENTS", 
-        title: "Equipment calibration dates and copy of certificate", 
-        item_type: "file_only",
-        email_blurb: "Attached is evidence of our equipment calibration."
-    },
-    { 
-        category: "EMAIL 4: RISK ASSESSMENTS", 
-        title: "PAT testing dates and copy of certificate", 
-        item_type: "file_only",
-        email_blurb: "Attached is our latest PAT testing certificate."
-    },
-    { 
-        category: "EMAIL 4: RISK ASSESSMENTS", 
-        title: "Evidence of immunisation status of staff.", 
-        item_type: "file_only",
-        email_blurb: "Attached is evidence regarding the immunisation status of our staff."
-    },
-
-    // EMAIL 5: INFECTION PREVENTION AND CONTROL
-    { 
-        category: "EMAIL 5: INFECTION PREVENTION AND CONTROL", 
-        title: "Name and role of IPC lead", 
-        item_type: "dual_text", 
-        labels: ["Name of Lead", "Role"],
-        email_blurb: "Provides the name and role of our designated Infection Prevention and Control (IPC) lead."
-    },
-    { 
-        category: "EMAIL 5: INFECTION PREVENTION AND CONTROL", 
-        title: "Latest Infection control policy", 
-        item_type: "file_only",
-        email_blurb: "Attached is our latest Infection Prevention and Control policy."
-    },
-    { 
-        category: "EMAIL 5: INFECTION PREVENTION AND CONTROL", 
-        title: "Latest Infection prevention control audit and action log.", 
-        item_type: "file_only",
-        email_blurb: "Attached is our latest IPC audit and corresponding action log."
-    },
-    { 
-        category: "EMAIL 5: INFECTION PREVENTION AND CONTROL", 
-        title: "Copies of any meetings where IPC has been discussed", 
-        item_type: "file_only",
-        description: "Include any shared learning and changes since last inspection.",
-        email_blurb: "Attached are minutes from meetings where IPC was discussed, showing shared learning."
-    },
-    { 
-        category: "EMAIL 5: INFECTION PREVENTION AND CONTROL", 
-        title: "Summary of vaccine fridge management", 
-        item_type: "guided_questions", 
-        questions: [
-            "Policy & Responsibility: Who is the named lead for vaccine storage and what are the core principles of your cold chain policy?", 
-            "Equipment & Location: How many vaccine fridges do you have, where are they located, and how are they maintained?", 
-            "Monitoring & Recording: Describe your process for daily temperature monitoring, including logging and acceptable ranges.", 
-            "Action on Excursion: What is the procedure for a cold chain incident?", 
-            "Stock Management: How do you manage vaccine stock to ensure rotation and minimise wastage?"
-        ],
-        email_blurb: "Provides a summary of our vaccine fridge and cold chain management procedures."
-    },
-    { 
-        category: "EMAIL 5: INFECTION PREVENTION AND CONTROL", 
-        title: "Sample of vaccine fridge temperature recordings", 
-        item_type: "guided_questions_and_file",
-        questions: ["Please confirm the month for which the temperature logs are provided (e.g., 'March 2025')."],
-        description: "Attach the temperature recordings for the specified month.",
-        email_blurb: "Attached are the vaccine fridge temperature recordings for the month specified."
-    },
-
-    // EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS
-    { 
-        category: "EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS", 
-        title: "Significant events policy", 
-        item_type: "file_only",
-        email_blurb: "Attached is our policy for the management of significant events."
-    },
-    { 
-        category: "EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS", 
-        title: "Complaint’s policy and leaflet available to patients", 
-        item_type: "file_only",
-        email_blurb: "Attached is our complaints policy and the accompanying patient information leaflet."
-    },
-    { 
-        category: "EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS", 
-        title: "A summary of significant events within the last 12 months", 
-        item_type: "guided_questions_and_number", 
-        questions: [
-            "Process for Reporting & Grading: How are significant events (SEs) reported, recorded, and graded?", 
-            "Investigation & Themes: Describe your investigation process. What were the main themes from events in the last 12 months?", 
-            "Learning & Actions: What were the critical learning points and what specific changes have been implemented as a result?"
-        ], 
-        label: "Number of events (12 months)",
-        email_blurb: "Provides a summary of significant events from the last 12 months, including learning and actions taken."
-    },
-    { 
-        category: "EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS", 
-        title: "A summary of complaints received within the last 12 months", 
-        item_type: "guided_questions_and_number", 
-        questions: [
-            "Process for Handling Complaints: Briefly describe your complaints procedure, from receipt to final response.", 
-            "Analysis & Themes: What were the main themes from complaints received in the last 12 months?", 
-            "Service Improvement: What specific changes to services have been made in response to patient complaints?"
-        ], 
-        label: "Number of complaints (12 months)",
-        email_blurb: "Provides a summary of complaints from the last 12 months, detailing themes and resulting improvements."
-    },
-    { 
-        category: "EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS", 
-        title: "Sample meetings minutes where SEAs and/or complaints have been discussed.", 
-        item_type: "file_only",
-        description: "From the past 6 months.",
-        email_blurb: "Attached is a sample of meeting minutes showing discussion of significant events and complaints."
-    },
-    { 
-        category: "EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS", 
-        title: "Sample of compliments received in the past 6 months.", 
-        item_type: "file_only",
-        email_blurb: "Attached is a sample of compliments received from patients."
-    },
-
-    // EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK
-    { 
-        category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", 
-        title: "Summary of the quality of care you provide for the six population groups", 
-        item_type: "guided_questions", 
-        questions: [
-            "Older people: How do you tailor services for older people (e.g., proactive care, frailty assessments)?", 
-            "People with long-term conditions: Describe your approach to managing patients with LTCs (e.g., recall systems, care planning).", 
-            "Families, children and young people: How do you provide accessible services for this group (e.g., immunisation clinics, safeguarding)?", 
-            "Working age people: How do you ensure access for working people (e.g., online services, extended hours)?", 
-            "Vulnerable people: What provisions do you have for vulnerable groups (e.g., homeless, learning disabilities, carers)?", 
-            "People experiencing poor mental health: Describe your approach to supporting patients with mental health needs (e.g., access to IAPT)."
-        ],
-        email_blurb: "Provides a summary of how we tailor our care for the six key population groups."
-    },
-    {
-        category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK",
-        title: "Summary of clinical audits (last 2 years)",
-        item_type: "textarea",
-        description: "Provide a summary list of clinical audits completed in the last two years and explain how you decide on audit topics.",
-        email_blurb: "Provides a summary of clinical audit activity undertaken in the last two years."
-    },
-    { 
-        category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", 
-        title: "Full Cycle Audit Example 1", 
-        item_type: "guided_questions_and_file", 
-        questions: [
-            "Audit Topic & Standard: What was the topic of the audit and what standard was measured against?",
-            "Initial Findings: What were the results of the first data collection cycle?",
-            "Changes Implemented: What specific changes were made to practice as a result of the findings?",
-            "Re-Audit Results: What were the results of the second data collection cycle, and was there an improvement?"
-        ],
-        description: "Describe the audit and attach the full audit document as evidence.",
-        email_blurb: "Details our first example of a completed two-cycle clinical audit, with the full report attached."
-    },
-    { 
-        category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", 
-        title: "Full Cycle Audit Example 2", 
-        item_type: "guided_questions_and_file", 
-        questions: [
-            "Audit Topic & Standard: What was the topic of the audit and what standard was measured against?",
-            "Initial Findings: What were the results of the first data collection cycle?",
-            "Changes Implemented: What specific changes were made to practice as a result of the findings?",
-            "Re-Audit Results: What were the results of the second data collection cycle, and was there an improvement?"
-        ],
-        description: "Describe the audit and attach the full audit document as evidence.",
-        email_blurb: "Details our second example of a completed two-cycle clinical audit, with the full report attached."
-    },
-    { 
-        category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", 
-        title: "Summary of any other quality improvement work undertaken over the last two years.", 
-        item_type: "guided_questions", 
-        questions: [
-            "Project Overview: Describe any significant Quality Improvement (QI) projects undertaken that are not clinical audits.", 
-            "Methodology & Outcomes: What QI methodology was used (e.g., PDSA) and what were the measured outcomes?", 
-            "Learning & Sustainability: What was learned and how have the improvements been sustained?"
-        ],
-        email_blurb: "Provides a summary of other non-audit Quality Improvement (QI) work from the last two years."
-    },
-    { 
-        category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", 
-        title: "Evidence of how you have responded to patient feedback (last 12 months).", 
-        item_type: "guided_questions_and_file", 
-        questions: [
-            "Collection Methods: What formal and informal methods do you use to gather patient feedback?", 
-            "Analysis & Key Themes: Provide a summary of the key themes, both positive and negative, from patient feedback.", 
-            "Action & 'You Said, We Did': Provide specific examples of changes made in direct response to patient feedback."
-        ], 
-        description: "Summarise and attach evidence (e.g., survey results, FFT data, action logs).",
-        email_blurb: "Shows how we have collected, analysed, and acted upon patient feedback, with evidence attached."
-    },
-    { 
-        category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", 
-        title: "Patient survey results and action log (if not included above)", 
-        item_type: "file_only",
-        email_blurb: "Attached are the results and action log from our own patient survey."
-    },
-    { 
-        category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", 
-        title: "Evidence of how you have responded to staff feedback (last 12 months).", 
-        item_type: "guided_questions_and_file", 
-        questions: [
-            "Collection Methods: What mechanisms are in place for staff to provide feedback?", 
-            "Analysis & Key Themes: What were the key themes from staff feedback over the last 12 months?", 
-            "Action & Response: Provide specific examples of changes made in response to staff feedback."
-        ], 
-        description: "Summarise and attach evidence (e.g., staff survey results).",
-        email_blurb: "Shows how we have collected, analysed, and acted upon staff feedback, with evidence attached."
-    },
-
-    // EMAIL 8: PATIENT RECORD KEEPING AND MEDICINES
-    { 
-        category: "EMAIL 8: PATIENT RECORD KEEPING AND MEDICINES", 
-        title: "Discharge (medicine reconciliation) process and any audits/checks undertaken.", 
-        item_type: "guided_questions_and_file", 
-        questions: [
-            "Process Workflow: Describe the end-to-end process from receiving a discharge summary to updating the patient's record.", 
-            "Roles & Responsibilities: Who is responsible for each step of the process (e.g., admin, clinical pharmacist, GP)?", 
-            "Quality Assurance: How do you audit compliance? Provide a summary of any recent audit findings."
-        ], 
-        description: "Describe the process and attach audits/checks.",
-        email_blurb: "Details our process for medicine reconciliation following patient discharge, with recent audits attached."
-    },
-    { 
-        category: "EMAIL 8: PATIENT RECORD KEEPING AND MEDICINES", 
-        title: "Policy and process for the management of repeat prescriptions and medicine reviews.", 
-        item_type: "file_only",
-        email_blurb: "Attached is our policy for the management of repeat prescriptions and medication reviews."
-    },
-    { 
-        category: "EMAIL 8: PATIENT RECORD KEEPING AND MEDICINES", 
-        title: "Patient summarising/coding in medical records policy/process and any audits.", 
-        item_type: "guided_questions_and_file", 
-        questions: [
-            "New Patient Record Summarising: Describe your process and target timeframe for summarising new patient records.", 
-            "Clinical Correspondence Workflow: How is incoming correspondence processed, read, coded, and actioned?", 
-            "Quality Assurance: What systems are in place to ensure coding is accurate, consistent, and timely?"
-        ], 
-        description: "Describe the process and attach audits/checks.",
-        email_blurb: "Outlines our process for summarising and coding patient records, with recent audits attached."
-    },
-    { 
-        category: "EMAIL 8: PATIENT RECORD KEEPING AND MEDICINES", 
-        title: "Number of patient records that have not been fully summarised.", 
-        item_type: "number", 
-        label: "Number of records",
-        email_blurb: "Provides the current number of patient records awaiting full summarisation."
-    },
-
-    // EMAIL 9: DATA FOR THE REPORT
-    { 
-        category: "EMAIL 9: DATA FOR THE REPORT", 
-        title: "NHS health checks data (last 12 months)", 
-        item_type: "triple_number", 
-        labels: ["Eligible", "Offered", "Completed"],
-        email_blurb: "Provides our NHS Health Checks data for the last 12 months."
-    },
-    { 
-        category: "EMAIL 9: DATA FOR THE REPORT", 
-        title: "Learning Disability check data (last 12 months)", 
-        item_type: "triple_number", 
-        labels: ["Eligible", "Offered", "Completed"],
-        email_blurb: "Provides our Learning Disability Health Checks data for the last 12 months."
-    },
-    { 
-        category: "EMAIL 9: DATA FOR THE REPORT", 
-        title: "Cervical cancer screening and child immunisation coverage data.", 
-        item_type: "guided_questions_and_file", 
-        questions: [
-            "Cervical Screening Uptake Strategy: Describe the specific actions you have taken to improve cervical screening uptake.", 
-            "Childhood Immunisation Uptake Strategy: Describe the specific actions you have taken to improve childhood immunisation rates.", 
-            "Data & Outcomes: What has been the impact of these actions on your uptake data?"
-        ], 
-        description: "Summarise actions and attach coverage data.",
-        email_blurb: "Provides our latest uptake data for cervical screening and childhood immunisations, along with actions taken to improve coverage."
-    },
-];
-
-</script>
-
 <script type="module">
   // Supabase v2 client
   import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-  import JSZip from "https://esm.sh/jszip@3.10.1";
 
   const SUPABASE_URL = "https://unveoqnlqnobufhublyw.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME";
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
   });
-  // Expose to global for non-module scripts
-  window.JSZip = JSZip;
-  window.supabase = supabase;
 
   // SPA navigation
   const nav = document.getElementById("nav");
@@ -1505,9 +667,6 @@ window.PIR_DEFINITIONS_DATA = [
     views.forEach(v => v.classList.remove("active"));
     const viewEl = document.getElementById("view-"+id);
     if(viewEl) viewEl.classList.add("active");
-    if (id === 'pre-inspection') {
-        loadAndRenderPIR();
-    }
     // persist
     try { localStorage.setItem("cl_active_section", id); } catch(_) {}
   }
@@ -1519,13 +678,11 @@ window.PIR_DEFINITIONS_DATA = [
     setActiveSection(id);
   });
 
-  // Restore last active section on load (always trigger loader)
+  // Restore last active section on load (defaults to dashboard if none)
   try {
     const saved = localStorage.getItem("cl_active_section");
-    setActiveSection(saved || "dashboard");
-  } catch(_) {
-    setActiveSection("dashboard");
-  }
+    if(saved) setActiveSection(saved);
+  } catch(_) {}
 
   // Restore sidebar collapsed state
   try {
@@ -1577,7 +734,6 @@ window.PIR_DEFINITIONS_DATA = [
   let suppressGridClickUntil = 0;
   let currentCalendarView = 'scheduled';
   let requiredSchedulesCache = [];
-  let pirDocsCache = [];
 
   async function loadContext(){
     const { data: { user } } = await supabase.auth.getUser();
@@ -1606,7 +762,6 @@ window.PIR_DEFINITIONS_DATA = [
     if(ctx.site_id){
       const { data: site } = await supabase.from("sites").select("name").eq("id", ctx.site_id).maybeSingle();
       sitePill.textContent = site?.name ? `Site: ${site.name}` : `Site ID: ${ctx.site_id}`;
-      ctx.site_name = site?.name || null;
     }else{
       sitePill.textContent = "Site: —";
     }
@@ -1640,7 +795,6 @@ function endOfDay(d){ const x = new Date(d); x.setHours(23,59,59,999); return x;
 
 async function loadDue(){
   const tb = document.getElementById("due-tbody");
-  const emptyMsg = "<tr><td colspan='4' class='muted'>Nothing due in the next 7 days.</td></tr>";
   tb.innerHTML = "<tr><td colspan='4' class='muted'>Loading…</td></tr>";
   if(!ctx.site_id) { tb.innerHTML = "<tr><td colspan='4' class='muted'>No site selected.</td></tr>"; return; }
   const today = startOfDay(new Date());
@@ -1653,40 +807,26 @@ async function loadDue(){
     .gte("next_due_at", today.toISOString())
     .lt("next_due_at", end.toISOString())
     .order("next_due_at", { ascending:true })
-    .limit(500);
+    .limit(200);
 
   if(error){ tb.innerHTML = `<tr><td colspan='4' class='muted'>${error.message}</td></tr>`; return; }
-  if(!data?.length){ tb.innerHTML = emptyMsg; return; }
-  // prepare rows with date helper
-  data.forEach(r=>{ r.__date = r.next_due_at; });
-
-  // group by item, room, and date
-  const grouped = {};
-  (data||[]).forEach(r=>{
-    const dStr = new Date(r.__date).toLocaleDateString(undefined, { weekday: 'short', month: 'numeric', day: 'numeric' });
-    const key = `${r.item_name}|${r.room_name||'—'}|${dStr}`;
-    if(!grouped[key]) grouped[key] = { item:r.item_name, room:r.room_name||'—', date:dStr, checks:[] };
-    grouped[key].checks.push(r.check_type || r.check);
-  });
-  const rows = Object.values(grouped);
-  if(!rows.length){ tb.innerHTML = emptyMsg; return; }
-  tb.innerHTML = rows.map(g=>`<tr>
-      <td>${esc(g.item)}</td>
-      <td>${esc(g.checks.join(', '))}</td>
-      <td>${esc(g.room)}</td>
-      <td>${g.date}</td>
+  if(!data?.length){ tb.innerHTML = "<tr><td colspan='4' class='muted'>Nothing due in the next 7 days.</td></tr>"; return; }
+  tb.innerHTML = data.map(r => `<tr>
+      <td>${esc(r.item_name)}</td>
+      <td>${esc(r.check_type)}</td>
+      <td>${esc(r.room_name ?? "—")}</td>
+      <td>${new Date(r.next_due_at).toLocaleDateString(undefined, { weekday: 'short', month: 'numeric', day: 'numeric' })}</td>
     </tr>`).join("");
-
 }
 
 async function loadMissed(){
   const tb = document.getElementById("due-tbody");
-  const emptyMsg = "<tr><td colspan='4' class='muted'>No missed checks in the past 7 days.</td></tr>";
   tb.innerHTML = "<tr><td colspan='4' class='muted'>Loading…</td></tr>";
   if(!ctx.site_id) { tb.innerHTML = "<tr><td colspan='4' class='muted'>No site selected.</td></tr>"; return; }
   const today = startOfDay(new Date());
   const past = new Date(today); past.setDate(past.getDate() - 7);
 
+  // fetch candidate rows with next_due_at in the past 7 days
   const { data, error } = await supabase
     .from("v_item_check_status")
     .select("item_name, room_name, check_type, next_due_at, last_done_at")
@@ -1698,39 +838,27 @@ async function loadMissed(){
 
   if(error){ tb.innerHTML = `<tr><td colspan='4' class='muted'>${error.message}</td></tr>`; return; }
   const missed = (data||[]).filter(r => {
+    // missed if there is no last_done_at after the due date
     if(!r.last_done_at) return true;
     try{ return new Date(r.last_done_at) < new Date(r.next_due_at); }catch(e){ return true; }
   });
-  if(!missed.length){ tb.innerHTML = emptyMsg; return; }
-  missed.forEach(r=>{ r.__date = r.next_due_at; });
-
-  // group by item, room, and date — use the filtered `missed` array (was incorrectly using `data`)
-  const grouped = {};
-  (missed||[]).forEach(r=>{
-    const dStr = new Date(r.__date).toLocaleDateString(undefined, { weekday: 'short', month: 'numeric', day: 'numeric' });
-    const key = `${r.item_name}|${r.room_name||'—'}|${dStr}`;
-    if(!grouped[key]) grouped[key] = { item:r.item_name, room:r.room_name||'—', date:dStr, checks:[] };
-    grouped[key].checks.push(r.check_type || r.check);
-  });
-  const rows = Object.values(grouped);
-  if(!rows.length){ tb.innerHTML = emptyMsg; return; }
-  tb.innerHTML = rows.map(g=>`<tr>
-      <td>${esc(g.item)}</td>
-      <td>${esc(g.checks.join(', '))}</td>
-      <td>${esc(g.room)}</td>
-      <td>${g.date}</td>
+  if(!missed.length){ tb.innerHTML = "<tr><td colspan='4' class='muted'>No missed checks in the past 7 days.</td></tr>"; return; }
+  tb.innerHTML = missed.map(r => `<tr>
+      <td>${esc(r.item_name)}</td>
+      <td>${esc(r.check_type)}</td>
+      <td>${esc(r.room_name ?? "—")}</td>
+      <td>${new Date(r.next_due_at).toLocaleDateString(undefined, { weekday: 'short', month: 'numeric', day: 'numeric' })}</td>
     </tr>`).join("");
-
 }
 
 async function loadCompleted(){
   const tb = document.getElementById("due-tbody");
-  const emptyMsg = "<tr><td colspan='4' class='muted'>No completed checks in the past 7 days.</td></tr>";
   tb.innerHTML = "<tr><td colspan='4' class='muted'>Loading…</td></tr>";
   if(!ctx.site_id) { tb.innerHTML = "<tr><td colspan='4' class='muted'>No site selected.</td></tr>"; return; }
   const today = endOfDay(new Date());
   const past = new Date(); past.setHours(0,0,0,0); past.setDate(past.getDate() - 7);
 
+  // use last_done_at from the status view to show completed in the past 7 days
   const { data, error } = await supabase
     .from("v_item_check_status")
     .select("item_name, room_name, check_type, last_done_at")
@@ -1741,26 +869,13 @@ async function loadCompleted(){
     .limit(500);
 
   if(error){ tb.innerHTML = `<tr><td colspan='4' class='muted'>${error.message}</td></tr>`; return; }
-  if(!data?.length){ tb.innerHTML = emptyMsg; return; }
-  data.forEach(r=>{ r.__date = r.last_done_at; });
-
-  // group by item, room, and date
-  const grouped = {};
-  (data||[]).forEach(r=>{
-    const dStr = new Date(r.__date).toLocaleDateString(undefined, { weekday: 'short', month: 'numeric', day: 'numeric' });
-    const key = `${r.item_name}|${r.room_name||'—'}|${dStr}`;
-    if(!grouped[key]) grouped[key] = { item:r.item_name, room:r.room_name||'—', date:dStr, checks:[] };
-    grouped[key].checks.push(r.check_type || r.check);
-  });
-  const rows = Object.values(grouped);
-  if(!rows.length){ tb.innerHTML = emptyMsg; return; }
-  tb.innerHTML = rows.map(g=>`<tr>
-      <td>${esc(g.item)}</td>
-      <td>${esc(g.checks.join(', '))}</td>
-      <td>${esc(g.room)}</td>
-      <td>${g.date}</td>
+  if(!data?.length){ tb.innerHTML = "<tr><td colspan='4' class='muted'>No completed checks in the past 7 days.</td></tr>"; return; }
+  tb.innerHTML = data.map(r => `<tr>
+      <td>${esc(r.item_name)}</td>
+      <td>${esc(r.check_type)}</td>
+      <td>${esc(r.room_name ?? "—")}</td>
+      <td>${new Date(r.last_done_at).toLocaleDateString(undefined, { weekday: 'short', month: 'numeric', day: 'numeric' })}</td>
     </tr>`).join("");
-
 }
 
 // Tab control
@@ -2536,239 +1651,37 @@ async function loadSchedules(){
     const d = new Date(iso);
     return d.toLocaleString();
   }
-    function fmtDateShort(iso) {
-      if (!iso) return "—";
-      try {
-        // Add a time component to avoid timezone-related date shifts for display
-        return new Date(iso + 'T12:00:00Z').toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-      } catch (e) {
-        return "—";
-      }
-    }
   function intervalToText(i){
     if(!i) return "—";
     if (typeof i !== 'string') return JSON.stringify(i);
+
+    // Humanize PostgreSQL interval format (e.g., "3 days", "1 mon")
     const parts = [];
     if (i.includes('year')) parts.push(i.match(/(\d+)\s*year/)[1] + ' years');
     if (i.includes('mon')) parts.push(i.match(/(\d+)\s*mon/)[1] + ' months');
     if (i.includes('day')) parts.push(i.match(/(\d+)\s*day/)[1] + ' days');
+    if (i.includes(':')) { // Time part
+        const timeMatch = i.match(/(\d{2}):(\d{2}):(\d{2})/);
+        if (timeMatch) {
+            if (parseInt(timeMatch[1], 10) > 0) parts.push(parseInt(timeMatch[1], 10) + ' hours');
+            if (parseInt(timeMatch[2], 10) > 0) parts.push(parseInt(timeMatch[2], 10) + ' minutes');
+        }
+    }
     return parts.join(', ') || i;
   }
-  
-  // --- PRE-INSPECTION (PIR) LOGIC ---
-    
-    const PIR_DEFINITIONS = window.PIR_DEFINITIONS_DATA;
-
-    async function seedInitialPIRDocs() {
-        if (!ctx.site_id) return;
-        const { count, error } = await supabase.from('pir_documents').select('*', { count: 'exact', head: true }).eq('site_id', ctx.site_id);
-        if (error || count > 0) return;
-
-        const docsToInsert = PIR_DEFINITIONS.map(def => {
-            const isDataOnly = !def.item_type.includes('file');
-            return {
-                site_id: ctx.site_id,
-                category: def.category,
-                title: def.title,
-                item_type: def.item_type,
-                status: isDataOnly ? 'Not Started' : 'Not Attached',
-                data: {}
-            };
-        });
-        await supabase.from('pir_documents').insert(docsToInsert);
-    }
-
-    function formatItemType(itemType) {
-        if (itemType.includes('file') && (itemType.includes('text') || itemType.includes('questions'))) return 'Text & File';
-        if (itemType.includes('file')) return 'File Attachment';
-        if (itemType.includes('text') || itemType.includes('questions')) return 'Text / Q&A';
-        if (itemType.includes('table')) return 'Data Table';
-        if (itemType.includes('number')) return 'Data';
-        return 'Information';
-    }
-
-    async function loadAndRenderPIR() {
-        const container = document.getElementById('pir-docs-container');
-        container.innerHTML = `<div class="muted" style="text-align: center; padding: 20px;">Loading CQC document list...</div>`;
-        if (!ctx.site_id) return;
-
-        const { data, error } = await supabase.from('pir_documents').select('*').eq('site_id', ctx.site_id).order('id', { ascending: true });
-        if (error) { container.innerHTML = `<div class="error">${error.message}</div>`; return; }
-        pirDocsCache = data || [];
-
-        const groupedByCat = pirDocsCache.reduce((acc, doc) => {
-            (acc[doc.category] = acc[doc.category] || []).push(doc);
-            return acc;
-        }, {});
-        
-        const categoryOrder = [...new Set(PIR_DEFINITIONS.map(d => d.category))];
-
-        let html = '';
-        for (const category of categoryOrder) {
-             if (groupedByCat[category]) {
-                html += `<div class="doc-category">
-                    <div class="doc-category-title">${esc(category)}</div>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th style="width: 50%;">Document / Information Required</th>
-                                <th>Evidence Type</th>
-                                <th>Status</th>
-                                <th>Last Updated</th>
-                            </tr>
-                        </thead>
-                        <tbody id="pir-tbody" data-entity="pir_documents">`;
-                
-                groupedByCat[category].forEach(doc => {
-                    let status = doc.status;
-                    if (status === 'Not Attached' && !doc.item_type.includes('file')) {
-                        status = 'Not Started';
-                    }
-
-                    let statusChip = 'chip';
-                    if (status === 'Ready') statusChip += ' success';
-                    else if (status === 'Needs Review') statusChip += ' warning';
-                    else if (status === 'Not Attached' || status === 'Not Started') statusChip += ' danger';
-
-                    html += `<tr data-id="${doc.id}">
-                        <td>${esc(doc.title)}</td>
-                        <td><span class="chip">${formatItemType(doc.item_type)}</span></td>
-                        <td><span class="${statusChip}">${esc(status)}</span></td>
-                        <td>${fmtDateShort(doc.last_updated)}</td>
-                    </tr>`;
-                });
-                html += `</tbody></table></div>`;
-            }
-        }
-        container.innerHTML = html;
-        updatePIRDashboard();
-    }
-    
-    function updatePIRDashboard() {
-        const total = pirDocsCache.length;
-        const ready = pirDocsCache.filter(d => d.status === 'Ready').length;
-        const percentage = total > 0 ? (ready / total) * 100 : 0;
-        document.getElementById('pir-progress-bar').style.width = `${percentage}%`;
-        document.getElementById('pir-progress-text').textContent = `${ready} / ${total}`;
-    }
-
-    const pirEmailModal = document.getElementById('pir-email-modal');
-    // NOTE: The logic for the modal pop-up is now handled by the .eml generator script.
-    // The old modal logic is left here but is not triggered by the main button anymore.
-    const btnConfirmGenerate = document.getElementById('btn-confirm-generate');
-    const btnCancelGenerate = document.getElementById('btn-cancel-generate');
-
-    if (btnCancelGenerate) btnCancelGenerate.addEventListener('click', () => pirEmailModal.classList.remove('show'));
-    if (pirEmailModal) pirEmailModal.addEventListener('click', (e) => { if (e.target === pirEmailModal) pirEmailModal.classList.remove('show'); });
-
-    // Helper function to format data from JSON into a readable text file string
-    function formatDataForTxt(doc, itemDef) {
-        let content = `DOCUMENT: ${doc.title}\nCATEGORY: ${doc.category}\n\n--------------------\n\n`;
-
-        if (doc.data.answers && itemDef.questions) {
-            itemDef.questions.forEach((q, index) => {
-                content += `Q: ${q}\nA: ${doc.data.answers[index] || 'Not answered'}\n\n`;
-            });
-        } else if (doc.data.text_content) {
-            content += `${doc.data.text_content}\n`;
-        } else if (doc.item_type === 'dynamic_table' && doc.data.table_data) {
-            content += itemDef.headers.join('\t') + '\n';
-            content += '--------------------\n';
-            content += doc.data.table_data.map(row => row.join('\t')).join('\n');
-        } else {
-            const labels = itemDef.labels || ['Value 1', 'Value 2', 'Value 3'];
-             ['num1', 'num2', 'num3', 'text1', 'text2'].forEach((key, idx) => {
-                if(doc.data[key] != null && doc.data[key] !== '') {
-                    content += `${labels[idx] || key}: ${doc.data[key]}\n`;
-                }
-            });
-        }
-        return content;
-    }
-
-    function buildPirForm(item, data, filePath) {
-        const itemDef = PIR_DEFINITIONS.find(d => d.title === item.title) || {};
-        let html = '';
-        const dataValues = data || {};
-        
-        let currentStatus = item.status;
-        if (currentStatus === 'Not Attached' && !item.item_type.includes('file')) {
-            currentStatus = 'Not Started';
-        }
-
-        const statuses = ['Not Started', 'Not Attached', 'Needs Review', 'Ready'].filter(s => {
-            if (item.item_type.includes('file')) return true;
-            return s !== 'Not Attached';
-        });
-        
-        html += `<div class="field"><label>Status</label><select id="field-pir-status" class="ui-select">${statuses.map(s => `<option value="${s}" ${s === currentStatus ? 'selected' : ''}>${s}</option>`).join('')}</select></div>`;
-        html += `<div class="field"><label>Last Updated</label><input id="field-pir-last_updated" type="date" value="${item.last_updated || ''}" /></div>`;
-
-        switch(item.item_type) {
-            case 'textarea':
-                html += `<div class="field"><label>Summary / Statement</label><textarea id="field-pir-text_content">${esc(dataValues.text_content || '')}</textarea></div>`;
-                break;
-            case 'textarea_and_file':
-                html += `<div class="field"><label>Summary / Process Description</label><textarea id="field-pir-text_content">${esc(dataValues.text_content || '')}</textarea><div class="hint">${itemDef.description || ''}</div></div>`;
-                break;
-            case 'guided_questions':
-            case 'guided_questions_and_file':
-            case 'guided_questions_and_number':
-                 if (itemDef.questions) {
-                    itemDef.questions.forEach((q, index) => {
-                        html += `<div class="field"><label>${esc(q)}</label><textarea data-question-index="${index}">${esc(dataValues.answers?.[index] || '')}</textarea></div>`;
-                    });
-                 }
-                 if (item.item_type.includes('number')) {
-                    html += `<div class="field"><label>${esc(itemDef.label || 'Value')}</label><input id="field-pir-num1" type="number" value="${esc(dataValues.num1 || '')}" /></div>`;
-                 }
-                break;
-            case 'number':
-                html += `<div class="field"><label>${esc(itemDef.label || 'Value')}</label><input id="field-pir-num1" type="number" value="${esc(dataValues.num1 || '')}" /></div>`;
-                break;
-            case 'dual_number':
-            case 'triple_number':
-                html += `<div class="multi-input-container">${itemDef.labels.map((label, i) => `
-                    <div class="field"><label>${esc(label)}</label><input id="field-pir-num${i+1}" type="number" value="${esc(dataValues[`num${i+1}`] || '')}" /></div>
-                `).join('')}</div>`;
-                break;
-            case 'dual_text':
-                 html += `<div class="multi-input-container">${itemDef.labels.map((label, i) => `
-                    <div class="field"><label>${esc(label)}</label><input id="field-pir-text${i+1}" type="text" value="${esc(dataValues[`text${i+1}`] || '')}" /></div>
-                `).join('')}</div>`;
-                break;
-            case 'dynamic_table':
-                html += `<div class="field"><label>${esc(item.title)}</label><div id="dynamic-table-container"></div><button type="button" class="btn secondary" id="btn-add-table-row" style="margin-top:8px; font-size:12px; padding: 6px 10px;">+ Add Row</button></div>`;
-                break;
-        }
-
-        if (item.item_type.includes('file')) {
-            const fileName = filePath ? filePath.split('/').pop() : 'No file attached';
-            html += `<hr style="border:none; border-top: 1px solid var(--border-color); margin: 16px 0;">
-                <div class="field">
-                <label>Attached File</label>
-                <div id="file-display" style="padding:10px 12px; background:#ffffff10; border-radius:10px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-                    <span>${esc(fileName)}</span>
-                    ${filePath ? `<button type="button" class="btn secondary" id="btn-download-pir" style="padding: 4px 8px; font-size: 12px;">Download</button>` : ''}
-                </div>
-                <input type="file" id="field-pir-file_path" style="color: var(--muted); font-size: 12px;" />
-                <div class="hint">${itemDef.description || 'Uploading a new file will replace the existing one.'}</div>
-                </div>`;
-        }
-        return html;
-    }
 
   // Bootstrap
   async function bootstrap(){
+    // session check
     const { data: { session } } = await supabase.auth.getSession();
     showAuth(!session);
     if(!session) return;
 
     await loadContext();
-    await seedInitialPIRDocs();
     await cacheRequiredSchedules();
     await Promise.all([loadCounts(), loadDue(), loadActivity(), loadItems(), loadRooms(), loadCheckTypes(), loadSchedules(), loadStaff(), loadSubmissions(), loadWeekCalendar(), loadAndRenderCalendar()]);
 
+    // Realtime updates (lightweight)
     supabase.channel("changes")
       .on("postgres_changes", { event:"*", schema:"public", table:"items", filter:`site_id=eq.${ctx.site_id}` }, loadItems)
       .on("postgres_changes", { event:"*", schema:"public", table:"rooms", filter:`site_id=eq.${ctx.site_id}` }, async()=>{ await loadRooms(); await loadCounts(); })
@@ -2776,16 +1689,19 @@ async function loadSchedules(){
       .on("postgres_changes", { event:"*", schema:"public", table:"kiosk_users", filter:`site_id=eq.${ctx.site_id}` }, async()=>{ await loadStaff(); await loadCounts(); })
       .on("postgres_changes", { event:"*", schema:"public", table:"submissions", filter:`site_id=eq.${ctx.site_id}` }, async()=>{ await loadActivity(); await loadSubmissions(); await loadWeekCalendar(); if(activeViewId() === 'view-calendar') loadAndRenderCalendar(); })
       .on("postgres_changes", { event:"*", schema:"public", table:"item_allowed_types", filter:`site_id=eq.${ctx.site_id}` }, async()=>{ await loadSchedules(); await cacheRequiredSchedules(); await loadWeekCalendar(); if(activeViewId() === 'view-calendar') loadAndRenderCalendar(); })
-      .on("postgres_changes", { event:"*", schema:"public", table:"pir_documents", filter:`site_id=eq.${ctx.site_id}` }, async() => { if (activeViewId() === 'view-pre-inspection') { loadAndRenderPIR(); }})
       .on("postgres_changes", { event:"*", schema:"public", table:"submission_rows", filter:`site_id=eq.${ctx.site_id}` }, async(payload)=>{
+        // if a detail modal is open for a related submission, refresh it.
         if(submissionDetailModal.classList.contains("show")){
           const openId = submissionDetailModal.dataset.submissionId;
-          if(payload.new.submission_id == openId){ showSubmissionDetails(openId); }
+          if(payload.new.submission_id == openId){
+             showSubmissionDetails(openId);
+          }
         }
       })
       .subscribe();
   }
 
+  
   // ---------- CRUD Helpers ----------
   const crudModal = document.getElementById("crud-modal");
   const crudTitle = document.getElementById("crud-title");
@@ -2798,90 +1714,180 @@ async function loadSchedules(){
   let crudState = { entity:null, mode:"add", row:null, pk:null, context: {} };
 
   const ENTITIES = {
-    rooms: { table: "rooms", label: "Room", pk: "id", fields: [{name:"name", label:"Name", type:"text", required:true}, {name:"occupied_by", label:"Owner (Staff)", type:"select", source:"kiosk_users", sourceLabel:"full_name"}] },
-    check_types: { table: "check_types", label: "Check Type", pk: "id", fields: [{name:"name", label:"Name", type:"text", required:true}, {name:"active", label:"Active", type:"checkbox", default:true}] },
-    kiosk_users: { table: "kiosk_users", label: "Staff", pk: "id", fields: [{name:"full_name", label:"Full Name", type:"text", required:true}, {name:"role", label:"Role", type:"text"}, {name:"active", label:"Active", type:"checkbox", default:true}] },
-    items: { table: "items", label: "Item", pk: "id", fields: [{name:"item_id", label:"Code", type:"text", required:true}, {name:"item_name", label:"Name", type:"text", required:true}, {name:"room_id", label:"Room", type:"select", source:"rooms", sourceLabel:"name"}, {name:"default_check_type_id", label:"Default Check Type", type:"select", source:"check_types", sourceLabel:"name"}, {name:"active", label:"Active", type:"checkbox", default:true}] },
-    item_allowed_types: { table: "item_allowed_types", label: "Schedule", pk: "id", fields: [{name:"item_id", label:"Item", type:"select", source:"items", sourceLabel:"item_name", required:true}, {name:"check_type_id", label:"Check Type", type:"select", source:"check_types", sourceLabel:"name", required:true}, {name:"frequency", label:"Every", type:"frequency", required:true}, { name: "scheduled_day", label: "Day of Week", type: "select", options: [ { value: "", label: "—" }, { value: "Sun", label: "Sunday" }, { value: "Mon", label: "Monday" }, { value: "Tue", label: "Tuesday" }, { value: "Wed", label: "Wednesday" }, { value: "Thu", label: "Thursday" }, { value: "Fri", label: "Friday" }, { value: "Sat", label: "Saturday" } ] }, {name:"required", label:"Required", type:"checkbox", default:true}] },
-    submission_rows: { table: "submission_rows", label: "Submission Row", pk: "id", fields: [{name:"check_type_id", label:"Check Type", type:"select", source:"check_types", sourceLabel:"name", required:true}, {name:"row_comment", label:"Comment", type:"textarea"}] },
-    pir_documents: { table: "pir_documents", label: "Inspection Document", pk: "id" }
+    rooms: {
+      table: "rooms",
+      label: "Room",
+      pk: "id",
+      fields: [
+        {name:"name", label:"Name", type:"text", required:true},
+        {name:"occupied_by", label:"Owner (Staff)", type:"select", source:"kiosk_users", sourceLabel:"full_name"},
+      ]
+    },
+    check_types: {
+      table: "check_types",
+      label: "Check Type",
+      pk: "id",
+      fields: [
+        {name:"name", label:"Name", type:"text", required:true},
+        {name:"active", label:"Active", type:"checkbox", default:true},
+      ]
+    },
+    kiosk_users: {
+      table: "kiosk_users",
+      label: "Staff",
+      pk: "id",
+      fields: [
+        {name:"full_name", label:"Full Name", type:"text", required:true},
+        {name:"role", label:"Role", type:"text"},
+        {name:"active", label:"Active", type:"checkbox", default:true},
+      ]
+    },
+    items: {
+      table: "items",
+      label: "Item",
+      pk: "id",
+      fields: [
+        {name:"item_id", label:"Code", type:"text", required:true},
+        {name:"item_name", label:"Name", type:"text", required:true},
+        {name:"room_id", label:"Room", type:"select", source:"rooms", sourceLabel:"name"},
+        {name:"default_check_type_id", label:"Default Check Type", type:"select", source:"check_types", sourceLabel:"name"},
+        {name:"active", label:"Active", type:"checkbox", default:true},
+      ]
+    },
+    item_allowed_types: {
+      table: "item_allowed_types",
+      label: "Schedule",
+      pk: "id",
+      fields: [
+        {name:"item_id", label:"Item", type:"select", source:"items", sourceLabel:"item_name", required:true},
+        {name:"check_type_id", label:"Check Type", type:"select", source:"check_types", sourceLabel:"name", required:true},
+        {name:"frequency", label:"Every", type:"frequency", required:true},
+        {
+          name: "scheduled_day",
+          label: "Day of Week",
+          type: "select",
+          options: [
+            { value: "",    label: "—" },
+            { value: "Sun", label: "Sunday" },
+            { value: "Mon", label: "Monday" },
+            { value: "Tue", label: "Tuesday" },
+            { value: "Wed", label: "Wednesday" },
+            { value: "Thu", label: "Thursday" },
+            { value: "Fri", label: "Friday" },
+            { value: "Sat", label: "Saturday" }
+          ]
+        },
+        {name:"required", label:"Required", type:"checkbox", default:true},
+      ]
+    },
+    submission_rows: {
+      table: "submission_rows",
+      label: "Submission Row",
+      pk: "id",
+      fields: [
+        {name:"check_type_id", label:"Check Type", type:"select", source:"check_types", sourceLabel:"name", required:true},
+        {name:"row_comment", label:"Comment", type:"textarea"},
+      ]
+    }
   };
 
-  async function openCRUD(entityKey, mode="add", row=null, context={}){
+  function openCRUD(entityKey, mode="add", row=null, context={}){
     crudError.textContent = "";
     crudState = { entity:ENTITIES[entityKey], mode, row, pk:ENTITIES[entityKey].pk, context };
-    
-    if (entityKey === 'pir_documents') {
-        crudTitle.textContent = `Manage: ${row.title}`;
-        crudFields.innerHTML = buildPirForm(row, row.data, row.file_path);
-        
-        if(row.item_type === 'dynamic_table') {
-            const container = document.getElementById('dynamic-table-container');
-            const addRowBtn = document.getElementById('btn-add-table-row');
-            const headers = (PIR_DEFINITIONS.find(d => d.title === row.title) || {}).headers || [];
-            if (!row.data) row.data = {};
-            if (!row.data.table_data) row.data.table_data = [];
+    const label = crudState.entity.label;
+    const titlePrefix = crudState.context.titlePrefix || "";
+    crudTitle.textContent = titlePrefix + ((mode === "add") ? `Add ${label}` : `Edit ${label}`);
 
-            const renderTable = () => {
-                let tableHtml = `<table style="font-size:12px;"><thead><tr>${headers.map(h => `<th>${esc(h)}</th>`).join('')}<th></th></tr></thead><tbody>`;
-                row.data.table_data.forEach((r, idx) => {
-                    tableHtml += `<tr>${headers.map((h, i) => `<td><input value="${esc(r[i] || '')}" data-row="${idx}" data-col="${i}" /></td>`).join('')}
-                    <td><button type="button" class="btn-remove-row" data-index="${idx}" style="all:unset; cursor:pointer; color: var(--danger);">✕</button></td></tr>`;
-                });
-                tableHtml += `</tbody></table>`;
-                container.innerHTML = tableHtml;
-            };
-
-            addRowBtn.addEventListener('click', () => {
-                row.data.table_data.push(new Array(headers.length).fill(''));
-                renderTable();
-            });
-
-            container.addEventListener('input', e => {
-                 if(e.target.tagName === 'INPUT') {
-                    row.data.table_data[e.target.dataset.row][e.target.dataset.col] = e.target.value;
-                 }
-            });
-             container.addEventListener('click', e => {
-                 if(e.target.classList.contains('btn-remove-row')) {
-                    row.data.table_data.splice(parseInt(e.target.dataset.index, 10), 1);
-                    renderTable();
-                 }
-            });
-            renderTable();
+    // Build dynamic fields
+    crudFields.innerHTML = crudState.entity.fields.map(f => {
+      const id = `field-${f.name}`;
+      let val = row ? row[f.name] : (f.type === "checkbox" ? !!f.default : (f.default ?? ""));
+      if(val === null || val === undefined) val = (f.type === "checkbox" ? false : "");
+      if(f.type === "select"){
+        let optionsHtml = '';
+        if (f.options) {
+          optionsHtml = f.options.map(o => {
+            const optVal = (typeof o === 'object' && o !== null) ? (o.value ?? o.label ?? '') : o;
+            const optLabel = (typeof o === 'object' && o !== null) ? (o.label ?? String(o.value ?? '')) : o;
+            const isSelected = String(val ?? '') === String(optVal ?? '');
+            return `<option value="${esc(optVal)}" ${isSelected ? 'selected' : ''}>${esc(optLabel)}</option>`;
+          }).join('');
         }
-    } else {
-        crudTitle.textContent = (mode === "add") ? `Add ${crudState.entity.label}` : context.titlePrefix || `Edit ${crudState.entity.label}`;
-        crudFields.innerHTML = crudState.entity.fields.map(f => {
-          let val = row ? row[f.name] : (f.type === "checkbox" ? !!f.default : (f.default ?? ""));
-          if(val === null || val === undefined) val = (f.type === "checkbox" ? false : "");
-          // ... (HTML generation for standard fields, unchanged)
-          return `<div></div>`;
+        return `<div class="field"><label>${esc(f.label)}</label>
+          <select id="${id}" data-name="${esc(f.name)}" class="ui-select">
+            ${optionsHtml}
+          </select>
+        </div>`;
+      }else if(f.type === "checkbox"){
+        return `<div class="field"><label><input type="checkbox" id="${id}" data-name="${esc(f.name)}" ${val ? "checked":""} style="all:unset; appearance:checkbox; width:auto; height:auto; margin-right:8px"> ${esc(f.label)}</label></div>`;
+      }else if(f.type === "textarea"){
+        return `<div class="field"><label>${esc(f.label)}</label><textarea id="${id}" data-name="${esc(f.name)}">${esc(val)}</textarea></div>`;
+      }else if(f.type === "frequency"){
+        let n = 7, u = 'day';
+        if(typeof val === 'string'){
+          if(val.includes('day')) { n = parseInt(val, 10); u = 'day'; }
+          else if (val.includes('week')) { n = parseInt(val, 10); u = 'week'; }
+          else if (val.includes('mon')) { n = parseInt(val, 10); u = 'month'; }
+        }
+        return `<div class="field"><label>${esc(f.label)}</label>
+          <div style="display:flex; gap:8px">
+            <input id="field-frequency-n" type="number" min="1" step="1" value="${n}" style="all:unset; background:#ffffff17; border:1px solid #ffffff24; padding:12px; border-radius:12px; width:120px">
+            <select id="field-frequency-u" class="ui-select">
+              <option value="day" ${u==='day'?'selected':''}>days</option>
+              <option value="week" ${u==='week'?'selected':''}>weeks</option>
+              <option value="month" ${u==='month'?'selected':''}>months</option>
+            </select>
+          </div>
+        </div>`;
+      }else{
+        const extra = (f.name==="item_id") ? ' inputmode="numeric" pattern="\\d{10}" maxlength="10"' : "";
+        return `<div class="field"><label>${esc(f.label)}</label>
+          <input id="${id}" data-name="${esc(f.name)}" value="${esc(val)}" placeholder="${esc(f.placeholder||'')}" ${f.required?'required':''}${extra} />
+        </div>`;
+      }
+    }).join("");
+
+    // Populate select sources if any
+    Promise.all(crudState.entity.fields.filter(f=>f.type==="select" && !f.options).map(async f => {
+      let sourceData = [];
+      if(f.source === "rooms"){
+        const { data } = await supabase.from("rooms").select("id,name").eq("site_id", ctx.site_id).order("name");
+        sourceData = data || [];
+      }else if(f.source === "kiosk_users"){
+        const { data } = await supabase.from("kiosk_users").select("id,full_name").eq("site_id", ctx.site_id).order("full_name");
+        sourceData = data || [];
+      }else if(f.source === "check_types"){
+        const { data } = await supabase.from("check_types").select("id,name").eq("site_id", ctx.site_id).order("name");
+        sourceData = data || [];
+      }else if(f.source === "items"){
+        const { data } = await supabase
+          .from("v_items_admin")
+          .select("id,item_name,room_name")
+          .eq("site_id", ctx.site_id)
+          .order("item_name");
+        sourceData = data || [];
+      }
+      const sel = document.getElementById(`field-${f.name}`);
+      if(sel){
+        sel.innerHTML = `<option value="">—</option>` + (sourceData||[]).map(r => {
+          const label = (f.source === "items") ? `${r.item_name} - ${r.room_name || '—'}` : r[f.sourceLabel];
+          return `<option value="${esc(r.id)}">${esc(label)}</option>`;
         }).join("");
-        // ... (Populate select sources logic, unchanged)
-    }
+        if(row && row[f.name]) sel.value = row[f.name];
+      }
+    })).then(()=>{ /* done */ });
 
-    const downloadBtn = document.getElementById('btn-download-pir');
-    if (downloadBtn && row?.file_path) {
-        downloadBtn.addEventListener('click', async () => {
-            const { data, error } = await supabase.storage.from('pir_attachments').download(row.file_path);
-            if (error) { crudError.textContent = `Download failed: ${error.message}`; return; }
-            const url = URL.createObjectURL(data);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = row.file_path.split('/').pop();
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        });
-    }
+    // Delete button
+    crudDeleteBtn.style.display = (mode === "edit") ? "inline-block" : "none";
 
-    crudDeleteBtn.style.display = (mode === "edit" && entityKey !== 'pir_documents') ? "inline-block" : "none";
     crudModal.classList.add("show");
+    crudModal.setAttribute("aria-hidden", "false");
   }
 
-  function closeCRUD(){ crudModal.classList.remove("show"); }
+  function closeCRUD(){
+    crudModal.classList.remove("show");
+    crudModal.setAttribute("aria-hidden", "true");
+  }
 
   crudCancelBtn.addEventListener("click", closeCRUD);
   crudModal.addEventListener("click", (e)=>{ if(e.target === crudModal) closeCRUD(); });
@@ -2889,118 +1895,347 @@ async function loadSchedules(){
   crudForm.addEventListener("submit", async (e)=>{
     e.preventDefault();
     crudError.textContent = "";
-    const entity = crudState.entity;
-    let body = {};
-    
-    if(entity.table === 'pir_documents') {
-        const item = crudState.row;
-        body.status = document.getElementById('field-pir-status').value;
-        body.last_updated = document.getElementById('field-pir-last_updated').value || null;
-        
-        let jsonData = {};
-        if (item.item_type.includes('textarea')) jsonData.text_content = document.getElementById('field-pir-text_content')?.value || null;
-        if (item.item_type.includes('questions')) {
-            jsonData.answers = Array.from(crudFields.querySelectorAll('textarea[data-question-index]')).map(el => el.value);
-        }
-        if (item.item_type.includes('number') || item.item_type.includes('dual') || item.item_type.includes('triple')) {
-            jsonData.num1 = document.getElementById('field-pir-num1')?.value || null;
-            jsonData.num2 = document.getElementById('field-pir-num2')?.value || null;
-            jsonData.num3 = document.getElementById('field-pir-num3')?.value || null;
-        }
-        if (item.item_type.includes('text')) {
-            jsonData.text1 = document.getElementById('field-pir-text1')?.value || null;
-            jsonData.text2 = document.getElementById('field-pir-text2')?.value || null;
-        }
-        if (item.item_type === 'dynamic_table') jsonData.table_data = item.data.table_data;
-        
-        body.data = jsonData;
 
-        const fileInput = document.getElementById('field-pir-file_path');
-        if (fileInput && fileInput.files.length > 0) {
-            const file = fileInput.files[0];
-            const filePath = `${ctx.site_id}/${item.id}/${file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`;
-            const { error: uploadError } = await supabase.storage.from('pir_attachments').upload(filePath, file, { upsert: true });
-            if (uploadError) throw uploadError;
-            body.file_path = filePath;
-        }
-    } else { // Standard entity logic...
-        // ... (This logic is unchanged)
+    const entity = crudState.entity;
+    const body = {};
+    // collect values
+    for(const f of entity.fields){
+      let el;
+      if(f.type === "frequency") {
+        const nEl = document.getElementById('field-frequency-n');
+        const uEl = document.getElementById('field-frequency-u');
+        const n = Math.max(1, parseInt(nEl?.value||'1',10));
+        const u = (uEl?.value||'day');
+        body[f.name] = `${n} ${u}${n > 1 ? 's' : ''}`; // store as interval, e.g. "7 days", "1 month"
+        continue;
+      }
+      el = document.getElementById(`field-${f.name}`) || crudForm.querySelector(`[data-name="${f.name}"]`);
+      if(!el) continue;
+      if(f.type === "checkbox"){
+        body[f.name] = !!el.checked;
+      } else {
+        const v = (el.value||"").trim();
+        if(f.required && !v){ crudError.textContent = `${f.label} is required.`; return; }
+        body[f.name] = v || null;
+      }
+    }
+    // Extra validation for items: item_id must be exactly 10 digits
+    if(entity.table === "items"){
+      const code = body.item_id || "";
+      if(!/^\d{10}$/.test(code)){
+        crudError.textContent = "Code must be exactly 10 digits (numbers only).";
+        return;
+      }
     }
 
+    // Ensure hidden not-null columns are satisfied
+    if(entity.table === "check_types" && (body.category === undefined || body.category === null)){
+      body.category = "general"; // satisfy NOT NULL + CHECK constraint
+    }
+    // add site_id for multi-tenant
     if(ctx.site_id) body.site_id = ctx.site_id;
 
     try{
       if(crudState.mode === "add"){
-        const { error } = await supabase.from(entity.table).insert(body); if(error) throw error;
+        const { error } = await supabase.from(entity.table).insert(body);
+        if(error) throw error;
       }else{
+        // Need primary key; fall back to row.id if present
         const pk = crudState.pk || "id";
         const idv = crudState.row?.[pk];
         if(!idv){ throw new Error("Missing primary key for update."); }
-        const { error } = await supabase.from(entity.table).update(body).eq(pk, idv); if(error) throw error;
+        const { error } = await supabase.from(entity.table).update(body).eq(pk, idv);
+        if(error) throw error;
       }
       closeCRUD();
-      if (entity.table === 'pir_documents') loadAndRenderPIR();
-      else await Promise.all([loadCounts(), loadItems(), loadRooms(), loadCheckTypes(), loadSchedules(), loadStaff()]);
-    } catch(err) {
+      // refresh lists and counts
+      await Promise.all([loadCounts(), loadItems(), loadRooms(), loadCheckTypes(), loadSchedules(), loadStaff()]);
+    }catch(err){
       crudError.textContent = err.message || String(err);
     }
   });
 
   crudDeleteBtn.addEventListener("click", async ()=>{
-    // ... (This logic is unchanged)
+    crudError.textContent = "";
+    const entity = crudState.entity;
+    const pk = crudState.pk || "id";
+    const idv = crudState.row?.[pk];
+    if(!idv){ crudError.textContent = "Missing primary key for delete."; return; }
+    if (!confirm(`Are you sure you want to delete this ${entity.label}?`)) return;
+    try{
+      const { error } = await supabase.from(entity.table).delete().eq(pk, idv);
+      if(error) throw error;
+      closeCRUD();
+      await Promise.all([loadCounts(), loadItems(), loadRooms(), loadCheckTypes(), loadSchedules(), loadStaff()]);
+    }catch(err){
+      crudError.textContent = err.message || String(err);
+    }
   });
 
-  // ... (All remaining event listeners and functions are unchanged)
+  // Wire up add buttons
   document.getElementById("btn-new-room")?.addEventListener("click", ()=>openCRUD("rooms","add"));
   document.getElementById("btn-new-ct")?.addEventListener("click", ()=>openCRUD("check_types","add"));
   document.getElementById("btn-new-staff")?.addEventListener("click", ()=>openCRUD("kiosk_users","add"));
   document.getElementById("btn-new-item")?.addEventListener("click", ()=>openCRUD("items","add"));
   document.getElementById("btn-new-sched")?.addEventListener("click", ()=>openCRUD("item_allowed_types","add"));
 
+  document.getElementById("add-item")?.addEventListener("click", ()=>{
+    nav.querySelector("button[data-section='items']").click();
+    openCRUD("items", "add");
+  });
+  document.getElementById("add-checktype")?.addEventListener("click", ()=>{
+    nav.querySelector("button[data-section='checktypes']").click();
+    openCRUD("check_types", "add");
+  });
+
+  // Delegated event listener for all click-to-edit tables
   document.getElementById('app').addEventListener('click', async (e) => {
     const tr = e.target.closest("tr[data-id]");
     if (!tr) return;
+    
     const tbody = tr.closest("tbody");
     if(!tbody) return;
-    if(tbody.id === 'subs-tbody') { showSubmissionDetails(tr.dataset.id); return; }
+
+    // Handle main submission list click
+    if(tbody.id === 'subs-tbody') {
+      const subId = tr.dataset.id;
+      if (subId) {
+        showSubmissionDetails(subId);
+      }
+      return;
+    }
+
+    // Handle generic entity editing
     const entityKey = tbody.dataset.entity;
     if (entityKey && ENTITIES[entityKey]) {
       const rowId = tr.dataset.id;
+      
       tbody.querySelectorAll("tr.selected").forEach(r => r.classList.remove("selected"));
       tr.classList.add("selected");
+      
       try {
-        const { data: rowData, error } = await supabase.from(ENTITIES[entityKey].table).select("*").eq(ENTITIES[entityKey].pk, rowId).maybeSingle();
+        const { data: rowData, error } = await supabase.from(ENTITIES[entityKey].table)
+          .select("*")
+          .eq(ENTITIES[entityKey].pk, rowId)
+          .maybeSingle();
+        
         if (error) throw error;
-        if (rowData) openCRUD(entityKey, "edit", rowData);
-      } catch (err) { console.error("Error fetching row for editing:", err); }
+
+        if (rowData) {
+          let context = {};
+          // For submission rows, create a more descriptive title
+          if (entityKey === 'submission_rows') {
+            const itemCache = crudState.context.itemCache || {};
+            const itemName = itemCache[rowData.item_pk] || "Item";
+            context.titlePrefix = `Edit Check: ${itemName}`;
+          }
+          openCRUD(entityKey, "edit", rowData, context);
+        }
+      } catch (err) {
+        console.error("Error fetching row for editing:", err);
+      }
     }
   });
 
+  // Items header sort
   const itemsHead = document.querySelector('#view-items thead');
-  if(itemsHead){ itemsHead.addEventListener('click', (e)=>{ const th = e.target.closest('th.sortable'); if(!th) return; const col = th.getAttribute('data-col'); if(itemsSort.col === col){ itemsSort.dir = itemsSort.dir === 'asc' ? 'desc' : 'asc'; }else{ itemsSort.col = col; itemsSort.dir = 'asc'; } loadItems(); }); }
+  if(itemsHead){
+    itemsHead.addEventListener('click', (e)=>{
+      const th = e.target.closest('th.sortable');
+      if(!th) return;
+      const col = th.getAttribute('data-col');
+      if(itemsSort.col === col){
+        itemsSort.dir = itemsSort.dir === 'asc' ? 'desc' : 'asc';
+      }else{
+        itemsSort.col = col; itemsSort.dir = 'asc';
+      }
+      loadItems();
+    });
+  }
+  // Filter items from top search when on Items view
   function activeViewId(){ const v = document.querySelector('section.view.active'); return v ? v.id : ''; }
-  document.getElementById('search').addEventListener('keydown', (e)=>{ if(e.key === 'Enter' && activeViewId() === 'view-items'){ e.preventDefault(); itemsQuery = e.target.value.trim(); loadItems(); } });
-  document.getElementById("cal-prev")?.addEventListener("click", ()=>{ calendarDate.setMonth(calendarDate.getMonth() - 1); loadAndRenderCalendar(); });
-  document.getElementById("cal-next")?.addEventListener("click", ()=>{ calendarDate.setMonth(calendarDate.getMonth() + 1); loadAndRenderCalendar(); });
-  document.getElementById("cal-view-switcher")?.addEventListener("click", (e) => { const btn = e.target.closest("button[data-view]"); if (!btn) return; document.querySelectorAll("#cal-view-switcher button").forEach(b => b.classList.remove("active")); btn.classList.add("active"); currentCalendarView = btn.dataset.view; if (currentCalendarView === 'daily') calendarDate = new Date(); loadAndRenderCalendar(); });
+  document.getElementById('search').addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter' && activeViewId() === 'view-items'){
+      e.preventDefault();
+      itemsQuery = e.target.value.trim();
+      loadItems();
+    }
+  });
+
+  // Calendar navigation
+  document.getElementById("cal-prev")?.addEventListener("click", ()=>{
+    calendarDate.setMonth(calendarDate.getMonth() - 1);
+    loadAndRenderCalendar();
+  });
+  document.getElementById("cal-next")?.addEventListener("click", ()=>{
+    calendarDate.setMonth(calendarDate.getMonth() + 1);
+    loadAndRenderCalendar();
+  });
   
+  // Calendar View Switcher
+  document.getElementById("cal-view-switcher")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-view]");
+    if (!btn) return;
+
+    // Update active button state
+    document.querySelectorAll("#cal-view-switcher button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+
+    currentCalendarView = btn.dataset.view;
+    // For daily view, set calendarDate to today for relevance
+    if (currentCalendarView === 'daily') {
+        calendarDate = new Date();
+    }
+    loadAndRenderCalendar();
+  });
+
+  // --- DAY DETAIL MODAL ---
+  const dayDetailModal = document.getElementById("day-detail-modal");
+  const dayDetailTitle = document.getElementById("day-detail-title");
+  const dayDetailContent = document.getElementById("day-detail-content");
+
+  function closeDayDetail() {
+    dayDetailModal.classList.remove("show");
+  }
+
+  dayDetailModal.addEventListener("click", (e) => {
+    if (e.target === dayDetailModal || e.target.closest("#day-detail-close")) {
+      closeDayDetail();
+    }
+  });
+  
+  async function showDayDetails(dateKey) {
+    dayDetailModal.classList.add("show");
+    dayDetailContent.innerHTML = `<div class="muted" style="padding:20px 0; text-align:center;">Loading details...</div>`;
+
+    const date = new Date(dateKey + 'T12:00:00Z'); // Use UTC noon to avoid timezone shifts
+    dayDetailTitle.textContent = `Details for ${date.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`;
+    
+    // 1. Fetch completed checks for that specific day
+    const dayStart = new Date(dateKey);
+    dayStart.setUTCHours(0,0,0,0);
+    const dayEnd = new Date(dateKey);
+    dayEnd.setUTCHours(23,59,59,999);
+
+    const { data: completed, error: compErr } = await supabase
+      .from('submission_rows')
+      .select(`
+        item_pk,
+        check_type_id,
+        submissions!inner ( submitted_at, staff_name )
+      `)
+      .gte('submissions.submitted_at', dayStart.toISOString())
+      .lte('submissions.submitted_at', dayEnd.toISOString())
+      .eq('site_id', ctx.site_id);
+    
+    if (compErr) { dayDetailContent.innerHTML = `<div class="error">${compErr.message}</div>`; return; }
+
+    // 2. Merge and process data
+    const completedMap = new Map();
+    completed.forEach(c => {
+        const key = `${c.item_pk}-${c.check_type_id}`;
+        completedMap.set(key, c.submissions);
+    });
+
+    const isPast = dayStart < new Date(new Date().setHours(0,0,0,0));
+    const currentDayCode = indexToCode(date.getDay());
+
+    const requiredTasksForDay = requiredSchedulesCache.filter(task => {
+        return task.scheduled_day === currentDayCode;
+    });
+
+    let contentHtml = `<div class="table-wrap" style="max-height: 60vh;"><table style="font-size:13px"><thead><tr><th>Item</th><th>Check</th><th>Status</th><th>By</th><th>Time</th></tr></thead><tbody>`;
+
+    if (requiredTasksForDay.length === 0) {
+      contentHtml += `<tr><td colspan="5" class="muted">No required schedules are set up for this day.</td></tr>`;
+    } else {
+      requiredTasksForDay.forEach(task => {
+        const key = `${task.items.id}-${task.check_types.id}`;
+        const submission = completedMap.get(key);
+        const status = submission ? '<span class="chip success">Done</span>' : (isPast ? '<span class="chip danger">Missed</span>' : '<span class="chip">Pending</span>');
+        const staff = submission ? esc(submission.staff_name) : '—';
+        const time = submission ? new Date(submission.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+        
+        contentHtml += `<tr>
+          <td>${esc(task.items.item_name)}</td>
+          <td>${esc(task.check_types.name)}</td>
+          <td>${status}</td>
+          <td>${staff}</td>
+          <td>${time}</td>
+        </tr>`;
+      });
+    }
+
+    contentHtml += `</tbody></table></div>`;
+    dayDetailContent.innerHTML = contentHtml;
+  }
+  
+  // --- SUBMISSION DETAIL MODAL ---
   const submissionDetailModal = document.getElementById("submission-detail-modal");
+  const submissionDetailTitle = document.getElementById("submission-detail-title");
+  const submissionDetailContent = document.getElementById("submission-detail-content");
+
+  function closeSubmissionDetail() {
+    submissionDetailModal.classList.remove("show");
+  }
+
+  submissionDetailModal.addEventListener("click", (e) => {
+    if (e.target === submissionDetailModal || e.target.closest("#submission-detail-close")) {
+      closeSubmissionDetail();
+    }
+  });
+
   async function showSubmissionDetails(submissionId) {
     submissionDetailModal.classList.add("show");
     submissionDetailModal.dataset.submissionId = submissionId;
-    document.getElementById("submission-detail-content").innerHTML = `<div class="muted" style="padding:20px 0; text-align:center;">Loading details...</div>`;
-    document.getElementById("submission-detail-title").textContent = `Details for Submission #${submissionId}`;
-    const { data: rows, error } = await supabase.from('submission_rows').select(`id, row_comment, item:items!item_pk(item_name), check_type:check_types!check_type_id(name)`).eq('submission_id', submissionId);
-    if (error || !rows) return;
-    crudState.context.itemCache = {};
-    rows.forEach(r => { if(r.item) crudState.context.itemCache[r.item_pk] = r.item.item_name; });
-    let contentHtml = `<div class="table-wrap" style="max-height: 60vh;"><table><thead><tr><th>Item</th><th>Check Performed</th><th>Comment</th></tr></thead><tbody data-entity="submission_rows">`;
-    contentHtml += rows.map(r => `<tr data-id="${r.id}"><td>${esc(r.item?.item_name)}</td><td>${esc(r.check_type?.name)}</td><td>${esc(r.row_comment)}</td></tr>`).join('');
-    contentHtml += `</tbody></table></div>`;
-    document.getElementById("submission-detail-content").innerHTML = contentHtml;
-  }
-  submissionDetailModal.addEventListener("click", (e) => { if (e.target === submissionDetailModal || e.target.closest("#submission-detail-close")) { submissionDetailModal.classList.remove("show"); } });
+    submissionDetailContent.innerHTML = `<div class="muted" style="padding:20px 0; text-align:center;">Loading details...</div>`;
+    submissionDetailTitle.textContent = `Details for Submission #${submissionId}`;
 
+    const { data: rows, error } = await supabase
+      .from('submission_rows')
+      .select(`
+        id,
+        row_comment,
+        item:items!item_pk ( item_name ),
+        check_type:check_types!check_type_id ( name )
+      `)
+      .eq('submission_id', submissionId);
+
+    if (error) {
+      submissionDetailContent.innerHTML = `<div class="error">${error.message}</div>`;
+      return;
+    }
+
+    if (!rows || rows.length === 0) {
+      submissionDetailContent.innerHTML = `<div class="muted">No items found in this submission.</div>`;
+      return;
+    }
+    
+    // Cache item names for the CRUD modal title
+    crudState.context.itemCache = {};
+    rows.forEach(r => {
+      if(r.item) crudState.context.itemCache[r.item_pk] = r.item.item_name;
+    });
+
+    let contentHtml = `<div class="table-wrap" style="max-height: 60vh;">
+      <table>
+        <thead><tr><th>Item</th><th>Check Performed</th><th>Comment</th></tr></thead>
+        <tbody data-entity="submission_rows">`;
+    
+    contentHtml += rows.map(r => `
+      <tr data-id="${r.id}">
+        <td>${esc(r.item?.item_name || 'Unknown Item')}</td>
+        <td>${esc(r.check_type?.name || 'Unknown Check')}</td>
+       <td>${esc(r.row_comment || '')}</td>
+      </tr>
+    `).join('');
+    
+    contentHtml += `</tbody></table></div>`;
+    submissionDetailContent.innerHTML = contentHtml;
+  }
+
+
+  // Start once DOM is ready
   document.addEventListener("DOMContentLoaded", bootstrap);
 </script>
   
@@ -3018,6 +2253,18 @@ async function loadSchedules(){
       </form>
     </div>
   </div>
+
+  <div id="day-detail-modal" class="auth" aria-hidden="true">
+    <div class="card" style="width:min(800px, 95vw)">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h2 id="day-detail-title" style="margin:0;">Details</h2>
+        <button id="day-detail-close" class="btn secondary" style="padding: 6px; line-height: 0;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div id="day-detail-content" style="margin-top:12px;"></div>
+    </div>
+  </div>
   
   <div id="submission-detail-modal" class="auth" aria-hidden="true">
     <div class="card" style="width:min(800px, 95vw)">
@@ -3029,29 +2276,6 @@ async function loadSchedules(){
       </div>
       <div class="hint">Click on a row to amend the check type or comment.</div>
       <div id="submission-detail-content" style="margin-top:12px;"></div>
-    </div>
-  </div>
-
-  <div id="pir-email-modal" class="auth" aria-hidden="true">
-    <div class="card" style="width:min(700px, 95vw)">
-      <h2 id="pir-email-title">Generate Inspection Emails & Attachments</h2>
-      <div id="pir-email-body">
-        <p class="muted">This will download a .zip file containing a folder for each of the 10 emails. Only items marked as 'Ready' will be included. Please review the contents below before proceeding.</p>
-        
-        <div id="pir-email-preview" style="margin: 16px 0; max-height: 40vh; overflow-y: auto; padding: 12px; background: var(--glass); border-radius: 12px; font-size: 13px; border: 1px solid var(--border-color);">
-            Loading preview...
-        </div>
-
-        <div class="hint">After downloading, you will need to create each email in your email client, copy the text from the 'email_body.txt' file, and attach the corresponding documents from that email's folder.</div>
-      </div>
-      <div id="pir-email-progress" style="display:none; text-align:center; padding: 20px;">
-          <div class="h1" style="margin:0" id="pir-progress-status">Generating...</div>
-          <div class="muted" id="pir-progress-details">Preparing files. Please wait.</div>
-      </div>
-      <div style="display:flex; gap:8px; margin-top:12px">
-        <button type="button" class="btn" id="btn-confirm-generate">Yes, Generate & Download</button>
-        <button type="button" class="btn secondary" id="btn-cancel-generate">Cancel</button>
-      </div>
     </div>
   </div>
 
