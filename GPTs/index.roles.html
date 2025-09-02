@@ -1086,7 +1086,7 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
 
       <section class="view" id="view-staff">
         <div class="panel">
-          <div style="display:flex; justify-content:space-between; align-items:center"><div class="h1" style="margin:0 0 10px">Staff (Kiosk)</div><button class="btn" id="btn-new-staff">Add Staff</button></div>
+          <div style="display:flex; justify-content:space-between; align-items:center"><div class="h1" style="margin:0 0 10px">Staff (Kiosk)</div><button class="btn" id="btn-new-staff">Add Staff</button> <button class="btn secondary" id="btn-manage-roles">Manage Roles</button></div>
           <div class="table-wrap"><table>
             <thead><tr><th>Name</th><th>Role</th><th>Manager</th></tr></thead>
             <tbody id="staff-tbody" data-entity="kiosk_users"><tr><td colspan="3" class="muted">Loading…</td></tr></tbody>
@@ -3489,8 +3489,108 @@ for (const f of (crudState.entity.fields || [])) {
       </div>
     </div>
   </div>
+  <div id="roles-modal" class="auth" aria-hidden="true">
+    <div class="card" style="width:min(520px,95vw)">
+      <h2>Manage Roles</h2>
+      <div id="roles-error" class="error" role="alert" style="display:none"></div>
+      <div id="roles-list" class="table-wrap" style="max-height:50vh; overflow:auto; margin-bottom:10px">Loading…</div>
+      <div style="display:flex; gap:8px">
+        <input id="new-role-input" type="text" placeholder="New role…" style="flex:1; padding:8px; border:1px solid #ddd; border-radius:8px">
+        <button type="button" class="btn" id="add-role-btn">Add</button>
+        <button type="button" class="btn secondary" id="roles-close">Close</button>
+      </div>
+    </div>
+  </div>
 
-  
+  <script>
+    (function(){
+      const supabase = window.supabase;
+      const rolesModal = document.getElementById('roles-modal');
+      const rolesList  = document.getElementById('roles-list');
+      const rolesErr   = document.getElementById('roles-error');
+      const addBtn     = document.getElementById('add-role-btn');
+      const closeBtn   = document.getElementById('roles-close');
+      const newInput   = document.getElementById('new-role-input');
+      const openBtn    = document.getElementById('btn-manage-roles');
+
+      function showModal(){ rolesModal?.classList.add('show'); rolesErr.style.display='none'; loadRoles(); }
+      function hideModal(){ rolesModal?.classList.remove('show'); }
+      openBtn?.addEventListener('click', (e)=>{ e.preventDefault(); showModal(); });
+      closeBtn?.addEventListener('click', hideModal);
+      rolesModal?.addEventListener('click', (e)=>{ if (e.target === rolesModal) hideModal(); });
+
+      async function loadRoles(){
+        rolesList.textContent = 'Loading…';
+        const { data, error } = await supabase.from('kiosk_roles').select('role').order('role', { ascending: true });
+        if (error){ rolesErr.textContent = error.message || 'Failed to load roles'; rolesErr.style.display='block'; rolesList.textContent=''; return; }
+        const rows = (data||[]).map(r => {
+          const val = r.role || '';
+          return \`
+            <tr data-role="\${val}">
+              <td style="padding:6px 8px"><input type="text" value="\${val.replace(/"/g,'&quot;')}" style="width:100%; padding:6px; border:1px solid #ddd; border-radius:8px"></td>
+              <td style="white-space:nowrap; padding:6px 8px; display:flex; gap:6px">
+                <button class="btn" data-action="save">Save</button>
+                <button class="btn secondary" data-action="delete" style="background:#ff6b6b33; border:1px solid #ff6b6b55">Delete</button>
+              </td>
+            </tr>
+          \`;
+        }).join('');
+        rolesList.innerHTML = \`
+          <table>
+            <thead><tr><th>Role</th><th style="width:1%">Actions</th></tr></thead>
+            <tbody>\${rows || '<tr><td colspan="2" class="muted">No roles yet</td></tr>'}</tbody>
+          </table>
+        \`;
+      }
+
+      async function refreshStaffRoleSelect(){
+        const sel = document.getElementById('field-role');
+        if (!sel || sel.tagName.toLowerCase() !== 'select') return;
+        const { data, error } = await supabase.from('kiosk_roles').select('role').order('role', { ascending: true });
+        if (error) return;
+        const current = sel.value;
+        sel.innerHTML = '<option value="">—</option>' + (data||[]).map(r=>{
+          const v = r.role; const s = (String(v)===String(current)) ? ' selected' : '';
+          return '<option value="'+v+'"'+s+'>'+v+'</option>';
+        }).join('');
+      }
+
+      addBtn?.addEventListener('click', async ()=>{
+        const v = (newInput.value || '').trim();
+        if (!v){ newInput.focus(); return; }
+        rolesErr.style.display='none';
+        const { error } = await supabase.from('kiosk_roles').insert({ role: v });
+        if (error){ rolesErr.textContent = error.message || 'Failed to add role'; rolesErr.style.display='block'; return; }
+        newInput.value='';
+        await loadRoles();
+        await refreshStaffRoleSelect();
+      });
+
+      rolesList?.addEventListener('click', async (e)=>{
+        const btn = e.target.closest('button'); if (!btn) return;
+        const tr = e.target.closest('tr'); if (!tr) return;
+        const oldRole = tr.getAttribute('data-role') || '';
+        const input = tr.querySelector('input[type="text"]');
+        const newRole = (input?.value || '').trim();
+
+        if (btn.dataset.action === 'save'){
+          if (!newRole){ input.focus(); return; }
+          rolesErr.style.display='none';
+          const { error } = await supabase.from('kiosk_roles').update({ role: newRole }).eq('role', oldRole);
+          if (error){ rolesErr.textContent = error.message || 'Failed to save'; rolesErr.style.display='block'; return; }
+          await loadRoles();
+          await refreshStaffRoleSelect();
+        }
+        if (btn.dataset.action === 'delete'){
+          rolesErr.style.display='none';
+          const { error } = await supabase.from('kiosk_roles').delete().eq('role', oldRole);
+          if (error){ rolesErr.textContent = error.message || 'Failed to delete'; rolesErr.style.display='block'; return; }
+          await loadRoles();
+          await refreshStaffRoleSelect();
+        }
+      });
+    })();
+  </script>
 
 </body>
 </html>
