@@ -1024,8 +1024,8 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
             <button class="btn" id="btn-new-item">Add Item</button>
           </div>
           <div class="table-wrap" style="margin-top:10px"><table>
-            <thead><tr><th class="sortable" data-col="item_id">Code <span class="arrow" id="sort-item_id"></span></th><th class="sortable" data-col="item_name">Name <span class="arrow" id="sort-item_name"></span></th><th class="sortable" data-col="room_name">Room <span class="arrow" id="sort-room_name"></span></th><th class="sortable" data-col="default_check_type_name">Default Check <span class="arrow" id="sort-default_check_type_name"></span></th></tr></thead>
-            <tbody id="items-tbody" data-entity="items"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            <thead><tr><th class="sortable" data-col="item_id">Code <span class="arrow" id="sort-item_id"></span></th><th class="sortable" data-col="item_name">Name <span class="arrow" id="sort-item_name"></span></th><th class="sortable" data-col="room_name">Room <span class="arrow" id="sort-room_name"></span></th><th class="sortable" data-col="default_check_type_name">Default Check <span class="arrow" id="sort-default_check_type_name"></span></th><th class="sortable" data-col="active">Active <span class="arrow" id="sort-active"></span></th></tr></thead>
+            <tbody id="items-tbody" data-entity="items"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
           </table></div>
         </div>
       </section>
@@ -1067,7 +1067,7 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
         <div class="panel">
           <div style="display:flex; justify-content:space-between; align-items:center"><div class="h1" style="margin:0 0 10px">Staff (Kiosk)</div><button class="btn" id="btn-new-staff">Add Staff</button></div>
           <div class="table-wrap"><table>
-            <thead><tr><th>Name</th><th>Role</th><th>Manager</th></tr></thead>
+            <thead><tr><th>Name</th><th>Role</th><th>Active</th></tr></thead>
             <tbody id="staff-tbody" data-entity="kiosk_users"><tr><td colspan="3" class="muted">Loading…</td></tr></tbody>
           </table></div>
         </div>
@@ -3054,10 +3054,7 @@ async function loadSchedules(){
   const ENTITIES = {
     rooms: { table: "rooms", label: "Room", pk: "id", fields: [{name:"name", label:"Name", type:"text", required:true}, {name:"occupied_by", label:"Owner (Staff)", type:"select", source:"kiosk_users", sourceLabel:"full_name"}] },
     check_types: { table: "check_types", label: "Check Type", pk: "id", fields: [{name:"name", label:"Name", type:"text", required:true}, {name:"active", label:"Active", type:"checkbox", default:true}] },
-    kiosk_users: { table: "kiosk_users", label: "Staff", pk: "id", fields: [{name:"full_name", label:"Full Name", type:"text", required:true},
-{name:"role", label:"Role", type:"select", source:"kiosk_roles", sourceLabel:"role", valueKey:"role", required:true},
-{name:"reports_to_id", label:"Reports To", type:"select", source:"kiosk_users", sourceLabel:"full_name", valueKey:"id"},
-{name:"active", label:"Active", type:"checkbox", default:true}] },
+    kiosk_users: { table: "kiosk_users", label: "Staff", pk: "id", fields: [{name:"full_name", label:"Full Name", type:"text", required:true}, {name:"role", label:"Role", type:"text"}, {name:"active", label:"Active", type:"checkbox", default:true}] },
     items: { table: "items", label: "Item", pk: "id", fields: [{name:"item_id", label:"Code", type:"text", required:true}, {name:"item_name", label:"Name", type:"text", required:true}, {name:"room_id", label:"Room", type:"select", source:"rooms", sourceLabel:"name"}, {name:"default_check_type_id", label:"Default Check Type", type:"select", source:"check_types", sourceLabel:"name"}, {name:"active", label:"Active", type:"checkbox", default:true}] },
     item_allowed_types: { table: "item_allowed_types", label: "Schedule", pk: "id", fields: [{name:"item_id", label:"Item", type:"select", source:"items", sourceLabel:"item_name", required:true}, {name:"check_type_id", label:"Check Type", type:"select", source:"check_types", sourceLabel:"name", required:true}, {name:"frequency", label:"Every", type:"frequency", required:true}, { name: "scheduled_day", label: "Day of Week", type: "select", options: [ { value: "", label: "—" }, { value: "Sun", label: "Sunday" }, { value: "Mon", label: "Monday" }, { value: "Tue", label: "Tuesday" }, { value: "Wed", label: "Wednesday" }, { value: "Thu", label: "Thursday" }, { value: "Fri", label: "Friday" }, { value: "Sat", label: "Saturday" } ] }, {name:"required", label:"Required", type:"checkbox", default:true}] },
     submission_rows: { table: "submission_rows", label: "Submission Row", pk: "id", fields: [{name:"check_type_id", label:"Check Type", type:"select", source:"check_types", sourceLabel:"name", required:true}, {name:"row_comment", label:"Comment", type:"textarea"}] },
@@ -3107,22 +3104,9 @@ async function loadSchedules(){
             });
             renderTable();
         }
-
     } else {
         crudTitle.textContent = (mode === "add") ? `Add ${crudState.entity.label}` : context.titlePrefix || `Edit ${crudState.entity.label}`;
-        // Use a mutable copy so we can tweak fields per entity
-        let _fields = Array.isArray(crudState.entity.fields) ? crudState.entity.fields.map(f=>({...f})) : [];
-        // Special-case: Staff role should be a dropdown sourced from kiosk_roles (text primary key)
-        if (entityKey === 'kiosk_users') {
-          const idx = _fields.findIndex(f => f.name === 'role');
-          if (idx !== -1) {
-            _fields[idx] = { name:'role', label:'Role', type:'select', source:'kiosk_roles', sourceLabel:'role', valueKey:'role', required:true };
-          } else {
-            _fields.push({ name:'role', label:'Role', type:'select', source:'kiosk_roles', sourceLabel:'role', valueKey:'role', required:true });
-          }
-        }
-        crudFields.innerHTML = _fields.map(f => {
-
+        crudFields.innerHTML = crudState.entity.fields.map(f => {
           let val = row ? row[f.name] : (f.type === "checkbox" ? !!f.default : (f.default ?? ""));
           if(val === null || val === undefined) val = (f.type === "checkbox" ? false : "");
           // ... (HTML generation for standard fields, unchanged)
@@ -3142,9 +3126,9 @@ return (()=>{
   if(f.type === "select"){
     if(f.options){
       const opts = (f.options || []).map(o => `<option value="${o.value}"${o.value == val ? " selected": ""}>${o.label}</option>`).join("");
-      return `<div class="field"><label>${esc(label)}</label><select id="${id}" class="ui-select">${opts}</select></div>`;
+      return `<div class="field"><label>${esc(label)}</label><select id="${id}">${opts}</select></div>`;
     }else{
-      return `<div class="field"><label>${esc(label)}</label><select id="${id}" class="ui-select"><option value="">Loading...</option></select></div>`;
+      return `<div class="field"><label>${esc(label)}</label><select id="${id}"><option value="">Loading...</option></select></div>`;
     }
   }
   if(f.type === "frequency"){
@@ -3171,65 +3155,33 @@ return (()=>{
 })();
 
         }).join("");
-
-// Ensure Staff Role dropdown is populated even if not declared in entity schema
-if (entityKey === 'kiosk_users') {
-  (async ()=>{
-    const sel = document.getElementById('field-role');
-    if (sel && sel.tagName.toLowerCase()==='select') {
-      const { data, error } = await supabase.from('kiosk_roles').select('role');
-      if (!error && Array.isArray(data)) {
-        const selected = (crudState.row || {}).role || '';
-        sel.innerHTML = `<option value="">—</option>` + data.map(r=>{
-          const v = r.role;
-          const s = (String(v) === String(selected)) ? " selected" : "";
-          return `<option value="${v}"${s}>${v}</option>`;
-        }).join("");
-      }
-    }
-  })();
-}
-
         
 // Populate dynamic select sources
 (async () => {
-  
-for (const f of (crudState.entity.fields || [])) {
+  for (const f of (crudState.entity.fields || [])) {
     if (f.type === "select" && f.source && !f.options) {
       const sel = document.getElementById(`field-${f.name}`);
       if (!sel) continue;
-      try {
-        const selectCols = `${f.valueKey || "id"}, ${f.sourceLabel || "full_name"}`;
-        let q = supabase.from(f.source).select(selectCols);
-        const siteScoped = ["rooms","check_types","items","kiosk_users","item_allowed_types"];
-        if (typeof ctx !== "undefined" && ctx.site_id && siteScoped.includes(f.source)) {
-          q = q.eq("site_id", ctx.site_id);
-        }
-        const { data, error } = await q;
-        if (!error && Array.isArray(data)) {
-          // Exclude self when choosing a manager
-          let list = data;
-          if (f.name === "reports_to_id" && crudState?.row?.id) {
-            const idKey = f.valueKey || "id";
-            list = data.filter(r => String(r[idKey]) !== String(crudState.row.id));
-          }
-          const selected = (crudState.row || {})[f.name];
-          sel.innerHTML = `<option value="">—</option>` + list.map(r => {
-            const optVal = r[f.valueKey || "id"];
-            const optLab = r[f.sourceLabel || "full_name"];
-            const selAttr = (String(optVal) === String(selected)) ? " selected" : "";
-            return `<option value="${optVal}"${selAttr}>${esc(optLab)}</option>`;
-          }).join("");
-        } else {
-          sel.innerHTML = `<option value="">(error)</option>`;
-        }
-      } catch (err) {
-        console.warn('Select loader error for', f.name, err);
+      let q = supabase.from(f.source).select(`id, ${f.sourceLabel || "name"}`);
+      const siteScoped = ["rooms","check_types","items","kiosk_users","item_allowed_types"];
+      if (typeof ctx !== "undefined" && ctx.site_id && siteScoped.includes(f.source)) {
+        q = q.eq("site_id", ctx.site_id);
+      }
+      const { data, error } = await q;
+      if (!error && Array.isArray(data)) {
+        const selected = (crudState.row || {})[f.name];
+        sel.innerHTML = `<option value="">—</option>` + data.map(r => {
+          const optVal = r.id;
+          const optLab = r[f.sourceLabel || "name"];
+          const selAttr = (String(optVal) === String(selected)) ? " selected" : "";
+          return `<option value="${optVal}"${selAttr}>${esc(optLab)}</option>`;
+        }).join("");
+      } else {
         sel.innerHTML = `<option value="">(error)</option>`;
       }
     }
   }
-})();;
+})();
 
     }
 
@@ -3462,7 +3414,6 @@ for (const f of (crudState.entity.fields || [])) {
       </div>
     </div>
   </div>
-
 
 </body>
 </html>
