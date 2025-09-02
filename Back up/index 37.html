@@ -339,14 +339,20 @@
   .cal-legend .dot.missed { background: var(--danger) }
   
   /* Day modal */
-  #day-modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 30; background: rgba(7,28,68,0.85); }
+  #day-modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 30; background: rgba(7,28,68,0.85); overflow-y: auto; padding: 22px; -webkit-overflow-scrolling: touch; }
   #day-modal.show { display: flex; }
-  .day-modal-card { width: min(900px, 86vw); background: var(--panel-bg); border:1px solid var(--border-color); border-radius:18px; padding:22px; box-shadow: var(--shadow); color: var(--white); }
+  .day-modal-card { width: min(900px, 86vw); background: var(--panel-bg); border:1px solid var(--border-color); border-radius:18px; padding:22px; box-shadow: var(--shadow); color: var(--white); max-height: 90vh; overflow: auto; }
   .day-modal-close { all:unset; float:right; cursor:pointer; background:#ffffff12; border-radius:999px; width:34px; height:34px; display:grid; place-items:center; }
   .day-modal-body { margin-top:12px; }
   .day-modal-table { width:100%; border-collapse:collapse; background: transparent; }
   .day-modal-table th, .day-modal-table td { padding:10px 12px; text-align:left; border-bottom:1px solid #ffffff12; color:var(--muted); }
   .day-modal-table th { color:var(--muted); font-weight:700; }
+
+  /* Generic modal overflow safety (covers PIR item window etc.) */
+  [id$="-modal"] { overflow-y: auto; padding: 22px; -webkit-overflow-scrolling: touch; }
+  [id$="-modal"] .modal-card,
+  [id$="-modal"] .day-modal-card,
+  [id$="-modal"] .card { max-height: 90vh; overflow: auto; }
   
   #cal-view-switcher .btn.secondary.active {
     background: var(--accent-2);
@@ -383,232 +389,6 @@
 </style>
 
 <script>
-// === NEW .EML GENERATION LOGIC START ===
-window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
-    const btn = document.getElementById('btn-generate-emails');
-    if (!btn) return;
-
-    // This new listener runs in the 'capture' phase to override the old one.
-    btn.addEventListener('click', async (e) => {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        try {
-            await generateAndDownloadPIRAsEmails();
-        } catch (err) {
-            console.error(err);
-            alert('Sorry, generating the email files failed: ' + (err?.message || err));
-        }
-    }, { capture: true });
-
-    // --- Helper Functions for EML creation ---
-
-    // Ensure strings use CRLF line endings
-    function crlf(str) { return str.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n'); }
-    // Fold long lines (for base64) as per RFC 2045
-    function fold76(s) { return s.replace(/(.{1,76})/g, '$&\r\n'); }
-    // Create a URL-friendly slug from a string
-    function slug(s) { return (s || '').toString().replace(/[^a-z0-9]+/gi, '-').replace(/(^-|-$)/g, '').toLowerCase(); }
-    
-    // Create a unique boundary string for multipart emails
-    function makeBoundary() { return '=====_CheckLoop_Boundary_' + Math.random().toString(36).slice(2) + '====='; }
-
-    // Convert a Blob object (from a file fetch) to a base64 string
-    function blobToBase64(blob) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-                const res = String(reader.result || '');
-                const idx = res.indexOf('base64,');
-                resolve(idx >= 0 ? res.slice(idx + 7) : '');
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-    }
-    
-    // Generate the plain text body for an email
-    function buildPlainTextBody(categoryTitle, items) {
-        const lines = [];
-        lines.push(`Dear CQC Inspection Team,`);
-        lines.push(``);
-        lines.push(`Please find attached the requested information for the "${categoryTitle}" section.`);
-        lines.push(``);
-        lines.push('Summary of evidence provided:');
-        
-        const itemDefinitions = window.PIR_DEFINITIONS_DATA || [];
-        for (const it of items) {
-            // Find the definition to get the email_blurb
-            const def = itemDefinitions.find(d => d.title === it.title);
-            const blurb = def?.email_blurb || it.title;
-            lines.push(`• ${blurb}`);
-        }
-        
-        lines.push(``);
-        lines.push('Kind regards,');
-        const practiceName = (typeof ctx === 'object' && ctx?.site_name) ? `The Team at ${ctx.site_name}` : 'The Practice';
-        lines.push(practiceName);
-        return lines.join('\n');
-    }
-
-    // Assemble a full .eml file string from its parts
-    function assembleEml({ from, to, subject, textBody, attachments }) {
-        const boundary = makeBoundary();
-        const date = new Date().toUTCString();
-        
-        // Basic email headers
-        const headers = [
-            `From: ${from}`,
-            `To: ${to || ''}`, // CQC email can be filled in by user
-            `Subject: ${subject}`,
-            `Date: ${date}`,
-            `MIME-Version: 1.0`,
-            `Content-Type: multipart/mixed; boundary="${boundary}"`
-        ].join('\r\n');
-
-        const parts = [];
-        
-        // 1. The plain text part of the email
-        parts.push([
-            `--${boundary}`,
-            'Content-Type: text/plain; charset=UTF-8',
-            'Content-Transfer-Encoding: 7bit',
-            '',
-            crlf(textBody)
-        ].join('\r\n'));
-
-        // 2. The attachment parts (if any)
-        for (const a of (attachments || [])) {
-            const filename = a.filename || 'attachment';
-            const mime = a.mime || 'application/octet-stream';
-            const b64 = fold76(a.base64 || '');
-            parts.push([
-                `--${boundary}`,
-                `Content-Type: ${mime}; name="${filename}"`,
-                'Content-Transfer-Encoding: base64',
-                `Content-Disposition: attachment; filename="${filename}"`,
-                '',
-                b64
-            ].join('\r\n'));
-        }
-
-        // 3. The closing boundary
-        parts.push(`--${boundary}--`);
-
-        return headers + '\r\n\r\n' + parts.join('\r\n');
-    }
-    
-    // Takes a list of document items, fetches their files, and prepares them for attachment
-    async function prepareAttachments(items) {
-        const out = [];
-        const itemDefinitions = window.PIR_DEFINITIONS_DATA || [];
-
-        for (const it of items) {
-            // A) Handle file uploads
-            if (it.file_path) {
-                try {
-                    const { data: blob, error } = await supabase.storage.from('pir_attachments').download(it.file_path);
-                    if (error) throw error;
-                    
-                    const base64 = await blobToBase64(blob);
-                    const filename = it.file_path.split('/').pop() || 'file';
-                    out.push({ filename, mime: blob.type, base64 });
-                } catch (e) {
-                    console.warn('Attachment fetch failed', it.file_path, e);
-                }
-            }
-
-            // B) Handle data entries (convert to a .txt file)
-            const data = it.data || {};
-            if (Object.keys(data).length > 0 && JSON.stringify(data) !== '{}') {
-                const itemDef = itemDefinitions.find(d => d.title === it.title) || {};
-                let content = `DOCUMENT: ${it.title}\nCATEGORY: ${it.category}\n\n---\n\n`;
-
-                if (data.answers && itemDef.questions) {
-                    itemDef.questions.forEach((q, i) => {
-                        content += `Q: ${q}\nA: ${data.answers[i] || 'Not answered'}\n\n`;
-                    });
-                }
-                if (data.table_data && itemDef.headers) {
-                    content += itemDef.headers.join('\t') + '\n';
-                    content += data.table_data.map(row => row.join('\t')).join('\n') + '\n';
-                }
-                const labels = itemDef.labels || ['Value 1', 'Value 2', 'Value 3'];
-                 ['num1', 'num2', 'num3', 'text1', 'text2'].forEach((key, idx) => {
-                    if(data[key] != null && data[key] !== '') {
-                        content += `${labels[idx] || key}: ${data[key]}\n`;
-                    }
-                });
-
-                const txtBlob = new Blob([content], { type: 'text/plain' });
-                const base64 = await blobToBase64(txtBlob);
-                const filename = `${slug(it.title)}.txt`;
-                out.push({ filename, mime: 'text/plain', base64 });
-            }
-        }
-        return out;
-    }
-    
-    // Group items by their email category
-    function groupByCategory(items) {
-        const map = new Map();
-        for (const it of items) {
-            const cat = it.category || 'Uncategorised';
-            if (!map.has(cat)) map.set(cat, []);
-            map.get(cat).push(it);
-        }
-        return map;
-    }
-
-    // --- Main Function ---
-    async function generateAndDownloadPIRAsEmails() {
-        // Use pirDocsCache if available, as it holds the live data from the page
-        const items = Array.isArray(window.pirDocsCache) ? window.pirDocsCache : [];
-        const readyItems = items.filter(it => it.status === 'Ready');
-
-        if (!readyItems.length) {
-            throw new Error('No Pre-Inspection items are marked as "Ready". Please update the status of items you wish to include.');
-        }
-
-        const zip = new JSZip();
-        const from = (typeof ctx === 'object' && ctx?.user?.email) ? ctx.user.email : 'practice@nhs.net';
-        const practiceName = (typeof ctx === 'object' && ctx?.site_name) ? ` for ${ctx.site_name}` : '';
-
-        // Group the "Ready" items by their category
-        const groups = groupByCategory(readyItems);
-        
-        for (const [category, catItems] of groups) {
-            if (!catItems.length) continue;
-
-            const categoryTitle = category.replace(/EMAIL \d+: /i, '').trim();
-            const subject = `CQC Pre-Inspection Information - ${category}${practiceName}`;
-            
-            const textBody = buildPlainTextBody(categoryTitle, catItems);
-            const attachments = await prepareAttachments(catItems);
-            
-            const emlContent = assembleEml({ from, to: '', subject, textBody, attachments });
-            
-            // e.g., "EMAIL 1 - GOVERNANCE, POLICIES AND PROCEDURES.eml"
-            const fname = `${category.replace(/[^a-zA-Z0-9 ]/g, '').replace(/ /g, '_')}.eml`;
-            zip.file(fname, emlContent);
-        }
-
-        const blob = await zip.generateAsync({ type: 'blob' });
-        const y = new Date().getFullYear();
-        const m = String(new Date().getMonth() + 1).padStart(2, '0');
-        const d = String(new Date().getDate()).padStart(2, '0');
-        const zipName = `CQC_PIR_Emails_${y}-${m}-${d}.zip`;
-
-        // Trigger the download
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = zipName;
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
-    }
-});
-// === NEW .EML GENERATION LOGIC END ===
-
 (function () {
   var ua = navigator.userAgent || "";
   var isIOSiPad = /iPad|iPhone|iPod/.test(ua) ||
@@ -618,6 +398,197 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
 
   if (isIOSiPad && !onIpadPage && !bypass) {
     location.replace("indexIpad.html"); // same folder
+  }
+})();
+// === PIR EMAIL (.eml) GENERATION – downloads one .eml per email bundle, zipped ===
+(function initPIRemlGenerator(){
+  const btn = document.getElementById('btn-generate-emails');
+  if(!btn) return;
+
+  // Ensure our handler runs first and suppresses any older text-file generator.
+  btn.addEventListener('click', async (e)=>{
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    try{
+      await generateAndDownloadPIRAsEmails();
+    }catch(err){
+      console.error(err);
+      alert('Sorry — generating email files failed: ' + (err?.message || err));
+    }
+  }, { capture: true });
+
+  // --- Helpers ---
+  function crlf(str){ return str.replace(/\n/g, '\r\n'); }
+  function fold76(s){ return s.replace(/.{1,76}/g, '$&\r\n'); }
+  function slug(s){ return (s||'').toString().replace(/[^a-z0-9]+/gi,'-').replace(/(^-|-$)/g,'').toLowerCase(); }
+
+  function guessFrom(){
+    const from = (typeof ctx === 'object' && ctx?.user?.email) ? ctx.user.email : 'no-reply@checkloop.local';
+    return from;
+  }
+
+  function guessSubjectPrefix(){
+    const site = (typeof ctx === 'object' && ctx?.site_name) ? ` – ${ctx.site_name}` : '';
+    return `CQC Pre‑Inspection${site}`; // e.g. "CQC Pre‑Inspection – Harley Street MC"
+  }
+
+  // Convert Blob to base64 string (no data: prefix)
+  function blobToBase64(blob){
+    return new Promise((resolve, reject)=>{
+      const reader = new FileReader();
+      reader.onload = ()=>{
+        // reader.result is a data URL: data:<mime>;base64,<b64>
+        const res = String(reader.result||'');
+        const idx = res.indexOf('base64,');
+        resolve(idx>=0 ? res.slice(idx+7) : res);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  function buildPlainTextBody(category, items){
+    const lines = [];
+    lines.push(`${category}`);
+    lines.push('');
+    lines.push('Please find below a summary of the enclosed evidence:');
+    lines.push('');
+    for(const it of items){
+      const blurb = it.email_blurb || it.title;
+      lines.push(`• ${blurb}`);
+    }
+    lines.push('');
+    lines.push('Kind regards,');
+    const from = guessFrom();
+    lines.push(from);
+    return lines.join('\n');
+  }
+
+  function makeBoundary(){
+    return '=====_CL_' + Math.random().toString(36).slice(2) + Date.now().toString(36) + '_=====';
+  }
+
+  function assembleEml({from, to, subject, textBody, attachments}){
+    const boundary = makeBoundary();
+    const date = new Date().toUTCString();
+    const headers = [
+      `From: ${from}`,
+      `To: ${to || ''}`,
+      `Subject: ${subject}`,
+      `Date: ${date}`,
+      'MIME-Version: 1.0',
+      `Content-Type: multipart/mixed; boundary="${boundary}"`
+    ].join('\r\n');
+
+    const parts = [];
+    // text part
+    parts.push(
+      [
+        `--${boundary}`,
+        'Content-Type: text/plain; charset=UTF-8',
+        'Content-Transfer-Encoding: 7bit',
+        '',
+        crlf(textBody)
+      ].join('\r\n')
+    );
+
+    // attachments (if any)
+    for(const a of (attachments||[])){
+      const filename = a.filename || 'attachment';
+      const mime = a.mime || 'application/octet-stream';
+      const b64 = fold76(a.base64 || '');
+      parts.push([
+        `--${boundary}`,
+        `Content-Type: ${mime}; name="${filename}"`,
+        'Content-Transfer-Encoding: base64',
+        `Content-Disposition: attachment; filename="${filename}"`,
+        '',
+        b64
+      ].join('\r\n'));
+    }
+
+    // closing boundary
+    parts.push(`--${boundary}--`);
+
+    return headers + '\r\n\r\n' + parts.join('\r\n');
+  }
+
+  async function fetchAttachmentsForItems(items){
+    // Expect each item to optionally have an array: item.files = [{name, url, type}]
+    const out = [];
+    for(const it of items){
+      const files = Array.isArray(it.files) ? it.files : [];
+      for(const f of files){
+        if(!f?.url) continue;
+        try{
+          const resp = await fetch(f.url);
+          if(!resp.ok) throw new Error(`fetch ${f.url} -> ${resp.status}`);
+          const blob = await resp.blob();
+          const base64 = await blobToBase64(blob);
+          out.push({ filename: f.name || 'file', mime: f.type || blob.type || 'application/octet-stream', base64 });
+        }catch(e){
+          console.warn('Attachment fetch failed', f, e);
+        }
+      }
+    }
+    return out;
+  }
+
+  function groupByCategory(items){
+    const map = new Map();
+    for(const it of items){
+      const cat = it.category || 'Uncategorised';
+      if(!map.has(cat)) map.set(cat, []);
+      map.get(cat).push(it);
+    }
+    return map;
+  }
+
+  function getPIRItemsForEmailing(){
+    // Prefer whatever the renderer loaded (with user files/answers), fallback to the static definitions
+    const hasCache = Array.isArray(window.pirDocsCache) && window.pirDocsCache.length;
+    if(hasCache) return window.pirDocsCache;
+    return (Array.isArray(window.PIR_DEFINITIONS_DATA) ? window.PIR_DEFINITIONS_DATA : []).map(x=>({ ...x }));
+  }
+
+  async function generateAndDownloadPIRAsEmails(){
+    const items = getPIRItemsForEmailing();
+    if(!items || !items.length){ throw new Error('No Pre‑Inspection items available'); }
+
+    const zip = new JSZip();
+    const subjectPrefix = guessSubjectPrefix();
+    const from = guessFrom();
+
+    // Build emails by category
+    const groups = groupByCategory(items);
+    for(const [category, catItems] of groups){
+      // Only include items that have either files, answers, or at least an email_blurb
+      const include = catItems.filter(it => (it.files && it.files.length) || it.email_blurb || it.title);
+      if(!include.length) continue;
+
+      const textBody = buildPlainTextBody(category, include);
+      const attachments = await fetchAttachmentsForItems(include);
+
+      const subject = `${subjectPrefix} – ${category}`;
+      const eml = assembleEml({ from, to: '', subject, textBody, attachments });
+
+      const fname = `${category.split(':')[0].trim()} - ${slug(category)}.eml`;
+      zip.file(fname, eml, { binary: false });
+    }
+
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const dt = new Date();
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth()+1).padStart(2,'0');
+    const d = String(dt.getDate()).padStart(2,'0');
+    const zipName = `CQC-PIR-Emails-${y}${m}${d}.zip`;
+
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = zipName;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 2000);
   }
 })();
 </script>
@@ -1474,9 +1445,6 @@ window.PIR_DEFINITIONS_DATA = [
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
   });
-  // Expose to global for non-module scripts
-  window.JSZip = JSZip;
-  window.supabase = supabase;
 
   // SPA navigation
   const nav = document.getElementById("nav");
@@ -1519,13 +1487,11 @@ window.PIR_DEFINITIONS_DATA = [
     setActiveSection(id);
   });
 
-  // Restore last active section on load (always trigger loader)
+  // Restore last active section on load (defaults to dashboard if none)
   try {
     const saved = localStorage.getItem("cl_active_section");
-    setActiveSection(saved || "dashboard");
-  } catch(_) {
-    setActiveSection("dashboard");
-  }
+    if(saved) setActiveSection(saved);
+  } catch(_) {}
 
   // Restore sidebar collapsed state
   try {
@@ -2653,10 +2619,45 @@ async function loadSchedules(){
     }
 
     const pirEmailModal = document.getElementById('pir-email-modal');
-    // NOTE: The logic for the modal pop-up is now handled by the .eml generator script.
-    // The old modal logic is left here but is not triggered by the main button anymore.
+    const btnGenerateEmails = document.getElementById('btn-generate-emails');
     const btnConfirmGenerate = document.getElementById('btn-confirm-generate');
     const btnCancelGenerate = document.getElementById('btn-cancel-generate');
+
+    if (btnGenerateEmails) btnGenerateEmails.addEventListener('click', () => {
+        const previewContainer = document.getElementById('pir-email-preview');
+        const readyDocs = pirDocsCache.filter(d => d.status === 'Ready');
+        const categoryOrder = [...new Set(PIR_DEFINITIONS.map(d => d.category))];
+        let previewHtml = '';
+
+        // Email 1: Acknowledgment
+        previewHtml += `<div style="margin-bottom: 10px;"><strong>EMAIL 1: CQC Request Acknowledgment</strong><div class="muted" style="font-size:12px; padding-left:10px;">- Acknowledgment Letter</div></div>`;
+
+        // Emails 2-10 correspond to the 9 CQC categories
+        categoryOrder.forEach((category, i) => {
+            const emailNum = i + 2;
+            const emailTitle = category.replace(/EMAIL \d+: /i, '').trim();
+            const docsForCat = readyDocs.filter(d => d.category === category);
+
+            previewHtml += `<div style="margin-bottom: 10px;"><strong>EMAIL ${emailNum}: ${emailTitle}</strong>`;
+            if (docsForCat.length > 0) {
+                previewHtml += `<ul style="margin: 4px 0 0 15px; padding:0; list-style-type:'- '; color:var(--muted); font-size:12px;">`;
+                docsForCat.forEach(doc => {
+                    previewHtml += `<li>${esc(doc.title)}</li>`;
+                });
+                previewHtml += `</ul>`;
+            } else {
+                previewHtml += `<div class="muted" style="font-size:12px; padding-left:10px;">- No items marked 'Ready' for this email.</div>`;
+            }
+            previewHtml += '</div>';
+        });
+
+        previewContainer.innerHTML = previewHtml;
+
+        document.getElementById('pir-email-body').style.display = 'block';
+        document.getElementById('pir-email-progress').style.display = 'none';
+        btnConfirmGenerate.style.display = 'inline-block';
+        pirEmailModal.classList.add('show');
+    });
 
     if (btnCancelGenerate) btnCancelGenerate.addEventListener('click', () => pirEmailModal.classList.remove('show'));
     if (pirEmailModal) pirEmailModal.addEventListener('click', (e) => { if (e.target === pirEmailModal) pirEmailModal.classList.remove('show'); });
@@ -2685,6 +2686,99 @@ async function loadSchedules(){
         }
         return content;
     }
+
+    if (btnConfirmGenerate) btnConfirmGenerate.addEventListener('click', async () => {
+        const progressStatus = document.getElementById('pir-progress-status');
+        const progressDetails = document.getElementById('pir-progress-details');
+        
+        document.getElementById('pir-email-body').style.display = 'none';
+        btnConfirmGenerate.style.display = 'none';
+        document.getElementById('pir-email-progress').style.display = 'block';
+        progressStatus.textContent = "Generating...";
+        progressDetails.textContent = "Please wait, preparing zip file...";
+
+        try {
+            const zip = new JSZip();
+            const practiceName = document.getElementById('site-pill').textContent.replace('Site: ','');
+            const readyDocs = pirDocsCache.filter(d => d.status === 'Ready');
+            const categoryOrder = [...new Set(PIR_DEFINITIONS.map(d => d.category))];
+            
+            // --- EMAIL 1: ACKNOWLEDGMENT ---
+            progressDetails.textContent = `Processing: 1 of 10 emails...`;
+            const ackFolder = zip.folder("EMAIL 1 - CQC Request Acknowledgment");
+            const ackBody = `SUGGESTED SUBJECT: CQC Pre-Inspection Information Request - Acknowledgment\n\n------------------------------------------------------\n\nDear CQC Inspection Team,\n\nThank you for your pre-inspection information request. \n\nAs requested, we will be sending the required information across 9 subsequent emails, each corresponding to a section of the request.\n\nThis is the first of 10 emails in total.\n\nKind regards,\n\nThe Team at ${practiceName}`;
+            ackFolder.file('email_body.txt', ackBody);
+
+            // --- EMAILS 2-10: CQC CATEGORIES ---
+            for (const [i, category] of categoryOrder.entries()) {
+                const emailNum = i + 2;
+                progressDetails.textContent = `Processing: ${emailNum} of 10 emails...`;
+                const emailTitle = category.replace(/EMAIL \d+: /i, '').trim();
+                const folder = zip.folder(`EMAIL ${emailNum} - ${emailTitle}`);
+                const docsForCat = readyDocs.filter(d => d.category === category);
+                
+                let emailBody = `SUGGESTED SUBJECT: CQC PIR - ${emailTitle}\n\n------------------------------------------------------\n\nDear CQC Inspection Team,\n\nPlease find attached the requested information for the "${emailTitle}" section.\n\n`;
+                
+                let summaryList = 'Summary of attachments:\n';
+
+                if (docsForCat.length > 0) {
+                    for (const doc of docsForCat) {
+                        const itemDef = PIR_DEFINITIONS.find(d => d.title === doc.title) || {};
+                        const hasData = doc.data && Object.keys(doc.data).length > 0 && JSON.stringify(doc.data) !== '{}';
+                        const sanitizedTitle = doc.title.replace(/[^a-zA-Z0-9]/g, '_');
+                        
+                        // Generate a text file if there is data to include
+                        if (hasData) {
+                            const txtFileName = `${sanitizedTitle}.txt`;
+                            const txtContent = formatDataForTxt(doc, itemDef);
+                            folder.file(txtFileName, txtContent);
+                            summaryList += `- ${doc.title} (see attached file: ${txtFileName})\n`;
+                        }
+
+                        // Attach the actual file if it exists
+                        if (doc.file_path) {
+                            try {
+                                const { data: fileData, error } = await supabase.storage.from('pir_attachments').download(doc.file_path);
+                                if (error) throw error;
+                                const originalFileName = doc.file_path.split('/').pop();
+                                folder.file(originalFileName, fileData);
+                                 if (!hasData) { // If it's a file only, list it here
+                                    summaryList += `- ${doc.title} (see attached file: ${originalFileName})\n`;
+                                 } else { // If it had data AND a file, add to the summary
+                                    summaryList = summaryList.trim() + ` and ${originalFileName})\n`;
+                                 }
+                            } catch (e) {
+                                const errorFileName = `FAILED_TO_DOWNLOAD_${doc.file_path.split('/').pop()}.txt`;
+                                folder.file(errorFileName, `Error: ${e.message}`);
+                                summaryList += `- ${doc.title} (Error downloading original file - see ${errorFileName})\n`;
+                            }
+                        }
+                    }
+                    emailBody += summaryList;
+                } else {
+                    emailBody += `No documents or data were marked as 'Ready' for this section.\n`;
+                }
+                
+                emailBody += `\n\nKind regards,\n\nThe Team at ${practiceName}`;
+                folder.file('email_body.txt', emailBody);
+            }
+
+            progressStatus.textContent = "Compressing...";
+            const content = await zip.generateAsync({ type: "blob" });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(content);
+            link.download = `CQC_Pre-Inspection_Emails_${new Date().toISOString().slice(0,10)}.zip`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+            pirEmailModal.classList.remove('show');
+        } catch (err) {
+            progressStatus.textContent = "Error!";
+            progressDetails.textContent = err.message;
+            document.getElementById('pir-email-body').style.display = 'block'; // Show body again on error
+        }
+    });
 
     function buildPirForm(item, data, filePath) {
         const itemDef = PIR_DEFINITIONS.find(d => d.title === item.title) || {};

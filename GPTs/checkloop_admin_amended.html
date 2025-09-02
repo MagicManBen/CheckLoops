@@ -1,0 +1,1300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CheckLoop — Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg1:#0b4fb3; --bg2:#062b6f; --glass:#ffffff12; --glass-2:#ffffff1a;
+    --white:#e6f0ff; --muted:#b8c7e8; --ink:#eaf1ff;
+    --accent:#76a7ff; --accent-2:#5f96ff; --success:#2bd4a7; --danger:#ff6b6b;
+    --warning: #ffca28;
+    --shadow: 0 10px 30px rgba(6,43,111,.35);
+    --round:18px;
+    --panel-bg: linear-gradient(145deg, #133b8a, #0c275e);
+    --border-color: #ffffff1f;
+    --stat-1-bg: #8e6eff33; --stat-1-color: #c4b5fd;
+    --stat-2-bg: #2bd4a733; --stat-2-color: #6ee7b7;
+    --stat-3-bg: #ffca2833; --stat-3-color: #ffe082;
+    --stat-4-bg: #ff6b6b33; --stat-4-color: #fca5a5;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink); background:#0b3a86; overflow-x:hidden;
+  }
+  /* Silky animated background */
+  .bg{
+    position:fixed; inset:0; z-index:-1; overflow:hidden; background: radial-gradient(1200px 700px at 20% -10%, #6aa0ff33, transparent),
+      radial-gradient(900px 600px at 90% 10%, #3566ff2e, transparent),
+      linear-gradient(180deg, #0e3f93 0%, #082a69 100%);
+  }
+  .wave{
+    position:absolute; width:160%; height:160%; left:-30%; top:-30%;
+    background: conic-gradient(from 180deg at 50% 50%, #2c63ff22, #143a9622, #2c63ff22);
+    filter: blur(60px);
+    animation: drift 22s ease-in-out infinite alternate;
+    transform-origin: 50% 50%;
+  }
+  .wave2{ animation-duration: 28s; mix-blend-mode: screen; }
+  @keyframes drift{
+    0%{ transform: rotate(0deg) scale(1.0); }
+    100%{ transform: rotate(25deg) scale(1.08); }
+  }
+
+  /* Layout */
+  .app{ display:grid; --sidebarW:260px; grid-template-columns: var(--sidebarW) 1fr; gap:22px; padding:22px; min-height:100vh; transition: grid-template-columns .2s ease; }
+  .app.collapsed{ --sidebarW:56px; }
+  .sidebar{
+    background: linear-gradient(180deg, #1a4ea8 0%, #0e367e 100%);
+    border-radius:20px; box-shadow: var(--shadow); padding:14px;
+    transition: width 0.2s;
+  }
+  .app.collapsed #sidebar {
+    overflow-x: hidden;
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+  .app.collapsed #sidebar .brand .t,
+  .app.collapsed #sidebar .brand .hint,
+  .app.collapsed #sidebar .menu-item-label { display:none; }
+  .app.collapsed #sidebar .nav button{ justify-content:center; gap:0; padding:10px; }
+  .app.collapsed #sidebar .icon{ margin:0; }
+  .sidebar-toggle {
+    background: none;
+    border: none;
+    font-size: 1.5em;
+    cursor: pointer;
+    color: var(--white);
+    margin-bottom: 8px;
+    margin-left: 2px;
+    margin-top: 2px;
+    display: block;
+  }
+  .brand{ display:flex; align-items:center; gap:10px; padding:10px 12px 16px; }
+  .brand .logo{ width:32px; height:32px; border-radius:10px; background:linear-gradient(135deg,#9ec1ff,#3f78ff); box-shadow: inset 0 0 0 2px #ffffff33; }
+  .brand .t{ font-weight:800; letter-spacing:.2px }
+
+  .nav{ display:flex; flex-direction:column; gap:6px; margin-top:6px; }
+  .nav button{
+    all:unset; display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:12px;
+    cursor:pointer; color:var(--white); opacity:.85;
+    transition: transform .12s ease, background .2s ease, opacity .2s ease;
+  }
+  .nav button:hover{ transform: translateY(-1px); background: #ffffff14; opacity:1; }
+  .nav button.active{ background:var(--accent); color:var(--white); opacity:1; font-weight:600; }
+  .nav .icon{
+    width:18px; height:18px; object-fit:contain; opacity:.95;
+    color: var(--white) !important; /* SVGs use currentColor */
+    filter: brightness(0) invert(1); /* Make bitmap icons white */
+  }
+
+  .nav button.active .icon{
+    color: var(--success) !important; /* SVGs turn green on active */
+    /* Approximate green for bitmap icons */
+    filter: invert(64%) sepia(41%) saturate(498%) hue-rotate(98deg) brightness(92%) contrast(92%);
+  }
+
+  .nav-badge {
+    margin-left: auto;
+    font-size: 11px;
+    background: var(--glass-2);
+    padding: 2px 6px;
+    border-radius: 99px;
+    line-height: 1;
+    opacity: 0.85;
+  }
+  .nav button.active .nav-badge {
+    background: var(--accent);
+    color: #fff;
+  }
+  .tab-controls .btn.secondary.active { background: var(--accent-2); border-color: var(--accent); color: var(--white); }
+
+
+  .nav button:hover .icon{ opacity:1; }
+
+  .content{ padding:6px; }
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between; gap:14px;
+    padding:10px 14px; background:#ffffff12; border-radius:16px; box-shadow:var(--shadow);
+    backdrop-filter: blur(10px);
+  }
+  .search{
+    flex:1; background:#ffffff17; border-radius:100px; padding:10px 14px; display:flex; align-items:center; gap:10px;
+  }
+  .search input{ all:unset; color:var(--ink); width:100%; font-size:14px; }
+  .pill{ padding:8px 12px; border-radius:999px; background:#ffffff17; }
+  .btn{ all:unset; padding:9px 14px; border-radius:12px; background:linear-gradient(135deg,#7db1ff,#4f89ff); color:#fff; font-weight:600; cursor:pointer; }
+  .btn.secondary{ background:#ffffff1e; border:1px solid #ffffff26; }
+
+  .panel{
+    background: var(--panel-bg);
+    border:1px solid var(--border-color); border-radius:22px; padding:24px; box-shadow: var(--shadow);
+    backdrop-filter: blur(8px);
+  }
+  .panel-header { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+  .panel-header svg { width:22px; height:22px; color:var(--accent); }
+  .panel-title { font-weight:700; font-size:18px; }
+
+  .grid{ display:grid; grid-template-columns: repeat(12, 1fr); gap:16px; }
+  .g-12{ grid-column: span 12; }
+  .g-6{ grid-column: span 6; }
+  .g-4{ grid-column: span 4; }
+  .g-3{ grid-column: span 3; }
+
+  .h1{ font-size:32px; font-weight:900; letter-spacing:.2px; margin:6px 0 8px; }
+  .muted{ color:var(--muted) }
+
+  table{ width:100%; border-collapse:separate; border-spacing:0; }
+  th, td{ text-align:left; padding:12px 14px; font-size:14px; }
+  thead th{ position:sticky; top:0; background:#0e2e6df2; backdrop-filter: blur(6px); z-index:1; font-weight:600; color:var(--muted); }
+  tbody tr{ transition: background .12s ease; }
+  tbody tr:nth-child(even){ background: #ffffff0a; }
+  td { border-bottom:1px solid #ffffff14; }
+  tbody tr:last-child td { border-bottom: none; }
+  .table-wrap{ overflow:auto; max-height:420px; }
+  .chip{ padding:4px 8px; background:#ffffff20; border-radius:999px; font-size:12px; display:inline-block }
+  .chip.success { background: var(--stat-2-bg); color: var(--stat-2-color); }
+  .chip.danger { background: var(--stat-4-bg); color: var(--stat-4-color); }
+  .chip.warning { background: var(--stat-3-bg); color: var(--stat-3-color); }
+
+
+  /* Sections (SPA) */
+  section.view{ display:none; }
+  section.view.active{ display:block; animation: fadeIn .18s ease; }
+  @keyframes fadeIn{ from{opacity:0; transform:translateY(3px)} to{opacity:1; transform:none} }
+
+  /* Auth overlay */
+  .auth{
+    position:fixed; inset:0; display:none; align-items:center; justify-content:center; padding:24px; background: #071c44d0; backdrop-filter: blur(6px); z-index: 10;
+  }
+  .auth.show{ display:flex; }
+  .card{ background:#0b2a64; border:1px solid #ffffff1f; border-radius:20px; box-shadow:var(--shadow); padding:22px; width:min(460px, 92vw); }
+  .card h2{ margin:0 0 12px; }
+  .field{ display:flex; flex-direction:column; gap:6px; margin:10px 0; }
+  .field input, .field textarea { all:unset; background:#ffffff17; border:1px solid #ffffff24; padding:12px 12px; border-radius:12px; }
+  .field textarea { min-height: 60px; }
+  .hint{ font-size:12px; color:#b9c9ff; opacity:.9 }
+  /* Dark-select styling for Windows/Edge */
+  .ui-select{
+    appearance:none; -webkit-appearance:none; -moz-appearance:none;
+    background:#0b2a64; color:var(--ink);
+    border:1px solid #ffffff24; border-radius:12px; padding:12px; width:100%;
+  }
+  .ui-select:focus{ outline:2px solid var(--accent); box-shadow:0 0 0 3px #76a7ff40; }
+  .ui-select option{ background:#0b2a64; color:var(--ink); }
+  .ui-select option:disabled{ color:#8aa0cf; }
+  @media (forced-colors: active){
+    .ui-select{ forced-color-adjust:none; background:Canvas; color:CanvasText; border-color:GrayText; }
+    .ui-select option{ background:Canvas; color:CanvasText; }
+  }
+  .error{ color:var(--danger); font-size:12px; margin-top:6px; }
+
+  .footer{ text-align:center; font-size:12px; color:#b7c8ff; opacity:.9; padding:22px 0; }
+
+  /* Small screens */
+  @media (max-width: 980px){
+    .app{ grid-template-columns: 1fr; }
+    .sidebar{ position:sticky; top:0; z-index:2; }
+    .g-4 { grid-column: span 12; }
+  }
+  @media (max-width: 600px){
+    .stat-card { grid-column: span 12; }
+  }
+
+  /* Stat cards */
+  .stat-card {
+    display:flex; align-items:center; gap:16px;
+    background: var(--glass); padding:16px; border-radius:16px;
+    border: 1px solid var(--glass-2);
+  }
+  .stat-card .icon-wrap {
+    width:48px; height:48px; border-radius:12px;
+    display:grid; place-items:center; flex-shrink:0;
+    background: var(--c); color: var(--i);
+  }
+  .stat-card .icon-wrap svg { width:24px; height:24px; }
+  .stat-num { font-size:28px; font-weight:700; line-height:1.1; color:var(--white); }
+  .stat-label { font-size:14px; color:var(--muted); }
+
+  /* Weekly Calendar styles */
+  .cal-day{ background:#ffffff0f; border:1px solid #ffffff1e; border-radius:14px; padding:12px; display:flex; flex-direction:column; gap:8px; }
+  .cal-day-header { display: flex; justify-content: space-between; align-items: baseline; }
+  .cal-day-label { font-weight: 600; color: var(--white); }
+  .cal-day-summary { font-size: 12px; color: var(--muted); }
+  .cal-day-bar-bg { width: 100%; height: 8px; background: var(--glass-2); border-radius: 99px; overflow: hidden; }
+  .cal-day-bar-fg { height: 100%; background: var(--success); width: 0%; border-radius: 99px; transition: width .4s ease; }
+  .cal-day-bar-fg.danger { background: var(--danger); }
+  .cal-day-metrics { display: flex; justify-content: space-between; font-size: 11px; }
+  .cal-metric.success { color: var(--success); }
+  .cal-metric.danger { color: var(--danger); }
+  
+  /* Row hover/selected across all tables */
+  tbody tr:hover{ background:#ffffff12 !important; }
+  tbody tr.selected{ background:#ffffff1e !important; }
+  tbody[data-entity] tr{ cursor:pointer; }
+  #subs-tbody tr { cursor: pointer; }
+
+
+  /* Items view: full-height + sortable */
+  #view-items .panel{ min-height: calc(100vh - 190px); display:flex; flex-direction:column; }
+  #view-items .table-wrap{ flex:1; max-height:none; overflow:auto; }
+  #view-items thead th.sortable{ cursor:pointer; user-select:none; }
+  #view-items thead th .arrow{ font-size:11px; opacity:.9; margin-left:6px }
+
+  /* Monthly Calendar Styles */
+  #cal-grid { grid-auto-rows: 1fr; align-items: start; }
+  .cal-cell {
+    background: var(--glass);
+    border: 1px solid var(--glass-2);
+    border-radius: 12px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    font-size: 12px;
+    transition: background .12s ease;
+    aspect-ratio: 1 / 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .cal-cell.is-clickable { cursor: pointer; }
+  .cal-cell.is-clickable:hover { background: var(--glass-2); }
+  .cal-cell.other-month { opacity: .4; background: transparent; border-color:transparent; pointer-events:none; }
+  .cal-cell.is-today .cal-day-num {
+    background: var(--accent);
+    color: var(--white);
+    font-weight: 700;
+  }
+  .cal-day-num {
+    font-weight: 600;
+    font-size: 14px;
+    width: 26px; height: 26px;
+    display: grid; place-items: center;
+    border-radius: 999px;
+    margin-bottom: 4px;
+    transition: all .2s ease;
+    flex-shrink: 0;
+  }
+  .cal-tasks {
+    flex-grow: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 11px;
+    padding-right: 4px; /* for scrollbar */
+  }
+  /* Custom scrollbar for task list */
+  .cal-tasks::-webkit-scrollbar { width: 4px; }
+  .cal-tasks::-webkit-scrollbar-track { background: transparent; }
+  .cal-tasks::-webkit-scrollbar-thumb { background: #ffffff33; border-radius: 4px; }
+
+  .cal-task {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cal-task-status {
+    width: 18px; height: 18px;
+    border-radius: 999px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--white);
+    background: var(--muted);
+    opacity: .9;
+    line-height: 1;
+  }
+  .cal-task-status.scheduled { background: var(--muted); color: var(--white); opacity: .85; }
+  .cal-task-status.done { background: var(--success); color: var(--white); }
+  .cal-task-status.missed { background: var(--danger); color: var(--white); }
+
+  .freq-badge {
+    font-size:10px;
+    padding:2px 6px;
+    border-radius:999px;
+    background: rgba(255,255,255,0.06);
+    color: var(--muted);
+    margin-left: 8px;
+    flex-shrink: 0;
+  }
+  .cal-legend { display:flex; gap:14px; align-items:center; color:var(--muted); font-size:12px; margin-bottom:12px; }
+  .cal-legend .item { display:flex; gap:8px; align-items:center; }
+  .cal-legend .dot { width:10px; height:10px; border-radius:999px; display:inline-block; }
+  .cal-legend .dot.scheduled { background: var(--muted); opacity:.6 }
+  .cal-legend .dot.done { background: var(--success) }
+  .cal-legend .dot.missed { background: var(--danger) }
+  
+  /* Day modal */
+  #day-modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 30; background: rgba(7,28,68,0.85); }
+  #day-modal.show { display: flex; }
+  .day-modal-card { width: min(900px, 86vw); background: var(--panel-bg); border:1px solid var(--border-color); border-radius:18px; padding:22px; box-shadow: var(--shadow); color: var(--white); }
+  .day-modal-close { all:unset; float:right; cursor:pointer; background:#ffffff12; border-radius:999px; width:34px; height:34px; display:grid; place-items:center; }
+  .day-modal-body { margin-top:12px; }
+  .day-modal-table { width:100%; border-collapse:collapse; background: transparent; }
+  .day-modal-table th, .day-modal-table td { padding:10px 12px; text-align:left; border-bottom:1px solid #ffffff12; color:var(--muted); }
+  .day-modal-table th { color:var(--muted); font-weight:700; }
+  
+  #cal-view-switcher .btn.secondary.active {
+    background: var(--accent-2);
+    border-color: var(--accent);
+    color: var(--white);
+  }
+  
+  /* Pre-inspection View Styles */
+  .progress-bar-bg { background: var(--glass-2); border-radius: 99px; height: 10px; overflow: hidden; }
+  .progress-bar-fg { background: var(--success); height: 100%; width: 0%; border-radius: 99px; transition: width .4s ease; }
+  .doc-category { margin-bottom: 20px; }
+  .doc-category-title { font-size: 16px; font-weight: 600; color: var(--accent-2); border-bottom: 1px solid var(--border-color); padding-bottom: 8px; margin-bottom: 12px; }
+  #pir-tbody tr { cursor: pointer; }
+  
+  /* Dynamic & Multi-Input Form Styles */
+  .multi-input-container { display: flex; gap: 12px; align-items: flex-start; }
+  .multi-input-container .field { flex: 1; margin-top: 0; }
+  .dynamic-table-row { display: flex; gap: 8px; align-items: center; }
+  .dynamic-table-row input { flex: 1; }
+</style>
+
+<script>
+(function () {
+  var ua = navigator.userAgent || "";
+  var isIOSiPad = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  var onIpadPage = /indexIpad\\.html$/i.test(location.pathname);
+  var bypass = location.search.includes("admin=1");
+  if (isIOSiPad && !onIpadPage && !bypass) { location.replace("indexIpad.html"); }
+})();
+</script>
+
+</head>
+<body>
+  <div class="bg">
+    <div class="wave"></div>
+    <div class="wave wave2"></div>
+  </div>
+
+  <div class="app" id="app" aria-live="polite">
+    <aside class="sidebar" id="sidebar">
+      <button id="toggleSidebar" class="sidebar-toggle">☰</button>
+      <div class="brand">
+        <div class="logo"></div>
+        <div>
+          <div class="t">CheckLoop</div>
+          <div class="hint">Admin</div>
+        </div>
+      </div>
+      <nav class="nav" id="nav">
+        <button class="active" data-section="dashboard"><img class="icon" alt="" src="dashboard.png"><span class="menu-item-label">Dashboard</span></button>
+        <button data-section="pre-inspection"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg><span class="menu-item-label">Pre-inspection</span></button>
+        <button data-section="calendar"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg><span class="menu-item-label">Calendar</span></button>
+        <button data-section="items"><svg class="icon" style="color: var(--muted);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.73z"/><path d="M3.27 6.96L12 12l8.73-5.04"/><path d="M12 22V12"/></svg><span class="menu-item-label">Items</span><span class="nav-badge" id="badge-items"></span></button>
+        <button data-section="rooms"><img class="icon" alt="" src="AddRoomIcon.png"><span class="menu-item-label">Rooms</span><span class="nav-badge" id="badge-rooms"></span></button>
+        <button data-section="checktypes"><img class="icon" alt="" src="check-mark.png"><span class="menu-item-label">Check Types</span><span class="nav-badge" id="badge-ct"></span></button>
+        <button data-section="schedules"><img class="icon" alt="" src="Schedule.png"><span class="menu-item-label">Schedules</span></button>
+        <button data-section="staff"><img class="icon" alt="" src="Doctor.png"><span class="menu-item-label">Staff (Kiosk)</span><span class="nav-badge" id="badge-staff"></span></button>
+        <button data-section="submissions"><img class="icon" alt="" src="QRCode.png"><span class="menu-item-label">Submissions</span></button>
+        <button data-section="settings"><svg class="icon" style="color: var(--muted);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06c-.25.25-.4.6-.4.97V9c0 .69.56 1.25 1.25 1.25H21a2 2 0 1 1 0 4h-.09c-.69 0-1.25.56-1.25 1.25z"/></svg><span class="menu-item-label">Settings</span></button>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="topbar panel">
+        <div class="search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <input id="search" placeholder="Search items, rooms, staff…" />
+        </div>
+        <div class="pill" id="site-pill">Site: —</div>
+        <div class="pill" id="email-pill">—</div>
+        <button class="btn secondary" id="signout">Sign Out</button>
+      </div>
+
+      <section class="view active" id="view-dashboard">
+        <div class="grid" style="margin-top:14px;">
+          <div class="panel g-12 compact-panel" id="week-calendar" style="margin-top:12px">
+            <div class="panel-header">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
+              <div class="panel-title">This Week (Sunday → Saturday)</div>
+            </div>
+            <div id="week-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:10px">
+              <div class="cal-day"><div class="cal-day-header"><div class="cal-day-label" id="d0-label">Sun</div><div class="cal-day-summary"><span id="d0-done-val">0</span> / <span id="d0-req-val">0</span></div></div><div class="cal-day-bar-bg"><div class="cal-day-bar-fg" id="d0-bar"></div></div><div class="cal-day-metrics"><div class="cal-metric success">✓ <span id="d0-done">0</span></div><div class="cal-metric danger">✗ <span id="d0-missed">0</span></div></div></div>
+              <div class="cal-day"><div class="cal-day-header"><div class="cal-day-label" id="d1-label">Mon</div><div class="cal-day-summary"><span id="d1-done-val">0</span> / <span id="d1-req-val">0</span></div></div><div class="cal-day-bar-bg"><div class="cal-day-bar-fg" id="d1-bar"></div></div><div class="cal-day-metrics"><div class="cal-metric success">✓ <span id="d1-done">0</span></div><div class="cal-metric danger">✗ <span id="d1-missed">0</span></div></div></div>
+              <div class="cal-day"><div class="cal-day-header"><div class="cal-day-label" id="d2-label">Tue</div><div class="cal-day-summary"><span id="d2-done-val">0</span> / <span id="d2-req-val">0</span></div></div><div class="cal-day-bar-bg"><div class="cal-day-bar-fg" id="d2-bar"></div></div><div class="cal-day-metrics"><div class="cal-metric success">✓ <span id="d2-done">0</span></div><div class="cal-metric danger">✗ <span id="d2-missed">0</span></div></div></div>
+              <div class="cal-day"><div class="cal-day-header"><div class="cal-day-label" id="d3-label">Wed</div><div class="cal-day-summary"><span id="d3-done-val">0</span> / <span id="d3-req-val">0</span></div></div><div class="cal-day-bar-bg"><div class="cal-day-bar-fg" id="d3-bar"></div></div><div class="cal-day-metrics"><div class="cal-metric success">✓ <span id="d3-done">0</span></div><div class="cal-metric danger">✗ <span id="d3-missed">0</span></div></div></div>
+              <div class="cal-day"><div class="cal-day-header"><div class="cal-day-label" id="d4-label">Thu</div><div class="cal-day-summary"><span id="d4-done-val">0</span> / <span id="d4-req-val">0</span></div></div><div class="cal-day-bar-bg"><div class="cal-day-bar-fg" id="d4-bar"></div></div><div class="cal-day-metrics"><div class="cal-metric success">✓ <span id="d4-done">0</span></div><div class="cal-metric danger">✗ <span id="d4-missed">0</span></div></div></div>
+              <div class="cal-day"><div class="cal-day-header"><div class="cal-day-label" id="d5-label">Fri</div><div class="cal-day-summary"><span id="d5-done-val">0</span> / <span id="d5-req-val">0</span></div></div><div class="cal-day-bar-bg"><div class="cal-day-bar-fg" id="d5-bar"></div></div><div class="cal-day-metrics"><div class="cal-metric success">✓ <span id="d5-done">0</span></div><div class="cal-metric danger">✗ <span id="d5-missed">0</span></div></div></div>
+              <div class="cal-day"><div class="cal-day-header"><div class="cal-day-label" id="d6-label">Sat</div><div class="cal-day-summary"><span id="d6-done-val">0</span> / <span id="d6-req-val">0</span></div></div><div class="cal-day-bar-bg"><div class="cal-day-bar-fg" id="d6-bar"></div></div><div class="cal-day-metrics"><div class="cal-metric success">✓ <span id="d6-done">0</span></div><div class="cal-metric danger">✗ <span id="d6-missed">0</span></div></div></div>
+            </div>
+            <div class="hint" style="margin-top:8px">Historic days show progress based on required schedules. <span style="color:var(--success)">Green</span> bars indicate all required checks were completed. <span style="color:var(--danger)">Red</span> bars indicate missed checks.</div>
+          </div>
+
+          <div class="panel g-12" style="min-height:520px; margin-top:12px;">
+            <div class="panel-header" style="align-items:center;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9.5 14.5 5 0"/><path d="m9.5 18.5 2 0"/></svg>
+                <div class="panel-title">Due / Missed / Completed</div>
+                <div class="tab-controls" style="margin-left:auto; display:flex; gap:8px;">
+                  <button class="btn secondary active" id="tab-due" data-tab="due">Due (7d)</button>
+                  <button class="btn secondary" id="tab-missed" data-tab="missed">Missed (7d)</button>
+                  <button class="btn secondary" id="tab-completed" data-tab="completed">Completed (7d)</button>
+                </div>
+            </div>
+            <div class="table-wrap"><table>
+              <thead><tr><th>Item</th><th>Check</th><th>Room</th><th>Date</th></tr></thead>
+              <tbody id="due-tbody"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table></div>
+          </div>
+
+          <div class="panel g-12" style="min-height:260px; margin-top:12px;">
+            <div class="panel-header">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20v-8m0 0V4m0 8h8m-8 0H4"/></svg>
+                <div class="panel-title">Recent Activity</div>
+            </div>
+            <div class="table-wrap"><table>
+              <thead><tr><th>When</th><th>Staff</th><th>Rows</th></tr></thead>
+              <tbody id="activity-tbody"><tr><td colspan="3" class="muted">Loading…</td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+
+        <div class="footer">© CheckLoop • Built for GP surgeries • Silky blue UI ✨</div>
+      </section>
+
+      <section class="view" id="view-pre-inspection">
+        <div class="panel">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+              <div class="h1" style="margin:0 0 10px">CQC Pre-Inspection Readiness</div>
+              <button class="btn" id="btn-generate-emails">Generate & Download Emails</button>
+            </div>
+            <div class="grid" style="align-items: center; margin-bottom: 24px;">
+                <div class="g-8">
+                    <div class="muted">Overall Progress (Ready Items)</div>
+                    <div class="progress-bar-bg" style="margin-top: 8px;">
+                        <div class="progress-bar-fg" id="pir-progress-bar" style="width: 0%;"></div>
+                    </div>
+                </div>
+                <div class="g-4" style="text-align: right;">
+                    <div id="pir-progress-text" style="font-size: 24px; font-weight: 700;">0 / 0</div>
+                    <div class="muted">Items Ready</div>
+                </div>
+            </div>
+            
+            <div id="pir-docs-container" class="table-wrap" style="max-height: calc(100vh - 320px);">
+                </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-calendar">
+        <div class="panel">
+          <div id="cal-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <button id="cal-prev" class="btn secondary">‹ Prev</button>
+            <div id="cal-month-year" class="panel-title">Loading...</div>
+            <button id="cal-next" class="btn secondary">Next ›</button>
+          </div>
+          
+          <div id="cal-view-switcher" style="display:flex; gap: 6px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+            <button class="btn secondary active" data-view="scheduled">Scheduled</button>
+          </div>
+          <div class="cal-legend" id="cal-legend">
+            <div class="item"><span class="dot scheduled" aria-hidden="true"></span> Scheduled</div>
+            <div class="item"><span class="dot done" aria-hidden="true"></span> Done</div>
+            <div class="item"><span class="dot missed" aria-hidden="true"></span> Missed</div>
+            <div class="item" style="margin-left:auto;">Frequency: <span class="freq-badge" style="margin-left:8px;">D</span> Daily <span class="freq-badge" style="margin-left:8px; margin-left:12px;">W</span> Weekly <span class="freq-badge" style="margin-left:8px; margin-left:12px;">M</span> Monthly</div>
+          </div>
+
+          <div id="cal-weekdays" style="display:grid; grid-template-columns: repeat(7, 1fr); text-align:center; margin-bottom:8px; font-weight:600; color:var(--muted); font-size:12px;">
+            <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+          </div>
+          <div id="cal-grid" style="display:grid; grid-template-columns: repeat(7, 1fr); gap:6px; min-height: 500px;">
+          </div>
+          <div id="cal-compliance-view" style="display: none;"></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-items">
+        <div class="panel">
+          <div style="display:flex; justify-content:space-between; align-items:center">
+            <div class="h1" style="margin:0">Items</div>
+            <button class="btn" id="btn-new-item">Add Item</button>
+          </div>
+          <div class="table-wrap" style="margin-top:10px"><table>
+            <thead><tr><th class="sortable" data-col="item_id">Code <span class="arrow" id="sort-item_id"></span></th><th class="sortable" data-col="item_name">Name <span class="arrow" id="sort-item_name"></span></th><th class="sortable" data-col="room_name">Room <span class="arrow" id="sort-room_name"></span></th><th class="sortable" data-col="default_check_type_name">Default Check <span class="arrow" id="sort-default_check_type_name"></span></th><th class="sortable" data-col="active">Active <span class="arrow" id="sort-active"></span></th></tr></thead>
+            <tbody id="items-tbody" data-entity="items"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+          </table></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-rooms">
+        <div class="panel">
+          <div style="display:flex; justify-content:space-between; align-items:center"><div class="h1" style="margin:0 0 10px">Rooms</div><button class="btn" id="btn-new-room">Add Room</button></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Name</th><th>Owner</th></tr></thead>
+            <tbody id="rooms-tbody" data-entity="rooms"><tr><td colspan="2" class="muted">Loading…</td></tr></tbody>
+          </table></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-checktypes">
+        <div class="panel">
+          <div style="display:flex; justify-content:space-between; align-items:center">
+            <div class="h1" style="margin:0">Check Types</div>
+            <button class="btn" id="btn-new-ct">Add Check Type</button>
+          </div>
+          <div class="table-wrap" style="margin-top:10px"><table>
+            <thead><tr><th>Name</th><th>Active</th></tr></thead>
+            <tbody id="ct-tbody" data-entity="check_types"><tr><td colspan="3" class="muted">Loading…</td></tr></tbody>
+          </table></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-schedules">
+        <div class="panel">
+          <div style="display:flex; justify-content:space-between; align-items:center"><div class="h1" style="margin:0 0 10px">Schedules</div><button class="btn" id="btn-new-sched">Add Schedule</button></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Item</th><th>Room</th><th>Check</th><th>Frequency</th><th>Day</th><th>Required</th></tr></thead>
+            <tbody id="sched-tbody" data-entity="item_allowed_types"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
+          </table></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-staff">
+        <div class="panel">
+          <div style="display:flex; justify-content:space-between; align-items:center"><div class="h1" style="margin:0 0 10px">Staff (Kiosk)</div><button class="btn" id="btn-new-staff">Add Staff</button></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Name</th><th>Role</th><th>Active</th></tr></thead>
+            <tbody id="staff-tbody" data-entity="kiosk_users"><tr><td colspan="3" class="muted">Loading…</td></tr></tbody>
+          </table></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-submissions">
+        <div class="panel">
+          <div class="h1" style="margin:0 0 10px">Submissions</div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>When</th><th>Staff</th><th>Rows</th><th>Comment</th></tr></thead>
+            <tbody id="subs-tbody"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+          </table></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-settings">
+        <div class="panel">
+          <div class="h1" style="margin:0 0 10px">Settings</div>
+          <div class="muted">Admin-only tools. (No check submissions happen here.)</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="auth" id="auth">
+    <div class="card">
+      <h2>Sign in to CheckLoop</h2>
+      <div class="hint">Use your admin email and password.</div>
+      <form id="signin-form">
+        <div class="field">
+          <label>Email</label>
+          <input type="email" id="email" placeholder="you@nhs.uk" required />
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input type="password" id="password" placeholder="••••••••" required />
+        </div>
+        <button class="btn" type="submit">Sign In</button>
+        <div class="error" id="auth-error" role="alert"></div>
+      </form>
+      <div class="hint" style="margin-top:10px">Session is remembered until you sign out.</div>
+    </div>
+  </div>
+
+  <div id="day-modal" aria-hidden="true">
+    <div class="day-modal-card">
+      <button class="day-modal-close" id="day-modal-close" aria-label="Close">✕</button>
+      <h2 class="day-modal-title">Details</h2>
+      <div class="day-modal-body">Loading…</div>
+    </div>
+  </div>
+
+  <div id="crud-modal" class="auth" aria-hidden="true">
+    <div class="card" style="width:min(620px,95vw)">
+      <h2 id="crud-title">Edit</h2>
+      <form id="crud-form">
+        <div id="crud-fields" style="max-height: 60vh; overflow-y: auto; padding-right: 10px;"></div>
+        <div style="display:flex; gap:8px; margin-top:12px">
+          <button type="submit" class="btn" id="crud-save">Save</button>
+          <button type="button" class="btn secondary" id="crud-cancel">Cancel</button>
+          <button type="button" class="btn secondary" id="crud-delete" style="margin-left:auto; background:#ff6b6b33; border:1px solid #ff6b6b55">Delete</button>
+        </div>
+        <div class="error" id="crud-error" role="alert"></div>
+      </form>
+    </div>
+  </div>
+  
+  <div id="submission-detail-modal" class="auth" aria-hidden="true">
+    <div class="card" style="width:min(800px, 95vw)">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h2 id="submission-detail-title" style="margin:0;">Submission Details</h2>
+        <button id="submission-detail-close" class="btn secondary" style="padding: 6px; line-height: 0;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="hint">Click on a row to amend the check type or comment.</div>
+      <div id="submission-detail-content" style="margin-top:12px;"></div>
+    </div>
+  </div>
+
+  <div id="pir-email-modal" class="auth" aria-hidden="true">
+    <div class="card" style="width:min(520px, 95vw)">
+      <h2 id="pir-email-title">Generate Inspection Emails</h2>
+      <div id="pir-email-body">
+        <p class="muted">This will download a .zip file containing a folder for each of the 9 required CQC emails. Each folder will include the documents and data you have marked as 'Ready'.</p>
+        <div id="pir-email-summary" style="margin: 16px 0; padding: 12px; background: var(--glass); border-radius: 12px; font-size: 14px;">
+            Loading summary...
+        </div>
+        <div class="hint">After downloading, you will need to create each email in your email client, copy the text from the 'email_body.txt' file, and attach the corresponding documents.</div>
+      </div>
+      <div id="pir-email-progress" style="display:none; text-align:center; padding: 20px;">
+          <div class="h1" style="margin:0" id="pir-progress-status">Generating...</div>
+          <div class="muted" id="pir-progress-details">Preparing files. Please wait.</div>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:12px">
+        <button type="button" class="btn" id="btn-confirm-generate">Confirm & Download</button>
+        <button type="button" class="btn secondary" id="btn-cancel-generate">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+  // Supabase v2 client
+  import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+  import JSZip from "https://esm.sh/jszip@3.10.1";
+
+  const SUPABASE_URL = "https://unveoqnlqnobufhublyw.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME";
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+  });
+
+  // SPA navigation
+  const nav = document.getElementById("nav");
+  const views = [...document.querySelectorAll("section.view")];
+  const toggleBtn = document.getElementById("toggleSidebar");
+  const appGrid = document.getElementById("app");
+  if (toggleBtn && appGrid) {
+    toggleBtn.addEventListener("click", ()=>{
+      appGrid.classList.toggle("collapsed");
+      try{ localStorage.setItem("cl_sidebar_collapsed", appGrid.classList.contains("collapsed") ? "1" : "0"); }catch(_){ }
+    });
+  }
+  function setActiveSection(id){
+    if(!id) return;
+    const btn = nav.querySelector(\`button[data-section="\${id}"]\`);
+    if(!btn) return;
+    nav.querySelectorAll("button").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    views.forEach(v => v.classList.remove("active"));
+    const viewEl = document.getElementById("view-"+id);
+    if(viewEl) viewEl.classList.add("active");
+    if (id === 'pre-inspection') loadAndRenderPIR();
+    try { localStorage.setItem("cl_active_section", id); } catch(_) {}
+  }
+  nav.addEventListener("click", (e)=>{ const btn = e.target.closest("button[data-section]"); if(btn) setActiveSection(btn.dataset.section); });
+  try { const saved = localStorage.getItem("cl_active_section"); if(saved) setActiveSection(saved); } catch(_) {}
+  try { if(localStorage.getItem("cl_sidebar_collapsed") === "1") document.getElementById("app")?.classList.add("collapsed"); } catch(_) {}
+
+  // Quick UX & Auth
+  const search = document.getElementById("search");
+  window.addEventListener("keydown", (e)=>{ if(e.key==="/"){ e.preventDefault(); search.focus(); } });
+  const authOverlay = document.getElementById("auth");
+  const emailPill = document.getElementById("email-pill");
+  const sitePill = document.getElementById("site-pill");
+  const signoutBtn = document.getElementById("signout");
+  const signinForm = document.getElementById("signin-form");
+  const authErr = document.getElementById("auth-error");
+  function showAuth(show){ authOverlay.classList.toggle("show", show); }
+  signoutBtn.addEventListener("click", async()=>{ await supabase.auth.signOut(); showAuth(true); });
+  signinForm.addEventListener("submit", async(e)=>{
+    e.preventDefault();
+    authErr.textContent = "";
+    const { error } = await supabase.auth.signInWithPassword({ email: signinForm.email.value, password: signinForm.password.value });
+    if(error){ authErr.textContent = error.message; return; }
+    showAuth(false);
+    await bootstrap();
+  });
+
+  // App State
+  let ctx = { site_id: null, user: null };
+  let itemsSort = { col: "item_name", dir: "asc" };
+  let itemsQuery = "";
+  let calendarDate = new Date();
+  let requiredSchedulesCache = [];
+  let pirDocsCache = [];
+
+  async function loadContext(){
+    const { data: { user } } = await supabase.auth.getUser();
+    if(!user){ return { user:null }; }
+    ctx.user = user;
+    emailPill.textContent = user.email ?? "—";
+    const { data: prof } = await supabase.from("profiles").select("site_id").eq("user_id", user.id).maybeSingle();
+    ctx.site_id = prof?.site_id || null;
+    if(!ctx.site_id){
+      const { data: sites } = await supabase.from("sites").select("id").limit(1);
+      ctx.site_id = sites?.[0]?.id ?? null;
+    }
+    if(ctx.site_id){
+      const { data: site } = await supabase.from("sites").select("name").eq("id", ctx.site_id).maybeSingle();
+      sitePill.textContent = site?.name ? \`Site: \${site.name}\` : \`Site ID: \${ctx.site_id}\`;
+    }else{
+      sitePill.textContent = "Site: —";
+    }
+  }
+  
+  // Helpers
+  function esc(s){ return (s ?? "").toString().replace(/[&<>\"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;','\"':'&quot;',\"'\":'&#39;'}[m])); }
+  function fmtDate(iso){ if(!iso) return "—"; return new Date(iso).toLocaleString(); }
+  function fmtDateShort(iso) { if (!iso) return "—"; try { return new Date(iso + 'T12:00:00Z').toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); } catch (e) { return "—"; } }
+  function intervalToText(i){ if(!i || typeof i !== 'string') return "—"; const parts = []; if (i.includes('year')) parts.push(i.match(/(\\d+)\\s*year/)[1] + ' years'); if (i.includes('mon')) parts.push(i.match(/(\\d+)\\s*mon/)[1] + ' months'); if (i.includes('day')) parts.push(i.match(/(\\d+)\\s*day/)[1] + ' days'); return parts.join(', ') || i; }
+  
+  // --- PRE-INSPECTION (PIR) LOGIC ---
+    
+    const PIR_DEFINITIONS = [
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Statement of purpose", item_type: "detailed_questions", questions: ["Aims and Objectives: What is the overall mission and purpose of the practice?", "Services Provided: List the core and enhanced services offered.", "Service Users: Describe your patient population, demographics, and specific health needs."] },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Copy of Major incident/business continuity", item_type: "detailed_questions_and_file", questions: ["Plan Overview: Briefly describe the key actions in your business continuity plan.", "Last Review: When was this plan last reviewed or tested?", "Key Contacts: Who are the key personnel responsible during a major incident?"] },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Medical emergencies policy", item_type: "detailed_questions_and_file", questions: ["Emergency Scenarios: What types of medical emergencies does this policy cover?", "Staff Training: How are staff trained to respond (e.g., BLS, anaphylaxis)?", "Equipment Location: Where is the emergency equipment (e.g., defibrillator, oxygen) located?"] },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Chaperone policy", item_type: "detailed_questions_and_file", questions: ["Availability: How do you ensure patients are aware of the chaperone policy?", "Staff Training: What training is provided to staff who act as chaperones?", "Documentation: How is the offer and acceptance/refusal of a chaperone documented?"] },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Induction process", item_type: "detailed_questions_and_file", questions: ["Process Overview: Describe the induction process for new clinical and non-clinical staff.", "Key Topics: What key policies are covered (e.g., safeguarding, H&S, IPC)?", "Competency Check: How is competency assessed at the end of the induction period?"] },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Online services policy", item_type: "detailed_questions_and_file", questions: ["Services Offered: Which online services are available to patients (e.g., appointments, repeat prescriptions, record access)?", "Identity Verification: How do you verify a patient's identity before granting access?", "Proxy Access: What is your process for managing proxy access for children or carers?"] },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Access policy", item_type: "detailed_questions_and_file", questions: ["Appointment System: How do patients access appointments (e.g., phone, online, walk-in)?", "Accessibility: What provisions are in place for patients with disabilities or communication needs?", "Continuity of Care: How does your system support continuity of care with a preferred GP?"] },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Registration policy (incl access to medical records)", item_type: "detailed_questions_and_file", questions: ["Registration Criteria: What is your policy on registering new patients, including those with no fixed address?", "Record Access: How do you manage requests for access to medical records (SARs)?", "Summarising Records: What is the timeframe and process for summarising new patient records?"] },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Home visits/care home protocol", item_type: "detailed_questions_and_file", questions: ["Eligibility Criteria: How do you determine if a patient is eligible for a home visit?", "Care Home Rounds: Describe the schedule and process for routine visits to care homes.", "Communication: How do you communicate with care home staff and document visit outcomes?"] },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Process for supporting carers", item_type: "detailed_questions_and_file", questions: ["Identification: How does the practice identify and record patients who are carers?", "Support Offered: What support, information, or signposting is offered to carers?", "Communication: How do you involve carers in care planning (with patient consent)?"] },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Number of carers identified and percentage", item_type: "dual_number", labels: ["Number Identified", "Percentage of Practice List (%)"] },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Process for bereaved patients", item_type: "detailed_questions_and_file", questions: [
+          "Purpose & Context – why the process exists; guiding principles.",
+          "Scope & Applicability – who it applies to (patients, families, staff roles).",
+          "Key Stages / Steps – immediate actions (same day).",
+          "Key Stages / Steps – short‑term support (first 1–2 weeks).",
+          "Key Stages / Steps – follow‑up and longer‑term support.",
+          "Roles & Responsibilities – reception, clinicians, admin, managers.",
+          "Communication & Support – tone, plain language, signposting to bereavement services.",
+          "Documentation & Record Keeping – what must be logged, where, by whom.",
+          "External Liaison – hospital, funeral directors, registrars, coroner (if relevant).",
+          "Safeguarding & Red Flags – risks (e.g., vulnerable dependents), escalation.",
+          "Patient & Family Experience – empathy, reducing barriers, continuity of care.",
+          "Quality Assurance – audits, feedback, training needs."
+        ] },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "ICO registration certificate", item_type: "detailed_questions_and_file", questions: ["Registration Number: What is your ICO registration number?", "Expiry Date: When does the registration expire?", "Evidence: Attach certificate."] },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Provider liability/MD insurance", item_type: "detailed_questions_and_file", questions: ["Provider Name: Who is your insurance provider?", "Coverage Details: What is the level of indemnity cover?", "Renewal Date: When is the policy due for renewal?"] },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Information leaflet for online services", item_type: "detailed_questions_and_file", questions: ["Content Check: Does the leaflet clearly explain what services are available and how to register?", "Accessibility: Is the leaflet available in different formats if needed?"] },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Safety and drug alerts process and evidence of management and actions.", item_type: "detailed_questions_and_file", questions: ["Receipt & Dissemination: How do you receive alerts and ensure they reach relevant staff?", "Responsibility: Who is responsible for actioning alerts and running searches?", "Audit Trail: How do you document actions taken and share learning?"] },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Policy and process for ensuring staff are recruited safely including DBS and registration checks.", item_type: "detailed_questions_and_file", questions: ["Recruitment Stages: Describe the key stages of your safe recruitment process.", "DBS Checks: What is your policy on when DBS checks are required and at what level?", "Registration Checks: How do you verify the professional registration of clinical staff (e.g., GMC, NMC)?"] },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Policy and process to ensure practice oversight of other staff not directly employed by the practice who have access to patients or their records.", item_type: "detailed_questions_and_file", questions: ["Scope: Which external staff does this apply to (e.g., PCN staff, students, attached staff)?", "Induction/Vetting: What checks and local induction are completed for these staff?", "Oversight: How does the practice maintain clinical and information governance oversight?"] },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Process for supervision and competency oversight of clinical staff including staff with a prescribing qualification.", item_type: "detailed_questions_and_file", questions: ["Supervision Structure: Describe your system for clinical supervision (e.g., frequency, format).", "Competency Assessment: How are competencies for advanced roles (e.g., prescribing, minor illness) assessed and monitored?", "Record Keeping: How are supervision sessions and competency assessments documented?"] },
+        { category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", title: "Policy for ensuring PGDs and PSDs are appropriately reviewed and signed.", item_type: "detailed_questions_and_file", questions: ["Authorisation: Who is authorised to sign PGDs and PSDs in the practice?", "Review Process: How often are PGDs reviewed and updated?", "Audit: How do you audit compliance with this policy?"] },
+        { category: "EMAIL 2: TRAINING", title: "Number of current staff by role and WTE.", item_type: "dynamic_table", headers: ["Role", "Number of Staff", "WTE"] },
+        { category: "EMAIL 2: TRAINING", title: "List of staff and their extended role(s) eg cervical screening, diabetes, immunisations", item_type: "dynamic_table", headers: ["Staff Name", "Extended Role(s)"] },
+        { category: "EMAIL 2: TRAINING", title: "Policy of training for staff and process to manage and monitor", item_type: "detailed_questions_and_file", questions: ["Training Needs Analysis: How do you identify the training needs of staff?", "Monitoring Compliance: What system do you use to track mandatory training compliance?", "Development: How do you support staff with their personal and professional development?"] },
+        { category: "EMAIL 2: TRAINING", title: "Matrix of staff training which should include...", item_type: "detailed_questions_and_file", questions: ["Matrix Completeness: Does the matrix cover all staff and all required training topics (e.g., Safeguarding, BLS, Fire, IPC)?", "Date Tracking: Does it include dates of completion and expiry?", "Action Plan: Is there a plan in place for staff with overdue training?"] },
+        { category: "EMAIL 3: SAFEGUARDING", title: "Safeguarding adults' policy", item_type: "detailed_questions_and_file", questions: ["Policy Content: Does the policy include contact details for local safeguarding teams and definitions of abuse?", "Staff Awareness: How are staff made aware of this policy and their responsibilities?", "Last Review Date: When was this policy last reviewed?"] },
+        { category: "EMAIL 3: SAFEGUARDING", title: "Safeguarding children policy", item_type: "detailed_questions_and_file", questions: ["Policy Content: Does the policy align with local safeguarding children partnership procedures?", "Clinical Leads: Who are the named safeguarding leads for adults and children in the practice?", "Last Review Date: When was this policy last reviewed?"] },
+        { category: "EMAIL 3: SAFEGUARDING", title: "Sample of minutes of MDT meetings", item_type: "detailed_questions_and_file", questions: ["Meeting Frequency: How often are safeguarding MDT meetings held?", "Attendees: Who typically attends these meetings?", "Actions: Do the minutes show clear actions and follow-ups?"] },
+        { category: "EMAIL 3: SAFEGUARDING", title: "Policy/process to ensure information is shared with others such as coding of medical records.", item_type: "detailed_questions_and_file", questions: ["Information Sharing: What is your process for sharing information with other agencies (e.g., social services)?", "Clinical Coding: What codes are used to flag safeguarding concerns in patient records?", "Confidentiality: How do you balance the need to share information with patient confidentiality?"] },
+        { category: "EMAIL 4: RISK ASSESSMENTS", title: "Latest fire risk assessment and any action log", item_type: "detailed_questions_and_file", questions: ["Assessment Date: When was the last fire risk assessment conducted?", "Key Findings: What were the main findings or recommendations?", "Actions Taken: Provide evidence of how any required actions have been completed."] },
+        { category: "EMAIL 4: RISK ASSESSMENTS", title: "Evidence and date of fire extinguish check", item_type: "detailed_questions_and_file", questions: ["Last Check Date: When were the fire extinguishers last serviced?", "Responsibility: Who is responsible for monthly visual checks?"] },
+        { category: "EMAIL 4: RISK ASSESSMENTS", title: "Evidence of latest service for emergency lights and alarm test", item_type: "detailed_questions_and_file", questions: ["Alarm Test: How frequently is the fire alarm tested, and where is this recorded?", "Emergency Lighting: When was the last full service of the emergency lighting?"] },
+        { category: "EMAIL 4: RISK ASSESSMENTS", title: "Copy of the latest fire drill and actions taken.", item_type: "detailed_questions_and_file", questions: ["Drill Date: When was the last fire drill conducted?", "Learning Points: Were any issues identified, and what actions were taken as a result?"] },
+        { category: "EMAIL 4: RISK ASSESSMENTS", title: "Sample of fire alarm checks undertaken in the month of March 2025", item_type: "detailed_questions_and_file", questions: ["Weekly Checks: Please confirm weekly alarm checks are taking place.", "Record Keeping: Attach a sample of the log for the requested month."] },
+        { category: "EMAIL 4: RISK ASSESSMENTS", title: "Latest health and safety risk assessment and any action log", item_type: "detailed_questions_and_file", questions: ["Assessment Date: When was the last H&S risk assessment conducted?", "Key Findings: What were the main findings or recommendations?", "Actions Taken: Provide evidence of how any required actions have been completed."] },
+        { category: "EMAIL 4: RISK ASSESSMENTS", title: "Latest legionella assessment and water temperature checks undertaken in the month of March 2025", item_type: "detailed_questions_and_file", questions: ["Assessment Date: When was the last legionella risk assessment?", "Temperature Checks: Are regular water temperature checks being performed and recorded as per the assessment's recommendations?"] },
+        { category: "EMAIL 4: RISK ASSESSMENTS", title: "Copy of any risk assessments the practice has taken such as wheelchair access, monitoring of waiting areas etc.", item_type: "detailed_questions_and_file", questions: ["Accessibility: What assessments have been done to ensure physical access for all patients?", "Premises Safety: What other risk assessments are in place for the premises (e.g., lone working, security)?"] },
+        { category: "EMAIL 4: RISK ASSESSMENTS", title: "Equipment calibration dates and copy of certificate", item_type: "detailed_questions_and_file", questions: ["Equipment Log: Do you maintain a log of all clinical equipment requiring calibration?", "Process: What is the process for ensuring equipment is calibrated on time?"] },
+        { category: "EMAIL 4: RISK ASSESSMENTS", title: "PAT testing dates and copy of certificate", item_type: "detailed_questions_and_file", questions: ["Last Test Date: When was the last PAT testing completed?", "Appliance Register: Do you maintain a register of all portable electrical appliances?"] },
+        { category: "EMAIL 4: RISK ASSESSMENTS", title: "Evidence of immunisation status of staff.", item_type: "detailed_questions_and_file", questions: ["Hepatitis B: What is your process for ensuring clinical staff have appropriate Hepatitis B immunity?", "Record Keeping: How are staff immunisation records maintained confidentially?"] },
+        { category: "EMAIL 5: INFECTION PREVENTION AND CONTROL", title: "Name and role of IPC lead", item_type: "dual_text", labels: ["Name of Lead", "Role"] },
+        { category: "EMAIL 5: INFECTION PREVENTION AND CONTROL", title: "Latest Infection control policy", item_type: "detailed_questions_and_file", questions: ["Last Review Date: When was this policy last reviewed?", "Key Updates: Were there any significant changes in the latest version?"] },
+        { category: "EMAIL 5: INFECTION PREVENTION AND CONTROL", title: "Latest Infection prevention control audit and action log.", item_type: "detailed_questions_and_file", questions: ["Audit Date: When was the last IPC audit conducted?", "Key Findings: What were the main findings or areas for improvement?", "Actions Taken: Provide evidence of how any required actions have been completed."] },
+        { category: "EMAIL 5: INFECTION PREVENTION AND CONTROL", title: "Copies of any meetings where IPC has been discussed, any shared learning and changes since last inspection", item_type: "detailed_questions_and_file", questions: ["Meeting Evidence: Provide examples of minutes where IPC was on the agenda.", "Shared Learning: Describe any changes made to practice as a result of IPC discussions or incidents."] },
+        { category: "EMAIL 5: INFECTION PREVENTION AND CONTROL", title: "Summary of vaccine fridge management including number and location of vaccine fridges", item_type: "detailed_questions", questions: ["Fridge Locations: List the locations and number of vaccine fridges.", "Temperature Monitoring: Describe your process for daily temperature monitoring.", "Contingency Plan: What is your plan in the event of a fridge failure?"] },
+        { category: "EMAIL 5: INFECTION PREVENTION AND CONTROL", title: "Copy of the temperature recordings for March 2025", item_type: "detailed_questions_and_file", questions: ["Data Completeness: Please confirm the attached logs for the requested month are complete.", "Out-of-Range Actions: Were there any out-of-range readings, and if so, what action was taken?"] },
+        { category: "EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS", title: "Significant events policy", item_type: "detailed_questions_and_file", questions: ["Definition: How does your policy define a significant event?", "Reporting Process: How are staff encouraged to report events and near misses?", "Review Process: Describe the process for reviewing and learning from events."] },
+        { category: "EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS", title: "Complaint’s policy and leaflet available to patients", item_type: "detailed_questions_and_file", questions: ["Accessibility: How is the complaints procedure made available to patients?", "Timescales: Does the policy adhere to NHS complaints procedure timescales?", "Designated Person: Who is the responsible person for managing complaints?"] },
+        { category: "EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS", title: "A summary of significant events within the last 12 months...", item_type: "detailed_questions_and_number", questions: ["Key Themes: What were the key themes from significant events in the last 12 months?", "Learning Points: What were the most important learning points?", "Changes Implemented: What changes have you implemented as a result?"], label: "Number of events (12 months)" },
+        { category: "EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS", title: "A summary of complaints received within the last 12 months...", item_type: "detailed_questions_and_number", questions: ["Key Themes: What were the key themes from complaints in the last 12 months?", "Learning Points: What were the most important learning points?", "Changes Implemented: What changes have you implemented as a result of complaints?"], label: "Number of complaints (12 months)" },
+        { category: "EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS", title: "Sample meetings minutes where significant events and /or complaints have been discussed in the past 6 months.", item_type: "detailed_questions_and_file", questions: ["Discussion Evidence: Do the minutes show open discussion and a blame-free culture?", "Action Tracking: Are actions from these discussions clearly documented and tracked?"] },
+        { category: "EMAIL 6: SIGNIFICANT EVENTS, COMPLAINTS AND COMPLIMENTS", title: "Sample of compliments received in the past 6 months.", item_type: "detailed_questions_and_file", questions: ["Sharing Compliments: How are compliments shared with the practice team to boost morale and reinforce good practice?", "Themes: Are there any recurring themes in the compliments received?"] },
+        { category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", title: "Summary of the quality of care you provide for the six population groups", item_type: "detailed_questions", questions: ["Older People: Describe a recent QI initiative for this group.", "People with Long-Term Conditions: Describe a recent QI initiative for this group.", "Families, children and young people: Describe a recent QI initiative for this group.", "Working age people: Describe a recent QI initiative for this group.", "People whose circumstances may make them vulnerable: Describe a recent QI initiative for this group.", "People experiencing poor mental health: Describe a recent QI initiative for this group."] },
+        { category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", title: "Details of how you have monitored and improved care and treatment", item_type: "detailed_questions_and_file", questions: ["Clinical Audits: Provide a summary of clinical audits from the last two years.", "Full-Cycle Audits: Describe two full-cycle audits, including the initial audit, changes made, and the re-audit results.", "Other QI: Describe any other QI methodologies used (e.g., PDSA cycles)."] },
+        { category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", title: "Summary of any other quality improvement work undertaken over the last two years.", item_type: "detailed_questions", questions: ["Overview & Objectives – what you set out to improve and why.", "Change Methods – key change ideas, who was involved.", "Measures & Data – how you measured success (KPIs, audits).", "Outcomes & Results – what changed, evidence/graphs.", "Lessons Learned – what worked, what didn’t.", "Next Steps – how you will sustain or spread."] },
+        { category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", title: "Evidence of how you have collected, analysed and responded to patient feedback during the last 12 months...", item_type: "detailed_questions_and_file", questions: ["Collection Methods: How do you collect patient feedback (e.g., FFT, surveys, PPG)?", "Analysis & Response: Provide a summary of the feedback and the actions taken in response.", "Closing the Loop: How do you inform patients about the changes you have made?"] },
+        { category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", title: "If not included above – If you have undertaken your own Patient survey...", item_type: "detailed_questions_and_file", questions: ["Survey Focus: What were the key areas covered in your patient survey?", "Results & Actions: Attach the survey results and the corresponding action plan."] },
+        { category: "EMAIL 7: EVIDENCE OF QUALITY IMPROVEMENT WORK", title: "Evidence of how you have collected, analysed and responded to staff feedback during the last 12 months...", item_type: "detailed_questions_and_file", questions: ["Collection Methods: How do you collect staff feedback (e.g., meetings, surveys, appraisals)?", "Analysis & Response: Provide a summary of the feedback received.", "Changes Made: What specific actions or improvements have you made in response to staff feedback?"] },
+        { category: "EMAIL 8: PATIENT RECORD KEEPING AND MEDICINES", title: "Discharge (medicine reconciliation) process and any audits/checks undertaken.", item_type: "detailed_questions_and_file", questions: ["Trigger & Sources – how do discharges enter your workflow (e.g., eRS/Docman)?", "Timeframe – target completion time (e.g., within 48–72 hours).", "Workflow Steps – who does what, in what order.", "Roles & Responsibilities – admin, clinicians, pharmacists.", "Documentation & Coding – where/how it’s recorded; SNOMED codes.", "Exceptions & Escalation – missing info, complex cases.", "Audit & Monitoring – audits performed, KPIs, compliance."] },
+        { category: "EMAIL 8: PATIENT RECORD KEEPING AND MEDICINES", title: "Policy and process for the management of repeat prescriptions and medicine reviews.", item_type: "detailed_questions_and_file", questions: ["Request Process – how patients request repeats.", "Authorisation – who authorises; safety checks.", "Medication Review – recall system, intervals, prioritisation.", "Safety & Governance – DMARDs/monitoring, alerts, interactions.", "Communication – notifying patients; pharmacy liaison.", "Audits – adherence, turnaround times, safety incidents."] },
+        { category: "EMAIL 8: PATIENT RECORD KEEPING AND MEDICINES", title: "Patient summarising/coding in medical records policy/process and any audits/checks undertaken.", item_type: "detailed_questions_and_file", questions: ["Scope – which records are summarised (new registrations, hospital letters).", "Timeframes/SLAs – expected completion times.", "Standards – coding standards (SNOMED), templates, conventions.", "Quality Assurance – peer checks, sampling, validation.", "Backlog Management – how backlogs are tracked and cleared.", "Training & Roles – who does summarising; supervision.", "Audits & KPIs – audits run, error rates, timeliness."] },
+        { category: "EMAIL 8: PATIENT RECORD KEEPING AND MEDICINES", title: "Number of patient records that have not been fully summarised.", item_type: "number", label: "Number of records" },
+        { category: "EMAIL 9: DATA FOR THE REPORT", title: "NHS health checks data, how many eligible, how many offered, how many completed in last 12 months", item_type: "triple_number", labels: ["Eligible", "Offered", "Completed"] },
+        { category: "EMAIL 9: DATA FOR THE REPORT", title: "Learning Disability check data, how many eligible, how many offered, how many completed in last 12 months", item_type: "triple_number", labels: ["Eligible", "Offered", "Completed"] },
+        { category: "EMAIL 9: DATA FOR THE REPORT", title: "Cervical cancer screening and child immunisation coverage data and action to improve uptake.", item_type: "detailed_questions_and_file", questions: ["Cervical Screening Uptake: What actions have you taken to improve uptake (e.g., reminders, opportunistic screening)?", "Child Immunisations Uptake: What actions have you taken to improve uptake (e.g., clinics, health visitor liaison)?", "Data Source: Attach your latest coverage data."] },
+    ];
+
+    async function seedInitialPIRDocs() {
+        if (!ctx.site_id) return;
+        const { count, error } = await supabase.from('pir_documents').select('*', { count: 'exact', head: true }).eq('site_id', ctx.site_id);
+        if (error || count > 0) return;
+
+        const docsToInsert = PIR_DEFINITIONS.map(def => {
+            const isDataOnly = !((def.item_type || '').includes('file')) && !((def.item_type || '').includes('questions'));
+            return {
+                site_id: ctx.site_id,
+                category: def.category,
+                title: def.title,
+                item_type: def.item_type,
+                status: isDataOnly ? 'Not Started' : 'Not Attached',
+                data: {}
+            };
+        });
+        await supabase.from('pir_documents').insert(docsToInsert);
+    }
+
+    function formatItemType(itemType) {
+        if ((itemType || '').includes('file') && (itemType || '').includes('questions')) return 'Q&A + File';
+        if ((itemType || '').includes('file')) return 'File';
+        if ((itemType || '').includes('questions')) return 'Q&A';
+        if ((itemType || '').includes('table')) return 'Data Table';
+        if ((itemType || '').includes('number') || (itemType || '').includes('text')) return 'Data';
+        return 'Information';
+    }
+
+    async function loadAndRenderPIR() {
+        const container = document.getElementById('pir-docs-container');
+        container.innerHTML = `<div class="muted" style="text-align: center; padding: 20px;">Loading CQC document list...</div>`;
+        if (!ctx.site_id) return;
+
+        const { data, error } = await supabase.from('pir_documents').select('*').eq('site_id', ctx.site_id).order('id', { ascending: true });
+        if (error) { container.innerHTML = `<div class="error">${error.message}</div>`; return; }
+        pirDocsCache = data || [];
+
+        const groupedByCat = pirDocsCache.reduce((acc, doc) => {
+            (acc[doc.category] = acc[doc.category] || []).push(doc);
+            return acc;
+        }, {});
+        
+        const categoryOrder = [...new Set(PIR_DEFINITIONS.map(d => d.category))];
+
+        let html = '';
+        for (const category of categoryOrder) {
+             if (groupedByCat[category]) {
+                html += `<div class="doc-category">
+                    <div class="doc-category-title">${esc(category)}</div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 50%;">Document / Information Required</th>
+                                <th>Evidence Type</th>
+                                <th>Status</th>
+                                <th>Last Updated</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pir-tbody" data-entity="pir_documents">`;
+                
+                groupedByCat[category].forEach(doc => {
+                    // Auto-display type as Q&A if the definition now has questions (even if old rows say textarea)
+                    const def = PIR_DEFINITIONS.find(d => d.title === doc.title);
+                    const typeLabel = def?.questions?.length ? (doc.item_type.includes('file') ? 'Q&A + File' : 'Q&A') : formatItemType(doc.item_type);
+
+                    let status = doc.status;
+                    if (status === 'Not Attached' && !(doc.item_type || '').includes('file')) {
+                        status = 'Not Started';
+                    }
+
+                    let statusChip = 'chip';
+                    if (status === 'Ready') statusChip += ' success';
+                    else if (status === 'Needs Review') statusChip += ' warning';
+                    else if (status === 'Not Attached' || status === 'Not Started') statusChip += ' danger';
+
+                    html += `<tr data-id="${doc.id}">
+                        <td>${esc(doc.title)}</td>
+                        <td><span class="chip">${esc(typeLabel)}</span></td>
+                        <td><span class="${statusChip}">${esc(status)}</span></td>
+                        <td>${fmtDateShort(doc.last_updated)}</td>
+                    </tr>`;
+                });
+                html += `</tbody></table></div>`;
+            }
+        }
+        container.innerHTML = html;
+        updatePIRDashboard();
+    }
+    
+    function updatePIRDashboard() {
+        const total = pirDocsCache.length;
+        const ready = pirDocsCache.filter(d => d.status === 'Ready').length;
+        const percentage = total > 0 ? (ready / total) * 100 : 0;
+        document.getElementById('pir-progress-bar').style.width = `${percentage}%`;
+        document.getElementById('pir-progress-text').textContent = `${ready} / ${total}`;
+    }
+
+    const pirEmailModal = document.getElementById('pir-email-modal');
+    const btnGenerateEmails = document.getElementById('btn-generate-emails');
+    const btnConfirmGenerate = document.getElementById('btn-confirm-generate');
+    const btnCancelGenerate = document.getElementById('btn-cancel-generate');
+
+    if (btnGenerateEmails) btnGenerateEmails.addEventListener('click', () => {
+        const readyCount = pirDocsCache.filter(d => d.status === 'Ready').length;
+        document.getElementById('pir-email-summary').innerHTML = `You have <strong style="color: var(--success);">${readyCount}</strong> of ${pirDocsCache.length} items marked as 'Ready'.<br>Only these will be included in the download.`;
+        document.getElementById('pir-email-body').style.display = 'block';
+        document.getElementById('pir-email-progress').style.display = 'none';
+        btnConfirmGenerate.style.display = 'inline-block';
+        pirEmailModal.classList.add('show');
+    });
+
+    if (btnCancelGenerate) btnCancelGenerate.addEventListener('click', () => pirEmailModal.classList.remove('show'));
+    if (pirEmailModal) pirEmailModal.addEventListener('click', (e) => { if (e.target === pirEmailModal) pirEmailModal.classList.remove('show'); });
+
+    if (btnConfirmGenerate) btnConfirmGenerate.addEventListener('click', async () => {
+        const progressStatus = document.getElementById('pir-progress-status');
+        const progressDetails = document.getElementById('pir-progress-details');
+        
+        document.getElementById('pir-email-body').style.display = 'none';
+        btnConfirmGenerate.style.display = 'none';
+        document.getElementById('pir-email-progress').style.display = 'block';
+        progressStatus.textContent = "Generating...";
+        progressDetails.textContent = "Please wait, preparing zip file...";
+
+        try {
+            const zip = new JSZip();
+            const practiceName = document.getElementById('site-pill').textContent.replace('Site: ','');
+            const readyDocs = pirDocsCache.filter(d => d.status === 'Ready');
+            const categoryOrder = [...new Set(PIR_DEFINITIONS.map(d => d.category))];
+
+            for (const [i, category] of categoryOrder.entries()) {
+                const emailNum = `EMAIL ${i + 1}`;
+                const emailTitle = category.replace(/EMAIL \\d+: /i, '').trim();
+                const folder = zip.folder(`${emailNum} - ${emailTitle}`);
+                const docsForCat = readyDocs.filter(d => d.category === category);
+                
+                let emailBody = `SUGGESTED SUBJECT: ${emailNum} ${emailTitle.toUpperCase()}\n\n------------------------------------------------------\n\nDear CQC Inspection Team,\n\nPlease find attached the requested information for the "${emailTitle}" section of the pre-inspection information request.\n`;
+                let summaryList = '';
+                let dataSummary = '';
+
+                if (docsForCat.length > 0) {
+                    docsForCat.forEach(doc => {
+                        summaryList += `- ${doc.title}`;
+                        const itemDef = PIR_DEFINITIONS.find(d => d.title === doc.title) || {};
+
+                        if (doc.file_path) summaryList += ` (File Attached)\n`;
+                        else summaryList += ` (Data Provided)\n`;
+                        
+                        const hasData = doc.data && Object.keys(doc.data).length > 0 && JSON.stringify(doc.data) !== '{}';
+                        if (hasData) {
+                            dataSummary += `\n\n--- ${doc.title} ---\n`;
+                            if (doc.data.answers && itemDef.questions) {
+                                itemDef.questions.forEach((q, index) => {
+                                    dataSummary += `Q: ${q}\nA: ${doc.data.answers[index] || 'Not answered'}\n\n`;
+                                });
+                            } else if (doc.data.text_content) {
+                                dataSummary += `${doc.data.text_content}\n`;
+                            } else if (doc.item_type === 'dynamic_table') {
+                                dataSummary += itemDef.headers.join('\\t') + '\\n';
+                                dataSummary += (doc.data.table_data || []).map(row => row.join('\\t')).join('\\n');
+                            } else {
+                                const labels = itemDef.labels || ['Value 1', 'Value 2', 'Value 3'];
+                                ['num1', 'num2', 'num3', 'text1', 'text2'].forEach((key, idx) => {
+                                    if(doc.data[key] != null && doc.data[key] !== '') dataSummary += `${labels[idx]}: ${doc.data[key]}\\n`;
+                                });
+                            }
+                        }
+                    });
+                    emailBody += `\\nA summary of the provided information is below:\\n${summaryList}`;
+                    if(dataSummary) emailBody += `\\n\\n--- DATA & SUMMARIES ---${dataSummary}`;
+                } else {
+                    emailBody += `\\nNo documents or data were marked as 'Ready' for this section.\\n`;
+                }
+                
+                emailBody += `\\n\\nKind regards,\\n\\nThe Team at ${practiceName}`;
+                folder.file('email_body.txt', emailBody);
+
+                const filesToFetch = docsForCat.filter(d => d.file_path);
+                if (filesToFetch.length > 0) {
+                    await Promise.all(filesToFetch.map(async (doc) => {
+                        try {
+                             const { data, error } = await supabase.storage.from('pir_attachments').download(doc.file_path);
+                             if (error) throw error;
+                             folder.file(doc.file_path.split('/').pop(), data);
+                        } catch (e) {
+                             folder.file(`FAILED_TO_DOWNLOAD_${doc.file_path.split('/').pop()}.txt`, `Error: ${e.message}`);
+                        }
+                    }));
+                }
+                progressDetails.textContent = `Processing: ${i + 1} of ${categoryOrder.length} emails...`;
+            }
+
+            progressStatus.textContent = "Compressing...";
+            const content = await zip.generateAsync({ type: "blob" });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(content);
+            link.download = `CQC_Pre-Inspection_Emails_${new Date().toISOString().slice(0,10)}.zip`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+            pirEmailModal.classList.remove('show');
+        } catch (err) {
+            progressStatus.textContent = "Error!";
+            progressDetails.textContent = err.message;
+            document.getElementById('pir-email-body').style.display = 'block';
+        }
+    });
+
+    function buildPirForm(item, data, filePath) {
+        const itemDef = PIR_DEFINITIONS.find(d => d.title === item.title) || {};
+        let html = '';
+        const dataValues = data || {};
+        
+        let currentStatus = item.status;
+        if (currentStatus === 'Not Attached' && !(item.item_type || '').includes('file')) {
+            currentStatus = 'Not Started';
+        }
+
+        const statuses = ['Not Started', 'Not Attached', 'Needs Review', 'Ready'].filter(s => {
+            if ((item.item_type || '').includes('file')) return true;
+            return s !== 'Not Attached';
+        });
+        
+        html += `<div class="field"><label>Status</label><select id="field-pir-status" class="ui-select">${statuses.map(s => `<option value="${s}" ${s === currentStatus ? 'selected' : ''}>${s}</option>`).join('')}</select></div>`;
+        html += `<div class="field"><label>Last Updated</label><input id="field-pir-last_updated" type="date" value="${item.last_updated || ''}" /></div>`;
+
+        const hasDefinedQuestions = Array.isArray(itemDef.questions) && itemDef.questions.length > 0;
+
+        // Prefer questions UI whenever definitions provide questions (auto-upgrade old rows)
+        if (hasDefinedQuestions) {
+            itemDef.questions.forEach((q, index) => {
+                html += `<div class="field"><label>${esc(q)}</label><textarea data-question-index="${index}">${esc(dataValues.answers?.[index] || '')}</textarea></div>`;
+            });
+        } else {
+            // Fall back to original item_type handling
+            switch(item.item_type) {
+                case 'detailed_questions':
+                case 'detailed_questions_and_file':
+                case 'detailed_questions_and_number':
+                     if (itemDef.questions) {
+                        itemDef.questions.forEach((q, index) => {
+                            html += `<div class="field"><label>${esc(q)}</label><textarea data-question-index="${index}">${esc(dataValues.answers?.[index] || '')}</textarea></div>`;
+                        });
+                     }
+                     if ((item.item_type || '').includes('number')) {
+                        html += `<div class="field"><label>${esc(itemDef.label || 'Value')}</label><input id="field-pir-num1" type="number" value="${esc(dataValues.num1 || '')}" /></div>`;
+                     }
+                    break;
+                case 'textarea':
+                    html += `<div class="field"><label>Summary / Statement</label><textarea id="field-pir-text_content">${esc(dataValues.text_content || '')}</textarea></div>`;
+                    break;
+                case 'textarea_and_file':
+                    html += `<div class="field"><label>Summary / Statement</label><textarea id="field-pir-text_content">${esc(dataValues.text_content || '')}</textarea></div>`;
+                    break;
+                case 'number':
+                    html += `<div class="field"><label>${esc(itemDef.label || 'Value')}</label><input id="field-pir-num1" type="number" value="${esc(dataValues.num1 || '')}" /></div>`;
+                    break;
+                case 'dual_number':
+                case 'triple_number':
+                    html += `<div class="multi-input-container">${(itemDef.labels || []).map((label, i) => `
+                        <div class="field"><label>${esc(label)}</label><input id="field-pir-num${i+1}" type="number" value="${esc(dataValues[\`num\${i+1}\`] || '')}" /></div>
+                    `).join('')}</div>`;
+                    break;
+                case 'dual_text':
+                     html += `<div class="multi-input-container">${(itemDef.labels || []).map((label, i) => `
+                        <div class="field"><label>${esc(label)}</label><input id="field-pir-text${i+1}" type="text" value="${esc(dataValues[\`text\${i+1}\`] || '')}" /></div>
+                    `).join('')}</div>`;
+                    break;
+                case 'dynamic_table':
+                    html += `<div class="field"><label>${esc(item.title)}</label><div id="dynamic-table-container"></div><button type="button" class="btn secondary" id="btn-add-table-row" style="margin-top:8px; font-size:12px; padding: 6px 10px;">+ Add Row</button></div>`;
+                    break;
+            }
+        }
+
+        // File section (keep if original item type includes 'file')
+        if ((item.item_type || '').includes('file')) {
+            const fileName = filePath ? filePath.split('/').pop() : 'No file attached';
+            html += `<hr style="border:none; border-top: 1px solid var(--border-color); margin: 16px 0;">
+                <div class="field">
+                <label>Attached File</label>
+                <div id="file-display" style="padding:10px 12px; background:#ffffff10; border-radius:10px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                    <span>${esc(fileName)}</span>
+                    ${filePath ? `<button type="button" class="btn secondary" id="btn-download-pir" style="padding: 4px 8px; font-size: 12px;">Download</button>` : ''}
+                </div>
+                <input type="file" id="field-pir-file_path" style="color: var(--muted); font-size: 12px;" />
+                <div class="hint">${itemDef.description || 'Uploading a new file will replace the existing one.'}</div>
+                </div>`;
+        }
+        return html;
+    }
+
+  // Bootstrap
+  async function bootstrap(){
+    const { data: { session } } = await supabase.auth.getSession();
+    showAuth(!session);
+    if(!session) return;
+    await loadContext();
+    await seedInitialPIRDocs();
+    // subscribe to PIR changes
+    supabase.channel("changes")
+      .on("postgres_changes", { event:"*", schema:"public", table:"pir_documents", filter:\`site_id=eq.\${ctx.site_id}\` }, async() => { if (activeViewId() === 'view-pre-inspection') { loadAndRenderPIR(); }})
+      .subscribe();
+  }
+  
+  // ---------- CRUD Helpers ----------
+  const crudModal = document.getElementById("crud-modal");
+  const crudTitle = document.getElementById("crud-title");
+  const crudForm = document.getElementById("crud-form");
+  const crudFields = document.getElementById("crud-fields");
+  const crudError = document.getElementById("crud-error");
+  const crudDeleteBtn = document.getElementById("crud-delete");
+  const crudCancelBtn = document.getElementById("crud-cancel");
+  let crudState = { entity:null, mode:"add", row:null, pk:null, context: {} };
+  function activeViewId(){ return document.querySelector('section.view.active')?.id || ''; }
+  const ENTITIES = {
+    rooms: { table: "rooms", label: "Room", pk: "id", fields: [{name:"name", label:"Name", type:"text", required:true}, {name:"occupied_by", label:"Owner (Staff)", type:"select", source:"kiosk_users", sourceLabel:"full_name"}] },
+    check_types: { table: "check_types", label: "Check Type", pk: "id", fields: [{name:"name", label:"Name", type:"text", required:true}, {name:"active", label:"Active", type:"checkbox", default:true}] },
+    kiosk_users: { table: "kiosk_users", label: "Staff", pk: "id", fields: [{name:"full_name", label:"Full Name", type:"text", required:true}, {name:"role", label:"Role", type:"text"}, {name:"active", label:"Active", type:"checkbox", default:true}] },
+    items: { table: "items", label: "Item", pk: "id", fields: [{name:"item_id", label:"Code", type:"text", required:true}, {name:"item_name", label:"Name", type:"text", required:true}, {name:"room_id", label:"Room", type:"select", source:"rooms", sourceLabel:"name"}, {name:"default_check_type_id", label:"Default Check Type", type:"select", source:"check_types", sourceLabel:"name"}, {name:"active", label:"Active", type:"checkbox", default:true}] },
+    item_allowed_types: { table: "item_allowed_types", label: "Schedule", pk: "id", fields: [{name:"item_id", label:"Item", type:"select", source:"items", sourceLabel:"item_name", required:true}, {name:"check_type_id", label:"Check Type", type:"select", source:"check_types", sourceLabel:"name", required:true}, {name:"frequency", label:"Every", type:"frequency", required:true}, { name: "scheduled_day", label: "Day of Week", type: "select", options: [ { value: "", label: "—" }, { value: "Sun", label: "Sunday" }, { value: "Mon", label: "Monday" }, { value: "Tue", label: "Tuesday" }, { value: "Wed", label: "Wednesday" }, { value: "Thu", label: "Thursday" }, { value: "Fri", label: "Friday" }, { value: "Sat", label: "Saturday" } ] }, {name:"required", label:"Required", type:"checkbox", default:true}] },
+    submission_rows: { table: "submission_rows", label: "Submission Row", pk: "id", fields: [{name:"check_type_id", label:"Check Type", type:"select", source:"check_types", sourceLabel:"name", required:true}, {name:"row_comment", label:"Comment", type:"textarea"}] },
+    pir_documents: { table: "pir_documents", label: "Inspection Document", pk: "id" }
+  };
+
+  async function openCRUD(entityKey, mode, row, context={}){
+    crudError.textContent = "";
+    const entity = ENTITIES[entityKey];
+    crudState = { entity, mode, row, pk:entity.pk, context };
+    crudDeleteBtn.style.display = 'none';
+    crudFields.innerHTML = '';
+    
+    if (entityKey === 'pir_documents') {
+        crudTitle.textContent = \`Manage: \${row.title}\`;
+        crudFields.innerHTML = buildPirForm(row, row.data, row.file_path);
+        
+        // dynamic table wiring
+        if(row.item_type === 'dynamic_table'){
+            const container = document.getElementById('dynamic-table-container');
+            const addRowBtn = document.getElementById('btn-add-table-row');
+            const headers = (PIR_DEFINITIONS.find(d => d.title === row.title) || {}).headers || [];
+            if (!row.data) row.data = {};
+            if (!row.data.table_data) row.data.table_data = [];
+
+            const renderTable = () => {
+                let tableHtml = `<table style="font-size:12px;"><thead><tr>${headers.map(h => `<th>${esc(h)}</th>`).join('')}<th></th></tr></thead><tbody>`;
+                (row.data.table_data || []).forEach((r, idx) => {
+                    tableHtml += `<tr>${headers.map((h, i) => `<td><input value="${esc(r[i] || '')}" data-row="${idx}" data-col="${i}" /></td>`).join('')}
+                    <td><button type="button" class="btn-remove-row" data-index="${idx}" style="all:unset; cursor:pointer; color: var(--danger);">✕</button></td></tr>`;
+                });
+                tableHtml += `</tbody></table>`;
+                container.innerHTML = tableHtml;
+            };
+
+            addRowBtn.addEventListener('click', () => { row.data.table_data.push(new Array(headers.length).fill('')); renderTable(); });
+            container.addEventListener('input', e => { if(e.target.tagName === 'INPUT') { row.data.table_data[e.target.dataset.row][e.target.dataset.col] = e.target.value; } });
+            container.addEventListener('click', e => { if(e.target.classList.contains('btn-remove-row')) { row.data.table_data.splice(parseInt(e.target.dataset.index, 10), 1); renderTable(); } });
+            renderTable();
+        }
+
+        const downloadBtn = document.getElementById('btn-download-pir');
+        if (downloadBtn && row?.file_path) {
+            downloadBtn.addEventListener('click', async () => {
+                const { data, error } = await supabase.storage.from('pir_attachments').download(row.file_path);
+                if (error) { crudError.textContent = `Download failed: ${error.message}`; return; }
+                const url = URL.createObjectURL(data);
+                const a = document.createElement('a'); a.href = url; a.download = row.file_path.split('/').pop();
+                document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+            });
+        }
+    } else {
+        crudTitle.textContent = \`Manage \${entityKey}\`;
+        crudFields.innerHTML = \`This is the form for \${entityKey}.\`;
+    }
+    
+    crudModal.classList.add("show");
+  }
+
+  function closeCRUD(){ crudModal.classList.remove("show"); }
+  crudCancelBtn.addEventListener("click", closeCRUD);
+  crudModal.addEventListener("click", (e)=>{ if(e.target === crudModal) closeCRUD(); });
+
+  crudForm.addEventListener("submit", async (e)=>{
+    e.preventDefault();
+    crudError.textContent = "";
+    const { entity, row } = crudState;
+    let body = {};
+    
+    if(entity.table === 'pir_documents') {
+        const itemDef = PIR_DEFINITIONS.find(d => d.title === row.title) || {};
+        body.status = document.getElementById('field-pir-status').value;
+        body.last_updated = document.getElementById('field-pir-last_updated').value || null;
+        let jsonData = { ...(row.data || {}) };
+
+        const hasDefinedQuestions = Array.isArray(itemDef.questions) && itemDef.questions.length > 0;
+
+        if (hasDefinedQuestions || (row.item_type || '').includes('questions')) {
+          jsonData.answers = Array.from(crudFields.querySelectorAll('textarea[data-question-index]')).map(el => el.value);
+        }
+        if ((row.item_type || '').includes('textarea')) {
+          const el = document.getElementById('field-pir-text_content');
+          if (el) jsonData.text_content = el.value || null;
+        }
+        if ((row.item_type || '').includes('number') || (itemDef.labels && itemDef.labels.length)) {
+          ['num1','num2','num3'].forEach(n => { const el = document.getElementById(\`field-pir-\${n}\`); if(el) jsonData[n] = el.value || null; });
+        }
+        if ((row.item_type || '').includes('text') || (itemDef.labels && itemDef.labels.length)) {
+          ['text1','text2'].forEach(t => { const el = document.getElementById(\`field-pir-\${t}\`); if(el) jsonData[t] = el.value || null; });
+        }
+        if (row.item_type === 'dynamic_table') jsonData.table_data = row.data.table_data || [];
+
+        body.data = jsonData;
+
+        const fileInput = document.getElementById('field-pir-file_path');
+        if (fileInput && fileInput.files.length > 0) {
+            const file = fileInput.files[0];
+            const filePath = `${ctx.site_id}/${row.id}/${file.name.replace(/[^a-zA-Z0-9.\\-_]/g, '_')}`;
+            const { error: uploadError } = await supabase.storage.from('pir_attachments').upload(filePath, file, { upsert: true });
+            if (uploadError) throw uploadError;
+            body.file_path = filePath;
+        }
+    }
+
+    try{
+      const { error } = await supabase.from(entity.table).update(body).eq('id', row.id);
+      if (error) throw error;
+      closeCRUD();
+      if (entity.table === 'pir_documents') await loadAndRenderPIR();
+    } catch(err) {
+      crudError.textContent = err.message || String(err);
+    }
+  });
+
+  // Event Listeners
+  document.getElementById('app').addEventListener('click', async (e) => {
+    const tr = e.target.closest("tr[data-id]");
+    if (!tr) return;
+    const tbody = tr.closest("tbody");
+    if(!tbody) return;
+    const entityKey = tbody.dataset.entity;
+    if (entityKey && ENTITIES[entityKey]) {
+      const rowId = tr.dataset.id;
+      try {
+        const { data: rowData, error } = await supabase.from(ENTITIES[entityKey].table).select("*").eq(ENTITIES[entityKey].pk, rowId).maybeSingle();
+        if (error) throw error;
+        if (rowData) openCRUD(entityKey, "edit", rowData);
+      } catch (err) { console.error("Error fetching row:", err); }
+    }
+  });
+  
+  document.addEventListener("DOMContentLoaded", bootstrap);
+</script>
+</body>
+</html>
