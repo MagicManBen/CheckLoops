@@ -197,6 +197,49 @@
 
   .footer{ text-align:center; font-size:12px; color:#b7c8ff; opacity:.9; padding:22px 0; }
 
+  /* Modal styles */
+  .modal { 
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 30;
+    background: rgba(7,28,68,0.85);
+  }
+  .modal.show { 
+    display: flex; 
+  }
+  .modal-content { 
+    background: var(--panel-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 18px;
+    padding: 22px;
+    box-shadow: var(--shadow);
+    color: var(--white);
+  }
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+  .modal-header h3 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+  }
+  .modal-close {
+    all: unset;
+    cursor: pointer;
+    background: #ffffff12;
+    border-radius: 999px;
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+  }
+
   /* Small screens */
   @media (max-width: 980px){
     .app{ grid-template-columns: 1fr; }
@@ -339,20 +382,24 @@
   .cal-legend .dot.missed { background: var(--danger) }
   
   /* Day modal */
-  #day-modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 30; background: rgba(7,28,68,0.85); overflow-y: auto; padding: 22px; -webkit-overflow-scrolling: touch; }
+  #day-modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 30; background: rgba(7,28,68,0.85); }
   #day-modal.show { display: flex; }
-  .day-modal-card { width: min(900px, 86vw); background: var(--panel-bg); border:1px solid var(--border-color); border-radius:18px; padding:22px; box-shadow: var(--shadow); color: var(--white); max-height: 90vh; overflow: auto; }
+  .day-modal-card { width: min(900px, 86vw); background: var(--panel-bg); border:1px solid var(--border-color); border-radius:18px; padding:22px; box-shadow: var(--shadow); color: var(--white); }
   .day-modal-close { all:unset; float:right; cursor:pointer; background:#ffffff12; border-radius:999px; width:34px; height:34px; display:grid; place-items:center; }
   .day-modal-body { margin-top:12px; }
   .day-modal-table { width:100%; border-collapse:collapse; background: transparent; }
   .day-modal-table th, .day-modal-table td { padding:10px 12px; text-align:left; border-bottom:1px solid #ffffff12; color:var(--muted); }
   .day-modal-table th { color:var(--muted); font-weight:700; }
-
-  /* Generic modal overflow safety (covers PIR item window etc.) */
-  [id$="-modal"] { overflow-y: auto; padding: 22px; -webkit-overflow-scrolling: touch; }
-  [id$="-modal"] .modal-card,
-  [id$="-modal"] .day-modal-card,
-  [id$="-modal"] .card { max-height: 90vh; overflow: auto; }
+  /* Branding modal */
+  #branding-modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 31; background: rgba(7,28,68,0.85); }
+  #branding-modal.show { display: flex; }
+  .branding-card { width: min(700px, 92vw); background: var(--panel-bg); border:1px solid var(--border-color); border-radius:18px; padding:22px; box-shadow: var(--shadow); color: var(--white); }
+  .branding-close { all:unset; float:right; cursor:pointer; background:#ffffff12; border-radius:999px; width:34px; height:34px; display:grid; place-items:center; }
+  .branding-row { display:grid; grid-template-columns: 160px 1fr; gap:14px; align-items:center; margin:12px 0; }
+  .branding-preview { width:160px; height:90px; border-radius:10px; background:#ffffff12; border:1px solid #ffffff22; display:grid; place-items:center; overflow:hidden; }
+  .branding-preview img { max-width:100%; max-height:100%; object-fit:contain; }
+  .branding-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:14px; }
+  .hint-mini { font-size: 12px; color: var(--muted); }
   
   #cal-view-switcher .btn.secondary.active {
     background: var(--accent-2);
@@ -389,6 +436,154 @@
 </style>
 
 <script>
+
+    // === BRANDING MODAL + UPLOADS ===
+    const brandingBtn = document.getElementById('btn-branding');
+    const brandingModal = document.getElementById('branding-modal');
+    const brandingClose = document.getElementById('branding-close');
+    const brandingCancel = document.getElementById('branding-cancel');
+    const brandingForm = document.getElementById('branding-form');
+    const logoInput = document.getElementById('branding-logo');
+    const sigInput  = document.getElementById('branding-signature');
+    const logoPrev  = document.getElementById('branding-logo-preview');
+    const sigPrev   = document.getElementById('branding-signature-preview');
+    const brandErr  = document.getElementById('branding-error');
+    const brandOK   = document.getElementById('branding-success');
+
+    function openBranding(){ brandingModal?.classList.add('show'); brandErr.style.display='none'; brandOK.style.display='none'; }
+    function closeBranding(){ brandingModal?.classList.remove('show'); }
+
+    brandingBtn?.addEventListener('click', (e)=>{ e.preventDefault(); openBranding(); });
+    brandingClose?.addEventListener('click', closeBranding);
+    brandingCancel?.addEventListener('click', closeBranding);
+
+    function readPreview(input, img){
+      if(!input?.files?.[0]){ img.src=''; return; }
+      const file = input.files[0];
+      const url = URL.createObjectURL(file);
+      img.src = url;
+    }
+    logoInput?.addEventListener('change', ()=> readPreview(logoInput, logoPrev));
+    sigInput?.addEventListener('change', ()=> readPreview(sigInput, sigPrev));
+
+    async function uploadBranding(){
+      try{
+        brandErr.style.display='none'; brandOK.style.display='none';
+        const bucket = 'branding';
+        const siteSlug = (typeof ctx === 'object' && (ctx?.site_slug || ctx?.site_name)) ? (ctx.site_slug || String(ctx.site_name).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'')) : 'default';
+        const uploads = [];
+
+        if(logoInput?.files?.[0]){
+          const f = logoInput.files[0];
+          const ext = (f.name.split('.').pop() || 'png').toLowerCase();
+          const path = `${siteSlug}/logo.${ext}`;
+          uploads.push(supabase.storage.from(bucket).upload(path, f, { upsert:true, cacheControl:'3600', contentType: f.type || 'image/png' }));
+        }
+        if(sigInput?.files?.[0]){
+          const f = sigInput.files[0];
+          const ext = (f.name.split('.').pop() || 'png').toLowerCase();
+          const path = `${siteSlug}/signature.${ext}`;
+          uploads.push(supabase.storage.from(bucket).upload(path, f, { upsert:true, cacheControl:'3600', contentType: f.type || 'image/png' }));
+        }
+
+        if(uploads.length === 0){ throw new Error('Please choose at least one file to upload.'); }
+        const results = await Promise.all(uploads);
+        const failed = results.find(r => r?.error);
+        if(failed){ throw failed.error; }
+        brandOK.textContent = 'Uploaded successfully.';
+        brandOK.style.display = 'block';
+        setTimeout(closeBranding, 900);
+      }catch(err){
+        console.error(err);
+        brandErr.textContent = 'Upload failed: ' + (err?.message || err);
+        brandErr.style.display = 'block';
+      }
+    }
+
+    brandingForm?.addEventListener('submit', (e)=>{ e.preventDefault(); uploadBranding(); });
+
+    // === Templates download enhancer for PIR modals ===
+    (function installTemplateButtons(){
+      // Watch DOM for the PIR manage modal opening and inject template links
+      const observer = new MutationObserver(() => {
+        // Find any modal/card whose title starts with 'Manage:'
+        const cards = Array.from(document.querySelectorAll('.card, .panel, [role="dialog"], .branding-card, .day-modal-card'));
+        for (const card of cards) {
+          const h = card.querySelector('h2, h3, .panel-title');
+          if (!h) continue;
+          const heading = (h.textContent || '').trim();
+          if (!/^Manage:\s*/i.test(heading)) continue;
+          const title = heading.replace(/^Manage:\s*/i, '').trim();
+
+          // Locate definition
+          const def = (window.PIR_DEFINITIONS_DATA || []).find(d => (d.title||'').trim() === title);
+          if (!def || !def.allow_templates || !Array.isArray(def.templates) || def.templates.length === 0) continue;
+
+          // Find the file input (we'll append links under it)
+          const fileInput = card.querySelector('input[type="file"]');
+          if (!fileInput) continue;
+          const container = fileInput.closest('.field') || fileInput.parentElement || card;
+
+          // Prevent duplicate injection
+          if (container.querySelector('#pir-template-downloads')) { continue; }
+
+          // Build links (prefer Supabase public URL if available)
+          const wrap = document.createElement('div');
+          wrap.id = 'pir-template-downloads';
+          wrap.className = 'hint';
+          wrap.style.marginTop = '10px';
+
+          const list = document.createElement('div');
+          list.style.display = 'grid';
+          list.style.gap = '6px';
+
+          const bucket = def.templates_bucket || 'pir_templates';
+          const prefix = def.templates_prefix || '';
+
+          def.templates.forEach(t => {
+            const p = (t && t.path) ? t.path : '';
+            let href = '';
+            try {
+              if (window.supabase && supabase.storage) {
+                const r = supabase.storage.from(bucket).getPublicUrl(p).data;
+                href = r?.publicUrl || '';
+              }
+            } catch(e) { /* fallback below */ }
+            if (!href && window.SUPABASE_URL) {
+              href = `${window.SUPABASE_URL.replace(/\/$/, '')}/storage/v1/object/public/${bucket}/${p}`;
+            }
+            if (!href && typeof window.SUPABASE_URL === 'undefined') {
+              href = 'https://unveoqnlqnobufhublyw.supabase.co/storage/v1/object/public/' + bucket + '/' + p;
+            }
+
+            const a = document.createElement('a');
+            a.href = href;
+            a.download = '';
+            a.target = '_blank';
+            a.rel = 'noopener';
+            a.textContent = (t && t.label) ? t.label : (p.split('/').pop() || 'Template');
+            a.className = 'btn secondary';
+            a.style.width = 'fit-content';
+            list.appendChild(a);
+          });
+
+          const titleEl = document.createElement('div');
+          titleEl.textContent = 'Download templates:';
+          titleEl.className = 'muted';
+          titleEl.style.marginTop = '4px';
+
+          wrap.appendChild(titleEl);
+          wrap.appendChild(list);
+          container.appendChild(wrap);
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    })();
+
+window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
+    // Initialize any needed functionality
+});
+
 (function () {
   var ua = navigator.userAgent || "";
   var isIOSiPad = /iPad|iPhone|iPod/.test(ua) ||
@@ -398,343 +593,6 @@
 
   if (isIOSiPad && !onIpadPage && !bypass) {
     location.replace("indexIpad.html"); // same folder
-  }
-})();
-
-// === PIR EMAIL (.eml) GENERATION — 9 category emails + 1 completed PIR form ===
-(function initPIRemlGeneratorV2(){
-  const btn = document.getElementById('btn-generate-emails');
-  if(!btn) return;
-
-  // Preferred subject lines per email number (optional overrides).
-  // If a key is missing, we'll derive from the category title.
-  const PIR_EMAIL_SUBJECTS = {
-    1: "Governance, policies and procedures",
-    2: "Training",
-    3: "Safeguarding",
-    4: "Risk assessments",
-    5: "Infection prevention and control",
-    6: "Medicines management",
-    7: "Clinical governance and audit",
-    8: "Patients and carers: access, experience & complaints",
-    9: "Staffing, HR and recruitment checks",
-    10: "Completed Pre‑Inspection Request (PIR) form"
-  };
-
-  // Ensure our handler runs first and suppresses any older text-file generator
-  // or previous version of this handler.
-  btn.replaceWith(btn.cloneNode(true));
-  const freshBtn = document.getElementById('btn-generate-emails');
-  freshBtn.addEventListener('click', async (e)=>{
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    try{
-      await generateAndDownloadPIRAsEmails();
-    }catch(err){
-      console.error(err);
-      alert('Sorry — generating email files failed: ' + (err?.message || err));
-    }
-  }, { capture: true });
-
-  // --- Helpers ---
-  function crlf(str){ return (str||'').toString().replace(/\n/g, '\r\n'); }
-  function fold76(s){ return (s||'').toString().replace(/.{1,76}/g, '$&\r\n'); }
-  function slug(s){ return (s||'').toString().replace(/[^a-z0-9]+/gi,'-').replace(/(^-|-$)/g,'').toLowerCase(); }
-  function escapeHtml(s){
-    return (s==null?'':String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  }
-
-  function guessFrom(){
-    const from = (typeof ctx === 'object' && ctx?.user?.email) ? ctx.user.email : 'no-reply@checkloop.local';
-    return from;
-  }
-
-  function guessSubjectPrefix(){
-    const site = (typeof ctx === 'object' && ctx?.site_name) ? ` – ${ctx.site_name}` : '';
-    return `CQC Pre‑Inspection${site}`; // e.g. "CQC Pre‑Inspection – Harley Street MC"
-  }
-
-  // Convert Blob to base64 string (no data: prefix)
-  function blobToBase64(blob){
-    return new Promise((resolve, reject)=>{
-      const reader = new FileReader();
-      reader.onload = ()=>{
-        const res = String(reader.result||'');
-        const idx = res.indexOf('base64,');
-        resolve(idx>=0 ? res.slice(idx+7) : res);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  }
-
-  function getProvidedFlag(it){
-    // Consider an item provided if it's marked as Ready
-    if (it.status === 'Ready') return true;
-    const hasFiles = Array.isArray(it.files) && it.files.length > 0;
-    const hasAnswers = it && typeof it === 'object' && it.answers && Object.values(it.answers).some(v => String(v||'').trim() !== '');
-    const hasBlurb = !!it.email_blurb;
-    return !!(hasFiles || hasAnswers || hasBlurb);
-  }
-
-  function buildPlainTextBody(emailNum, categoryTitle, items){
-    const lines = [];
-    lines.push(`${categoryTitle}`);
-    lines.push('');
-    lines.push('Please find below a summary of the enclosed evidence:');
-    lines.push('');
-    for(const it of items){
-      if(!getProvidedFlag(it)) continue;
-      const blurb = it.email_blurb || it.title;
-      lines.push(`• ${blurb}`);
-    }
-    lines.push('');
-    lines.push('Kind regards,');
-    lines.push(guessFrom());
-    return lines.join('\n');
-  }
-
-  function makeBoundary(){
-    return '=====_CL_' + Math.random().toString(36).slice(2) + Date.now().toString(36) + '_=====';
-  }
-
-  function assembleEml({from, to, subject, textBody, attachments}){
-    const boundary = makeBoundary();
-    const date = new Date().toUTCString();
-    const headers = [
-      `From: ${from}`,
-      `To: ${to || ''}`,
-      `Subject: ${subject}`,
-      `Date: ${date}`,
-      'MIME-Version: 1.0',
-      `Content-Type: multipart/mixed; boundary="${boundary}"`
-    ].join('\r\n');
-
-    const parts = [];
-    // text part
-    parts.push(
-      [
-        `--${boundary}`,
-        'Content-Type: text/plain; charset=UTF-8',
-        'Content-Transfer-Encoding: 7bit',
-        '',
-        crlf(textBody)
-      ].join('\r\n')
-    );
-
-    // attachments (if any)
-    for(const a of (attachments||[])){
-      const filename = a.filename || 'attachment';
-      const mime = a.mime || 'application/octet-stream';
-      const b64 = fold76(a.base64 || '');
-      parts.push([
-        `--${boundary}`,
-        `Content-Type: ${mime}; name="${filename}"`,
-        'Content-Transfer-Encoding: base64',
-        `Content-Disposition: attachment; filename="${filename}"`,
-        '',
-        b64
-      ].join('\r\n'));
-    }
-
-    // closing boundary
-    parts.push(`--${boundary}--`);
-
-    return headers + '\r\n\r\n' + parts.join('\r\n');
-  }
-
-  async function fetchAttachmentsForItems(items){
-    // Expect each item to optionally have an array: item.files = [{name, url, type}]
-    const out = [];
-    for(const it of items){
-      const files = Array.isArray(it.files) ? it.files : [];
-      for(const f of files){
-        if(!f?.url) continue;
-        try{
-          const resp = await fetch(f.url);
-          if(!resp.ok) throw new Error(`fetch ${f.url} -> ${resp.status}`);
-          const blob = await resp.blob();
-          const base64 = await blobToBase64(blob);
-          out.push({ filename: f.name || 'file', mime: f.type || blob.type || 'application/octet-stream', base64 });
-        }catch(e){
-          console.warn('Attachment fetch failed', f, e);
-        }
-      }
-    }
-    return out;
-  }
-
-  function groupByCategory(items){
-    const map = new Map();
-    for(const it of items){
-      const cat = it.category || 'Uncategorised';
-      if(!map.has(cat)) map.set(cat, []);
-      map.get(cat).push(it);
-    }
-    return map;
-  }
-
-  function getPIRItemsForEmailing(){
-    // Prefer whatever the renderer loaded (with user files/answers), fallback to the static definitions
-    const hasCache = Array.isArray(window.pirDocsCache) && window.pirDocsCache.length;
-    if(hasCache) return window.pirDocsCache.map(x => ({...x}));
-    return (Array.isArray(window.PIR_DEFINITIONS_DATA) ? window.PIR_DEFINITIONS_DATA : []).map(x=>({ ...x }));
-  }
-
-  function deriveEmailNumberFromCategory(category){
-    // Expect "EMAIL N: ..." -> return N as integer when possible
-    const m = /^\\s*EMAIL\\s+(\\d+)\\s*:/i.exec(category || '');
-    return m ? parseInt(m[1], 10) : null;
-  }
-
-  function deriveCategoryDisplayTitle(category){
-    // Remove the "EMAIL N:" prefix for a cleaner subject tail
-    const m = /^\\s*EMAIL\\s+\\d+\\s*:\\s*(.*)$/i.exec(category || '');
-    return m ? m[1].trim() : String(category || '');
-  }
-
-  function friendlySubject(emailNum, category){
-    const prefix = guessSubjectPrefix();
-    const tail = PIR_EMAIL_SUBJECTS[emailNum] || deriveCategoryDisplayTitle(category);
-    return `${prefix} – ${tail}`;
-  }
-
-  function itemFormats(it){
-    const files = Array.isArray(it.files) ? it.files : [];
-    if(!files.length) return '';
-    const formats = files.map(f => {
-      const n = String(f.name || '').trim();
-      const ext = (n && n.includes('.')) ? n.split('.').pop() : '';
-      return ext ? `.${ext}` : (f.type || 'file');
-    }).filter(Boolean);
-    return Array.from(new Set(formats)).join(', ');
-  }
-
-  function itemProvidedReason(it){
-    // Look for a reason string if not provided
-    return it.not_provided_reason || it.reason || it.email_reason || '';
-  }
-
-  function buildPIRSummaryHtml(allItems){
-    const dt = new Date();
-    const y = dt.getFullYear();
-    const m = String(dt.getMonth()+1).padStart(2,'0');
-    const d = String(dt.getDate()).padStart(2,'0');
-    const site = (typeof ctx === 'object' && ctx?.site_name) ? ctx.site_name : '';
-    const providedRows = (allItems||[]).map(it => {
-      const provided = getProvidedFlag(it);
-      const formats = provided ? itemFormats(it) : '';
-      const reason = provided ? '' : itemProvidedReason(it);
-      const category = it.category || '';
-      return `<tr>
-        <td>${escapeHtml(category)}</td>
-        <td>${escapeHtml(it.title || '')}</td>
-        <td>${provided ? 'Yes' : 'No'}</td>
-        <td>${escapeHtml(formats)}</td>
-        <td>${escapeHtml(reason)}</td>
-      </tr>`;
-    }).join('');
-
-    const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PIR — Completed Summary (${y}-${m}-${d})</title>
-<style>
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.5;margin:24px;color:#0b275c}
-  h1{margin:0 0 8px}
-  .muted{color:#516c9d}
-  table{border-collapse:collapse;width:100%;margin-top:16px}
-  th,td{border:1px solid #c7d4f1;padding:8px 10px;font-size:14px;vertical-align:top}
-  th{background:#e9f1ff;text-align:left}
-  tr:nth-child(even){background:#f6f9ff}
-  .small{font-size:12px;color:#516c9d}
-</style>
-</head>
-<body>
-  <h1>Completed PIR Summary</h1>
-  <div class="muted">${escapeHtml(site)} • Generated ${y}-${m}-${d}</div>
-
-  <table>
-    <thead>
-      <tr>
-        <th>Section</th>
-        <th>Requested item</th>
-        <th>Provided?</th>
-        <th>Formats</th>
-        <th>Reason if not provided</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${providedRows}
-    </tbody>
-  </table>
-
-  <p class="small">This HTML is auto‑generated by CheckLoop. It summarises the PIR responses, the presence of attachments, and reasons where evidence is not provided.</p>
-</body>
-</html>`;
-    return html;
-  }
-
-  async function generateAndDownloadPIRAsEmails(){
-    const items = getPIRItemsForEmailing();
-    if(!items || !items.length){ throw new Error('No Pre‑Inspection items available'); }
-
-    // Zip to hold 10 emails
-    const zip = new JSZip();
-    const from = guessFrom();
-
-    // Build 9 category emails
-    const groups = groupByCategory(items);
-    for(const [category, catItems] of groups){
-      const include = catItems.filter(it => getProvidedFlag(it));
-      if(!include.length) continue;
-
-      const emailNum = deriveEmailNumberFromCategory(category);
-      const subject = friendlySubject(emailNum, category);
-      const textBody = buildPlainTextBody(emailNum, deriveCategoryDisplayTitle(category), include);
-      const attachments = await fetchAttachmentsForItems(include);
-      const eml = assembleEml({ from, to: '', subject, textBody, attachments });
-
-      const fnameBase = deriveCategoryDisplayTitle(category).split(':')[0].trim();
-      const fname = `${(emailNum||'')}${emailNum?'-':''}${fnameBase} - ${slug(deriveCategoryDisplayTitle(category))}.eml`;
-      zip.file(fname, eml, { binary: false });
-    }
-
-    // Build the 10th email: Completed PIR form (HTML summary attached)
-    const pirSummaryHtml = buildPIRSummaryHtml(items);
-    const pirBlob = new Blob([pirSummaryHtml], { type: 'text/html;charset=utf-8' });
-    const pirB64 = await blobToBase64(pirBlob);
-    const attachments10 = [{ filename: 'PIR-Completed.html', mime: 'text/html; charset=UTF-8', base64: pirB64 }];
-
-    const subject10 = `${guessSubjectPrefix()} – ${PIR_EMAIL_SUBJECTS[10]}`;
-    const textBody10 = [
-      'Please find attached our completed Pre‑Inspection Request (PIR) summary.',
-      '',
-      'The attachment lists each requested item with a Yes/No indicator, formats supplied, and a reason where evidence was not provided.',
-      '',
-      'Kind regards,',
-      guessFrom()
-    ].join('\n');
-
-    const eml10 = assembleEml({ from, to: '', subject: subject10, textBody: textBody10, attachments: attachments10 });
-    zip.file(`10-PIR-Completed-Form.eml`, eml10, { binary: false });
-
-    // Download ZIP
-    const blob = await zip.generateAsync({ type: 'blob' });
-    const dt = new Date();
-    const y = dt.getFullYear();
-    const m = String(dt.getMonth()+1).padStart(2,'0');
-    const d = String(dt.getDate()).padStart(2,'0');
-    const zipName = `CQC-PIR-Emails-${y}${m}${d}.zip`;
-
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = zipName;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 2000);
   }
 })();
 </script>
@@ -844,7 +702,7 @@
 
           <div class="panel g-12" style="min-height:520px; margin-top:12px;">
             <div class="panel-header" style="align-items:center;">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9.5 14.5 5 0"/><path d="m9.5 18.5 2 0"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
                 <div class="panel-title">Due / Missed / Completed</div>
                 <div class="tab-controls" style="margin-left:auto; display:flex; gap:8px;">
                   <button class="btn secondary active" id="tab-due" data-tab="due">Due (7d)</button>
@@ -870,6 +728,34 @@
           </div>
         </div>
 
+        <!-- Roles Management Modal -->
+        <div class="modal" id="roles-modal">
+          <div class="modal-content" style="width:500px">
+            <div class="modal-header">
+              <h3>Manage Staff Roles</h3>
+              <button type="button" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+              <div class="table-wrap" style="max-height:300px">
+                <table>
+                  <thead><tr><th>Role</th><th>Actions</th></tr></thead>
+                  <tbody id="roles-tbody">
+                    <tr><td colspan="2" class="muted">Loading roles...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div style="margin-top:20px">
+                <form id="add-role-form" style="display:flex; gap:10px">
+                  <div class="field" style="flex:1; margin:0">
+                    <input type="text" id="new-role-input" placeholder="Enter new role name" required>
+                  </div>
+                  <button type="submit" class="btn">Add Role</button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="footer">© CheckLoop • Built for GP surgeries • Silky blue UI ✨</div>
       </section>
 
@@ -877,7 +763,6 @@
         <div class="panel">
             <div style="display:flex; justify-content:space-between; align-items:flex-start;">
               <div class="h1" style="margin:0 0 10px">CQC Pre-Inspection Readiness</div>
-              <button class="btn" id="btn-generate-emails">Generate & Download Emails</button>
             </div>
             <div class="grid" style="align-items: center; margin-bottom: 24px;">
                 <div class="g-8">
@@ -904,9 +789,6 @@
             <button id="cal-next" class="btn secondary">Next ›</button>
           </div>
           
-          <div id="cal-view-switcher" style="display:flex; gap: 6px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
-            <button class="btn secondary active" data-view="scheduled">Scheduled</button>
-          </div>
           <div class="cal-legend" id="cal-legend">
             <div class="item"><span class="dot scheduled" aria-hidden="true"></span> Scheduled</div>
             <div class="item"><span class="dot done" aria-hidden="true"></span> Done</div>
@@ -971,10 +853,16 @@
 
       <section class="view" id="view-staff">
         <div class="panel">
-          <div style="display:flex; justify-content:space-between; align-items:center"><div class="h1" style="margin:0 0 10px">Staff (Kiosk)</div><button class="btn" id="btn-new-staff">Add Staff</button></div>
+          <div style="display:flex; justify-content:space-between; align-items:center">
+            <div class="h1" style="margin:0 0 10px">Staff (Kiosk)</div>
+            <div style="display:flex; gap:10px;">
+              <button class="btn secondary" id="btn-manage-roles">Manage Roles</button>
+              <button class="btn" id="btn-new-staff">Add Staff</button>
+            </div>
+          </div>
           <div class="table-wrap"><table>
-            <thead><tr><th>Name</th><th>Role</th><th>Active</th></tr></thead>
-            <tbody id="staff-tbody" data-entity="kiosk_users"><tr><td colspan="3" class="muted">Loading…</td></tr></tbody>
+            <thead><tr><th>Name</th><th>Role</th><th>Reports To</th><th>Active</th></tr></thead>
+            <tbody id="staff-tbody" data-entity="kiosk_users"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
           </table></div>
         </div>
       </section>
@@ -991,38 +879,111 @@
 
       <section class="view" id="view-settings">
         <div class="panel">
-          <div class="h1" style="margin:0 0 10px">Settings</div>
-          <div class="muted">Admin-only tools. (No check submissions happen here.)</div>
+          <div style="display:flex; justify-content:space-between; align-items:center">
+            <div class="h1" style="margin:0 0 10px">Settings</div>
+            <div style="display:flex; gap:10px;">
+              <button class="btn" id="btn-invite-user">Invite User</button>
+            </div>
+          </div>
+
+          <!-- User Management Section -->
+          <div class="settings-section" style="margin-top:20px">
+            <h3>Practice Users</h3>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="practice-users-tbody">
+                  <tr><td colspan="5" class="muted">Loading...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Invite User Modal -->
+        <div class="modal" id="invite-modal">
+          <div class="modal-content" style="width:500px">
+            <div class="modal-header">
+              <h3>Invite User</h3>
+              <button type="button" class="modal-close" id="invite-modal-close">&times;</button>
+            </div>
+            <form id="invite-form">
+              <div class="field">
+                <label>Full Name</label>
+                <input type="text" id="invite-name" required>
+              </div>
+              <div class="field">
+                <label>Email</label>
+                <input type="email" id="invite-email" required>
+              </div>
+              <div class="field">
+                <label>Role</label>
+                <select id="invite-role" required>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div class="error" id="invite-error" style="display:none"></div>
+              <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px">
+                <button type="button" class="btn secondary" id="invite-cancel-btn">Cancel</button>
+                <button type="submit" class="btn">Send Invitation</button>
+              </div>
+            </form>
+          </div>
         </div>
       </section>
     </main>
   </div>
 
-  <div class="auth" id="auth">
-    <div class="card">
-      <h2>Sign in to CheckLoop</h2>
-      <div class="hint">Use your admin email and password.</div>
-      <form id="signin-form">
-        <div class="field">
-          <label>Email</label>
-          <input type="email" id="email" placeholder="you@nhs.uk" required />
-        </div>
-        <div class="field">
-          <label>Password</label>
-          <input type="password" id="password" placeholder="••••••••" required />
-        </div>
-        <button class="btn" type="submit">Sign In</button>
-        <div class="error" id="auth-error" role="alert"></div>
-      </form>
-      <div class="hint" style="margin-top:10px">Session is remembered until you sign out.</div>
-    </div>
-  </div>
+
 
   <div id="day-modal" aria-hidden="true">
     <div class="day-modal-card">
       <button class="day-modal-close" id="day-modal-close" aria-label="Close">✕</button>
       <h2 class="day-modal-title">Details</h2>
       <div class="day-modal-body">Loading…</div>
+    </div>
+  </div>
+  <div id="branding-modal" aria-hidden="true">
+    <div class="branding-card">
+      <button class="branding-close" id="branding-close" aria-label="Close">✕</button>
+      <h2 style="margin:0 0 6px">Branding</h2>
+      <div class="hint-mini">Upload a practice logo and a signature image. PNG with transparent background is ideal.</div>
+      <form id="branding-form">
+        <div class="branding-row">
+          <div>
+            <div class="muted" style="margin-bottom:6px">Logo</div>
+            <div class="branding-preview"><img id="branding-logo-preview" alt="" /></div>
+          </div>
+          <div>
+            <input type="file" id="branding-logo" accept="image/*" />
+            <div class="hint-mini">Recommended: PNG, at least 600×300px.</div>
+          </div>
+        </div>
+        <div class="branding-row">
+          <div>
+            <div class="muted" style="margin-bottom:6px">Signature</div>
+            <div class="branding-preview"><img id="branding-signature-preview" alt="" /></div>
+          </div>
+          <div>
+            <input type="file" id="branding-signature" accept="image/*" />
+            <div class="hint-mini">Recommended: Transparent PNG.</div>
+          </div>
+        </div>
+        <div class="branding-actions">
+          <button type="button" class="btn secondary" id="branding-cancel">Cancel</button>
+          <button type="submit" class="btn" id="branding-save">Upload</button>
+        </div>
+        <div class="error" id="branding-error" role="alert" style="display:none"></div>
+        <div class="hint" id="branding-success" style="display:none">Uploaded successfully.</div>
+      </form>
     </div>
   </div>
 
@@ -1035,11 +996,19 @@ window.PIR_DEFINITIONS_DATA = [
     { 
         category: "EMAIL 1: GOVERNANCE, POLICIES AND PROCEDURES", 
         title: "Statement of purpose", 
-        item_type: "guided_questions", 
-        questions: [
-            "Core Aims & Objectives: What are the fundamental goals of the practice in terms of patient care, safety, and quality?", 
-            "Scope of Services: List the regulated activities and describe the full range of clinical and non-clinical services provided.", 
-            "Patient Population Profile: Describe your service users, including key demographics, common health needs, and any specific community characteristics."
+        item_type: "file_only",
+        description: "Upload your existing Statement of Purpose OR download and complete the official templates, then upload the finished document.",
+        allow_upload: true,
+        file_label: "Attached File",
+        file_hint: "Uploading a new file will replace the existing one.",
+        allow_templates: true,
+        templates_bucket: "pir_templates",
+        templates_prefix: "",
+        templates: [
+          { label: "Template – Part 1 (Provider)",   path: "20120418_100457_v2_00_statement_of_purpose_pt_1_for_pub_unprotected.doc" },
+          { label: "Template – Part 2 (Aims & objectives)", path: "20120327_100457_v2_00_statement_of_purpose_pt_2_for_pub_unprotected.doc" },
+          { label: "Template – Part 3 (Location)",  path: "20120418_100457_v2_00_statement_of_purpose_pt_3_for_pub_unprotected.doc" },
+          { label: "Template – Part 4 (Registered manager)", path: "20120413_100457_v2_00_statement_of_purpose_pt_4_for_pub_unprotected.doc" }
         ],
         email_blurb: "Provides our Statement of Purpose, detailing the practice's aims, services, and patient population."
     },
@@ -1591,6 +1560,9 @@ window.PIR_DEFINITIONS_DATA = [
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
   });
+  // Expose to global for non-module scripts
+  window.JSZip = JSZip;
+  window.supabase = supabase;
 
   // SPA navigation
   const nav = document.getElementById("nav");
@@ -1610,6 +1582,7 @@ window.PIR_DEFINITIONS_DATA = [
 
   function setActiveSection(id){
     if(!id) return;
+    console.log('setActiveSection called with:', id);
     const btn = nav.querySelector(`button[data-section="${id}"]`);
     if(!btn) return;
     // active state
@@ -1619,9 +1592,46 @@ window.PIR_DEFINITIONS_DATA = [
     views.forEach(v => v.classList.remove("active"));
     const viewEl = document.getElementById("view-"+id);
     if(viewEl) viewEl.classList.add("active");
-    if (id === 'pre-inspection') {
+    
+    // Load section data
+    switch(id) {
+      case 'dashboard':
+        Promise.all([
+          loadCounts(),
+          loadDue(),
+          loadActivity()
+        ]);
+        break;
+      case 'items':
+        loadItems();
+        break;
+      case 'rooms':
+        loadRooms();
+        break;
+      case 'checktypes':
+        loadCheckTypes();
+        break;
+      case 'schedules':
+        loadSchedules();
+        break;
+      case 'staff':
+        loadStaff();
+        break;
+      case 'submissions':
+        loadSubmissions();
+        break;
+      case 'pre-inspection':
         loadAndRenderPIR();
+        break;
+      case 'calendar':
+        loadWeekCalendar();
+        break;
+      case 'settings':
+        console.log('Loading practice users for settings section');
+        loadPracticeUsers();
+        break;
     }
+    
     // persist
     try { localStorage.setItem("cl_active_section", id); } catch(_) {}
   }
@@ -1631,13 +1641,302 @@ window.PIR_DEFINITIONS_DATA = [
     if(!btn) return;
     const id = btn.getAttribute("data-section");
     setActiveSection(id);
+    
+    // Special handling for settings section
+    if (id === 'settings') {
+      console.log('Settings section clicked, context:', ctx);
+      setTimeout(() => loadPracticeUsers(), 100); // Small delay to ensure context is loaded
+    }
   });
 
-  // Restore last active section on load (defaults to dashboard if none)
-  try {
-    const saved = localStorage.getItem("cl_active_section");
-    if(saved) setActiveSection(saved);
-  } catch(_) {}
+  // User Management
+  const inviteModal = document.getElementById('invite-modal');
+  const inviteForm = document.getElementById('invite-form');
+  const inviteError = document.getElementById('invite-error');
+
+  function showInviteModal() {
+    inviteModal.classList.add('show');
+    inviteError.style.display = 'none';
+    inviteForm.reset();
+  }
+
+  function closeInviteModal() {
+    inviteModal.classList.remove('show');
+  }
+
+  document.getElementById('btn-invite-user')?.addEventListener('click', showInviteModal);
+  document.getElementById('invite-modal-close')?.addEventListener('click', closeInviteModal);
+  document.getElementById('invite-cancel-btn')?.addEventListener('click', closeInviteModal);
+
+  inviteForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    inviteError.style.display = 'none';
+
+    const name = document.getElementById('invite-name').value.trim();
+    const email = document.getElementById('invite-email').value.trim();
+    const role = document.getElementById('invite-role').value;
+
+    console.log('Submitting invite:', { name, email, role, site_id: ctx.site_id, user_id: ctx.user?.id });
+
+    if (!name || !email || !role) {
+      inviteError.textContent = 'Please fill in all fields';
+      inviteError.style.display = 'block';
+      return;
+    }
+
+    if (!ctx.site_id) {
+      inviteError.textContent = 'No site selected';
+      inviteError.style.display = 'block';
+      return;
+    }
+
+    if (!ctx.user?.id) {
+      inviteError.textContent = 'User not authenticated';
+      inviteError.style.display = 'block';
+      return;
+    }
+
+    try {
+      // Generate a unique token for the invite
+      const inviteToken = crypto.randomUUID ? crypto.randomUUID() : 'token-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+      
+      // Create invite record
+      const inviteData = {
+        email,
+        full_name: name,
+        role: role,
+        site_id: ctx.site_id,
+        status: 'pending',
+        token: inviteToken,
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
+        invited_by: ctx.user.id,
+        allowed_pages: '[]'
+      };
+
+      console.log('Creating invite with data:', inviteData);
+
+      // First create the invite record
+      const { data: createdInvite, error: createError } = await supabase
+        .from('site_invites')
+        .insert(inviteData)
+        .select()
+        .single();
+
+      if (createError) throw createError;
+
+      // Build the invite URL
+      const inviteUrl = `${window.location.origin}/Home.html?invite=${inviteToken}`;
+
+      // Send the invite email using Supabase Auth
+      const { error: emailError } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: inviteUrl,
+          data: {
+            full_name: name,
+            role: role,
+            site_id: ctx.site_id,
+            invite_token: inviteToken
+          }
+        }
+      });
+
+      if (emailError) {
+        console.error('Failed to send invite email:', emailError);
+        // Add a warning to the UI but don't block
+        inviteError.textContent = 'Invite created but email delivery may be delayed. Please check spam folder or try again.';
+        inviteError.style.display = 'block';
+        inviteError.style.backgroundColor = '#fff3cd';
+        inviteError.style.color = '#856404';
+        inviteError.style.border = '1px solid #ffeeba';
+        setTimeout(() => {
+          closeInviteModal();
+          loadPracticeUsers();
+        }, 3000);
+        return;
+      }
+
+      console.log('Invite created and email sent successfully');
+      
+      // Show success message
+      inviteError.textContent = 'Invitation sent successfully! The user will receive an email to join.';
+      inviteError.style.display = 'block';
+      inviteError.style.backgroundColor = '#d4edda';
+      inviteError.style.color = '#155724';
+      inviteError.style.border = '1px solid #c3e6cb';
+      
+      // Close modal and refresh list after showing success message
+      setTimeout(() => {
+        closeInviteModal();
+        loadPracticeUsers();
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to send invitation:', err);
+      inviteError.textContent = err.message || 'Failed to send invitation';
+      inviteError.style.display = 'block';
+    }
+  });
+
+  async function loadPracticeUsers() {
+    const tbody = document.getElementById('practice-users-tbody');
+    if (!tbody) {
+      console.error('practice-users-tbody element not found');
+      return;
+    }
+    
+    if (!ctx.site_id) {
+      tbody.innerHTML = '<tr><td colspan="5" class="muted">No site selected</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = '<tr><td colspan="5" class="muted">Loading users...</td></tr>';
+
+    try {
+      console.log('Loading users for site_id:', ctx.site_id);
+      
+      // Test access to site_invites table first
+      console.log('Testing site_invites table access...');
+      const { data: testInvites, error: testError } = await supabase
+        .from('site_invites')
+        .select('count')
+        .limit(1);
+      
+      if (testError) {
+        console.error('Cannot access site_invites table:', testError);
+      } else {
+        console.log('site_invites table accessible');
+      }
+      
+      // Get users and their profiles - simplified query first
+      const { data: users, error: usersError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('site_id', ctx.site_id);
+
+      if (usersError) {
+        console.error('Error loading profiles:', usersError);
+        throw usersError;
+      }
+
+      console.log('Loaded users:', users);
+
+      // Get pending invites
+      const { data: invites, error: invitesError } = await supabase
+        .from('site_invites')
+        .select('*')
+        .eq('site_id', ctx.site_id)
+        .eq('status', 'pending')
+        .gte('expires_at', new Date().toISOString());
+
+      if (invitesError) {
+        console.error('Error loading invites:', invitesError);
+        // Continue without invites rather than failing completely
+      }
+
+      console.log('Loaded invites:', invites);
+
+      const allRows = [
+        // Active users
+        ...(users || []).map(u => ({
+          name: u.full_name || 'Unknown',
+          email: u.user_id, // Using user_id as email fallback since we can't join to auth.users
+          role: u.role || 'User',
+          status: 'Active',
+          actions: `<button class="btn secondary" onclick="deactivateUser('${u.user_id}')">Deactivate</button>`
+        })),
+        // Pending invites
+        ...((invites || []).map(i => ({
+          name: i.full_name,
+          email: i.email,
+          role: i.role,
+          status: 'Invited',
+          actions: `<button class="btn secondary" onclick="cancelInvite('${i.id}')">Cancel Invite</button>`
+        })))
+      ];
+
+      tbody.innerHTML = allRows.length ? allRows.map(r => `
+        <tr>
+          <td>${esc(r.name)}</td>
+          <td>${esc(r.email)}</td>
+          <td>${esc(r.role)}</td>
+          <td><span class="chip ${r.status === 'Active' ? 'success' : 'warning'}">${esc(r.status)}</span></td>
+          <td>${r.actions}</td>
+        </tr>
+      `).join('') : '<tr><td colspan="5" class="muted">No users yet</td></tr>';
+
+    } catch (err) {
+      console.error('Failed to load users:', err);
+      let errorMessage = 'Failed to load users';
+      if (err.message) {
+        errorMessage += ': ' + err.message;
+      }
+      if (err.code) {
+        errorMessage += ' (Code: ' + err.code + ')';
+      }
+      tbody.innerHTML = `<tr><td colspan="5" class="muted">${errorMessage}</td></tr>`;
+    }
+  }
+
+  // Global functions for user actions
+  window.deactivateUser = async function(userId) {
+    if (!confirm('Are you sure you want to deactivate this user?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ active: false })
+        .eq('user_id', userId)
+        .eq('site_id', ctx.site_id);
+
+      if (error) throw error;
+      loadPracticeUsers();
+    } catch (err) {
+      console.error('Failed to deactivate user:', err);
+      alert('Failed to deactivate user');
+    }
+  };
+
+  window.cancelInvite = async function(inviteId) {
+    if (!confirm('Are you sure you want to cancel this invitation?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('site_invites')
+        .update({ status: 'cancelled' })
+        .eq('id', inviteId)
+        .eq('site_id', ctx.site_id);
+
+      if (error) throw error;
+      loadPracticeUsers();
+    } catch (err) {
+      console.error('Failed to cancel invitation:', err);
+      alert('Failed to cancel invitation');
+    }
+  };
+
+  // Initialize data loading
+  async function initializeApp() {
+    try {
+      // Load initial context
+      await loadContext();
+      
+      // Restore last active section
+      const saved = localStorage.getItem("cl_active_section") || "dashboard";
+      setActiveSection(saved);
+
+      // Preload some common data
+      await Promise.all([
+        loadCounts(),
+        loadDue(),
+        loadActivity()
+      ]);
+    } catch(err) {
+      console.error('Failed to initialize app:', err);
+    }
+  }
+
+  // Start initialization
+  initializeApp();
 
   // Restore sidebar collapsed state
   try {
@@ -1662,21 +1961,34 @@ window.PIR_DEFINITIONS_DATA = [
 
   signoutBtn.addEventListener("click", async()=>{
     await supabase.auth.signOut();
-    showAuth(true);
+    window.location.href = 'Home.html';
   });
 
-  signinForm.addEventListener("submit", async(e)=>{
-    e.preventDefault();
-    authErr.textContent = "";
-    const email = document.getElementById("email").value.trim();
-    const password = document.getElementById("password").value;
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if(error){ authErr.textContent = error.message; return; }
-    showAuth(false);
-    await bootstrap();
-  });
+  // On page load, check for a valid session. If not found, redirect to login.
+  supabase.auth.getSession().then(async ({ data: { session } }) => {
+    if (!session) {
+      window.location.href = 'Home.html';
+      return;
+    }
 
-  function showAuth(show){ authOverlay.classList.toggle("show", show); }
+    // Initialize the context with the session
+    try {
+      await loadContext();
+      await Promise.all([
+        loadCounts(),
+        loadDue(),
+        loadActivity()
+      ]);
+    } catch (err) {
+      console.error('Failed to initialize:', err);
+      // If we fail to load the context, we should probably log out
+      await supabase.auth.signOut();
+      window.location.href = 'Home.html';
+    }
+  }).catch(err => {
+    console.error('Session check failed:', err);
+    window.location.href = 'Home.html';
+  });
 
   // Load profile + site context
   let ctx = { site_id: null, role: null, user: null };
@@ -2027,10 +2339,28 @@ async function loadSchedules(){
 
   async function loadStaff(){
     const tb = document.getElementById("staff-tbody");
-    const { data, error } = await supabase.from("kiosk_users").select("id, full_name, role, active").eq("site_id", ctx.site_id).order("full_name");
-    if(error){ tb.innerHTML = `<tr><td colspan="3" class="muted">${error.message}</td></tr>`; return; }
-    if(!data?.length){ tb.innerHTML = `<tr><td colspan="3" class="muted">No staff yet.</td></tr>`; return; }
-    tb.innerHTML = data.map(r=>`<tr data-id="${r.id}"><td>${esc(r.full_name)}</td><td>${esc(r.role)}</td><td>${r.active ? "Yes" : "No"}</td></tr>`).join("");
+    // Get staff with their manager's name
+    const { data, error } = await supabase
+      .from("kiosk_users")
+      .select(`
+        id, 
+        full_name, 
+        role, 
+        active,
+        reports_to:reports_to_id(full_name)
+      `)
+      .eq("site_id", ctx.site_id)
+      .order("full_name");
+
+    if(error){ tb.innerHTML = `<tr><td colspan="4" class="muted">${error.message}</td></tr>`; return; }
+    if(!data?.length){ tb.innerHTML = `<tr><td colspan="4" class="muted">No staff yet.</td></tr>`; return; }
+    
+    tb.innerHTML = data.map(r=>`<tr data-id="${r.id}">
+      <td>${esc(r.full_name)}</td>
+      <td>${esc(r.role)}</td>
+      <td>${esc(r.reports_to?.full_name || '—')}</td>
+      <td>${r.active ? "Yes" : "No"}</td>
+    </tr>`).join("");
   }
 
   async function loadSubmissions(){
@@ -2071,11 +2401,11 @@ async function loadSchedules(){
     if(!ctx.site_id) return;
     const now = new Date();
     const wkStart = startOfWeek(now);
-    const wkEnd = new Date(wkStart); wkEnd.setDate(wkStart.getDate()+7);
+    const wkEnd = new Date(wkStart); wkEnd.setDate(wkStart.getDate() + 7);
 
-    const fmt = (d)=> d.toLocaleDateString(undefined,{ weekday:'short', month:'short', day:'numeric'});
+    const fmt = (d)=> d.toLocaleDateString(undefined,{ weekday:'short', day: 'numeric', month: 'short' });
     for(let i=0;i<7;i++){
-      const dd = new Date(wkStart); dd.setDate(wkStart.getDate()+i);
+      const dd = new Date(wkStart); dd.setDate(wkStart.getDate() + i);
       const el = document.getElementById(`d${i}-label`);
       if(el) el.textContent = fmt(dd);
     }
@@ -2126,7 +2456,7 @@ async function loadSchedules(){
     });
 
     for(let i=0;i<7;i++){
-      const dayDate = new Date(wkStart); dayDate.setDate(wkStart.getDate()+i);
+      const dayDate = new Date(wkStart); dayDate.setDate(wkStart.getDate() + i);
       const isPast = dayDate < new Date(new Date().setHours(0,0,0,0));
       
       const requiredCountForDay = requiredCountsPerDay[i];
@@ -2349,14 +2679,14 @@ async function loadSchedules(){
         
         let dayTasksHtml = '';
         const tasksForThisDay = requiredSchedulesCache.filter(task => {
-          if (task.scheduled_day !== currentDayCode) return false;
           const freq = String(task.frequency || '').toLowerCase();
-
-          // Monthly: show only on the last <weekday> of the month
-          if (freq.includes('mon')) { // matches 'mon' / 'month' / 'months'
-            const nextWeek = new Date(thisDate);
-            nextWeek.setDate(thisDate.getDate() + 7);
-            return nextWeek.getMonth() !== thisDate.getMonth();
+          
+          if (freq.includes('mon')) { // Monthly tasks
+            // For monthly tasks, check if the scheduled_day matches the current day of month
+            return String(task.scheduled_day) === String(day);
+          } else { // Weekly tasks
+            // For weekly tasks, check if the scheduled_day matches the day of week
+            return task.scheduled_day === currentDayCode;
           }
 
           // Daily or Weekly: show every week on the selected day
@@ -2463,17 +2793,18 @@ async function loadSchedules(){
 
     // Determine scheduled tasks for this date (reuse same rules as calendar render)
     const currentDayCode = indexToCode(thisDate.getDay());
+    const currentDayOfMonth = thisDate.getDate();
     const tasksForThisDay = requiredSchedulesCache.filter(task => {
       if (!task.scheduled_day) return false;
-      if (task.scheduled_day !== currentDayCode) return false;
       const freq = String(task.frequency || '').toLowerCase();
+      
       if (freq.includes('mon')) {
-        const nextWeek = new Date(thisDate);
-        nextWeek.setDate(thisDate.getDate() + 7);
-        return nextWeek.getMonth() !== thisDate.getMonth();
+        // For monthly tasks, match the day of month
+        return String(task.scheduled_day) === String(currentDayOfMonth);
+      } else {
+        // For weekly tasks, match the day code
+        return task.scheduled_day === currentDayCode;
       }
-      if (freq.includes('day') || freq.includes('week')) return true;
-      return false;
     });
 
     // Combine scheduled + completed keys so we show any recorded checks even if not scheduled
@@ -2505,7 +2836,7 @@ async function loadSchedules(){
         statusHtml = '<span class="chip success">Done</span>';
         by = esc(completed.staff || '—');
         timeText = completed.time ? new Date(completed.time).toLocaleTimeString() : '—';
-      } else {
+      } else if (isPast) {
         // If scheduled but in the past -> mark missed
         const todayStart = new Date(); todayStart.setHours(0,0,0,0);
         if (thisDate < todayStart) {
@@ -2641,6 +2972,113 @@ async function loadSchedules(){
     }
   });
 
+  // --- ROLES MANAGEMENT ---
+  async function loadRoles() {
+    const tbody = document.getElementById('roles-tbody');
+    if (!tbody) return;
+
+    const { data, error } = await supabase
+      .from('kiosk_roles')
+      .select('*')
+      .order('role');
+
+    if (error) {
+      tbody.innerHTML = '<tr><td colspan="2" class="muted">Error: ' + esc(error.message) + '</td></tr>';
+      return;
+    }
+
+    if (!data?.length) {
+      tbody.innerHTML = '<tr><td colspan="2" class="muted">No roles defined yet</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = data.map(r => 
+      '<tr data-role="' + esc(r.role) + '">' +
+        '<td>' + esc(r.role) + '</td>' +
+        '<td>' +
+          '<button type="button" class="btn secondary delete-role" style="padding:4px 8px">Delete</button>' +
+        '</td>' +
+      '</tr>'
+    ).join('');
+
+    // Add delete handlers
+    tbody.querySelectorAll('.delete-role').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const role = e.target.closest('tr').dataset.role;
+        if (!role) return;
+        
+        if (!confirm('Delete role "' + role + '"? This cannot be undone.')) return;
+
+        const { error } = await supabase
+          .from('kiosk_roles')
+          .delete()
+          .eq('role', role);
+
+        if (error) {
+          alert('Failed to delete role: ' + error.message);
+          return;
+        }
+
+        await loadRoles();
+      });
+    });
+  }
+
+  function initRolesManagement() {
+    const btnManageRoles = document.getElementById('btn-manage-roles');
+    const rolesModal = document.getElementById('roles-modal');
+    const addRoleForm = document.getElementById('add-role-form');
+    const closeBtn = rolesModal?.querySelector('.modal-close');
+
+    if (btnManageRoles) {
+      btnManageRoles.addEventListener('click', () => {
+        if (rolesModal) {
+          rolesModal.classList.add('show');
+          loadRoles();
+        }
+      });
+    }
+
+    // Close on clicking outside
+    if (rolesModal) {
+      rolesModal.addEventListener('click', (e) => {
+        if (e.target === rolesModal) {
+          rolesModal.classList.remove('show');
+        }
+      });
+    }
+
+    // Close on clicking X button
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        rolesModal?.classList.remove('show');
+      });
+    }
+
+    if (addRoleForm) {
+      addRoleForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const input = document.getElementById('new-role-input');
+        if (!input) return;
+        
+        const role = input.value.trim();
+        if (!role) return;
+
+        const { error } = await supabase
+          .from('kiosk_roles')
+          .insert([{ role }]);
+
+        if (error) {
+          alert('Failed to add role: ' + error.message);
+          return;
+        }
+
+        input.value = '';
+        await loadRoles();
+      });
+    }
+  }
+
   // Helpers
   function esc(s){ return (s ?? "").toString().replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
   function fmtDate(iso){
@@ -2764,49 +3202,10 @@ async function loadSchedules(){
         document.getElementById('pir-progress-text').textContent = `${ready} / ${total}`;
     }
 
-    const pirEmailModal = document.getElementById('pir-email-modal');
-    const btnGenerateEmails = document.getElementById('btn-generate-emails');
-    const btnConfirmGenerate = document.getElementById('btn-confirm-generate');
-    const btnCancelGenerate = document.getElementById('btn-cancel-generate');
 
-    if (btnGenerateEmails) btnGenerateEmails.addEventListener('click', () => {
-        const previewContainer = document.getElementById('pir-email-preview');
-        const readyDocs = pirDocsCache.filter(d => d.status === 'Ready');
-        const categoryOrder = [...new Set(PIR_DEFINITIONS.map(d => d.category))];
-        let previewHtml = '';
+    // NOTE: The logic for the modal pop-up is now handled by the .eml generator script.
+    // The old modal logic is left here but is not triggered by the main button anymore.
 
-        // Email 1: Acknowledgment
-        previewHtml += `<div style="margin-bottom: 10px;"><strong>EMAIL 1: CQC Request Acknowledgment</strong><div class="muted" style="font-size:12px; padding-left:10px;">- Acknowledgment Letter</div></div>`;
-
-        // Emails 2-10 correspond to the 9 CQC categories
-        categoryOrder.forEach((category, i) => {
-            const emailNum = i + 2;
-            const emailTitle = category.replace(/EMAIL \d+: /i, '').trim();
-            const docsForCat = readyDocs.filter(d => d.category === category);
-
-            previewHtml += `<div style="margin-bottom: 10px;"><strong>EMAIL ${emailNum}: ${emailTitle}</strong>`;
-            if (docsForCat.length > 0) {
-                previewHtml += `<ul style="margin: 4px 0 0 15px; padding:0; list-style-type:'- '; color:var(--muted); font-size:12px;">`;
-                docsForCat.forEach(doc => {
-                    previewHtml += `<li>${esc(doc.title)}</li>`;
-                });
-                previewHtml += `</ul>`;
-            } else {
-                previewHtml += `<div class="muted" style="font-size:12px; padding-left:10px;">- No items marked 'Ready' for this email.</div>`;
-            }
-            previewHtml += '</div>';
-        });
-
-        previewContainer.innerHTML = previewHtml;
-
-        document.getElementById('pir-email-body').style.display = 'block';
-        document.getElementById('pir-email-progress').style.display = 'none';
-        btnConfirmGenerate.style.display = 'inline-block';
-        pirEmailModal.classList.add('show');
-    });
-
-    if (btnCancelGenerate) btnCancelGenerate.addEventListener('click', () => pirEmailModal.classList.remove('show'));
-    if (pirEmailModal) pirEmailModal.addEventListener('click', (e) => { if (e.target === pirEmailModal) pirEmailModal.classList.remove('show'); });
 
     // Helper function to format data from JSON into a readable text file string
     function formatDataForTxt(doc, itemDef) {
@@ -2833,99 +3232,6 @@ async function loadSchedules(){
         return content;
     }
 
-    if (btnConfirmGenerate) btnConfirmGenerate.addEventListener('click', async () => {
-        const progressStatus = document.getElementById('pir-progress-status');
-        const progressDetails = document.getElementById('pir-progress-details');
-        
-        document.getElementById('pir-email-body').style.display = 'none';
-        btnConfirmGenerate.style.display = 'none';
-        document.getElementById('pir-email-progress').style.display = 'block';
-        progressStatus.textContent = "Generating...";
-        progressDetails.textContent = "Please wait, preparing zip file...";
-
-        try {
-            const zip = new JSZip();
-            const practiceName = document.getElementById('site-pill').textContent.replace('Site: ','');
-            const readyDocs = pirDocsCache.filter(d => d.status === 'Ready');
-            const categoryOrder = [...new Set(PIR_DEFINITIONS.map(d => d.category))];
-            
-            // --- EMAIL 1: ACKNOWLEDGMENT ---
-            progressDetails.textContent = `Processing: 1 of 10 emails...`;
-            const ackFolder = zip.folder("EMAIL 1 - CQC Request Acknowledgment");
-            const ackBody = `SUGGESTED SUBJECT: CQC Pre-Inspection Information Request - Acknowledgment\n\n------------------------------------------------------\n\nDear CQC Inspection Team,\n\nThank you for your pre-inspection information request. \n\nAs requested, we will be sending the required information across 9 subsequent emails, each corresponding to a section of the request.\n\nThis is the first of 10 emails in total.\n\nKind regards,\n\nThe Team at ${practiceName}`;
-            ackFolder.file('email_body.txt', ackBody);
-
-            // --- EMAILS 2-10: CQC CATEGORIES ---
-            for (const [i, category] of categoryOrder.entries()) {
-                const emailNum = i + 2;
-                progressDetails.textContent = `Processing: ${emailNum} of 10 emails...`;
-                const emailTitle = category.replace(/EMAIL \d+: /i, '').trim();
-                const folder = zip.folder(`EMAIL ${emailNum} - ${emailTitle}`);
-                const docsForCat = readyDocs.filter(d => d.category === category);
-                
-                let emailBody = `SUGGESTED SUBJECT: CQC PIR - ${emailTitle}\n\n------------------------------------------------------\n\nDear CQC Inspection Team,\n\nPlease find attached the requested information for the "${emailTitle}" section.\n\n`;
-                
-                let summaryList = 'Summary of attachments:\n';
-
-                if (docsForCat.length > 0) {
-                    for (const doc of docsForCat) {
-                        const itemDef = PIR_DEFINITIONS.find(d => d.title === doc.title) || {};
-                        const hasData = doc.data && Object.keys(doc.data).length > 0 && JSON.stringify(doc.data) !== '{}';
-                        const sanitizedTitle = doc.title.replace(/[^a-zA-Z0-9]/g, '_');
-                        
-                        // Generate a text file if there is data to include
-                        if (hasData) {
-                            const txtFileName = `${sanitizedTitle}.txt`;
-                            const txtContent = formatDataForTxt(doc, itemDef);
-                            folder.file(txtFileName, txtContent);
-                            summaryList += `- ${doc.title} (see attached file: ${txtFileName})\n`;
-                        }
-
-                        // Attach the actual file if it exists
-                        if (doc.file_path) {
-                            try {
-                                const { data: fileData, error } = await supabase.storage.from('pir_attachments').download(doc.file_path);
-                                if (error) throw error;
-                                const originalFileName = doc.file_path.split('/').pop();
-                                folder.file(originalFileName, fileData);
-                                 if (!hasData) { // If it's a file only, list it here
-                                    summaryList += `- ${doc.title} (see attached file: ${originalFileName})\n`;
-                                 } else { // If it had data AND a file, add to the summary
-                                    summaryList = summaryList.trim() + ` and ${originalFileName})\n`;
-                                 }
-                            } catch (e) {
-                                const errorFileName = `FAILED_TO_DOWNLOAD_${doc.file_path.split('/').pop()}.txt`;
-                                folder.file(errorFileName, `Error: ${e.message}`);
-                                summaryList += `- ${doc.title} (Error downloading original file - see ${errorFileName})\n`;
-                            }
-                        }
-                    }
-                    emailBody += summaryList;
-                } else {
-                    emailBody += `No documents or data were marked as 'Ready' for this section.\n`;
-                }
-                
-                emailBody += `\n\nKind regards,\n\nThe Team at ${practiceName}`;
-                folder.file('email_body.txt', emailBody);
-            }
-
-            progressStatus.textContent = "Compressing...";
-            const content = await zip.generateAsync({ type: "blob" });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(content);
-            link.download = `CQC_Pre-Inspection_Emails_${new Date().toISOString().slice(0,10)}.zip`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(link.href);
-            pirEmailModal.classList.remove('show');
-        } catch (err) {
-            progressStatus.textContent = "Error!";
-            progressDetails.textContent = err.message;
-            document.getElementById('pir-email-body').style.display = 'block'; // Show body again on error
-        }
-    });
-
     function buildPirForm(item, data, filePath) {
         const itemDef = PIR_DEFINITIONS.find(d => d.title === item.title) || {};
         let html = '';
@@ -2936,12 +3242,6 @@ async function loadSchedules(){
             currentStatus = 'Not Started';
         }
 
-        const statuses = ['Not Started', 'Not Attached', 'Needs Review', 'Ready'].filter(s => {
-            if (item.item_type.includes('file')) return true;
-            return s !== 'Not Attached';
-        });
-        
-        html += `<div class="field"><label>Status</label><select id="field-pir-status" class="ui-select">${statuses.map(s => `<option value="${s}" ${s === currentStatus ? 'selected' : ''}>${s}</option>`).join('')}</select></div>`;
         html += `<div class="field"><label>Last Updated</label><input id="field-pir-last_updated" type="date" value="${item.last_updated || ''}" /></div>`;
 
         switch(item.item_type) {
@@ -2989,7 +3289,10 @@ async function loadSchedules(){
                 <label>Attached File</label>
                 <div id="file-display" style="padding:10px 12px; background:#ffffff10; border-radius:10px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
                     <span>${esc(fileName)}</span>
-                    ${filePath ? `<button type="button" class="btn secondary" id="btn-download-pir" style="padding: 4px 8px; font-size: 12px;">Download</button>` : ''}
+                    <div style="display:flex; gap:6px;">
+                      ${filePath ? `<button type="button" class="btn secondary" id="btn-download-pir" style="padding: 4px 8px; font-size: 12px;">Download</button>` : ''}
+                      ${filePath ? `<button type="button" class="btn secondary" id="btn-delete-pir-attachment" style="padding: 4px 8px; font-size: 12px; background: #ff6b6b33; border-color: #ff6b6b55;">Delete</button>` : ''}
+                    </div>
                 </div>
                 <input type="file" id="field-pir-file_path" style="color: var(--muted); font-size: 12px;" />
                 <div class="hint">${itemDef.description || 'Uploading a new file will replace the existing one.'}</div>
@@ -2997,6 +3300,16 @@ async function loadSchedules(){
         }
         return html;
     }
+
+  // Initialize role management modal close behavior
+  const rolesModal = document.getElementById('roles-modal');
+  if (rolesModal) {
+    rolesModal.addEventListener('click', (e) => {
+      if (e.target === rolesModal || e.target.closest('.modal-close')) {
+        rolesModal.classList.remove('show');
+      }
+    });
+  }
 
   // Bootstrap
   async function bootstrap(){
@@ -3009,6 +3322,11 @@ async function loadSchedules(){
     await cacheRequiredSchedules();
     await Promise.all([loadCounts(), loadDue(), loadActivity(), loadItems(), loadRooms(), loadCheckTypes(), loadSchedules(), loadStaff(), loadSubmissions(), loadWeekCalendar(), loadAndRenderCalendar()]);
 
+    // If the active section is pre-inspection, ensure its data is loaded now that context is ready.
+    if (activeViewId() === 'view-pre-inspection') {
+        await loadAndRenderPIR();
+    }
+
     supabase.channel("changes")
       .on("postgres_changes", { event:"*", schema:"public", table:"items", filter:`site_id=eq.${ctx.site_id}` }, loadItems)
       .on("postgres_changes", { event:"*", schema:"public", table:"rooms", filter:`site_id=eq.${ctx.site_id}` }, async()=>{ await loadRooms(); await loadCounts(); })
@@ -3019,7 +3337,7 @@ async function loadSchedules(){
       .on("postgres_changes", { event:"*", schema:"public", table:"pir_documents", filter:`site_id=eq.${ctx.site_id}` }, async() => { if (activeViewId() === 'view-pre-inspection') { loadAndRenderPIR(); }})
       .on("postgres_changes", { event:"*", schema:"public", table:"submission_rows", filter:`site_id=eq.${ctx.site_id}` }, async(payload)=>{
         if(submissionDetailModal.classList.contains("show")){
-          const openId = submissionDetailModal.dataset.submissionId;
+          const openId = submissionDetailModal.dataset.submissionId = submissionId;submissionId;
           if(payload.new.submission_id == openId){ showSubmissionDetails(openId); }
         }
       })
@@ -3040,9 +3358,34 @@ async function loadSchedules(){
   const ENTITIES = {
     rooms: { table: "rooms", label: "Room", pk: "id", fields: [{name:"name", label:"Name", type:"text", required:true}, {name:"occupied_by", label:"Owner (Staff)", type:"select", source:"kiosk_users", sourceLabel:"full_name"}] },
     check_types: { table: "check_types", label: "Check Type", pk: "id", fields: [{name:"name", label:"Name", type:"text", required:true}, {name:"active", label:"Active", type:"checkbox", default:true}] },
-    kiosk_users: { table: "kiosk_users", label: "Staff", pk: "id", fields: [{name:"full_name", label:"Full Name", type:"text", required:true}, {name:"role", label:"Role", type:"text"}, {name:"active", label:"Active", type:"checkbox", default:true}] },
+    kiosk_users: { table: "kiosk_users", label: "Staff", pk: "id", fields: [{name:"full_name", label:"Full Name", type:"text", required:true},
+{name:"role", label:"Role", type:"select", source:"kiosk_roles", sourceLabel:"role", valueKey:"role", required:true},
+{name:"reports_to_id", label:"Reports To", type:"select", source:"kiosk_users", sourceLabel:"full_name", valueKey:"id"},
+{name:"active", label:"Active", type:"checkbox", default:true}] },
     items: { table: "items", label: "Item", pk: "id", fields: [{name:"item_id", label:"Code", type:"text", required:true}, {name:"item_name", label:"Name", type:"text", required:true}, {name:"room_id", label:"Room", type:"select", source:"rooms", sourceLabel:"name"}, {name:"default_check_type_id", label:"Default Check Type", type:"select", source:"check_types", sourceLabel:"name"}, {name:"active", label:"Active", type:"checkbox", default:true}] },
-    item_allowed_types: { table: "item_allowed_types", label: "Schedule", pk: "id", fields: [{name:"item_id", label:"Item", type:"select", source:"items", sourceLabel:"item_name", required:true}, {name:"check_type_id", label:"Check Type", type:"select", source:"check_types", sourceLabel:"name", required:true}, {name:"frequency", label:"Every", type:"frequency", required:true}, { name: "scheduled_day", label: "Day of Week", type: "select", options: [ { value: "", label: "—" }, { value: "Sun", label: "Sunday" }, { value: "Mon", label: "Monday" }, { value: "Tue", label: "Tuesday" }, { value: "Wed", label: "Wednesday" }, { value: "Thu", label: "Thursday" }, { value: "Fri", label: "Friday" }, { value: "Sat", label: "Saturday" } ] }, {name:"required", label:"Required", type:"checkbox", default:true}] },
+    item_allowed_types: { table: "item_allowed_types", label: "Schedule", pk: "id", fields: [{name:"item_id", label:"Item", type:"select", source:"items", sourceLabel:"item_name", required:true}, {name:"check_type_id", label:"Check Type", type:"select", source:"check_types", sourceLabel:"name", required:true}, {name:"frequency", label:"Every", type:"frequency", onchange: function(e) {
+          const freq = e.target.value.toLowerCase();
+          const scheduledDaySelect = document.getElementById('field-scheduled_day');
+          if (!scheduledDaySelect) return;
+          
+          if (freq.includes('mon')) {
+            // For monthly frequency, show dates 1-31
+            scheduledDaySelect.innerHTML = Array.from({length: 31}, (_, i) => 
+              `<option value="${i+1}">${i+1}${['st','nd','rd'][i] || 'th'}</option>`
+            ).join('');
+          } else {
+            // For other frequencies, show days of week
+            scheduledDaySelect.innerHTML = [
+              {value: 'Sun', label: 'Sunday'},
+              {value: 'Mon', label: 'Monday'},
+              {value: 'Tue', label: 'Tuesday'},
+              {value: 'Wed', label: 'Wednesday'},
+              {value: 'Thu', label: 'Thursday'},
+              {value: 'Fri', label: 'Friday'},
+              {value: 'Sat', label: 'Saturday'}
+            ].map(day => `<option value="${day.value}">${day.label}</option>`).join('');
+          }
+        }, required:true}, { name: "scheduled_day", label: "On", type: "select" }, {name:"required", label:"Required", type:"checkbox", default:true}] },
     submission_rows: { table: "submission_rows", label: "Submission Row", pk: "id", fields: [{name:"check_type_id", label:"Check Type", type:"select", source:"check_types", sourceLabel:"name", required:true}, {name:"row_comment", label:"Comment", type:"textarea"}] },
     pir_documents: { table: "pir_documents", label: "Inspection Document", pk: "id" }
   };
@@ -3055,6 +3398,34 @@ async function loadSchedules(){
         crudTitle.textContent = `Manage: ${row.title}`;
         crudFields.innerHTML = buildPirForm(row, row.data, row.file_path);
         
+        const deleteAttachmentBtn = document.getElementById('btn-delete-pir-attachment');
+        if (deleteAttachmentBtn && row?.file_path) {
+            deleteAttachmentBtn.addEventListener('click', async () => {
+                if (!confirm('Are you sure you want to delete this attachment? This cannot be undone.')) return;
+                try {
+                    crudError.textContent = 'Deleting...';
+                    const { error: deleteError } = await supabase.storage.from('pir_attachments').remove([row.file_path]);
+                    if (deleteError) throw deleteError;
+
+                    const { data: updatedRow, error: updateError } = await supabase.from('pir_documents')
+                        .update({ file_path: null, status: 'Not Attached', last_updated: new Date().toISOString().slice(0,10) })
+                        .eq('id', row.id)
+                        .select()
+                        .single();
+                    
+                    if (updateError) throw updateError;
+                    
+                    // Re-render the modal with the updated state (no file)
+                    crudState.row = updatedRow;
+                    openCRUD('pir_documents', 'edit', updatedRow);
+                    crudError.textContent = '';
+
+                } catch (err) {
+                    crudError.textContent = `Deletion failed: ${err.message}`;
+                }
+            });
+        }
+
         if(row.item_type === 'dynamic_table') {
             const container = document.getElementById('dynamic-table-container');
             const addRowBtn = document.getElementById('btn-add-table-row');
@@ -3090,15 +3461,152 @@ async function loadSchedules(){
             });
             renderTable();
         }
+
     } else {
         crudTitle.textContent = (mode === "add") ? `Add ${crudState.entity.label}` : context.titlePrefix || `Edit ${crudState.entity.label}`;
-        crudFields.innerHTML = crudState.entity.fields.map(f => {
+        // Use a mutable copy so we can tweak fields per entity
+        let _fields = Array.isArray(crudState.entity.fields) ? crudState.entity.fields.map(f=>({...f})) : [];
+        // Special-case: Staff role should be a dropdown sourced from kiosk_roles (text primary key)
+        if (entityKey === 'kiosk_users') {
+          const idx = _fields.findIndex(f => f.name === 'role');
+          if (idx !== -1) {
+            _fields[idx] = { name:'role', label:'Role', type:'select', source:'kiosk_roles', sourceLabel:'role', valueKey:'role', required:true };
+          } else {
+            _fields.push({ name:'role', label:'Role', type:'select', source:'kiosk_roles', sourceLabel:'role', valueKey:'role', required:true });
+          }
+        }
+        crudFields.innerHTML = _fields.map(f => {
+
           let val = row ? row[f.name] : (f.type === "checkbox" ? !!f.default : (f.default ?? ""));
           if(val === null || val === undefined) val = (f.type === "checkbox" ? false : "");
           // ... (HTML generation for standard fields, unchanged)
-          return `<div></div>`;
+          
+return (()=>{
+  const id = `field-${f.name}`;
+  const label = (f.label || f.name);
+  if(f.type === "text"){
+    return `<div class="field"><label>${esc(label)}</label><input id="${id}" type="text" value="${esc(val)}" ${f.required ? "required" : ""}></div>`;
+  }
+  if(f.type === "textarea"){
+    return `<div class="field"><label>${esc(label)}</label><textarea id="${id}" rows="3" ${f.required ? "required" : ""}>${esc(val)}</textarea></div>`;
+  }
+  if(f.type === "checkbox"){
+    return `<div class="field"><label style="display:flex; gap:8px; align-items:center;"><input id="${id}" type="checkbox" ${val ? "checked" : ""}> ${esc(label)}</label></div>`;
+  }
+  if(f.type === "select"){
+    if(f.options){
+      const opts = (f.options || []).map(o => `<option value="${o.value}"${o.value == val ? " selected": ""}>${o.label}</option>`).join("");
+      return `<div class="field"><label>${esc(label)}</label><select id="${id}" class="ui-select">${opts}</select></div>`;
+    }else{
+      return `<div class="field"><label>${esc(label)}</label><select id="${id}" class="ui-select"><option value="">Loading...</option></select></div>`;
+    }
+  }
+  if(f.type === "frequency"){
+    // Initialize scheduled_day field options based on initial frequency value
+    setTimeout(() => {
+      const freq = String(val || '1 month').toLowerCase();
+      const scheduledDaySelect = document.getElementById('field-scheduled_day');
+      if (!scheduledDaySelect) return;
+      
+      if (freq.includes('mon')) {
+        scheduledDaySelect.innerHTML = Array.from({length: 31}, (_, i) => 
+          `<option value="${i+1}">${i+1}${['st','nd','rd'][i] || 'th'}</option>`
+        ).join('');
+      } else {
+        scheduledDaySelect.innerHTML = [
+          {value: 'Sun', label: 'Sunday'},
+          {value: 'Mon', label: 'Monday'},
+          {value: 'Tue', label: 'Tuesday'},
+          {value: 'Wed', label: 'Wednesday'},
+          {value: 'Thu', label: 'Thursday'},
+          {value: 'Fri', label: 'Friday'},
+          {value: 'Sat', label: 'Saturday'}
+        ].map(day => `<option value="${day.value}">${day.label}</option>`).join('');
+      }
+    }, 0);
+    let num = 1, unit = "day";
+    if(typeof val === "string" && val){
+      const m = val.match(/(\d+)\s*(year|mon|week|day)/i);
+      if(m){ num = m[1]; unit = m[2].toLowerCase(); }
+    }
+    const units = [
+      {v:"day",  n:"day(s)"},
+      {v:"week", n:"week(s)"},
+      {v:"mon",  n:"month(s)"},
+      {v:"year", n:"year(s)"}
+    ];
+    const unitOpts = units.map(u => `<option value="${u.v}"${u.v===unit?" selected":""}>${u.n}</option>`).join("");
+    return `<div class="field"><label>${esc(label || "Every")}</label>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <input id="${id}-n" type="number" min="1" value="${num}" style="width:110px">
+        <select id="${id}-u">${unitOpts}</select>
+      </div>
+    </div>`;
+  }
+  return `<div class="field"><label>${esc(label)}</label><input id="${id}" type="text" value="${esc(val)}"></div>`;
+})();
+
         }).join("");
-        // ... (Populate select sources logic, unchanged)
+
+// Ensure Staff Role dropdown is populated even if not declared in entity schema
+if (entityKey === 'kiosk_users') {
+  (async ()=>{
+    const sel = document.getElementById('field-role');
+    if (sel && sel.tagName.toLowerCase()==='select') {
+      const { data, error } = await supabase.from('kiosk_roles').select('role');
+      if (!error && Array.isArray(data)) {
+        const selected = (crudState.row || {}).role || '';
+        sel.innerHTML = `<option value="">—</option>` + data.map(r=>{
+          const v = r.role;
+          const s = (String(v) === String(selected)) ? " selected" : "";
+          return `<option value="${v}"${s}>${v}</option>`;
+        }).join("");
+      }
+    }
+  })();
+}
+
+        
+// Populate dynamic select sources
+(async () => {
+  
+for (const f of (crudState.entity.fields || [])) {
+    if (f.type === "select" && f.source && !f.options) {
+      const sel = document.getElementById(`field-${f.name}`);
+      if (!sel) continue;
+      try {
+        const selectCols = `${f.valueKey || "id"}, ${f.sourceLabel || "full_name"}`;
+        let q = supabase.from(f.source).select(selectCols);
+        const siteScoped = ["rooms","check_types","items","kiosk_users","item_allowed_types"];
+        if (typeof ctx !== "undefined" && ctx.site_id && siteScoped.includes(f.source)) {
+          q = q.eq("site_id", ctx.site_id);
+        }
+        const { data, error } = await q;
+        if (!error && Array.isArray(data)) {
+          // Exclude self when choosing a manager
+          let list = data;
+          if (f.name === "reports_to_id" && crudState?.row?.id) {
+            const idKey = f.valueKey || "id";
+            list = data.filter(r => String(r[idKey]) !== String(crudState.row.id));
+          }
+          const selected = (crudState.row || {})[f.name];
+          sel.innerHTML = `<option value="">—</option>` + list.map(r => {
+            const optVal = r[f.valueKey || "id"];
+            const optLab = r[f.sourceLabel || "full_name"];
+            const selAttr = (String(optVal) === String(selected)) ? " selected" : "";
+            return `<option value="${optVal}"${selAttr}>${esc(optLab)}</option>`;
+          }).join("");
+        } else {
+          sel.innerHTML = `<option value="">(error)</option>`;
+        }
+      } catch (err) {
+        console.warn('Select loader error for', f.name, err);
+        sel.innerHTML = `<option value="">(error)</option>`;
+      }
+    }
+  }
+})();;
+
     }
 
     const downloadBtn = document.getElementById('btn-download-pir');
@@ -3134,37 +3642,76 @@ async function loadSchedules(){
     
     if(entity.table === 'pir_documents') {
         const item = crudState.row;
-        body.status = document.getElementById('field-pir-status').value;
         body.last_updated = document.getElementById('field-pir-last_updated').value || null;
         
-        let jsonData = {};
-        if (item.item_type.includes('textarea')) jsonData.text_content = document.getElementById('field-pir-text_content')?.value || null;
+        let jsonData = item.data || {};
+        let hasData = false;
+
+        if (item.item_type.includes('textarea')) {
+            const val = document.getElementById('field-pir-text_content')?.value || null;
+            jsonData.text_content = val;
+            if(val) hasData = true;
+        }
         if (item.item_type.includes('questions')) {
             jsonData.answers = Array.from(crudFields.querySelectorAll('textarea[data-question-index]')).map(el => el.value);
+            if(jsonData.answers.some(a => a)) hasData = true;
         }
         if (item.item_type.includes('number') || item.item_type.includes('dual') || item.item_type.includes('triple')) {
             jsonData.num1 = document.getElementById('field-pir-num1')?.value || null;
             jsonData.num2 = document.getElementById('field-pir-num2')?.value || null;
             jsonData.num3 = document.getElementById('field-pir-num3')?.value || null;
+            if(jsonData.num1 || jsonData.num2 || jsonData.num3) hasData = true;
         }
-        if (item.item_type.includes('text')) {
+        if (item.item_type.includes('text')) { // dual_text
             jsonData.text1 = document.getElementById('field-pir-text1')?.value || null;
             jsonData.text2 = document.getElementById('field-pir-text2')?.value || null;
+            if(jsonData.text1 || jsonData.text2) hasData = true;
         }
-        if (item.item_type === 'dynamic_table') jsonData.table_data = item.data.table_data;
+        if (item.item_type === 'dynamic_table') {
+            jsonData.table_data = item.data.table_data;
+            if(jsonData.table_data?.length > 0) hasData = true;
+        }
         
         body.data = jsonData;
 
         const fileInput = document.getElementById('field-pir-file_path');
+        let hasFile = !!item.file_path;
         if (fileInput && fileInput.files.length > 0) {
             const file = fileInput.files[0];
             const filePath = `${ctx.site_id}/${item.id}/${file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`;
             const { error: uploadError } = await supabase.storage.from('pir_attachments').upload(filePath, file, { upsert: true });
             if (uploadError) throw uploadError;
             body.file_path = filePath;
+            hasFile = true;
         }
+
+        // Auto-set status
+        if (hasFile || hasData) {
+            body.status = 'Ready';
+        } else {
+            body.status = item.item_type.includes('file') ? 'Not Attached' : 'Not Started';
+        }
+
     } else { // Standard entity logic...
-        // ... (This logic is unchanged)
+        
+for (const f of (crudState.entity.fields || [])) {
+  let val;
+  if (f.type === "checkbox") {
+    val = document.getElementById(`field-${f.name}`).checked;
+  } else if (f.type === "select") {
+    val = document.getElementById(`field-${f.name}`).value;
+    if (val === "") val = null;
+  } else if (f.type === "frequency") {
+    const n = document.getElementById(`field-${f.name}-n`).value || "1";
+    const u = document.getElementById(`field-${f.name}-u`).value || "day";
+    val = `${n} ${u}`;
+  } else {
+    val = document.getElementById(`field-${f.name}`).value;
+    if (val === "") val = null;
+  }
+  body[f.name] = val;
+}
+
     }
 
     if(ctx.site_id) body.site_id = ctx.site_id;
@@ -3187,7 +3734,25 @@ async function loadSchedules(){
   });
 
   crudDeleteBtn.addEventListener("click", async ()=>{
-    // ... (This logic is unchanged)
+    
+for (const f of (crudState.entity.fields || [])) {
+  let val;
+  if (f.type === "checkbox") {
+    val = document.getElementById(`field-${f.name}`).checked;
+  } else if (f.type === "select") {
+    val = document.getElementById(`field-${f.name}`).value;
+    if (val === "") val = null;
+  } else if (f.type === "frequency") {
+    const n = document.getElementById(`field-${f.name}-n`).value || "1";
+    const u = document.getElementById(`field-${f.name}-u`).value || "day";
+    val = `${n} ${u}`;
+  } else {
+    val = document.getElementById(`field-${f.name}`).value;
+    if (val === "") val = null;
+  }
+  body[f.name] = val;
+}
+
   });
 
   // ... (All remaining event listeners and functions are unchanged)
@@ -3227,7 +3792,7 @@ async function loadSchedules(){
   const submissionDetailModal = document.getElementById("submission-detail-modal");
   async function showSubmissionDetails(submissionId) {
     submissionDetailModal.classList.add("show");
-    submissionDetailModal.dataset.submissionId = submissionId;
+    submissionDetailModal.dataset.submissionId = submissionId;submissionId;
     document.getElementById("submission-detail-content").innerHTML = `<div class="muted" style="padding:20px 0; text-align:center;">Loading details...</div>`;
     document.getElementById("submission-detail-title").textContent = `Details for Submission #${submissionId}`;
     const { data: rows, error } = await supabase.from('submission_rows').select(`id, row_comment, item:items!item_pk(item_name), check_type:check_types!check_type_id(name)`).eq('submission_id', submissionId);
@@ -3272,28 +3837,7 @@ async function loadSchedules(){
     </div>
   </div>
 
-  <div id="pir-email-modal" class="auth" aria-hidden="true">
-    <div class="card" style="width:min(700px, 95vw)">
-      <h2 id="pir-email-title">Generate Inspection Emails & Attachments</h2>
-      <div id="pir-email-body">
-        <p class="muted">This will download a .zip file containing a folder for each of the 10 emails. Only items marked as 'Ready' will be included. Please review the contents below before proceeding.</p>
-        
-        <div id="pir-email-preview" style="margin: 16px 0; max-height: 40vh; overflow-y: auto; padding: 12px; background: var(--glass); border-radius: 12px; font-size: 13px; border: 1px solid var(--border-color);">
-            Loading preview...
-        </div>
 
-        <div class="hint">After downloading, you will need to create each email in your email client, copy the text from the 'email_body.txt' file, and attach the corresponding documents from that email's folder.</div>
-      </div>
-      <div id="pir-email-progress" style="display:none; text-align:center; padding: 20px;">
-          <div class="h1" style="margin:0" id="pir-progress-status">Generating...</div>
-          <div class="muted" id="pir-progress-details">Preparing files. Please wait.</div>
-      </div>
-      <div style="display:flex; gap:8px; margin-top:12px">
-        <button type="button" class="btn" id="btn-confirm-generate">Yes, Generate & Download</button>
-        <button type="button" class="btn secondary" id="btn-cancel-generate">Cancel</button>
-      </div>
-    </div>
-  </div>
 
 </body>
 </html>
