@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Complaints Management</title>
+    
+    <!-- Optional libraries for client-side file processing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js" defer></script>
+    
     <style>
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
@@ -100,6 +105,57 @@
 
         .btn-secondary:hover {
             background: #7f8c8d;
+        }
+
+        .btn:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+        }
+
+        .ai-extract-btn {
+            background: #e67e22;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .ai-extract-btn:hover:not(:disabled) {
+            background: #d35400;
+            transform: translateY(-2px);
+        }
+
+        .ai-status {
+            font-size: 14px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-top: 8px;
+        }
+
+        .ai-processing {
+            background: #ebf5ff;
+            color: #2980b9;
+            border: 1px solid #bde0ff;
+        }
+
+        .ai-error {
+            background: #fdf2f2;
+            color: #e53e3e;
+            border: 1px solid #fed7d7;
+        }
+
+        .ai-success {
+            background: #f0fff4;
+            color: #38a169;
+            border: 1px solid #c6f6d5;
         }
 
         .complaints-table {
@@ -241,6 +297,18 @@
                     </div>
                 </div>
                 
+                <!-- File Upload for AI Processing -->
+                <div class="form-group">
+                    <label for="complaintFile">Upload Complaint Correspondence (Optional):</label>
+                    <input type="file" id="complaintFile" name="complaintFile" 
+                           accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" 
+                           style="margin-bottom: 10px;">
+                    <button type="button" id="ai-populate-btn" class="ai-extract-btn" disabled>
+                        🤖 Optional: Populate with AI
+                    </button>
+                    <div id="ai-status" class="ai-status" style="display: none;"></div>
+                </div>
+                
                 <div class="form-group">
                     <label for="originalComplaint">Original Complaint:</label>
                     <textarea id="originalComplaint" name="originalComplaint" required 
@@ -359,28 +427,45 @@
         async function loadComplaints() {
             const container = document.getElementById('complaintsTableContainer');
             
-            if (!ctx.site_id) {
-                container.innerHTML = '<div class="no-complaints">No site selected</div>';
-                return;
-            }
+            debugLog('Loading complaints started', {site_id: ctx.site_id});
 
             try {
+                // Load complaints for the current site (site_id 2) - this should show your existing data
                 const { data: complaints, error } = await supabase
-                    .from('complaints') // Reverted to use the 'complaints' table directly
+                    .from('complaints')
                     .select('*')
-                    .eq('site_id', ctx.site_id)
+                    .eq('site_id', ctx.site_id || 2) // Use current site or default to 2
                     .order('datetime', { ascending: false });
+
+                debugLog('Supabase query completed', {error, complaintsCount: complaints?.length || 0});
 
                 if (error) {
                     console.error('Error loading complaints:', error);
+                    debugLog('Error loading complaints', error);
                     container.innerHTML = '<div class="error">Error loading complaints: ' + escapeHtml(error.message) + '</div>';
                     return;
                 }
 
                 if (!complaints || complaints.length === 0) {
+                    debugLog('No complaints found in database');
                     container.innerHTML = '<div class="no-complaints">No complaints found</div>';
                     return;
                 }
+
+                debugLog('Complaints loaded successfully', {count: complaints.length, siteId: ctx.site_id});
+
+                // Get creator names
+                const creatorIds = [...new Set((complaints||[]).map(r=>r.created_by).filter(Boolean))];
+                let creators = {};
+                if(creatorIds.length){
+                    const { data: staff } = await supabase.from("kiosk_users").select("id,full_name").in("id", creatorIds);
+                    (staff||[]).forEach(s => { creators[s.id] = s.full_name; });
+                }
+
+                // Add creator names to complaints data
+                complaints.forEach(complaint => {
+                    complaint.created_by_name = creators[complaint.created_by] || null;
+                });
 
                 // Build table HTML
                 let tableHtml = `
@@ -390,12 +475,12 @@
                                 <th>Date</th>
                                 <th>Patient</th>
                                 <th>Category</th>
-                                <th>Priority</th>
                                 <th>Complaint</th>
                                 <th>Status</th>
                                 <th>Response</th>
                                 <th>Lessons Learned</th>
                                 <th>Team Share</th>
+                                <th>Created By</th>
                             </tr>
                         </thead>
                         <tbody>`;
@@ -406,12 +491,12 @@
                             <td>${formatDate(complaint.datetime)}</td>
                             <td>${escapeHtml(complaint.patient_initials || 'N/A')}</td>
                             <td>${escapeHtml(complaint.category || 'N/A')}</td>
-                            <td><span class="priority-${(complaint.priority || '').toLowerCase()}">${escapeHtml(complaint.priority || 'N/A')}</span></td>
                             <td title="${escapeHtml(complaint.original_complaint || '')}">${escapeHtml((complaint.original_complaint || '').substring(0, 50) + ((complaint.original_complaint || '').length > 50 ? '...' : ''))}</td>
                             <td><span class="status-badge status-${(complaint.status || '').toLowerCase().replace(' ', '')}">${escapeHtml(complaint.status || 'N/A')}</span></td>
                             <td title="${escapeHtml(complaint.response || 'No response')}">${escapeHtml((complaint.response || 'No response').substring(0, 30) + ((complaint.response || '').length > 30 ? '...' : ''))}</td>
                             <td title="${escapeHtml(complaint.lessons_learned || 'None')}">${escapeHtml((complaint.lessons_learned || 'None').substring(0, 30) + ((complaint.lessons_learned || '').length > 30 ? '...' : ''))}</td>
                             <td>${complaint.share_with_team ? 'Yes' : 'No'}</td>
+                            <td>${escapeHtml(complaint.created_by_name || complaint.created_by || 'N/A')}</td>
                         </tr>`;
                 });
 
@@ -525,6 +610,180 @@
             }
         }
 
+        // Handle AI-powered complaint extraction
+        async function handleAIExtraction() {
+            const fileInput = document.getElementById('complaintFile');
+            const aiBtn = document.getElementById('ai-populate-btn');
+            const aiStatus = document.getElementById('ai-status');
+            
+            debugLog('AI extraction started');
+            
+            if (!fileInput.files || fileInput.files.length === 0) {
+                aiStatus.textContent = 'Please select a file first.';
+                aiStatus.className = 'ai-status ai-error';
+                aiStatus.style.display = 'block';
+                return;
+            }
+
+            const file = fileInput.files[0];
+            debugLog('Processing file', {name: file.name, size: file.size, type: file.type});
+
+            // Show processing state
+            aiBtn.disabled = true;
+            aiBtn.innerHTML = '⏳ Processing...';
+            aiStatus.textContent = 'Processing file with AI...';
+            aiStatus.className = 'ai-status ai-processing';
+            aiStatus.style.display = 'block';
+
+            try {
+                let textContent = '';
+
+                // Extract text based on file type
+                if (file.type === 'text/plain') {
+                    textContent = await file.text();
+                } else if (file.type === 'application/pdf') {
+                    textContent = await extractTextFromPDF(file);
+                } else if (file.type.includes('word') || file.name.endsWith('.docx') || file.name.endsWith('.doc')) {
+                    textContent = await extractTextFromWord(file);
+                } else if (file.type.startsWith('image/')) {
+                    // For images, we'll just use a placeholder - OCR would be needed here
+                    textContent = 'Image uploaded - OCR processing not yet implemented. Please manually enter complaint details.';
+                } else {
+                    throw new Error('Unsupported file type. Please upload PDF, Word document, text file, or image.');
+                }
+
+                debugLog('Text extracted', {length: textContent.length});
+
+                if (!textContent || textContent.length < 10) {
+                    throw new Error('Could not extract enough text from the file. Please try a different file or enter details manually.');
+                }
+
+                // Call the edge function
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session) {
+                    throw new Error('Not authenticated');
+                }
+
+                debugLog('Calling edge function');
+
+                const response = await fetch(`${SUPABASE_URL}/functions/v1/extract-complaint`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${session.access_token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ text: textContent })
+                });
+
+                debugLog('Edge function response', {status: response.status, ok: response.ok});
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || `HTTP ${response.status}`);
+                }
+
+                const result = await response.json();
+                debugLog('AI extraction result', result);
+
+                if (!result.success) {
+                    throw new Error(result.error || 'AI extraction failed');
+                }
+
+                // Populate form with extracted data
+                const data = result.data || {};
+                
+                if (data.patient_initials) {
+                    document.getElementById('patientInitials').value = data.patient_initials;
+                }
+                
+                if (data.category) {
+                    const categorySelect = document.getElementById('category');
+                    // Try to find matching category (case-insensitive)
+                    for (let option of categorySelect.options) {
+                        if (option.value.toLowerCase() === data.category.toLowerCase()) {
+                            categorySelect.value = option.value;
+                            break;
+                        }
+                    }
+                }
+                
+                if (data.priority && ['low', 'medium', 'high'].includes(data.priority.toLowerCase())) {
+                    document.getElementById('priority').value = data.priority.toLowerCase();
+                }
+                
+                if (data.original_complaint) {
+                    document.getElementById('originalComplaint').value = data.original_complaint;
+                }
+                
+                if (data.response) {
+                    document.getElementById('response').value = data.response;
+                }
+                
+                if (data.lessons_learned) {
+                    document.getElementById('lessonsLearned').value = data.lessons_learned;
+                }
+
+                // Success message
+                aiStatus.textContent = 'AI extraction completed! Please review and edit the populated fields as needed.';
+                aiStatus.className = 'ai-status ai-success';
+                
+                debugLog('Form populated with AI data');
+
+            } catch (error) {
+                console.error('AI extraction error:', error);
+                debugLog('AI extraction error', error);
+                aiStatus.textContent = 'Error: ' + error.message;
+                aiStatus.className = 'ai-status ai-error';
+            } finally {
+                // Reset button
+                aiBtn.disabled = false;
+                aiBtn.innerHTML = '🤖 Optional: Populate with AI';
+                
+                // Hide status after 10 seconds if success
+                if (aiStatus.className.includes('ai-success')) {
+                    setTimeout(() => {
+                        aiStatus.style.display = 'none';
+                    }, 10000);
+                }
+            }
+        }
+
+        // Extract text from PDF using PDF.js
+        async function extractTextFromPDF(file) {
+            if (typeof window.pdfjsLib === 'undefined') {
+                throw new Error('PDF.js not loaded. Please refresh the page and try again.');
+            }
+
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            let fullText = '';
+
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                const pageText = textContent.items.map(item => item.str).join(' ');
+                fullText += pageText + '\n';
+            }
+
+            return fullText.trim();
+        }
+
+        // Extract text from Word document using Mammoth.js
+        async function extractTextFromWord(file) {
+            if (typeof window.mammoth === 'undefined') {
+                throw new Error('Mammoth.js not loaded. Please refresh the page and try again.');
+            }
+
+            const arrayBuffer = await file.arrayBuffer();
+            const result = await mammoth.extractRawText({ arrayBuffer });
+            return result.value;
+        }
+
+        // Initialize PDF.js worker if available
+        if (typeof window.pdfjsLib !== 'undefined') {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+
         // Initialize page
         async function init() {
             try {
@@ -542,12 +801,311 @@
                 // Add form submit handler
                 document.getElementById('complaintForm').addEventListener('submit', handleSubmit);
 
+                // Add AI button handler
+                const aiBtn = document.getElementById('ai-populate-btn');
+                const fileInput = document.getElementById('complaintFile');
+                
+                aiBtn.addEventListener('click', handleAIExtraction);
+                
+                // Enable AI button when file is selected
+                fileInput.addEventListener('change', function() {
+                    aiBtn.disabled = !this.files || this.files.length === 0;
+                });
+
             } catch (error) {
                 console.error('Error initializing complaints page:', error);
                 const container = document.getElementById('complaintsTableContainer');
                 container.innerHTML = '<div class="error">Error initializing page: ' + escapeHtml(error.message) + '</div>';
             }
         }
+
+        // --- Debug panel & instrumentation (enhanced) ---
+        (function(){
+            // Create debug panel UI
+            try {
+                const panel = document.createElement('div');
+                panel.id = 'debugPanel';
+                panel.style.position = 'fixed';
+                panel.style.right = '20px';
+                panel.style.bottom = '20px';
+                panel.style.width = '500px';
+                panel.style.maxHeight = '70vh';
+                panel.style.overflow = 'auto';
+                panel.style.background = 'rgba(0,0,0,0.85)';
+                panel.style.color = '#e6e6e6';
+                panel.style.fontSize = '11px';
+                panel.style.zIndex = '99999';
+                panel.style.borderRadius = '8px';
+                panel.style.boxShadow = '0 8px 30px rgba(0,0,0,0.5)';
+                panel.style.padding = '8px';
+                panel.style.border = '1px solid #333';
+
+                panel.innerHTML = `
+                    <div style="display:flex; gap:8px; align-items:center; justify-content:space-between; margin-bottom:6px; border-bottom: 1px solid #444; padding-bottom: 6px;">
+                      <strong style="color:#fff; font-size: 13px;">DEBUG CONSOLE</strong>
+                      <div style="display:flex; gap:6px;">
+                        <button id="dbgClear" style="background:#c0392b;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer; font-size: 10px;">Clear</button>
+                        <button id="dbgCopy" style="background:#16a085;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer; font-size: 10px;">Copy</button>
+                        <button id="dbgInfo" style="background:#2980b9;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer; font-size: 10px;">Info</button>
+                        <button id="dbgToggle" style="background:#8e44ad;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer; font-size: 10px;">Hide</button>
+                      </div>
+                    </div>
+                    <div id="debugLog" style="white-space:pre-wrap; font-family:'Courier New',monospace; line-height:1.3; color:#e6e6e6; max-height: 50vh; overflow-y: auto;">(logs appear here)</div>
+                `;
+
+                document.body.appendChild(panel);
+
+                const logEl = document.getElementById('debugLog');
+                const clearBtn = document.getElementById('dbgClear');
+                const copyBtn = document.getElementById('dbgCopy');
+                const infoBtn = document.getElementById('dbgInfo');
+                const toggleBtn = document.getElementById('dbgToggle');
+
+                function timeStamp(){ return new Date().toISOString().replace('T',' ').replace('Z','').substring(11,19); }
+                
+                function debugLog(msg, obj){
+                    try{
+                        const line = `[${timeStamp()}] ${msg}` + (obj!==undefined ? ' ' + safeStringify(obj) : '');
+                        if (!logEl) return console.log(line);
+                        if (logEl.textContent === '(logs appear here)') logEl.textContent = '';
+                        logEl.textContent += line + '\n';
+                        logEl.scrollTop = logEl.scrollHeight;
+                        console.log('[DEBUG]', msg, obj);
+                    }catch(e){ console.log('debugLog failed', e); }
+                }
+
+                function safeStringify(o){
+                    try{ return JSON.stringify(o, replacer, 2); } catch(e){ return String(o); }
+                }
+                function replacer(key, value){
+                    if (typeof value === 'function') return `[Function ${value.name||'anon'}]`;
+                    if (value instanceof Element) return `[Element:${value.tagName.toLowerCase()}#${value.id||''}.${value.className||''}]`;
+                    if (key && /token|secret|key|password/i.test(key)) return '[REDACTED]';
+                    if (value && typeof value === 'object' && value.constructor === Object && Object.keys(value).length > 10) {
+                        return `[Object with ${Object.keys(value).length} keys]`;
+                    }
+                    return value;
+                }
+
+                // Button handlers
+                clearBtn.addEventListener('click', ()=>{ logEl.textContent = ''; debugLog('🧹 Logs cleared'); });
+                copyBtn.addEventListener('click', ()=>{ 
+                    navigator.clipboard?.writeText(logEl.textContent||'')
+                        .then(()=> debugLog('📋 Copied logs to clipboard'))
+                        .catch(err=> debugLog('❌ Copy failed', err)); 
+                });
+                
+                toggleBtn.addEventListener('click', ()=>{
+                    const isHidden = logEl.style.display === 'none';
+                    logEl.style.display = isHidden ? 'block' : 'none';
+                    toggleBtn.textContent = isHidden ? 'Hide' : 'Show';
+                    if (isHidden) debugLog('👁️ Debug panel restored');
+                });
+                
+                infoBtn.addEventListener('click', ()=>{
+                    try{
+                        const info = {
+                            pageUrl: location.href,
+                            supabaseUrl: typeof SUPABASE_URL !== 'undefined' ? SUPABASE_URL : '(unknown)',
+                            hasSupabase: !!window.supabase,
+                            contextInfo: {site_id: ctx?.site_id, user_id: ctx?.user?.id, role: ctx?.role},
+                            domElements: {
+                                complaintForm: !!document.getElementById('complaintForm'),
+                                complaintsTable: !!document.querySelector('.complaints-table'),
+                                fileInputs: document.querySelectorAll('input[type=file]').length,
+                                buttons: document.querySelectorAll('button').length,
+                                selects: document.querySelectorAll('select').length
+                            },
+                            currentTime: new Date().toISOString()
+                        };
+                        debugLog('ℹ️ Runtime info', info);
+                    }catch(e){ debugLog('❌ Info button error', e); }
+                });
+
+                // Make debugLog globally available
+                window.debugLog = debugLog;
+
+                // Enhanced supabase monitoring
+                try{
+                    if (supabase && supabase.from){
+                        const origFrom = supabase.from.bind(supabase);
+                        supabase.from = function(table){
+                            debugLog('🗄️ supabase.from', {table});
+                            const query = origFrom(table);
+                            
+                            // Wrap common query methods
+                            const origSelect = query.select?.bind(query);
+                            const origInsert = query.insert?.bind(query);
+                            const origUpdate = query.update?.bind(query);
+                            const origDelete = query.delete?.bind(query);
+                            
+                            if (origSelect) {
+                                query.select = function(...args){
+                                    debugLog('📊 supabase.select', {table, args});
+                                    const result = origSelect(...args);
+                                    
+                                    // Wrap the promise to log results
+                                    const origThen = result.then?.bind(result);
+                                    if (origThen) {
+                                        result.then = function(onResolve, onReject){
+                                            return origThen((data) => {
+                                                debugLog('✅ select result', {table, success: !data.error, count: data.data?.length, error: data.error});
+                                                return onResolve(data);
+                                            }, onReject);
+                                        };
+                                    }
+                                    return result;
+                                };
+                            }
+                            
+                            if (origInsert) {
+                                query.insert = function(data){
+                                    debugLog('➕ supabase.insert', {table, recordCount: Array.isArray(data) ? data.length : 1});
+                                    return origInsert(data);
+                                };
+                            }
+                            
+                            if (origUpdate) {
+                                query.update = function(data){
+                                    debugLog('✏️ supabase.update', {table, fields: Object.keys(data || {})});
+                                    return origUpdate(data);
+                                };
+                            }
+                            
+                            if (origDelete) {
+                                query.delete = function(){
+                                    debugLog('🗑️ supabase.delete', {table});
+                                    return origDelete();
+                                };
+                            }
+                            
+                            return query;
+                        };
+                        debugLog('🔧 Wrapped supabase.from');
+                    }
+                }catch(e){ debugLog('❌ Error wrapping supabase.from', e); }
+
+                // Monitor all button clicks
+                document.addEventListener('click', function(ev){
+                    try{
+                        const t = ev.target;
+                        if (!t) return;
+                        
+                        if (t.tagName === 'BUTTON') {
+                            debugLog('🖱️ Button clicked', {
+                                id: t.id || '(no id)', 
+                                text: (t.textContent||'').trim().substring(0, 30),
+                                className: t.className || '(no class)',
+                                type: t.type
+                            });
+                        } else if (t.tagName === 'A') {
+                            debugLog('🔗 Link clicked', {
+                                href: t.href || '(no href)',
+                                text: (t.textContent||'').trim().substring(0, 30)
+                            });
+                        } else if (t.tagName === 'INPUT' && t.type === 'submit') {
+                            debugLog('📤 Submit input clicked', {id: t.id, form: t.form?.id});
+                        }
+                    }catch(e){ /* ignore click monitoring errors */ }
+                }, true);
+
+                // Monitor form submissions
+                document.addEventListener('submit', function(ev){
+                    try{
+                        const form = ev.target;
+                        if (form.tagName === 'FORM') {
+                            const formData = new FormData(form);
+                            const data = {};
+                            for (let [key, value] of formData.entries()) {
+                                data[key] = value && typeof value === 'string' ? value.substring(0, 50) : '[File/Other]';
+                            }
+                            debugLog('📝 Form submitted', {
+                                id: form.id || '(no id)',
+                                action: form.action || '(no action)',
+                                method: form.method || 'get',
+                                fields: Object.keys(data)
+                            });
+                        }
+                    }catch(e){ debugLog('❌ Form submit monitor error', e); }
+                }, true);
+
+                // Monitor select changes
+                document.addEventListener('change', function(ev){
+                    try{
+                        const t = ev.target;
+                        if (t.tagName === 'SELECT') {
+                            debugLog('🔄 Select changed', {
+                                id: t.id || '(no id)',
+                                value: t.value,
+                                text: t.selectedOptions[0]?.textContent || t.value
+                            });
+                        } else if (t.tagName === 'INPUT' && t.type === 'file') {
+                            const files = Array.from(t.files || []);
+                            debugLog('📁 Files selected', {
+                                id: t.id || '(no id)',
+                                count: files.length,
+                                files: files.map(f => ({name: f.name, size: f.size, type: f.type}))
+                            });
+                        }
+                    }catch(e){ /* ignore change monitoring errors */ }
+                });
+
+                // Monitor table loading
+                const originalInnerHTML = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+                Object.defineProperty(Element.prototype, 'innerHTML', {
+                    get: originalInnerHTML.get,
+                    set: function(value) {
+                        if (this.id === 'complaintsTableContainer' && value && value.includes('complaints-table')) {
+                            debugLog('📋 Complaints table loaded', {
+                                rowCount: (value.match(/<tr>/g) || []).length - 1, // -1 for header row
+                                hasError: value.includes('error'),
+                                hasNoComplaints: value.includes('no-complaints')
+                            });
+                        }
+                        return originalInnerHTML.set.call(this, value);
+                    }
+                });
+
+                // Monitor network requests (fetch)
+                const origFetch = window.fetch;
+                window.fetch = function(...args) {
+                    const url = args[0];
+                    debugLog('🌐 Fetch request', {
+                        url: typeof url === 'string' ? url : url?.url || '[Request object]',
+                        method: args[1]?.method || 'GET'
+                    });
+                    
+                    return origFetch.apply(this, args).then(response => {
+                        debugLog('🌐 Fetch response', {
+                            url: typeof url === 'string' ? url.substring(0, 50) + '...' : '[Request object]',
+                            status: response.status,
+                            ok: response.ok
+                        });
+                        return response;
+                    }).catch(error => {
+                        debugLog('❌ Fetch error', {
+                            url: typeof url === 'string' ? url.substring(0, 50) + '...' : '[Request object]',
+                            error: error.message
+                        });
+                        throw error;
+                    });
+                };
+
+                // Initial diagnostics
+                debugLog('🚀 Enhanced debug panel initialized');
+                debugLog('📊 Initial DOM snapshot', {
+                    forms: document.querySelectorAll('form').length,
+                    buttons: document.querySelectorAll('button').length,
+                    fileInputs: document.querySelectorAll('input[type=file]').length,
+                    selects: document.querySelectorAll('select').length,
+                    tables: document.querySelectorAll('table').length,
+                    scripts: document.querySelectorAll('script').length
+                });
+
+            } catch (err) {
+                console.error('Failed to create enhanced debug panel', err);
+            }
+        })();
 
         // Start the app
         init();

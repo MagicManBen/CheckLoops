@@ -7,6 +7,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+  // Configure PDF.js worker
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+</script>
 <style>
   :root{
     --bg1:#0b4fb3; --bg2:#062b6f; --glass:#ffffff12; --glass-2:#ffffff1a;
@@ -200,8 +205,8 @@
   .table-wrap{ overflow:auto; max-height:420px; }
   .chip{ padding:4px 8px; background:#ffffff20; border-radius:999px; font-size:12px; display:inline-block }
   .chip.success { background: var(--stat-2-bg); color: var(--stat-2-color); }
-  .chip.danger { background: var(--stat-4-bg); color: var(--stat-4-color); }
-  .chip.warning { background: var(--stat-3-bg); color: var(--stat-3-color); }
+  .chip.danger { background: var(--stat-4-bg); color: var (--stat-4-color); }
+  .chip.warning { background: var(--stat-3-bg); color: var (--stat-3-color); }
 
 
   /* Sections (SPA) */
@@ -257,6 +262,203 @@
     padding: 22px;
     box-shadow: var(--shadow);
     color: var(--white);
+  }
+  /* CRUD modal tweaks: keep buttons visible, make fields scrollable and more compact */
+  #crud-modal .card {
+    display: flex;
+    flex-direction: column;
+    max-height: 88vh; /* slightly taller but still limited */
+    width: min(880px, 98vw); /* wider modal for more horizontal space */
+    padding: 20px 22px;
+  }
+  #crud-modal form { display: flex; flex-direction: column; gap: 0; }
+  #crud-fields {
+  flex: 1 1 auto; /* let fields take remaining space */
+  overflow-y: auto;
+  padding-right: 8px; /* space for scrollbar */
+  margin-bottom: 12px;
+  /* Keep fields area within viewport so modal footer/buttons remain visible */
+  max-height: calc(88vh - 140px); /* account for title and buttons */
+  }
+  /* Grid for form fields: single column on small screens, two balanced columns on wider */
+  #crud-fields .crud-grid { 
+    display: grid; 
+    grid-template-columns: 1fr; 
+    gap: 16px 24px; 
+    align-items: start;
+  }
+  @media (min-width: 760px) {
+    #crud-fields .crud-grid { grid-template-columns: 1fr 1fr; }
+    /* allow some fields to span full width when needed */
+    #crud-fields .field.full { grid-column: 1 / -1; }
+  }
+  
+  /* Standardize all field containers and inputs for perfect alignment */
+  #crud-modal .field { 
+    box-sizing: border-box; 
+    display: flex; 
+    flex-direction: column; 
+  }
+  
+  #crud-modal .field label { 
+    margin-bottom: 6px; 
+    font-weight: 600; 
+    font-size: 14px; 
+    line-height: 1.3;
+    min-height: 18px; /* consistent label height */
+  }
+  
+  /* Standardize ALL input elements to same height and styling */
+  #crud-modal .field input[type="text"],
+  #crud-modal .field input[type="date"], 
+  #crud-modal .field .ui-select,
+  #crud-modal .field select {
+    height: 44px;
+    padding: 0 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--input-bg);
+    color: var(--text);
+    font-size: 14px;
+    box-sizing: border-box;
+    line-height: 1.4;
+  }
+  
+  /* Textareas get consistent styling but variable height */
+  #crud-modal .field textarea { 
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--input-bg);
+    color: var(--text);
+    font-size: 14px;
+    box-sizing: border-box;
+    resize: vertical;
+    min-height: 88px;
+    line-height: 1.4;
+  }
+  
+  #crud-modal .field.full textarea { 
+    min-height: 120px; 
+  }
+  
+  /* Checkbox styling to align with other inputs */
+  #crud-modal .field input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin-right: 8px;
+  }
+  
+  /* Multi-select and datepicker wrapper alignment */
+  #crud-modal .datepicker-wrapper {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  
+  #crud-modal .datepicker-wrapper input {
+    flex: 1;
+  }
+  
+  #crud-modal .multi-select-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  #crud-modal .staff-chips {
+    min-height: 44px;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--input-bg);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+  
+  /* File upload styling */
+  .file-upload-area {
+    transition: all 0.3s ease;
+  }
+  
+  .file-upload-area:hover {
+    opacity: 0.9;
+  }
+  
+  .file-upload-area button {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: var(--white);
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 12px rgba(118, 167, 255, 0.3);
+  }
+  
+  .file-upload-area button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(118, 167, 255, 0.4);
+  }
+  
+  .file-upload-area button span {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  
+  /* Modern form enhancements */
+  .datepicker-wrapper { display: flex; gap: 8px; align-items: center; }
+  .modern-datepicker { flex: 1; }
+  .quick-date { 
+    height: 44px !important; 
+    padding: 0 12px !important; 
+    font-size: 14px; 
+    white-space: nowrap; 
+    border-radius: 8px !important;
+    line-height: 1.4;
+  }
+  
+  .age-select { font-weight: 500; }
+  
+  .multi-select-wrapper { display: flex; flex-direction: column; gap: 8px; }
+  .staff-chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 24px; }
+  .staff-chip { 
+    background: var(--accent); 
+    color: white; 
+    padding: 6px 10px; 
+    border-radius: 12px; 
+    font-size: 12px; 
+    display: flex; 
+    align-items: center; 
+    gap: 4px;
+  }
+  .staff-chip button { 
+    background: none; 
+    border: none; 
+    color: white; 
+    cursor: pointer; 
+    padding: 0; 
+    margin-left: 4px;
+  }
+  
+  .category-select, .status-select, .priority-select, .avenue-select {
+    font-weight: 500;
+  }
+  
+  .category-select option[data-color]:not([value=""]) { font-weight: 600; }
+  .status-select option[data-color]:not([value=""]) { font-weight: 600; }
+  .priority-select option[data-color]:not([value=""]) { font-weight: 600; }
+  
+  /* Enhanced field labels with better spacing and icons */
+  #crud-modal .field label { 
+    font-weight: 600; 
+    font-size: 13px; 
+    margin-bottom: 4px;
+    display: block;
   }
   .modal-header {
     display: flex;
@@ -469,6 +671,128 @@
   .multi-input-container .field { flex: 1; margin-top: 0; }
   .dynamic-table-row { display: flex; gap: 8px; align-items: center; }
   .dynamic-table-row input { flex: 1; }
+
+  /* Training Matrix Styles */
+  .training-matrix {
+    overflow-x: auto;
+    background: var(--panel-bg);
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+  }
+  .training-matrix table {
+    min-width: 800px;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  .training-matrix th {
+    background: var(--panel-bg);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    writing-mode: vertical-lr;
+    text-orientation: mixed;
+    width: 120px;
+    max-width: 120px;
+    padding: 16px 8px;
+    font-size: 12px;
+    border-right: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+  }
+  .training-matrix th:first-child {
+    writing-mode: horizontal-tb;
+    text-orientation: initial;
+    width: 200px;
+    max-width: 200px;
+    position: sticky;
+    left: 0;
+    z-index: 3;
+  }
+  .training-matrix td {
+    padding: 8px;
+    border-right: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 11px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-height: 40px;
+    position: relative;
+  }
+  .training-matrix td:first-child {
+    position: sticky;
+    left: 0;
+    background: var(--panel-bg);
+    z-index: 1;
+    cursor: default;
+    font-weight: 600;
+    text-align: left;
+    padding-left: 16px;
+  }
+  .training-matrix td.training-cell:hover {
+    background: var(--glass-2);
+    transform: scale(1.02);
+  }
+  
+  /* Training Status Colors */
+  .training-completed { background: var(--stat-2-bg); color: var(--stat-2-color); }
+  .training-expiring { background: var(--stat-3-bg); color: var(--stat-3-color); }
+  .training-expired { background: var(--stat-4-bg); color: var(--stat-4-color); }
+  .training-missing { background: var(--glass); color: var(--muted); opacity: 0.6; }
+  
+  /* Training Modal */
+  .training-modal .modal-content {
+    width: min(600px, 90vw);
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  
+  /* Training Types Management Modal */
+  .training-types-modal .modal-content {
+    width: min(800px, 95vw);
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  .training-type-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 80px 80px 80px 100px;
+    gap: 12px;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-color);
+  }
+  .training-type-row:last-child {
+    border-bottom: none;
+  }
+  .training-type-row input, .training-type-row select {
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: var(--glass);
+    color: var(--white);
+    font-size: 12px;
+  }
+  .training-type-row button {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+  
+  .training-upload-zone {
+    border: 2px dashed var(--border-color);
+    border-radius: 12px;
+    padding: 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: var(--glass);
+  }
+  .training-upload-zone:hover {
+    border-color: var(--accent);
+    background: var(--glass-2);
+  }
+  .training-upload-zone.dragover {
+    border-color: var(--accent);
+    background: var(--accent-2);
+  }
 </style>
 
 <script>
@@ -656,6 +980,7 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
         <button class="nav-group-toggle" id="toggle-cqc" aria-expanded="true" aria-controls="group-cqc">CQC Notification <span class="caret" aria-hidden="true"></span></button>
         <div class="nav-group" id="group-cqc">
           <button data-section="pre-inspection"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg><span class="menu-item-label">Pre-inspection</span></button>
+          <button data-section="training"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c3 3 9 3 12 0v-5"></path></svg><span class="menu-item-label">Mandatory Training</span></button>
         </div>
 
         <button class="nav-group-toggle" id="toggle-checks" aria-expanded="true" aria-controls="group-checks">Checks & Audits <span class="caret" aria-hidden="true"></span></button>
@@ -663,11 +988,6 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
           <button data-section="calendar"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg><span class="menu-item-label">Calendar</span></button>
           <button data-section="schedules"><img class="icon" alt="" src="Schedule.png"><span class="menu-item-label">Schedules</span></button>
           <button data-section="submissions"><img class="icon" alt="" src="QRCode.png"><span class="menu-item-label">Submissions</span></button>
-        </div>
-
-        <button class="nav-group-toggle" id="toggle-quality" aria-expanded="true" aria-controls="group-quality">Quality Management <span class="caret" aria-hidden="true"></span></button>
-        <div class="nav-group" id="group-quality">
-          <button data-section="complaints"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg><span class="menu-item-label">Complaints</span></button>
         </div>
 
         <button class="nav-group-toggle" id="toggle-config" aria-expanded="true" aria-controls="group-config">Configure <span class="caret" aria-hidden="true"></span></button>
@@ -678,6 +998,7 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
             <path d="M12 22V12"/>
           </svg><span class="menu-item-label">Items</span><span class="nav-badge" id="badge-items"></span></button>
           <button data-section="rooms"><img class="icon" alt="" src="AddRoomIcon.png"><span class="menu-item-label">Rooms</span><span class="nav-badge" id="badge-rooms"></span></button>
+          <button data-section="complaints"><img class="icon" alt="" src="AddRoomIcon.png"><span class="menu-item-label">Complaints</span><span class="nav-badge" id="badge-complaints"></span></button>
           <button data-section="checktypes"><img class="icon" alt="" src="check-mark.png"><span class="menu-item-label">Check Types</span><span class="nav-badge" id="badge-ct"></span></button>
           <button data-section="staff"><img class="icon" alt="" src="Doctor.png"><span class="menu-item-label">Staff (Kiosk)</span><span class="nav-badge" id="badge-staff"></span></button>
         </div>
@@ -860,6 +1181,55 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
         </div>
       </section>
 
+      <section class="view" id="view-training">
+        <div class="panel">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
+            <div class="h1" style="margin:0">Mandatory Training</div>
+            <div style="display:flex; gap:10px;">
+              <button class="btn secondary" id="btn-manage-training-types">Manage Training Types</button>
+              <button class="btn" id="btn-export-training">Export Report</button>
+            </div>
+          </div>
+          
+          <div class="tab-controls" style="margin-bottom: 24px; display:flex; gap:8px;">
+            <button class="btn secondary active" id="tab-clinical" data-tab="clinical">Clinical Staff</button>
+            <button class="btn secondary" id="tab-non-clinical" data-tab="non-clinical">Non-Clinical Staff</button>
+          </div>
+
+          <div class="training-matrix" id="training-matrix-container">
+            <table id="training-matrix-table">
+              <thead>
+                <tr id="training-headers">
+                  <th>Staff Member</th>
+                </tr>
+              </thead>
+              <tbody id="training-tbody">
+                <tr><td colspan="100%" class="muted">Loading training matrix...</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div style="margin-top: 16px; display: flex; gap: 20px; font-size: 12px; color: var(--muted);">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <div style="width: 12px; height: 12px; background: var(--stat-2-bg); border-radius: 2px;"></div>
+              <span>Completed & Valid</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <div style="width: 12px; height: 12px; background: var(--stat-3-bg); border-radius: 2px;"></div>
+              <span>Expiring Soon (30 days)</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <div style="width: 12px; height: 12px; background: var(--stat-4-bg); border-radius: 2px;"></div>
+              <span>Expired</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <div style="width: 12px; height: 12px; background: var(--glass); border-radius: 2px;"></div>
+              <span>No Record</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section class="view" id="view-calendar">
         <div class="panel">
           <div id="cal-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
@@ -906,6 +1276,29 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
           </table></div>
         </div>
       </section>
+
+          <section class="view" id="view-complaints">
+            <div class="panel">
+              <div style="display:flex; justify-content:space-between; align-items:center"><div class="h1" style="margin:0 0 10px">Complaints</div><button class="btn" id="btn-new-complaint">Add Complaint</button></div>
+              <div class="table-wrap"><table>
+                <thead>
+                  <tr>
+                    <th>Datetime</th>
+                    <th>Patient</th>
+                    <th>Category</th>
+                    <th>Original complaint</th>
+                    <th>Response</th>
+                    <th>Lessons learned</th>
+                    <th>Status</th>
+                    <th>Share</th>
+                    <th>Created by</th>
+                    <th>Resolved at</th>
+                  </tr>
+                </thead>
+                <tbody id="complaints-tbody" data-entity="complaints"><tr><td colspan="10" class="muted">Loading…</td></tr></tbody>
+              </table></div>
+            </div>
+          </section>
 
       <section class="view" id="view-checktypes">
         <div class="panel">
@@ -1018,61 +1411,6 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
           </div>
         </div>
       </section>
-
-      <section class="view" id="view-complaints">
-        <div class="panel">
-          <div style="display:flex; justify-content:space-between; align-items:center">
-            <div class="h1" style="margin:0 0 10px">Complaints</div>
-            <div style="display:flex; gap:10px; align-items:center">
-              <button class="btn" id="btn-add-complaint">Add Complaint</button>
-            </div>
-          </div>
-
-          <div id="complaints-section-body" style="margin-top:12px">
-            <div id="complaints-error" class="error" style="display:none"></div>
-            <div id="complaints-list-container" class="table-wrap">
-              <table class="complaints-table" id="complaints-table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Patient</th>
-                    <th>Category</th>
-                    <th>Priority</th>
-                    <th>Complaint</th>
-                    <th>Status</th>
-                    <th>Team Share</th>
-                  </tr>
-                </thead>
-                <tbody id="complaints-tbody"><tr><td colspan="7" class="muted">Loading…</td></tr></tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- Inline modal-like form for adding complaints -->
-          <div class="modal" id="complaint-modal">
-            <div class="modal-content" style="width:600px">
-              <div class="modal-header">
-                <h3>Add Complaint</h3>
-                <button type="button" class="modal-close" id="complaint-modal-close">&times;</button>
-              </div>
-              <div class="modal-body">
-                <form id="complaint-inline-form">
-                  <div class="field"><label>Patient Initials</label><input id="ci-patientInitials" required maxlength="10"></div>
-                  <div class="field"><label>Category</label><select id="ci-category"><option value="Clinical Care">Clinical Care</option><option value="Staff Behavior">Staff Behavior</option><option value="Appointment System">Appointment System</option><option value="Facilities">Facilities</option><option value="Communication">Communication</option><option value="Waiting Times">Waiting Times</option><option value="Other">Other</option></select></div>
-                  <div class="field"><label>Priority</label><select id="ci-priority"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></div>
-                  <div class="field"><label>Original Complaint</label><textarea id="ci-originalComplaint" required></textarea></div>
-                  <div class="field"><label>Response</label><textarea id="ci-response"></textarea></div>
-                  <div class="field"><label>Lessons Learned</label><textarea id="ci-lessonsLearned"></textarea></div>
-                  <div style="display:flex; gap:10px; margin-top:12px; justify-content:flex-end">
-                    <button type="button" class="btn secondary" id="ci-cancel">Cancel</button>
-                    <button type="submit" class="btn">Submit</button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
     </main>
   </div>
 
@@ -1117,6 +1455,116 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
         </div>
         <div class="error" id="branding-error" role="alert" style="display:none"></div>
         <div class="hint" id="branding-success" style="display:none">Uploaded successfully.</div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Training Types Management Modal -->
+  <div class="modal training-types-modal" id="training-types-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Manage Training Types</h3>
+        <button type="button" class="modal-close" id="training-types-close">&times;</button>
+      </div>
+      
+      <div style="margin-bottom: 20px;">
+        <p style="color: var(--muted); font-size: 14px; margin-bottom: 16px;">
+          Configure training modules and their expiry periods. When staff upload training certificates, 
+          the expiry date will be automatically calculated based on these settings.
+        </p>
+        
+        <div class="training-type-row" style="font-weight: 600; color: var(--accent-2); border-bottom: 2px solid var(--border-color);">
+          <div>Training Name</div>
+          <div>Expiry Period</div>
+          <div>Clinical</div>
+          <div>Non-Clinical</div>
+          <div>Active</div>
+          <div>Actions</div>
+        </div>
+        
+        <div id="training-types-list">
+          <div style="padding: 20px; text-align: center; color: var(--muted);">Loading...</div>
+        </div>
+        
+        <button type="button" class="btn" id="add-training-type" style="margin-top: 16px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          Add New Training Type
+        </button>
+      </div>
+      
+      <div class="error" id="training-types-error" style="display:none"></div>
+      
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px; border-top: 1px solid var(--border-color); padding-top: 20px;">
+        <button type="button" class="btn secondary" id="training-types-cancel">Cancel</button>
+        <button type="button" class="btn" id="save-training-types">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Training Record Modal -->
+  <div class="modal training-modal" id="training-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="training-modal-title">Update Training Record</h3>
+        <button type="button" class="modal-close" id="training-modal-close">&times;</button>
+      </div>
+      <form id="training-form">
+        <input type="hidden" id="training-staff-id">
+        <input type="hidden" id="training-type-id">
+        
+        <div class="field">
+          <label>Staff Member</label>
+          <input type="text" id="training-staff-name" disabled>
+        </div>
+        
+        <div class="field">
+          <label>Training Module</label>
+          <input type="text" id="training-type-name" disabled>
+        </div>
+        
+        <div class="field">
+          <label>Completion Date</label>
+          <input type="date" id="training-completion-date" required>
+        </div>
+        
+        <div class="field">
+          <label>Expiry Date (if applicable)</label>
+          <input type="date" id="training-expiry-date">
+        </div>
+        
+        <div class="field">
+          <label>Certificate</label>
+          <div class="training-upload-zone" id="training-upload-zone">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-bottom: 12px; color: var(--muted);">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            <p>Drop certificate here or click to browse</p>
+            <p style="font-size: 11px; color: var(--muted); margin-top: 8px;">PDF, JPG, PNG up to 10MB</p>
+          </div>
+          <input type="file" id="training-certificate" accept=".pdf,.jpg,.jpeg,.png" style="display: none;">
+          <div id="training-current-file" style="display: none; margin-top: 8px; padding: 8px; background: var(--glass); border-radius: 8px;">
+            <span id="training-file-name"></span>
+            <button type="button" class="btn secondary" style="margin-left: 8px; padding: 4px 8px; font-size: 11px;" onclick="downloadTrainingCertificate()">Download</button>
+          </div>
+        </div>
+        
+        <div class="field">
+          <label>Notes</label>
+          <textarea id="training-notes" placeholder="Optional notes about this training..."></textarea>
+        </div>
+        
+        <div class="error" id="training-error" style="display:none"></div>
+        
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px">
+          <button type="button" class="btn secondary" id="training-cancel-btn">Cancel</button>
+          <button type="button" class="btn secondary" id="training-delete-btn" style="display: none;">Delete Record</button>
+          <button type="submit" class="btn">Save Training Record</button>
+        </div>
       </form>
     </div>
   </div>
@@ -1699,10 +2147,6 @@ window.PIR_DEFINITIONS_DATA = [
   window.JSZip = JSZip;
   window.supabase = supabase;
 
-  // OpenAI Configuration for AI features
-  const OPENAI_API_KEY = "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";
-  window.OPENAI_API_KEY = OPENAI_API_KEY;
-
   // SPA navigation
   const nav = document.getElementById("nav");
   const views = [...document.querySelectorAll("section.view")];
@@ -1734,10 +2178,6 @@ window.PIR_DEFINITIONS_DATA = [
     
     // Load section data
     switch(id) {
-      case 'complaints':
-  loadComplaints();
-  initComplaintsView();
-        break;
       case 'dashboard':
         Promise.all([
           loadCounts(),
@@ -1751,6 +2191,9 @@ window.PIR_DEFINITIONS_DATA = [
         break;
       case 'rooms':
         loadRooms();
+        break;
+      case 'complaints':
+        loadComplaints();
         break;
       case 'checktypes':
         loadCheckTypes();
@@ -1791,6 +2234,11 @@ window.PIR_DEFINITIONS_DATA = [
       console.log('Settings section clicked, context:', ctx);
       setTimeout(() => loadPracticeUsers(), 100); // Small delay to ensure context is loaded
     }
+    
+    // Special handling for training section
+    if (id === 'training') {
+      setTimeout(() => loadTrainingMatrix(), 100); // Small delay to ensure context is loaded
+    }
   });
 
   // --- Nav group toggles (expand/collapse groups) ---
@@ -1798,7 +2246,6 @@ window.PIR_DEFINITIONS_DATA = [
     const groups = [
       { toggleId: 'toggle-cqc',    groupId: 'group-cqc',    storageKey: 'cl_group_cqc_expanded' },
       { toggleId: 'toggle-checks',  groupId: 'group-checks', storageKey: 'cl_group_checks_expanded' },
-      { toggleId: 'toggle-quality', groupId: 'group-quality', storageKey: 'cl_group_quality_expanded' },
       { toggleId: 'toggle-config', groupId: 'group-config', storageKey: 'cl_group_config_expanded' }
     ];
 
@@ -1844,6 +2291,169 @@ window.PIR_DEFINITIONS_DATA = [
   document.getElementById('btn-invite-user')?.addEventListener('click', showInviteModal);
   document.getElementById('invite-modal-close')?.addEventListener('click', closeInviteModal);
   document.getElementById('invite-cancel-btn')?.addEventListener('click', closeInviteModal);
+
+  // Training event listeners
+  document.getElementById('tab-clinical')?.addEventListener('click', () => switchTrainingTab('clinical'));
+  document.getElementById('tab-non-clinical')?.addEventListener('click', () => switchTrainingTab('non-clinical'));
+  document.getElementById('btn-manage-training-types')?.addEventListener('click', openTrainingTypesModal);
+  document.getElementById('btn-export-training')?.addEventListener('click', exportTrainingReport);
+  document.getElementById('training-modal-close')?.addEventListener('click', closeTrainingModal);
+  document.getElementById('training-cancel-btn')?.addEventListener('click', closeTrainingModal);
+  document.getElementById('training-form')?.addEventListener('submit', saveTrainingRecord);
+  document.getElementById('training-certificate')?.addEventListener('change', handleTrainingFileUpload);
+  document.getElementById('training-completion-date')?.addEventListener('change', calculateTrainingExpiry);
+  document.getElementById('training-upload-zone')?.addEventListener('click', () => {
+    document.getElementById('training-certificate')?.click();
+  });
+
+  // Training types modal event listeners
+  document.getElementById('training-types-close')?.addEventListener('click', closeTrainingTypesModal);
+  document.getElementById('training-types-cancel')?.addEventListener('click', closeTrainingTypesModal);
+  document.getElementById('save-training-types')?.addEventListener('click', saveTrainingTypes);
+  document.getElementById('add-training-type')?.addEventListener('click', addNewTrainingType);
+
+  // Helper functions for training types modal
+  function openTrainingTypesModal() {
+    document.getElementById('training-types-modal').classList.add('show');
+    loadTrainingTypes();
+  }
+
+  function closeTrainingTypesModal() {
+    document.getElementById('training-types-modal').classList.remove('show');
+  }
+
+  async function loadTrainingTypes() {
+    const list = document.getElementById('training-types-list');
+    list.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--muted);">Loading...</div>';
+    
+    try {
+      const { data, error } = await supabase
+        .from('training_types')
+        .select('*')
+        .eq('site_id', ctx.site_id)
+        .order('name');
+      
+      if (error) throw error;
+      
+      list.innerHTML = data.map(type => `
+        <div class="training-type-row" data-id="${type.id}">
+          <input type="text" value="${esc(type.name)}" data-field="name">
+          <select data-field="validity_months">
+            <option value="">No Expiry</option>
+            <option value="6" ${type.validity_months === 6 ? 'selected' : ''}>6 months</option>
+            <option value="12" ${type.validity_months === 12 ? 'selected' : ''}>12 months</option>
+            <option value="24" ${type.validity_months === 24 ? 'selected' : ''}>24 months</option>
+            <option value="36" ${type.validity_months === 36 ? 'selected' : ''}>36 months</option>
+          </select>
+          <input type="checkbox" ${type.clinical ? 'checked' : ''} data-field="clinical">
+          <input type="checkbox" ${type.non_clinical ? 'checked' : ''} data-field="non_clinical">
+          <input type="checkbox" ${type.active ? 'checked' : ''} data-field="active">
+          <button type="button" class="btn secondary" onclick="deleteTrainingType(${type.id})">Delete</button>
+        </div>
+      `).join('');
+    } catch (err) {
+      console.error('Failed to load training types:', err);
+      list.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--danger);">Failed to load training types</div>';
+    }
+  }
+
+  function addNewTrainingType() {
+    const list = document.getElementById('training-types-list');
+    const newRow = `
+      <div class="training-type-row" data-id="new-${Date.now()}">
+        <input type="text" placeholder="Training name..." data-field="name">
+        <select data-field="validity_months">
+          <option value="">No Expiry</option>
+          <option value="6">6 months</option>
+          <option value="12" selected>12 months</option>
+          <option value="24">24 months</option>
+          <option value="36">36 months</option>
+        </select>
+        <input type="checkbox" checked data-field="clinical">
+        <input type="checkbox" checked data-field="non_clinical">
+        <input type="checkbox" checked data-field="active">
+        <button type="button" class="btn secondary" onclick="this.parentElement.remove()">Remove</button>
+      </div>
+    `;
+    list.insertAdjacentHTML('beforeend', newRow);
+  }
+
+  async function saveTrainingTypes() {
+    const rows = document.querySelectorAll('.training-type-row');
+    const updates = [];
+    const inserts = [];
+    
+    for (const row of rows) {
+      const id = row.dataset.id;
+      const name = row.querySelector('[data-field="name"]').value.trim();
+      const validity_months = row.querySelector('[data-field="validity_months"]').value || null;
+      const clinical = row.querySelector('[data-field="clinical"]').checked;
+      const non_clinical = row.querySelector('[data-field="non_clinical"]').checked;
+      const active = row.querySelector('[data-field="active"]').checked;
+      
+      if (!name) continue;
+      
+      const data = {
+        site_id: ctx.site_id,
+        name,
+        validity_months: validity_months ? parseInt(validity_months) : null,
+        clinical,
+        non_clinical,
+        active
+      };
+      
+      if (id.startsWith('new-')) {
+        inserts.push(data);
+      } else {
+        updates.push({ id: parseInt(id), ...data });
+      }
+    }
+    
+    try {
+      if (inserts.length > 0) {
+        const { error } = await supabase.from('training_types').insert(inserts);
+        if (error) throw error;
+      }
+      
+      for (const update of updates) {
+        const { id, ...updateData } = update;
+        const { error } = await supabase
+          .from('training_types')
+          .update(updateData)
+          .eq('id', id);
+        if (error) throw error;
+      }
+      
+      closeTrainingTypesModal();
+      loadTrainingMatrix();
+    } catch (err) {
+      console.error('Failed to save training types:', err);
+      document.getElementById('training-types-error').textContent = err.message;
+      document.getElementById('training-types-error').style.display = 'block';
+    }
+  }
+
+  window.deleteTrainingType = async function(id) {
+    if (!confirm('Are you sure you want to delete this training type?')) return;
+    
+    try {
+      const { error } = await supabase
+        .from('training_types')
+        .update({ active: false })
+        .eq('id', id);
+      if (error) throw error;
+      
+      loadTrainingTypes();
+    } catch (err) {
+      console.error('Failed to delete training type:', err);
+      alert('Failed to delete training type');
+    }
+  };
+
+  function exportTrainingReport() {
+    // This would generate and download a training report
+    alert('Training report export functionality would be implemented here');
+  }
 
   inviteForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -2181,45 +2791,55 @@ window.PIR_DEFINITIONS_DATA = [
   let pirDocsCache = [];
 
   async function loadContext(){
-    const { data: { user } } = await supabase.auth.getUser();
-    if(!user){ return { user:null }; }
-    ctx.user = user;
-    emailPill.textContent = user.email ?? "—";
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if(userError || !user) throw new Error("No authenticated user");
+      
+      ctx.user = user;
+      emailPill.textContent = user.email || "—";
 
-    // Try profiles first (preferred)
-    let { data: prof, error } = await supabase.from("profiles").select("site_id, role, full_name").eq("user_id", user.id).maybeSingle();
-    if(error){ console.warn(error); }
-    if(!prof){
-      // fallback to v_my_profile view if present
-      const { data: v } = await supabase.from("v_my_profile").select("site_id, role").maybeSingle();
-      if(v) prof = v;
+      // Load user profile to get site_id and role
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("site_id, role, full_name")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if(profileError) throw profileError;
+      if(!profile) throw new Error("No profile found for user");
+
+      ctx.site_id = profile.site_id;
+      ctx.role = profile.role;
+      ctx.full_name = profile.full_name;
+
+      // Load site information
+      if(ctx.site_id){
+        const { data: site } = await supabase
+          .from("sites")
+          .select("name")
+          .eq("id", ctx.site_id)
+          .maybeSingle();
+        
+        sitePill.textContent = site?.name ? `Site: ${site.name}` : `Site ID: ${ctx.site_id}`;
+        ctx.site_name = site?.name || null;
+      } else {
+        sitePill.textContent = "Site: —";
+      }
+
+      return ctx;
+    } catch(err) {
+      console.error('Failed to load context:', err);
+      throw err;
     }
-    if(prof){
-      ctx.site_id = prof.site_id;
-      ctx.role = prof.role;
-    }
-    // As final fallback during setup, pick first site
-    if(!ctx.site_id){
-      const { data: sites } = await supabase.from("sites").select("id,name").limit(1);
-      ctx.site_id = sites?.[0]?.id ?? null;
-    }
-    // Site label
-    if(ctx.site_id){
-      const { data: site } = await supabase.from("sites").select("name").eq("id", ctx.site_id).maybeSingle();
-      sitePill.textContent = site?.name ? `Site: ${site.name}` : `Site ID: ${ctx.site_id}`;
-      ctx.site_name = site?.name || null;
-    }else{
-      sitePill.textContent = "Site: —";
-    }
-    return ctx;
   }
 
   // Data loaders
   async function loadCounts(){
     if(!ctx.site_id) return;
-    const [items, rooms, ct, staff] = await Promise.all([
+    const [items, rooms, complaints, ct, staff] = await Promise.all([
       supabase.from("items").select("id", { count:"exact", head:true }).eq("site_id", ctx.site_id),
       supabase.from("rooms").select("id", { count:"exact", head:true }).eq("site_id", ctx.site_id),
+      supabase.from("complaints").select("id", { count:"exact", head:true }).eq("site_id", ctx.site_id),
       supabase.from("check_types").select("id", { count:"exact", head:true }).eq("site_id", ctx.site_id),
       supabase.from("kiosk_users").select("id", { count:"exact", head:true }).eq("site_id", ctx.site_id),
     ]);
@@ -2231,6 +2851,7 @@ window.PIR_DEFINITIONS_DATA = [
     // document.getElementById("stat-staff").textContent = staff.count ?? "0";
     document.getElementById('badge-items').textContent = items.count ?? 0;
     document.getElementById('badge-rooms').textContent = rooms.count ?? 0;
+    document.getElementById('badge-complaints').textContent = complaints.count ?? 0;
     document.getElementById('badge-ct').textContent = ct.count ?? 0;
     document.getElementById('badge-staff').textContent = staff.count ?? 0;
   }
@@ -2464,7 +3085,78 @@ async function loadRooms(){
     (staff||[]).forEach(s => { owners[s.id] = s.full_name; });
   }
   tb.innerHTML = data.map(r=>`<tr data-id="${r.id}"><td>${esc(r.name)}</td><td>${esc(owners[r.occupied_by] || "—")}</td></tr>`).join("");
-}async function loadCheckTypes(){
+}
+async function loadComplaints(){
+  const tb = document.getElementById("complaints-tbody");
+  try{ debugLog && debugLog('loadComplaints() start', { site_id: ctx.site_id }); }catch(e){}
+
+  try{
+    const res = await supabase
+      .from("complaints")
+      .select("id, datetime, patient_initials, category, original_complaint, response, lessons_learned, status, priority, share_with_team, created_by, resolved_at")
+      .eq("site_id", ctx.site_id)
+      .order("datetime", { ascending: false })
+      .limit(1000);
+
+    const { data, error } = res;
+    if(error){
+      debugLog && debugLog('loadComplaints() supabase error', error);
+      tb.innerHTML = `<tr><td colspan=\"10\" class=\"muted\">${escapeHtml(error.message || 'Error')}</td></tr>`; 
+      return;
+    }
+
+    if(!data || data.length === 0){
+      debugLog && debugLog('No complaints for site_id, attempting fallback');
+      try{
+        const fb = await supabase.from('complaints')
+          .select('id, datetime, patient_initials, category, original_complaint, response, lessons_learned, status, priority, share_with_team, created_by, resolved_at')
+          .in('site_id', [1,2])
+          .order('datetime', { ascending: false })
+          .limit(500);
+
+        if(fb && !fb.error && fb.data && fb.data.length){
+          debugLog && debugLog('Fallback returned rows', { count: fb.data.length });
+          renderComplaintsTable(tb, fb.data);
+          return;
+        } else {
+          debugLog && debugLog('Fallback found no rows', { error: fb.error });
+          tb.innerHTML = `<tr><td colspan=\"10\" class=\"muted\">No complaints yet.</td></tr>`;
+          return;
+        }
+      }catch(fbErr){
+        console.error('Fallback query error', fbErr);
+        tb.innerHTML = `<tr><td colspan=\"10\" class=\"muted\">No complaints yet.</td></tr>`;
+        return;
+      }
+    }
+
+    renderComplaintsTable(tb, data);
+    return;
+  }catch(err){
+    console.error('loadComplaints failed', err);
+    tb.innerHTML = `<tr><td colspan=\"10\" class=\"muted\">Error loading complaints</td></tr>`;
+    return;
+  }
+}
+
+function renderComplaintsTable(tb, data){
+  const creatorIds = [...new Set((data||[]).map(r=>r.created_by).filter(Boolean))];
+  let creators = {};
+  (async function(){
+    if(creatorIds.length){
+      try{
+        const { data: staff } = await supabase.from('kiosk_users').select('id,full_name').in('id', creatorIds);
+        (staff||[]).forEach(s=>{ creators[s.id] = s.full_name; });
+      }catch(e){ /* ignore */ }
+    }
+    const fmtDate = (d) => d ? new Date(d).toLocaleString() : "—";
+    const truncate = (t,n=120) => t ? (t.length>n ? esc(t.slice(0,n))+'…' : esc(t)) : '';
+    const rows = data.map(r => `\n    <tr data-id="${r.id}">\n      <td>${fmtDate(r.datetime)}</td>\n      <td>${esc(r.patient_initials)}</td>\n      <td>${esc(r.category)}</td>\n      <td title="${esc(r.original_complaint || '')}">${truncate(r.original_complaint, 80)}</td>\n      <td title="${esc(r.response || '')}">${truncate(r.response, 80)}</td>\n      <td title="${esc(r.lessons_learned || '')}">${truncate(r.lessons_learned, 80)}</td>\n      <td>${esc(r.status || '')}</td>\n      <td>${r.share_with_team ? 'Yes' : 'No'}</td>\n      <td>${esc(creators[r.created_by] || (r.created_by ? r.created_by : '—'))}</td>\n      <td>${fmtDate(r.resolved_at)}</td>\n    </tr>\n  `).join("");
+    tb.innerHTML = rows;
+  })();
+}
+
+async function loadCheckTypes(){
   const tb = document.getElementById("ct-tbody");
   const { data, error } = await supabase.from("check_types").select("id, name, active").eq("site_id", ctx.site_id).order("name");
   if(error){ tb.innerHTML = `<tr><td colspan="2" class="muted">${error.message}</td></tr>`; return; }
@@ -3276,6 +3968,8 @@ async function loadSchedules(){
     const d = new Date(iso);
     return d.toLocaleString();
   }
+  // small validator for UUID-like strings
+  function isUUID(v){ if(!v) return false; try{ return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(String(v)); }catch(e){return false;} }
     function fmtDateShort(iso) {
       if (!iso) return "—";
       try {
@@ -3510,7 +4204,7 @@ async function loadSchedules(){
     await loadContext();
     await seedInitialPIRDocs();
     await cacheRequiredSchedules();
-    await Promise.all([loadCounts(), loadDue(), loadActivity(), loadItems(), loadRooms(), loadCheckTypes(), loadSchedules(), loadStaff(), loadSubmissions(), loadWeekCalendar(), loadAndRenderCalendar()]);
+    await Promise.all([loadCounts(), loadDue(), loadActivity(), loadItems(), loadRooms(), loadComplaints(), loadCheckTypes(), loadSchedules(), loadStaff(), loadSubmissions(), loadWeekCalendar(), loadAndRenderCalendar()]);
 
     // If the active section is pre-inspection, ensure its data is loaded now that context is ready.
     if (activeViewId() === 'view-pre-inspection') {
@@ -3520,6 +4214,7 @@ async function loadSchedules(){
     supabase.channel("changes")
       .on("postgres_changes", { event:"*", schema:"public", table:"items", filter:`site_id=eq.${ctx.site_id}` }, loadItems)
       .on("postgres_changes", { event:"*", schema:"public", table:"rooms", filter:`site_id=eq.${ctx.site_id}` }, async()=>{ await loadRooms(); await loadCounts(); })
+      .on("postgres_changes", { event:"*", schema:"public", table:"complaints", filter:`site_id=eq.${ctx.site_id}` }, async()=>{ await loadComplaints(); await loadCounts(); })
       .on("postgres_changes", { event:"*", schema:"public", table:"check_types", filter:`site_id=eq.${ctx.site_id}` }, async()=>{ await loadCheckTypes(); await loadCounts(); })
       .on("postgres_changes", { event:"*", schema:"public", table:"kiosk_users", filter:`site_id=eq.${ctx.site_id}` }, async()=>{ await loadStaff(); await loadCounts(); })
       .on("postgres_changes", { event:"*", schema:"public", table:"submissions", filter:`site_id=eq.${ctx.site_id}` }, async()=>{ await loadActivity(); await loadSubmissions(); await loadWeekCalendar(); if(activeViewId() === 'view-calendar') loadAndRenderCalendar(); })
@@ -3552,6 +4247,53 @@ async function loadSchedules(){
 {name:"role", label:"Role", type:"select", source:"kiosk_roles", sourceLabel:"role", valueKey:"role", required:true},
 {name:"reports_to_id", label:"Reports To", type:"select", source:"kiosk_users", sourceLabel:"full_name", valueKey:"id"},
 {name:"active", label:"Active", type:"checkbox", default:true}] },
+    complaints: { table: "complaints", label: "Complaint", pk: "id", fields: [
+  { name: "attachment", label: "Attach Complaint Document", type: "file-upload", fullWidth: true },
+  { name: "complaint_date", label: "Complaint Date", type: "datepicker", required: true },
+  { name: "patient_initials", label: "Patient Initials", type: "text", required: true, maxLength: 10 },
+      { name: "age", label: "Age", type: "age-selector" },
+      { name: "complaint_number", label: "Complaint Number", type: "text", readonly: true },
+      { name: "response_sent", label: "Response Sent", type: "checkbox", default: false },
+  { name: "complaint_summary", label: "Complaint Summary", type: "textarea", required: true, fullWidth: true },
+  { name: "original_complaint", label: "Original Complaint Details", type: "textarea", fullWidth: true },
+  { name: "response", label: "Response Given", type: "textarea", fullWidth: true },
+  { name: "lessons_learned", label: "Lessons Learned", type: "textarea", fullWidth: true },
+  { name: "category", label: "Category", type: "select", source: "complaint_categories", sourceLabel: "name", valueKey: "name", required: true },
+      { name: "solution_given", label: "Solution Given", type: "textarea", fullWidth: true },
+      { name: "category_trends", label: "Category for Trends Chart", type: "category-select", options: [
+  {value:'MEDICATION', label:'MEDICATION', color:'#ff6b6b'},
+  {value:'COMMUNICATION', label:'COMMUNICATION', color:'#4ecdc4'},
+  {value:'ADMIN', label:'ADMIN', color:'#45b7d1'},
+  {value:'MEDICAL', label:'MEDICAL', color:'#96ceb4'},
+  {value:'APPT SYSTEM', label:'APPT SYSTEM', color:'#feca57'},
+  {value:'OUTSIDE AGENCIES', label:'OUTSIDE AGENCIES', color:'#ff9ff3'},
+  {value:'GDPR', label:'GDPR', color:'#54a0ff'}
+      ], required: true },
+      { name: "people_involved", label: "Names of People Involved", type: "staff-multi-select", source: "kiosk_users", sourceLabel: "full_name", valueKey: "id" },
+      { name: "avenue_used", label: "Avenue Used to Complain", type: "avenue-select", options: [
+  {value:'Phone', label:'Phone'},
+  {value:'Email', label:'Email'},
+  {value:'Letter', label:'Letter'},
+  {value:'In Person', label:'In Person'},
+  {value:'Online Form', label:'Online Form'},
+  {value:'Social Media', label:'Social Media'}
+      ] },
+      { name: "suggestions_prevent_reoccurrence", label: "Suggestions to prevent reoccurrence", type: "textarea", fullWidth: true },
+      { name: "actions_to_be_taken", label: "Actions to be taken", type: "textarea", fullWidth: true },
+      { name: "status", label: "Status", type: "status-select", options: [
+        {value:'pending', label:'Pending', color:'#feca57'},
+        {value:'investigating', label:'Investigating', color:'#ff6b6b'},
+        {value:'resolved', label:'Resolved', color:'#1dd1a1'},
+        {value:'closed', label:'Closed', color:'#636e72'}
+      ], default: 'pending' },
+      { name: "priority", label: "Priority", type: "priority-select", options: [
+        {value:'low', label:'Low', color:'#1dd1a1'},
+        {value:'medium', label:'Medium', color:'#feca57'},
+        {value:'high', label:'High', color:'#ff6b6b'}
+      ], default: 'medium' },
+      { name: "share_with_team", label: "Share with team", type: "checkbox", default: false },
+      { name: "created_by", label: "Created by", type: "select", source: "kiosk_users", sourceLabel: "full_name", valueKey: "id" },
+    ] },
     items: { table: "items", label: "Item", pk: "id", fields: [{name:"item_id", label:"Code", type:"text", required:true}, {name:"item_name", label:"Name", type:"text", required:true}, {name:"room_id", label:"Room", type:"select", source:"rooms", sourceLabel:"name"}, {name:"default_check_type_id", label:"Default Check Type", type:"select", source:"check_types", sourceLabel:"name"}, {name:"active", label:"Active", type:"checkbox", default:true}] },
     item_allowed_types: { table: "item_allowed_types", label: "Schedule", pk: "id", fields: [{name:"item_id", label:"Item", type:"select", source:"items", sourceLabel:"item_name", required:true}, {name:"check_type_id", label:"Check Type", type:"select", source:"check_types", sourceLabel:"name", required:true}, {name:"frequency", label:"Every", type:"frequency", onchange: function(e) {
           const freq = e.target.value.toLowerCase();
@@ -3583,6 +4325,20 @@ async function loadSchedules(){
   async function openCRUD(entityKey, mode="add", row=null, context={}){
     crudError.textContent = "";
     crudState = { entity:ENTITIES[entityKey], mode, row, pk:ENTITIES[entityKey].pk, context };
+    
+    // Debug user context
+    console.log('OpenCRUD - User Context:', { 
+      ctx_user: ctx.user, 
+      ctx_site_id: ctx.site_id,
+      entityKey: entityKey,
+      mode: mode 
+    });
+    debugLog('CRUD Open', { 
+      entity: entityKey, 
+      mode: mode, 
+      user: ctx.user?.id,
+      site: ctx.site_id 
+    });
     
     if (entityKey === 'pir_documents') {
         crudTitle.textContent = `Manage: ${row.title}`;
@@ -3665,80 +4421,173 @@ async function loadSchedules(){
             _fields.push({ name:'role', label:'Role', type:'select', source:'kiosk_roles', sourceLabel:'role', valueKey:'role', required:true });
           }
         }
-        crudFields.innerHTML = _fields.map(f => {
+        crudFields.innerHTML = `<div class="crud-grid">${_fields.map(f => {
 
           let val = row ? row[f.name] : (f.type === "checkbox" ? !!f.default : (f.default ?? ""));
           if(val === null || val === undefined) val = (f.type === "checkbox" ? false : "");
-          // ... (HTML generation for standard fields, unchanged)
           
-return (()=>{
-  const id = `field-${f.name}`;
-  const label = (f.label || f.name);
-  if(f.type === "text"){
-    return `<div class="field"><label>${esc(label)}</label><input id="${id}" type="text" value="${esc(val)}" ${f.required ? "required" : ""}></div>`;
-  }
-  if(f.type === "textarea"){
-    return `<div class="field"><label>${esc(label)}</label><textarea id="${id}" rows="3" ${f.required ? "required" : ""}>${esc(val)}</textarea></div>`;
-  }
-  if(f.type === "checkbox"){
-    return `<div class="field"><label style="display:flex; gap:8px; align-items:center;"><input id="${id}" type="checkbox" ${val ? "checked" : ""}> ${esc(label)}</label></div>`;
-  }
-  if(f.type === "select"){
-    if(f.options){
-      const opts = (f.options || []).map(o => `<option value="${o.value}"${o.value == val ? " selected": ""}>${o.label}</option>`).join("");
-      return `<div class="field"><label>${esc(label)}</label><select id="${id}" class="ui-select">${opts}</select></div>`;
-    }else{
-      return `<div class="field"><label>${esc(label)}</label><select id="${id}" class="ui-select"><option value="">Loading...</option></select></div>`;
-    }
-  }
-  if(f.type === "frequency"){
-    // Initialize scheduled_day field options based on initial frequency value
-    setTimeout(() => {
-      const freq = String(val || '1 month').toLowerCase();
-      const scheduledDaySelect = document.getElementById('field-scheduled_day');
-      if (!scheduledDaySelect) return;
-      
-      if (freq.includes('mon')) {
-        // For monthly frequency, show dates 1-31
-        scheduledDaySelect.innerHTML = Array.from({length: 31}, (_, i) => 
-          `<option value="${i+1}">${i+1}${['st','nd','rd'][i] || 'th'}</option>`
-        ).join('');
-      } else {
-        // For other frequencies, show days of week
-        scheduledDaySelect.innerHTML = [
-          {value: 'Sun', label: 'Sunday'},
-          {value: 'Mon', label: 'Monday'},
-          {value: 'Tue', label: 'Tuesday'},
-          {value: 'Wed', label: 'Wednesday'},
-          {value: 'Thu', label: 'Thursday'},
-          {value: 'Fri', label: 'Friday'},
-          {value: 'Sat', label: 'Saturday'}
-        ].map(day => `<option value="${day.value}">${day.label}</option>`).join('');
-      }
-    }, 0);
-    let num = 1, unit = "day";
-    if(typeof val === "string" && val){
-      const m = val.match(/(\d+)\s*(year|mon|week|day)/i);
-      if(m){ num = m[1]; unit = m[2].toLowerCase(); }
-    }
-    const units = [
-      {v:"day",  n:"day(s)"},
-      {v:"week", n:"week(s)"},
-      {v:"mon",  n:"month(s)"},
-      {v:"year", n:"year(s)"}
-    ];
-    const unitOpts = units.map(u => `<option value="${u.v}"${u.v===unit?" selected":""}>${u.n}</option>`).join("");
-    return `<div class="field"><label>${esc(label || "Every")}</label>
-      <div style="display:flex; gap:8px; align-items:center;">
-        <input id="${id}-n" type="number" min="1" value="${num}" style="width:110px">
-        <select id="${id}-u">${unitOpts}</select>
-      </div>
-    </div>`;
-  }
-  return `<div class="field"><label>${esc(label)}</label><input id="${id}" type="text" value="${esc(val)}"></div>`;
-})();
+          const id = `field-${f.name}`;
+          const label = (f.label || f.name);
+          const fieldClass = f.fullWidth ? "field full" : "field";
+          
+          if(f.type === "text"){
+            return `<div class="${fieldClass}"><label>${esc(label)}</label><input id="${id}" type="text" value="${esc(val)}" ${f.required ? "required" : ""} ${f.readonly ? "readonly" : ""}></div>`;
+          }
+          
+          if(f.type === "datepicker"){
+            const today = new Date().toISOString().slice(0,10);
+            const dateVal = val ? new Date(val).toISOString().slice(0,10) : "";
+            return `<div class="${fieldClass}">
+              <label>${esc(label)}</label>
+              <div class="datepicker-wrapper">
+                <input id="${id}" type="date" value="${esc(dateVal)}" ${f.required ? "required" : ""} class="modern-datepicker" />
+                <button type="button" class="btn secondary quick-date" onclick="document.getElementById('${id}').value='${today}'">Today</button>
+              </div>
+            </div>`;
+          }
+          
+          if(f.type === "age-selector"){
+            const ageOptions = Array.from({length: 100}, (_, i) => i + 1).map(age => 
+              `<option value="${age}" ${age == val ? 'selected' : ''}>${age}</option>`
+            ).join('');
+            return `<div class="${fieldClass}">
+              <label>${esc(label)}</label>
+              <select id="${id}" class="ui-select age-select">
+                <option value="">Select age...</option>
+                ${ageOptions}
+                <option value="100+" ${val == "100+" ? 'selected' : ''}>100+</option>
+              </select>
+            </div>`;
+          }
+          
+          if(f.type === "staff-multi-select"){
+            return `<div class="${fieldClass}">
+              <label>${esc(label)}</label>
+              <div class="multi-select-wrapper">
+                <input id="${id}" type="hidden" value="${esc(val)}" />
+                <div class="staff-chips" id="${id}-chips"></div>
+                <select id="${id}-selector" class="ui-select">
+                  <option value="">Add staff member...</option>
+                </select>
+              </div>
+            </div>`;
+          }
+          
+          if(f.type === "category-select" || f.type === "status-select" || f.type === "priority-select" || f.type === "avenue-select"){
+            const opts = (f.options || []).map(o => 
+              `<option value="${o.value}" ${o.value == val ? "selected": ""} data-color="${o.color || ""}">${o.label}</option>`
+            ).join("");
+            return `<div class="${fieldClass}">
+              <label>${esc(label)}</label>
+              <select id="${id}" class="ui-select ${f.type}" ${f.required ? "required" : ""}>
+                ${f.required ? '' : '<option value="">Select...</option>'}
+                ${opts}
+              </select>
+            </div>`;
+          }
+          
+          if(f.type === "datetime"){
+            let dateVal = "";
+            let timeVal = "";
+            try{
+              if(val){ const d = new Date(val); dateVal = d.toISOString().slice(0,10); timeVal = d.toISOString().slice(11,16); }
+            }catch(e){}
+            return `<div class="${fieldClass}"><label>${esc(label)}</label>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <input id="${id}-date" type="date" value="${esc(dateVal)}" ${f.required ? "required" : ""} />
+                <input id="${id}-time" type="time" value="${esc(timeVal)}" ${f.required ? "required" : ""} />
+                <button type="button" class="btn secondary" id="${id}-now" style="padding:6px 8px;">Now</button>
+              </div>
+            </div>`;
+          }
+          
+          if(f.type === "textarea"){
+            return `<div class="${fieldClass}"><label>${esc(label)}</label><textarea id="${id}" rows="3" ${f.required ? "required" : ""}>${esc(val)}</textarea></div>`;
+          }
+          
+          if(f.type === "checkbox"){
+            return `<div class="${fieldClass}"><label style="display:flex; gap:8px; align-items:center;"><input id="${id}" type="checkbox" ${val ? "checked" : ""}> ${esc(label)}</label></div>`;
+          }
+          
+          if(f.type === "select"){
+            if(f.options){
+              const opts = (f.options || []).map(o => `<option value="${o.value}"${o.value == val ? " selected": ""}>${o.label}</option>`).join("");
+              return `<div class="${fieldClass}"><label>${esc(label)}</label><select id="${id}" class="ui-select">${opts}</select></div>`;
+            }else{
+              return `<div class="${fieldClass}"><label>${esc(label)}</label><select id="${id}" class="ui-select"><option value="">Loading...</option></select></div>`;
+            }
+          }
+          
+          if(f.type === "frequency"){
+            setTimeout(() => {
+              const freq = String(val || '1 month').toLowerCase();
+              const scheduledDaySelect = document.getElementById('field-scheduled_day');
+              if (!scheduledDaySelect) return;
+              
+              if (freq.includes('mon')) {
+                scheduledDaySelect.innerHTML = Array.from({length: 31}, (_, i) => 
+                  `<option value="${i+1}">${i+1}${['st','nd','rd'][i] || 'th'}</option>`
+                ).join('');
+              } else {
+                scheduledDaySelect.innerHTML = [
+                  {value: 'Sun', label: 'Sunday'},
+                  {value: 'Mon', label: 'Monday'},
+                  {value: 'Tue', label: 'Tuesday'},
+                  {value: 'Wed', label: 'Wednesday'},
+                  {value: 'Thu', label: 'Thursday'},
+                  {value: 'Fri', label: 'Friday'},
+                  {value: 'Sat', label: 'Saturday'}
+                ].map(day => `<option value="${day.value}">${day.label}</option>`).join('');
+              }
+            }, 0);
+            let num = 1, unit = "day";
+            if(typeof val === "string" && val){
+              const m = val.match(/(\d+)\s*(year|mon|week|day)/i);
+              if(m){ num = m[1]; unit = m[2].toLowerCase(); }
+            }
+            const units = [
+              {v:"day",  n:"day(s)"},
+              {v:"week", n:"week(s)"},
+              {v:"mon",  n:"month(s)"},
+              {v:"year", n:"year(s)"}
+            ];
+            const unitOpts = units.map(u => `<option value="${u.v}"${u.v===unit?" selected":""}>${u.n}</option>`).join("");
+            return `<div class="${fieldClass}"><label>${esc(label || "Every")}</label>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <input id="${id}-n" type="number" min="1" value="${num}" style="width:110px">
+                <select id="${id}-u">${unitOpts}</select>
+              </div>
+            </div>`;
+          }
+          
+          if(f.type === "file-upload"){
+            return `<div class="${fieldClass}" style="border: 1px dashed #ccc; padding: 15px; border-radius: 8px; background: #f9f9f9;">
+              <label style="font-weight: bold; margin-bottom: 10px; display: block;">${esc(label)}</label>
+              <div class="file-upload-area" style="text-align: center;">
+                <input id="${id}" type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.txt" style="display: none;" />
+                <button type="button" class="btn secondary" onclick="document.getElementById('${id}').click()" style="margin-bottom: 10px;">
+                  <span>📎 Choose File</span>
+                </button>
+                <div id="${id}-status" style="font-size: 12px; color: #666; margin-top: 5px;">No file selected</div>
+                <div id="${id}-progress" style="display: none; margin-top: 10px;">
+                  <div style="background: #e0e0e0; border-radius: 4px; overflow: hidden;">
+                    <div id="${id}-progress-bar" style="background: #4CAF50; height: 20px; width: 0%; transition: width 0.3s;"></div>
+                  </div>
+                  <div id="${id}-progress-text" style="font-size: 12px; margin-top: 5px;">Uploading...</div>
+                </div>
+              </div>
+              <div class="ai-helper" style="margin-top:.5rem; display:flex; gap:.5rem; align-items:center; justify-content:center;">
+                <button type="button" id="ai-populate-btn-${id}" class="ai-populate-btn btn btn-secondary" style="padding:.4rem .7rem; font-size:.9rem;">
+                  Optional: Populate with AI
+                </button>
+                <span id="ai-status-${id}" style="font-size:.85rem; opacity:.8;"></span>
+              </div>
+            </div>`;
+          }
+          
+          return `<div class="${fieldClass}"><label>${esc(label)}</label><input id="${id}" type="text" value="${esc(val)}"></div>`;
 
-        }).join("");
+        }).join("")}</div>`;
 
 // Ensure Staff Role dropdown is populated even if not declared in entity schema
 if (entityKey === 'kiosk_users') {
@@ -3758,115 +4607,18 @@ if (entityKey === 'kiosk_users') {
   })();
 }
 
-// --- Complaints SPA view functions ---
-async function loadComplaints(){
-  const tbody = document.getElementById('complaints-tbody');
-  const errEl = document.getElementById('complaints-error');
-  if(!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="7" class="muted">Loading…</td></tr>';
-  if(!ctx.site_id){ tbody.innerHTML = '<tr><td colspan="7" class="muted">No site selected</td></tr>'; return; }
-  try{
-    const { data, error } = await supabase.from('complaints').select('*').eq('site_id', ctx.site_id).order('datetime', { ascending: false }).limit(500);
-    if(error){ throw error; }
-    if(!data || !data.length){ tbody.innerHTML = '<tr><td colspan="7" class="muted">No complaints found</td></tr>'; return; }
-    tbody.innerHTML = data.map(c => `
-      <tr>
-        <td>${fmtDate(c.datetime)}</td>
-        <td>${esc(c.patient_initials || '—')}</td>
-        <td>${esc(c.category || '—')}</td>
-        <td>${esc((c.priority || '—').toString())}</td>
-        <td title="${esc(c.original_complaint || '')}">${esc(((c.original_complaint||'')||'').substring(0,80) + (((c.original_complaint||'')||'').length>80? '...':''))}</td>
-        <td>${esc(c.status || '—')}</td>
-        <td>${c.share_with_team ? 'Yes' : 'No'}</td>
-      </tr>
-    `).join('');
-  }catch(err){
-    console.error('Failed to load complaints', err);
-    errEl.style.display = 'block';
-    errEl.textContent = err.message || 'Failed to load complaints';
-    tbody.innerHTML = '<tr><td colspan="7" class="muted">Error loading complaints</td></tr>';
-  }
-}
-
-function showComplaintModal(){
-  const m = document.getElementById('complaint-modal'); if(!m) return; m.classList.add('show');
-}
-function closeComplaintModal(){
-  const m = document.getElementById('complaint-modal'); if(!m) return; m.classList.remove('show');
-  document.getElementById('complaint-inline-form')?.reset();
-}
-
-
-function initComplaintsView(){
-  // idempotent wiring
-  const addBtn = document.getElementById('btn-add-complaint');
-  const modal = document.getElementById('complaint-modal');
-  const closeBtn = document.getElementById('complaint-modal-close');
-  const cancelBtn = document.getElementById('ci-cancel');
-
-  if(addBtn && !addBtn._wired){ addBtn.addEventListener('click', showComplaintModal); addBtn._wired = true; }
-  if(closeBtn && !closeBtn._wired){ closeBtn.addEventListener('click', closeComplaintModal); closeBtn._wired = true; }
-  if(cancelBtn && !cancelBtn._wired){ cancelBtn.addEventListener('click', closeComplaintModal); cancelBtn._wired = true; }
-
-  // clicking backdrop closes
-  if(modal && !modal._wired){
-    modal.addEventListener('click', (e)=>{ if(e.target === modal) closeComplaintModal(); });
-    modal._wired = true;
-  }
-
-  // Ensure the form submit handler is wired once
-  const form = document.getElementById('complaint-inline-form');
-  if(form && !form._wired){
-    form.addEventListener('submit', async (e)=>{
-      e.preventDefault();
-      const errEl = document.getElementById('complaints-error'); if(errEl) errEl.style.display='none';
-      if(!ctx.site_id){ if(errEl){ errEl.style.display='block'; errEl.textContent='No site selected'; } return; }
-
-      const complaintData = {
-        site_id: ctx.site_id,
-        datetime: new Date().toISOString(),
-        patient_initials: document.getElementById('ci-patientInitials').value.trim(),
-        category: document.getElementById('ci-category').value,
-        original_complaint: document.getElementById('ci-originalComplaint').value.trim(),
-        response: document.getElementById('ci-response').value.trim(),
-        lessons_learned: document.getElementById('ci-lessonsLearned').value.trim(),
-        priority: (document.getElementById('ci-priority').value || '').toString().toLowerCase(),
-        status: 'new',
-        share_with_team: false
-      };
-
-      const allowedPriorities = ['low','medium','high'];
-      if(!allowedPriorities.includes(complaintData.priority)){
-        if(errEl){ errEl.style.display='block'; errEl.textContent='Invalid priority'; }
-        return;
-      }
-
-      try{
-        const { data, error } = await supabase.from('complaints').insert([complaintData]).select();
-        if(error) throw error;
-        closeComplaintModal();
-        await loadComplaints();
-      }catch(err){
-        console.error('Failed to submit complaint', err);
-        if(errEl){ errEl.style.display='block'; errEl.textContent = err.message || 'Failed to submit complaint'; }
-      }
-    });
-    form._wired = true;
-  }
-}
-
         
 // Populate dynamic select sources
 (async () => {
   
 for (const f of (crudState.entity.fields || [])) {
     if (f.type === "select" && f.source && !f.options) {
-      const sel = document.getElementById(`field-${f.name}`);
+      const sel = document.getElementById('field-' + f.name);
       if (!sel) continue;
       try {
-        const selectCols = `${f.valueKey || "id"}, ${f.sourceLabel || "full_name"}`;
+        const selectCols = (f.valueKey || "id") + ", " + (f.sourceLabel || "full_name");
         let q = supabase.from(f.source).select(selectCols);
-        const siteScoped = ["rooms","check_types","items","kiosk_users","item_allowed_types"];
+  const siteScoped = ["rooms","check_types","items","kiosk_users","item_allowed_types"];
         if (typeof ctx !== "undefined" && ctx.site_id && siteScoped.includes(f.source)) {
           q = q.eq("site_id", ctx.site_id);
         }
@@ -3883,18 +4635,159 @@ for (const f of (crudState.entity.fields || [])) {
             const optVal = r[f.valueKey || "id"];
             const optLab = r[f.sourceLabel || "full_name"];
             const selAttr = (String(optVal) === String(selected)) ? " selected" : "";
-            return `<option value="${optVal}"${selAttr}>${esc(optLab)}</option>`;
+            return '<option value="' + optVal + '"' + selAttr + '>' + esc(optLab) + '</option>';
           }).join("");
+          // Defensive: if this is the created_by field and selected option looks non-UUID, prefer current user id
+          if(f.name === 'created_by'){
+            const chosen = sel.value;
+            if(chosen && !isUUID(chosen) && ctx.user && ctx.user.id){
+              sel.value = ctx.user.id;
+            }
+          }
         } else {
-          sel.innerHTML = `<option value="">(error)</option>`;
+          sel.innerHTML = '<option value="">(error)</option>';
         }
       } catch (err) {
         console.warn('Select loader error for', f.name, err);
-        sel.innerHTML = `<option value="">(error)</option>`;
+        sel.innerHTML = '<option value="">(error)</option>';
       }
     }
   }
 })();;
+
+  // Initialize enhanced form elements for complaints
+  if (entityKey === 'complaints') {
+    // Setup file upload handler
+    const fileInput = document.getElementById('field-attachment');
+    if (fileInput) {
+      fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        const statusDiv = document.getElementById('field-attachment-status');
+        const progressDiv = document.getElementById('field-attachment-progress');
+        const progressBar = document.getElementById('field-attachment-progress-bar');
+        const progressText = document.getElementById('field-attachment-progress-text');
+        
+        if (!file) {
+          statusDiv.textContent = 'No file selected';
+          statusDiv.style.color = '#666';
+          return;
+        }
+        
+        // Validate file size (10MB limit)
+        if (file.size > 10 * 1024 * 1024) {
+          statusDiv.textContent = 'File too large. Maximum size is 10MB.';
+          statusDiv.style.color = '#e74c3c';
+          return;
+        }
+        
+        try {
+          progressDiv.style.display = 'block';
+          statusDiv.style.color = '#666';
+          statusDiv.textContent = `Selected: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+          
+          // Store file for later upload when form is submitted
+          crudState.pendingAttachment = {
+            file: file,
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: file.type
+          };
+          
+          progressBar.style.width = '100%';
+          progressText.textContent = 'Ready to upload when complaint is saved';
+          
+          setTimeout(() => {
+            progressDiv.style.display = 'none';
+          }, 2000);
+          
+        } catch (error) {
+          console.error('File selection error:', error);
+          statusDiv.textContent = 'Error selecting file';
+          statusDiv.style.color = '#e74c3c';
+          progressDiv.style.display = 'none';
+        }
+      });
+    }
+    
+    // Setup staff multi-select
+    setTimeout(() => {
+      const staffMultiSelect = document.getElementById('field-people_involved-selector');
+      const staffChips = document.getElementById('field-people_involved-chips');
+      const hiddenInput = document.getElementById('field-people_involved');
+      
+      if (staffMultiSelect && staffChips && hiddenInput) {
+        // Load staff members into the selector
+        supabase.from('kiosk_users').select('id, full_name').eq('site_id', ctx.site_id).then(({data, error}) => {
+          if (data && !error) {
+            staffMultiSelect.innerHTML = '<option value="">Add staff member...</option>' + 
+              data.map(s => `<option value="${s.id}">${s.full_name}</option>`).join('');
+          }
+        });
+        
+        // Handle staff selection
+        staffMultiSelect.addEventListener('change', (e) => {
+          if (e.target.value) {
+            const staffId = e.target.value;
+            const staffName = e.target.selectedOptions[0].text;
+            const currentIds = hiddenInput.value ? hiddenInput.value.split(',') : [];
+            
+            if (!currentIds.includes(staffId)) {
+              currentIds.push(staffId);
+              hiddenInput.value = currentIds.join(',');
+              
+              const chip = document.createElement('div');
+              chip.className = 'staff-chip';
+              chip.innerHTML = `${staffName} <button type="button" onclick="this.parentElement.remove(); updateStaffIds()">×</button>`;
+              staffChips.appendChild(chip);
+            }
+            e.target.value = '';
+          }
+        });
+        
+        // Function to update hidden input when chips are removed
+        window.updateStaffIds = function() {
+          const chips = staffChips.querySelectorAll('.staff-chip');
+          const ids = Array.from(chips).map(chip => {
+            const text = chip.textContent.replace('×', '').trim();
+            const option = Array.from(staffMultiSelect.options).find(opt => opt.text === text);
+            return option ? option.value : null;
+          }).filter(id => id);
+          hiddenInput.value = ids.join(',');
+        };
+        
+        // Load existing selections
+        if (hiddenInput.value) {
+          const existingIds = hiddenInput.value.split(',');
+          existingIds.forEach(id => {
+            const option = Array.from(staffMultiSelect.options).find(opt => opt.value === id);
+            if (option) {
+              const chip = document.createElement('div');
+              chip.className = 'staff-chip';
+              chip.innerHTML = `${option.text} <button type="button" onclick="this.parentElement.remove(); updateStaffIds()">×</button>`;
+              staffChips.appendChild(chip);
+            }
+          });
+        }
+      }
+    }, 100);
+  }
+
+  // Attach 'Now' handlers for datetime fields (fill date and time with current values)
+  (function attachNowButtons(){
+    (crudState.entity.fields || []).forEach(f=>{
+      if(f.type === 'datetime'){
+        const btn = document.getElementById(`field-${f.name}-now`);
+        if(!btn) return;
+        btn.addEventListener('click', ()=>{
+          const d = new Date();
+          const dateEl = document.getElementById(`field-${f.name}-date`);
+          const timeEl = document.getElementById(`field-${f.name}-time`);
+          if(dateEl) dateEl.value = d.toISOString().slice(0,10);
+          if(timeEl) timeEl.value = d.toISOString().slice(11,16);
+        });
+      }
+    });
+  })();
 
     }
 
@@ -3921,7 +4814,10 @@ for (const f of (crudState.entity.fields || [])) {
   function closeCRUD(){ crudModal.classList.remove("show"); }
 
   crudCancelBtn.addEventListener("click", closeCRUD);
-  crudModal.addEventListener("click", (e)=>{ if(e.target === crudModal) closeCRUD(); });
+  // Disable closing the CRUD modal by clicking the backdrop to prevent accidental closure.
+  // Keep the Cancel button behavior intact.
+  // Previously: close on backdrop click. That behavior is now disabled.
+  // crudModal.addEventListener("click", (e)=>{ if(e.target === crudModal) closeCRUD(); });
 
   crudForm.addEventListener("submit", async (e)=>{
     e.preventDefault();
@@ -3984,6 +4880,9 @@ for (const f of (crudState.entity.fields || [])) {
     } else { // Standard entity logic...
         
 for (const f of (crudState.entity.fields || [])) {
+  // Skip special fields that are handled separately
+  if (f.type === "file-upload") continue;
+  
   let val;
   if (f.type === "checkbox") {
     val = document.getElementById(`field-${f.name}`).checked;
@@ -3994,6 +4893,39 @@ for (const f of (crudState.entity.fields || [])) {
     const n = document.getElementById(`field-${f.name}-n`).value || "1";
     const u = document.getElementById(`field-${f.name}-u`).value || "day";
     val = `${n} ${u}`;
+  } else if (f.type === "datetime") {
+    // read date + time inputs and combine to ISO
+    const dateEl = document.getElementById(`field-${f.name}-date`);
+    const timeEl = document.getElementById(`field-${f.name}-time`);
+    const nowBtn = document.getElementById(`field-${f.name}-now`);
+    let d = dateEl ? dateEl.value : null;
+    let t = timeEl ? timeEl.value : null;
+    if(!d && !t){ val = null; }
+    else {
+      // If only date provided, treat time as 00:00; if only time, use today
+      if(!d) d = new Date().toISOString().slice(0,10);
+      if(!t) t = '00:00';
+      const combined = `${d}T${t}:00`;
+      const dt = new Date(combined);
+      val = isNaN(dt.getTime()) ? null : dt.toISOString();
+    }
+  } else if (f.type === "age-selector") {
+    val = document.getElementById(`field-${f.name}`).value;
+    if (val === "") val = null;
+    else val = parseInt(val);
+  } else if (f.type === "staff-multi-select") {
+    const checkboxes = document.querySelectorAll(`input[name="field-${f.name}"]:checked`);
+    val = Array.from(checkboxes).map(cb => cb.value).join(',');
+    if (val === "") val = null;
+  } else if (f.type === "category-select" || f.type === "status-select" || f.type === "priority-select" || f.type === "avenue-select") {
+    val = document.getElementById(`field-${f.name}`).value;
+    if (val === "") val = null;
+  } else if (f.type === "datepicker") {
+    val = document.getElementById(`field-${f.name}`).value;
+    if (val === "") val = null;
+  } else if (f.type === "textarea") {
+    val = document.getElementById(`field-${f.name}`).value;
+    if (val === "") val = null;
   } else {
     val = document.getElementById(`field-${f.name}`).value;
     if (val === "") val = null;
@@ -4005,18 +4937,238 @@ for (const f of (crudState.entity.fields || [])) {
 
     if(ctx.site_id) body.site_id = ctx.site_id;
 
+    // Auto-generate complaint number for new complaints
+    if(crudState.mode === "add" && entity.table === "complaints") {
+      if(!body.complaint_number) {
+        // Get current count of complaints for this site to generate next number
+        try {
+          const { count } = await supabase
+            .from("complaints")
+            .select("id", { count: "exact", head: true })
+            .eq("site_id", ctx.site_id);
+          const nextNum = (count || 0) + 1;
+          body.complaint_number = `C${String(nextNum).padStart(4, '0')}`;
+        } catch (err) {
+          console.warn('Failed to generate complaint number:', err);
+          body.complaint_number = `C${Date.now()}`; // fallback
+        }
+      }
+    }
+
+    // Defensive coercion: ensure created_by is a UUID (kiosk_users.id). If not, use current auth user id when available.
+    if(body.created_by && !isUUID(body.created_by)){
+      if(ctx.user && ctx.user.id){
+        console.log('Coercing created_by from', body.created_by, 'to', ctx.user.id);
+        body.created_by = ctx.user.id;
+      } else {
+        // remove invalid value to avoid DB error
+        console.log('Removing invalid created_by value:', body.created_by);
+        delete body.created_by;
+      }
+    }
+    
+    // For complaints, ensure created_by is set if missing
+    if(entity.table === 'complaints' && !body.created_by && ctx.user?.id) {
+      console.log('Setting created_by to current user:', ctx.user.id);
+      body.created_by = ctx.user.id;
+    }
+
+    // Basic validation: ensure UUID fields expected by the DB contain valid UUIDs
+    // Use the already-coerced value in `body` (post processing). Accept numeric kiosk_user ids
+    // (the kiosk_users table uses integer PKs) as valid choices.
+    const uuidChecks = [];
+    (crudState.entity.fields || []).forEach(f => {
+      if (f.name === 'created_by') {
+        const candidate = body.created_by;
+        if (candidate) {
+          // If it looks like a UUID (contains hyphens), require isUUID
+          if (String(candidate).includes('-')) {
+            if (!isUUID(candidate)) uuidChecks.push({ field: f.name, value: candidate });
+          } else {
+            // Not a UUID: allow numeric IDs (integers) or fallback to current user
+            // Accept values that are all digits
+            if (!/^\d+$/.test(String(candidate))) {
+              // not a pure integer -> invalid
+              uuidChecks.push({ field: f.name, value: candidate });
+            }
+          }
+        }
+      }
+    });
+    if (uuidChecks.length) {
+      crudError.textContent = `Please choose valid options for: ${uuidChecks.map(c=>c.field).join(', ')}.`;
+      return;
+    }
+
+    // Defensive: ensure complaints.datetime (DB NOT NULL) is set. Prefer complaint_date if provided.
+    if (entity.table === 'complaints') {
+      if (!body.datetime) {
+        if (body.complaint_date) {
+          // If complaint_date is just a date (YYYY-MM-DD), convert to ISO timestamp at midnight UTC
+          try {
+            const d = new Date(body.complaint_date);
+            if (!isNaN(d.getTime())) body.datetime = d.toISOString();
+            else body.datetime = new Date().toISOString();
+          } catch (e) {
+            body.datetime = new Date().toISOString();
+          }
+        } else {
+          body.datetime = new Date().toISOString();
+        }
+      }
+    }
+
     try{
+      let complaintId = null;
+      
+      // Debug logging before database operations
+      console.log('About to save to database:', {
+        mode: crudState.mode,
+        table: entity.table,
+        body: body,
+        context: { 
+          site_id: ctx.site_id, 
+          user_id: ctx.user?.id,
+          pendingAttachment: !!crudState.pendingAttachment 
+        }
+      });
+      
+      debugLog('Form Submit', {
+        mode: crudState.mode,
+        table: entity.table,
+        hasAttachment: !!crudState.pendingAttachment,
+        bodyKeys: Object.keys(body),
+        created_by: body.created_by,
+        site_id: body.site_id
+      });
+      
       if(crudState.mode === "add"){
-        const { error } = await supabase.from(entity.table).insert(body); if(error) throw error;
+        const { data, error } = await supabase.from(entity.table).insert(body).select('id').single(); 
+        if(error) {
+          console.error('Database insert error:', error);
+          debugLog('Insert Error', error);
+          throw error;
+        }
+        complaintId = data?.id;
+        console.log('Successfully inserted with ID:', complaintId);
       }else{
         const pk = crudState.pk || "id";
         const idv = crudState.row?.[pk];
         if(!idv){ throw new Error("Missing primary key for update."); }
-        const { error } = await supabase.from(entity.table).update(body).eq(pk, idv); if(error) throw error;
+        const { error } = await supabase.from(entity.table).update(body).eq(pk, idv); 
+        if(error) throw error;
+        complaintId = idv;
       }
+      
+      // Handle file attachment upload for complaints
+      if(entity.table === "complaints" && crudState.pendingAttachment && complaintId) {
+        const file = crudState.pendingAttachment.file;
+        const fileName = crudState.pendingAttachment.fileName;
+        const fileType = crudState.pendingAttachment.fileType;
+        const fileSize = crudState.pendingAttachment.fileSize;
+        
+        try {
+          // Sanitize filename
+          const safeName = String(fileName).replace(/[^a-zA-Z0-9.\-_]/g, '_');
+          const storagePath = `complaints/${ctx.site_id}/${complaintId}/${safeName}`;
+
+          console.log('Uploading attachment to storagePath:', storagePath, { fileType, fileSize });
+
+          // Upload file to Supabase Storage
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('pir_attachments')
+            .upload(storagePath, file, { upsert: true, contentType: fileType });
+
+          console.log('uploadData:', uploadData, 'uploadError:', uploadError);
+
+          if (uploadError) {
+            console.error('Supabase upload error object:', uploadError);
+            throw uploadError;
+          }
+
+          // Try to get a public URL; if bucket is private, fall back to a signed URL
+          let publicUrl = null;
+          try {
+            const { data: urlData } = supabase.storage.from('pir_attachments').getPublicUrl(storagePath);
+            console.log('getPublicUrl result:', urlData);
+            if (urlData && urlData.publicUrl) publicUrl = urlData.publicUrl;
+          } catch (e) {
+            console.warn('getPublicUrl threw:', e);
+          }
+
+          if (!publicUrl && supabase.storage.from('pir_attachments').createSignedUrl) {
+            try {
+              const { data: signed, error: signedErr } = await supabase.storage.from('pir_attachments').createSignedUrl(storagePath, 60 * 60);
+              console.log('createSignedUrl result:', signed, 'err:', signedErr);
+              if (!signedErr && signed && signed.signedUrl) publicUrl = signed.signedUrl;
+            } catch (e) {
+              console.warn('createSignedUrl threw:', e);
+            }
+          }
+
+          // Save attachment record in complaint_attachments table
+          const attachmentRecord = {
+            complaint_id: complaintId,
+            file_name: safeName,
+            file_url: publicUrl || storagePath, // fallback to storage path if no public URL
+            file_type: fileType,
+            file_size: fileSize,
+            attachment_type: 'original',
+            uploaded_at: new Date().toISOString()
+          };
+          
+          console.log('Inserting attachment record:', attachmentRecord);
+          debugLog('Attachment Insert', { 
+            record: attachmentRecord, 
+            hasPublicUrl: !!publicUrl,
+            storagePath: storagePath 
+          });
+          
+          const { data: attachData, error: attachmentError } = await supabase.from('complaint_attachments').insert(attachmentRecord).select().single();
+
+          console.log('attachment insert result:', { attachData, attachmentError });
+
+          if (attachmentError) throw attachmentError;
+
+          // Clear pending attachment
+          crudState.pendingAttachment = null;
+
+        } catch (attachmentErr) {
+          console.error('Attachment upload error:', attachmentErr);
+          console.error('Full error details:', JSON.stringify(attachmentErr, null, 2));
+          
+          // Add specific debugging for common RLS/policy issues
+          if (attachmentErr.code === '42501') {
+            console.error('RLS Policy Error: Check that complaint_attachments table has proper insert policies');
+          } else if (attachmentErr.code === '23505') {
+            console.error('Unique constraint violation in complaint_attachments');
+          } else if (attachmentErr.message && attachmentErr.message.includes('policy')) {
+            console.error('Policy violation detected:', attachmentErr.message);
+          }
+          
+          debugLog('Attachment Error', {
+            error: attachmentErr,
+            complaintId: complaintId,
+            fileName: fileName,
+            fileSize: fileSize,
+            storagePath: typeof storagePath !== 'undefined' ? storagePath : 'undefined'
+          });
+          
+          // Don't fail the entire form submission if attachment fails
+          try {
+            const errMsg = attachmentErr && attachmentErr.message ? attachmentErr.message : JSON.stringify(attachmentErr);
+            crudError.textContent = `Complaint saved, but attachment failed to upload: ${errMsg}`;
+          } catch (e) {
+            crudError.textContent = `Complaint saved, but attachment failed to upload. Check console for details.`;
+          }
+          setTimeout(() => { crudError.textContent = ""; closeCRUD(); }, 8000);
+          return;
+        }
+      }
+      
       closeCRUD();
       if (entity.table === 'pir_documents') loadAndRenderPIR();
-      else await Promise.all([loadCounts(), loadItems(), loadRooms(), loadCheckTypes(), loadSchedules(), loadStaff()]);
+      else await Promise.all([loadCounts(), loadItems(), loadRooms(), loadComplaints(), loadCheckTypes(), loadSchedules(), loadStaff()]);
     } catch(err) {
       crudError.textContent = err.message || String(err);
     }
@@ -4046,6 +5198,7 @@ for (const f of (crudState.entity.fields || [])) {
 
   // ... (All remaining event listeners and functions are unchanged)
   document.getElementById("btn-new-room")?.addEventListener("click", ()=>openCRUD("rooms","add"));
+  document.getElementById("btn-new-complaint")?.addEventListener("click", ()=>openCRUD("complaints","add"));
   document.getElementById("btn-new-ct")?.addEventListener("click", ()=>openCRUD("check_types","add"));
   document.getElementById("btn-new-staff")?.addEventListener("click", ()=>openCRUD("kiosk_users","add"));
   document.getElementById("btn-new-item")?.addEventListener("click", ()=>openCRUD("items","add"));
@@ -4095,6 +5248,294 @@ for (const f of (crudState.entity.fields || [])) {
   }
   submissionDetailModal.addEventListener("click", (e) => { if (e.target === submissionDetailModal || e.target.closest("#submission-detail-close")) { submissionDetailModal.classList.remove("show"); } });
 
+  // === TRAINING FUNCTIONALITY ===
+  let trainingData = { staff: [], types: [], records: [] };
+  let currentTrainingTab = 'clinical';
+
+  async function loadTrainingMatrix() {
+    try {
+      // Load staff, training types, and training records
+      const [staffRes, typesRes, recordsRes] = await Promise.all([
+        supabase.from('kiosk_users').select('*').eq('site_id', ctx.site_id),
+        supabase.from('training_types').select('*').eq('site_id', ctx.site_id).eq('active', true),
+        supabase.from('training_records').select(`
+          *, 
+          kiosk_users(full_name, role), 
+          training_types(name)
+        `).eq('site_id', ctx.site_id)
+      ]);
+
+      if (staffRes.error) throw staffRes.error;
+      if (typesRes.error) throw typesRes.error;
+      if (recordsRes.error) throw recordsRes.error;
+
+      trainingData = {
+        staff: staffRes.data || [],
+        types: typesRes.data || [],
+        records: recordsRes.data || []
+      };
+
+      renderTrainingMatrix();
+    } catch (err) {
+      console.error('Failed to load training data:', err);
+      document.getElementById('training-tbody').innerHTML = '<tr><td colspan="100%" class="muted">Failed to load training data</td></tr>';
+    }
+  }
+
+  function switchTrainingTab(tab) {
+    currentTrainingTab = tab;
+    document.querySelectorAll('#view-training .tab-controls button').forEach(btn => btn.classList.remove('active'));
+    document.getElementById(`tab-${tab}`).classList.add('active');
+    renderTrainingMatrix();
+  }
+
+  function renderTrainingMatrix() {
+    const headers = document.getElementById('training-headers');
+    const tbody = document.getElementById('training-tbody');
+    
+    if (!headers || !tbody) return;
+
+    // Filter staff by type
+    const filteredStaff = trainingData.staff.filter(staff => {
+      const isClinical = ['GP', 'Nurse', 'HCA', 'Practice Nurse', 'ANP'].some(role => 
+        (staff.role || '').toLowerCase().includes(role.toLowerCase())
+      );
+      return currentTrainingTab === 'clinical' ? isClinical : !isClinical;
+    });
+
+    // Build headers
+    headers.innerHTML = '<th>Staff Member</th>' + 
+      trainingData.types.map(type => `<th>${esc(type.name)}</th>`).join('');
+
+    // Build matrix rows
+    if (filteredStaff.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="${trainingData.types.length + 1}" class="muted">No ${currentTrainingTab} staff found</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = filteredStaff.map(staff => {
+      const staffRecords = trainingData.records.filter(r => r.staff_id === staff.id);
+      const cells = trainingData.types.map(type => {
+        const record = staffRecords.find(r => r.training_type_id === type.id);
+        return renderTrainingCell(staff.id, type.id, record);
+      }).join('');
+      
+      return `<tr>
+        <td>${esc(staff.full_name || 'Unknown')}</td>
+        ${cells}
+      </tr>`;
+    }).join('');
+
+    // Add click handlers
+    tbody.querySelectorAll('.training-cell').forEach(cell => {
+      cell.addEventListener('click', () => {
+        const staffId = cell.dataset.staffId;
+        const typeId = cell.dataset.typeId;
+        openTrainingModal(staffId, typeId);
+      });
+    });
+  }
+
+  function renderTrainingCell(staffId, typeId, record) {
+    const today = new Date();
+    let status = 'training-missing';
+    let content = '—';
+    
+    if (record) {
+      const completionDate = new Date(record.completion_date);
+      const expiryDate = record.expiry_date ? new Date(record.expiry_date) : null;
+      
+      if (expiryDate) {
+        const daysToExpiry = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
+        
+        if (daysToExpiry < 0) {
+          status = 'training-expired';
+          content = `Expired<br><small>${fmtDateShort(record.completion_date)}</small>`;
+        } else if (daysToExpiry <= 30) {
+          status = 'training-expiring';
+          content = `Expires ${daysToExpiry}d<br><small>${fmtDateShort(record.completion_date)}</small>`;
+        } else {
+          status = 'training-completed';
+          content = `Valid<br><small>${fmtDateShort(record.completion_date)}</small>`;
+        }
+      } else {
+        status = 'training-completed';
+        content = `Completed<br><small>${fmtDateShort(record.completion_date)}</small>`;
+      }
+    }
+
+    return `<td class="training-cell ${status}" data-staff-id="${staffId}" data-type-id="${typeId}">${content}</td>`;
+  }
+
+  function openTrainingModal(staffId, typeId) {
+    const staff = trainingData.staff.find(s => s.id == staffId);
+    const type = trainingData.types.find(t => t.id == typeId);
+    const record = trainingData.records.find(r => r.staff_id == staffId && r.training_type_id == typeId);
+
+    if (!staff || !type) return;
+
+    document.getElementById('training-staff-id').value = staffId;
+    document.getElementById('training-type-id').value = typeId;
+    document.getElementById('training-staff-name').value = staff.full_name || 'Unknown';
+    document.getElementById('training-type-name').value = type.name;
+    
+    if (record) {
+      document.getElementById('training-completion-date').value = record.completion_date || '';
+      document.getElementById('training-expiry-date').value = record.expiry_date || '';
+      document.getElementById('training-notes').value = record.notes || '';
+      document.getElementById('training-delete-btn').style.display = 'block';
+      
+      if (record.certificate_url) {
+        document.getElementById('training-current-file').style.display = 'block';
+        document.getElementById('training-file-name').textContent = 'Certificate on file';
+      } else {
+        document.getElementById('training-current-file').style.display = 'none';
+      }
+    } else {
+      document.getElementById('training-completion-date').value = '';
+      document.getElementById('training-expiry-date').value = '';
+      document.getElementById('training-notes').value = '';
+      document.getElementById('training-delete-btn').style.display = 'none';
+      document.getElementById('training-current-file').style.display = 'none';
+    }
+
+    document.getElementById('training-modal').classList.add('show');
+  }
+
+  function closeTrainingModal() {
+    document.getElementById('training-modal').classList.remove('show');
+    document.getElementById('training-error').style.display = 'none';
+    document.getElementById('training-form').reset();
+  }
+
+  async function handleTrainingFileUpload() {
+    const fileInput = document.getElementById('training-certificate');
+    const file = fileInput.files[0];
+    
+    if (!file) return;
+    
+    if (file.size > 10 * 1024 * 1024) {
+      document.getElementById('training-error').textContent = 'File size must be less than 10MB';
+      document.getElementById('training-error').style.display = 'block';
+      return;
+    }
+
+    // Show file selected
+    const uploadZone = document.getElementById('training-upload-zone');
+    uploadZone.innerHTML = `
+      <div style="color: var(--success);">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        <p style="margin-top: 8px;">Selected: ${file.name}</p>
+      </div>
+    `;
+  }
+
+  function calculateTrainingExpiry() {
+    const completionDate = document.getElementById('training-completion-date').value;
+    const typeId = document.getElementById('training-type-id').value;
+    
+    if (!completionDate || !typeId) return;
+    
+    // Find the training type to get validity period
+    const trainingType = trainingData.types.find(t => t.id == typeId);
+    if (!trainingType || !trainingType.validity_months) return;
+    
+    // Calculate expiry date
+    const completion = new Date(completionDate);
+    const expiry = new Date(completion);
+    expiry.setMonth(expiry.getMonth() + trainingType.validity_months);
+    
+    // Set the expiry date field
+    const expiryField = document.getElementById('training-expiry-date');
+    expiryField.value = expiry.toISOString().split('T')[0];
+  }
+
+  async function saveTrainingRecord(e) {
+    e.preventDefault();
+    
+    const errorDiv = document.getElementById('training-error');
+    errorDiv.style.display = 'none';
+
+    try {
+      const staffId = document.getElementById('training-staff-id').value;
+      const typeId = document.getElementById('training-type-id').value;
+      const completionDate = document.getElementById('training-completion-date').value;
+      const expiryDate = document.getElementById('training-expiry-date').value;
+      const notes = document.getElementById('training-notes').value;
+      const fileInput = document.getElementById('training-certificate');
+      
+      let certificateUrl = null;
+
+      // Upload certificate if provided
+      if (fileInput.files[0]) {
+        const file = fileInput.files[0];
+        const fileName = `training-${staffId}-${typeId}-${Date.now()}.${file.name.split('.').pop()}`;
+        
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('training-certificates')
+          .upload(fileName, file);
+
+        if (uploadError) throw uploadError;
+        
+        const { data: urlData } = supabase.storage
+          .from('training-certificates')
+          .getPublicUrl(fileName);
+          
+        certificateUrl = urlData.publicUrl;
+      }
+
+      // Save or update training record
+      const recordData = {
+        site_id: ctx.site_id,
+        staff_id: parseInt(staffId),
+        training_type_id: parseInt(typeId),
+        completion_date: completionDate,
+        expiry_date: expiryDate || null,
+        notes: notes || null,
+        certificate_url: certificateUrl
+      };
+
+      const existingRecord = trainingData.records.find(r => 
+        r.staff_id == staffId && r.training_type_id == typeId
+      );
+
+      if (existingRecord) {
+        const { error } = await supabase
+          .from('training_records')
+          .update(recordData)
+          .eq('id', existingRecord.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('training_records')
+          .insert(recordData);
+        if (error) throw error;
+      }
+
+      closeTrainingModal();
+      loadTrainingMatrix();
+    } catch (err) {
+      console.error('Failed to save training record:', err);
+      errorDiv.textContent = err.message || 'Failed to save training record';
+      errorDiv.style.display = 'block';
+    }
+  }
+
+  // Global function for downloading training certificates
+  window.downloadTrainingCertificate = function() {
+    const staffId = document.getElementById('training-staff-id').value;
+    const typeId = document.getElementById('training-type-id').value;
+    const record = trainingData.records.find(r => 
+      r.staff_id == staffId && r.training_type_id == typeId
+    );
+    
+    if (record?.certificate_url) {
+      window.open(record.certificate_url, '_blank');
+    }
+  };
+
   document.addEventListener("DOMContentLoaded", bootstrap);
 </script>
   
@@ -4125,88 +5566,383 @@ for (const f of (crudState.entity.fields || [])) {
       <div id="submission-detail-content" style="margin-top:12px;"></div>
     </div>
   </div>
-<script>
-(function setupComplaints(){
-  const tbody = document.getElementById('complaints-tbody');
-  if (!tbody) return;
 
-  function escapeHtml(s){
-    return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+
+
+  <!-- Debug panel (temporary) -->
+  <div id="debug-panel" style="position:fixed; right:12px; bottom:12px; width:360px; max-height:40vh; overflow:auto; background:rgba(0,0,0,0.6); color:#fff; font-size:12px; padding:8px; border-radius:8px; z-index:9999; box-shadow:0 6px 18px rgba(0,0,0,0.4);">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px;"><strong style="font-size:13px">DEBUG</strong><button id="debug-clear" style="background:#333;color:#fff;border:none;padding:4px 8px;border-radius:6px;cursor:pointer">Clear</button></div>
+    <div id="debug-log"></div>
+  </div>
+  <script>
+  // Temporary debug helper
+  function debugLog(msg, obj) {
+    try {
+      const panel = document.getElementById('debug-log');
+      if (!panel) return;
+      const time = new Date().toISOString().slice(11,23);
+      const el = document.createElement('div');
+      el.style.borderBottom = '1px dashed rgba(255,255,255,0.06)';
+      el.style.padding = '6px 0';
+      el.innerHTML = `<code style="color:#bfe7ff">[${time}]</code> ${String(msg)}${obj ? `<pre style="white-space:pre-wrap;margin:6px 0;color:#ffd6a5">${JSON.stringify(obj, null, 2)}</pre>` : ''}`;
+      panel.insertBefore(el, panel.firstChild);
+    } catch (e) { console.log('debugLog error', e); }
   }
+  document.getElementById('debug-clear')?.addEventListener('click', ()=>{ const p=document.getElementById('debug-log'); if(p) p.innerHTML=''; });
 
-  async function load(){
-    try{
-      if (!(window.supabase && window.ctx && (ctx.site_id || ctx.siteId))){
-        tbody.innerHTML = '<tr><td colspan="7" class="muted">Not connected (missing supabase or site).</td></tr>';
-        return;
-      }
-      const siteId = ctx.site_id || ctx.siteId;
-
-      const { data, error } = await supabase
-        .from('complaints')
-        .select('id, datetime, patient_initials, category, priority, original_complaint, status, share_with_team')
-        .eq('site_id', siteId)
-        .order('datetime', { ascending: false })
-        .limit(500);
-
-      if (error) throw error;
-
-      if (!data || data.length === 0){
-        tbody.innerHTML = '<tr><td colspan="7" class="muted">No complaints yet.</td></tr>';
-        return;
-      }
-
-      const rows = data.map(r => {
-        const d = new Date(r.datetime);
-        const ds = isNaN(d.getTime())
-          ? escapeHtml(r.datetime)
-          : d.toLocaleString(undefined, { year:'numeric', month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit' });
-
-        const pri = (r.priority || '').toLowerCase();
-        const priClass = pri === 'high' ? 'danger' : (pri === 'medium' ? 'warning' : '');
-        const priChip = pri ? `<span class="chip ${priClass}">${pri.charAt(0).toUpperCase()+pri.slice(1)}</span>` : '';
-
-        const st  = (r.status || '').toLowerCase();
-        const stClass = st === 'resolved' ? 'success' : (st === 'pending' ? 'warning' : (st === 'closed' ? '' : ''));
-        const stChip = st ? `<span class="chip ${stClass}">${st.charAt(0).toUpperCase()+st.slice(1)}</span>` : '';
-
-        const share = r.share_with_team ? 'Yes' : 'No';
-        const complaint = (r.original_complaint || '').replace(/\s+/g,' ').slice(0,120) + ((r.original_complaint || '').length > 120 ? '…' : '');
-
-        return `<tr data-id="${r.id}">
-                  <td>${ds}</td>
-                  <td>${escapeHtml(r.patient_initials || '')}</td>
-                  <td>${escapeHtml(r.category || '')}</td>
-                  <td>${priChip}</td>
-                  <td>${escapeHtml(complaint)}</td>
-                  <td>${stChip}</td>
-                  <td>${share}</td>
-                </tr>`;
-      }).join('');
-
-      tbody.innerHTML = rows;
-    } catch (e){
-      console.error(e);
-      const msg = e && e.message ? e.message : String(e);
-      tbody.innerHTML = `<tr><td colspan="7" class="muted">Error loading complaints: ${escapeHtml(msg)}</td></tr>`;
+  // Instrument file selection and upload points if present
+  (function instrumentDebugging(){
+    const fileInput = document.getElementById('field-attachment');
+    if(fileInput){
+      fileInput.addEventListener('change', (e)=>{
+        const f = e.target.files && e.target.files[0];
+        debugLog('file selected', f ? { name: f.name, size: f.size, type: f.type } : 'no-file');
+      });
     }
-  }
 
-  // Initial load
-  if (document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', load);
-  } else {
-    load();
-  }
+    // Hook into save button to dump pendingAttachment
+    const saveBtn = document.getElementById('crud-save');
+    if(saveBtn){
+      saveBtn.addEventListener('click', ()=>{
+        debugLog('Save clicked. pendingAttachment', window.crudState ? window.crudState.pendingAttachment : null);
+      });
+    }
 
-  // Refresh when the Complaints tab is clicked
-  const btn = document.querySelector('[data-section="complaints"]');
-  if (btn){ btn.addEventListener('click', () => setTimeout(load, 0)); }
+    // AI Populate logic for complaints form (using event delegation for dynamic buttons)
+    (function(){
+      function setStatus(statusEl, msg){ if(statusEl) statusEl.textContent = msg || ''; }
+      function getEl(...selectors){ for(const s of selectors){ const el=document.querySelector(s); if(el) return el; } return null; }
 
-  // Manual refresh hook
-  window.reloadComplaints = load;
-})();
-</script>
+      // Use event delegation to handle dynamically created AI buttons
+      document.addEventListener('click', async function(event) {
+        if (!event.target.classList.contains('ai-populate-btn')) return;
+        
+        const btn = event.target;
+        const btnId = btn.id;
+        const statusId = btnId.replace('ai-populate-btn-', 'ai-status-');
+        const statusEl = document.getElementById(statusId);
+        
+        // Find the associated file input - extract field ID from button ID
+        const fieldId = btnId.replace('ai-populate-btn-', '');
+        const fileInput = document.getElementById(fieldId);
+        
+        debugLog('AI button clicked', {buttonId: btnId, fieldId: fieldId, fileInputFound: !!fileInput, hasFiles: fileInput?.files?.length > 0});
+        
+        if (!fileInput || !fileInput.files.length){
+          setStatus(statusEl, 'Choose a file first.'); 
+          debugLog('No file input or files found', {fileInput: !!fileInput, filesLength: fileInput?.files?.length});
+          return;
+        }
+        
+        const file = fileInput.files[0];
+        debugLog('AI button clicked', {buttonId: btnId, fileName: file.name, fileSize: file.size});
+        
+        // Get form field elements
+        const elDate = getEl('#field-complaint_date');
+        const elPatient = getEl('#field-patient_initials');
+        const elAge = getEl('#field-age');
+        const elSummary = getEl('#field-complaint_summary');
+        const elOrig = getEl('#field-original_complaint');
+        const elResp = getEl('#field-response');
+        const elLessons = getEl('#field-lessons_learned');
+        const elCategory = getEl('#field-category');
+        const elCategoryTrends = getEl('#field-category_trends');
+        const elSolution = getEl('#field-solution_given');
+        const elSuggestions = getEl('#field-suggestions_prevent_reoccurrence');
+        const elActions = getEl('#field-actions_to_be_taken');
+        const elPeopleInvolved = getEl('#field-people_involved');
+        const elAvenue = getEl('#field-avenue_used');
+        const elStatus = getEl('#field-status');
+        const elPriority = getEl('#field-priority');
+        const elResponseSent = getEl('#field-response_sent');
+        const elCreatedBy = getEl('#field-created_by');
 
-</body>
-</html>
+        btn.disabled = true; 
+        setStatus(statusEl, 'Processing…');
+        
+        try {
+          let textContent = '';
+          
+          // Extract text based on file type
+          if (file.type === 'text/plain') {
+            textContent = await file.text();
+            debugLog('Text file processed', {length: textContent.length});
+          } else if (file.type === 'application/pdf') {
+            setStatus(statusEl, 'Extracting text from PDF…');
+            try {
+              const arrayBuffer = await file.arrayBuffer();
+              const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+              debugLog('PDF loaded', {numPages: pdf.numPages});
+              
+              let pdfText = '';
+              for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                const pageText = textContent.items.map(item => item.str).join(' ');
+                pdfText += pageText + '\n';
+              }
+              textContent = pdfText.trim();
+              debugLog('PDF text extracted', {length: textContent.length});
+            } catch (pdfError) {
+              debugLog('PDF extraction error', pdfError);
+              setStatus(statusEl, 'Error extracting text from PDF. Try a text file instead.');
+              btn.disabled = false;
+              return;
+            }
+          } else if (file.type.includes('word') || file.name.endsWith('.docx') || file.name.endsWith('.doc')) {
+            setStatus(statusEl, 'Word document processing - please use PDF or text files');
+            btn.disabled = false;
+            return;
+          } else {
+            setStatus(statusEl, 'Please upload a PDF or text (.txt) file for AI processing.');
+            btn.disabled = false;
+            return;
+          }
+          
+          if (!textContent || textContent.length < 10) {
+            setStatus(statusEl, 'File appears to be empty or too short.');
+            btn.disabled = false;
+            return;
+          }
+          
+          debugLog('Calling extract-complaint function', {textLength: textContent.length});
+          setStatus(statusEl, 'Calling AI service…');
+          
+          const { data, error } = await supabase.functions.invoke('extract-complaint', { 
+            body: { text: textContent }
+          });
+          
+          debugLog('AI function response', {data, error});
+          
+          if (error) {
+            debugLog('AI function error', error);
+            throw error;
+          }
+          
+          if (!data || !data.success) {
+            const errorMsg = data?.error || 'Unknown error from AI service';
+            debugLog('AI service error', errorMsg);
+            throw new Error(errorMsg);
+          }
+          
+          const d = data.data || {};
+          debugLog('AI extracted data', d);
+          debugLog('Form elements found', {
+            date: !!elDate,
+            patient: !!elPatient,
+            age: !!elAge,
+            summary: !!elSummary,
+            original: !!elOrig,
+            response: !!elResp,
+            lessons: !!elLessons,
+            category: !!elCategory,
+            categoryTrends: !!elCategoryTrends,
+            solution: !!elSolution,
+            suggestions: !!elSuggestions,
+            actions: !!elActions,
+            peopleInvolved: !!elPeopleInvolved,
+            avenue: !!elAvenue,
+            status: !!elStatus,
+            priority: !!elPriority,
+            responseSent: !!elResponseSent,
+            createdBy: !!elCreatedBy
+          });
+          
+          // Populate all form fields
+          if (elDate && d.complaint_date) {
+            elDate.value = d.complaint_date;
+            debugLog('Populated complaint date', d.complaint_date);
+          }
+          if (elPatient && d.patient_initials) {
+            elPatient.value = d.patient_initials;
+            debugLog('Populated patient initials', d.patient_initials);
+          }
+          if (elAge && d.age) {
+            elAge.value = d.age;
+            debugLog('Populated age', d.age);
+          }
+          if (elSummary && d.complaint_summary) {
+            elSummary.value = d.complaint_summary;
+            debugLog('Populated summary', d.complaint_summary);
+          }
+          if (elOrig && d.original_complaint) {
+            elOrig.value = d.original_complaint;
+            debugLog('Populated original complaint', d.original_complaint);
+          }
+          if (elResp && d.response) {
+            elResp.value = d.response;
+            debugLog('Populated response', d.response);
+          }
+          if (elLessons && d.lessons_learned) {
+            elLessons.value = d.lessons_learned;
+            debugLog('Populated lessons learned', d.lessons_learned);
+          }
+          if (elCategory && d.category) {
+            elCategory.value = d.category;
+            debugLog('Populated category', d.category);
+          }
+          if (elCategoryTrends && d.category_trends) {
+            elCategoryTrends.value = d.category_trends;
+            debugLog('Populated category trends', d.category_trends);
+          }
+          if (elSolution && d.solution_given) {
+            elSolution.value = d.solution_given;
+            debugLog('Populated solution given', d.solution_given);
+          }
+          if (elSuggestions && d.suggestions_prevent_reoccurrence) {
+            elSuggestions.value = d.suggestions_prevent_reoccurrence;
+            debugLog('Populated suggestions', d.suggestions_prevent_reoccurrence);
+          }
+          if (elActions && d.actions_to_be_taken) {
+            elActions.value = d.actions_to_be_taken;
+            debugLog('Populated actions', d.actions_to_be_taken);
+          }
+          if (elAvenue && d.avenue_used) {
+            elAvenue.value = d.avenue_used;
+            debugLog('Populated avenue used', d.avenue_used);
+          }
+          if (elStatus && d.status) {
+            elStatus.value = d.status;
+            debugLog('Populated status', d.status);
+          }
+          if (elPriority && d.priority) {
+            elPriority.value = d.priority;
+            debugLog('Populated priority', d.priority);
+          }
+          if (elResponseSent && typeof d.response_sent === 'boolean') {
+            elResponseSent.checked = d.response_sent;
+            debugLog('Populated response sent', d.response_sent);
+          }
+          // Set created_by to current user
+          if (elCreatedBy && ctx.user && ctx.user.id) {
+            elCreatedBy.value = ctx.user.id;
+            debugLog('Set created_by to current user', ctx.user.id);
+          }
+          // Handle people_involved (multi-select field)
+          if (elPeopleInvolved && d.people_involved && Array.isArray(d.people_involved)) {
+            // For multi-select, we'd need to match names to IDs from the staff list
+            debugLog('People involved names extracted', d.people_involved);
+            // Note: Actual ID mapping would require matching against kiosk_users table
+          }
+          
+          setStatus(statusEl, '✓ Filled by AI — please review.');
+          debugLog('Form populated successfully');
+          
+        } catch(e) {
+          console.error('AI processing error:', e); 
+          debugLog('AI error details', {message: e.message, stack: e.stack, error: e});
+          setStatus(statusEl, 'AI error: ' + (e.message || e));
+        } finally { 
+          btn.disabled = false; 
+        }
+      });
+    })();
+
+  })();
+
+  // --- Enhanced in-page debug panel (non-destructive) ---
+  (function(){
+    try{
+      const panel = document.createElement('div');
+      panel.id = 'enhancedDebugPanel';
+      panel.style.position = 'fixed';
+      panel.style.right = '12px';
+      panel.style.bottom = '12px';
+      panel.style.width = '420px';
+      panel.style.maxHeight = '60vh';
+      panel.style.overflow = 'auto';
+      panel.style.background = 'rgba(0,0,0,0.85)';
+      panel.style.color = '#e6e6e6';
+      panel.style.fontSize = '12px';
+      panel.style.zIndex = '999999';
+      panel.style.borderRadius = '8px';
+      panel.style.padding = '8px';
+      panel.style.boxShadow = '0 8px 30px rgba(0,0,0,0.5)';
+
+      panel.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px;">
+          <strong style="color:#fff; font-size:13px;">DEBUG</strong>
+          <div style="display:flex; gap:6px;">
+            <button id="dbgClear" style="background:#c0392b;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px">Clear</button>
+            <button id="dbgCopy" style="background:#16a085;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px">Copy</button>
+            <button id="dbgToggle" style="background:#8e44ad;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px">Hide</button>
+          </div>
+        </div>
+        <div id="dbgLog" style="white-space:pre-wrap; font-family:monospace; line-height:1.3; max-height:46vh; overflow-y:auto;">(logs appear here)</div>
+      `;
+
+      document.body.appendChild(panel);
+      const logEl = document.getElementById('dbgLog');
+      const clearBtn = document.getElementById('dbgClear');
+      const copyBtn = document.getElementById('dbgCopy');
+      const toggleBtn = document.getElementById('dbgToggle');
+
+      function ts(){ return new Date().toISOString().replace('T',' ').replace('Z',''); }
+      function debugLog(msg, obj){
+        try{
+          const line = `[${ts()}] ${msg}` + (obj!==undefined ? ' ' + JSON.stringify(obj, replacer, 2) : '');
+          if(logEl.textContent === '(logs appear here)') logEl.textContent = '';
+          logEl.textContent = line + '\n' + logEl.textContent;
+          console.log('[DBG]', msg, obj);
+        }catch(e){ console.log('debugLog fail', e); }
+      }
+      function replacer(k,v){ if(typeof v === 'function') return `[Function:${v.name||'anon'}]`; if(k && /token|key|secret|password/i.test(k)) return '[REDACTED]'; return v; }
+      window.debugLog = debugLog;
+
+      clearBtn.addEventListener('click', ()=>{ logEl.textContent = ''; debugLog('Logs cleared'); });
+      copyBtn.addEventListener('click', ()=>{ navigator.clipboard?.writeText(logEl.textContent||'').then(()=>debugLog('Logs copied')).catch(e=>debugLog('Copy failed', e)); });
+      toggleBtn.addEventListener('click', ()=>{ if(logEl.style.display==='none'){ logEl.style.display='block'; toggleBtn.textContent='Hide'; } else { logEl.style.display='none'; toggleBtn.textContent='Show'; } });
+
+      // Wrap fetch
+      const _fetch = window.fetch.bind(window);
+      window.fetch = function(...args){
+        try{ debugLog('fetch', { url: args[0], opts: args[1]?.method || 'GET' }); }catch(e){}
+        return _fetch(...args).then(res=>{ debugLog('fetch-response', { url: args[0], status: res.status }); return res; }).catch(err=>{ debugLog('fetch-error', { url: args[0], error: String(err) }); throw err; });
+      };
+
+      // Wrap supabase.from to log queries
+      try{
+        if(window.supabase && window.supabase.from){
+          const origFrom = window.supabase.from.bind(window.supabase);
+          window.supabase.from = function(table){
+            debugLog('supabase.from', { table });
+            const q = origFrom(table);
+            const wrapMethod = (methodName, label)=>{
+              const orig = q[methodName]?.bind(q);
+              if(orig){ q[methodName] = function(...a){ debugLog(label, { table, args: a.slice(0,2) }); return orig(...a); }; }
+            };
+            ['select','insert','update','delete','eq','in','order'].forEach(m=>wrapMethod(m,'supabase.'+m));
+            return q;
+          };
+          debugLog('Supabase wrapped');
+        }
+      }catch(e){ console.warn('Supabase wrap failed', e); }
+
+      // Capture button clicks & form submits
+      document.addEventListener('click', (ev)=>{
+        try{ const t=ev.target; if(!t) return; if(t.tagName==='BUTTON' || t.tagName==='A'){ debugLog('click', { tag: t.tagName, id: t.id||null, text: (t.textContent||'').trim().slice(0,60) }); } }catch(e){}
+      }, true);
+
+      document.addEventListener('submit', (ev)=>{
+        try{ const f=ev.target; if(f && f.tagName==='FORM'){ const fd=new FormData(f); const keys=[]; for(const k of fd.keys()) keys.push(k); debugLog('form-submit', { id: f.id||null, fields: keys }); } }catch(e){}
+      }, true);
+
+      // Monitor file inputs
+      document.addEventListener('change', (ev)=>{
+        try{ const t=ev.target; if(!t) return; if(t.tagName==='INPUT' && t.type==='file'){ const files = Array.from(t.files||[]).map(f=>({name:f.name,size:f.size,type:f.type})); debugLog('file-select', { id: t.id||null, files }); } }catch(e){}
+      }, true);
+
+      // Monitor complaints table loads by observing container changes
+      const cmpContainer = document.getElementById('complaints-tbody');
+      if(cmpContainer){
+        const obs = new MutationObserver((muts)=>{ debugLog('complaints-tbody changed', { mutations: muts.length }); });
+        obs.observe(cmpContainer, { childList: true, subtree: true, characterData: true });
+      }
+
+      debugLog('Enhanced debug panel initialized');
+    }catch(e){ console.error('Failed to init debug panel', e); }
+  })();
+
+  </script>
+ </body>
+ </html>
