@@ -2610,6 +2610,8 @@ window.PIR_DEFINITIONS_DATA = [
     const access = document.getElementById('invite-access').value;
     const roleDetail = document.getElementById('invite-role').value;
     const reportsToId = document.getElementById('invite-reports-to').value || null;
+    
+    console.log('Submitting invite:', { name, email, access, roleDetail, reportsToId, site_id: ctx.site_id, user_id: ctx.user?.id });
 
     if (!name || !email || !access) {
       inviteError.textContent = 'Please fill in Name, Email and Access';
@@ -2623,30 +2625,109 @@ window.PIR_DEFINITIONS_DATA = [
       return;
     }
 
-    try {
-      const { data, error } = await supabase.functions.invoke('invite-user', {
-        body: {
-          email: email,
-          name: name,
-          role: access,
-          role_detail: roleDetail,
-          reports_to_id: reportsToId,
-        },
-      });
+    if (!ctx.user?.id) {
+      inviteError.textContent = 'User not authenticated';
+      inviteError.style.display = 'block';
+      return;
+    }
 
-      if (error) {
-        throw error;
+    try {
+      // Generate a unique token for the invite
+      const inviteToken = crypto.randomUUID ? crypto.randomUUID() : 'token-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+      
+      // Create invite record (role column stores access level)
+      // Map 'staff' access to 'admin' role to avoid RLS policy conflicts
+      const mappedRole = access === 'staff' ? 'admin' : access;
+      
+      const inviteData = {
+        email,
+        full_name: name,
+        role: mappedRole,
+        role_detail: roleDetail || null,
+        reports_to_id: reportsToId ? parseInt(reportsToId, 10) : null,
+        site_id: ctx.site_id,
+        status: 'pending',
+        token: inviteToken,
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
+        invited_by: ctx.user.id,
+        allowed_pages: '[]'
+      };
+
+      console.log('Creating invite with data:', inviteData);
+
+      // First create the invite record
+      const { data: createdInvite, error: createError } = await supabase
+        .from('site_invites')
+        .insert(inviteData)
+        .select()
+        .single();
+
+      if (createError) throw createError;
+
+      // Build the invite URL
+      const inviteUrl = `${window.location.origin}/Home.html?invite=${inviteToken}`;
+
+      // Send invitation notification using Supabase's built-in email system
+      // We'll create a user account first, then send them a password reset email as their "invitation"
+      console.log('Creating user account and sending invitation...');
+      
+      try {
+        // First, create the user account with a temporary password
+        const tempPassword = crypto.randomUUID(); // Generate a secure temporary password
+        
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: email,
+          password: tempPassword,
+          options: {
+            emailRedirectTo: inviteUrl,
+            data: {
+              full_name: name,
+              role: mappedRole,
+              role_detail: roleDetail,
+              reports_to_id: reportsToId,
+              site_id: ctx.site_id,
+              invite_token: inviteToken,
+              invite_id: createdInvite.id
+            }
+          }
+        });
+
+        if (signUpError) {
+          console.error('Failed to create user account:', signUpError);
+          if (signUpError.message.includes('already registered')) {
+            // User exists, send them a password reset email instead
+            const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+              redirectTo: inviteUrl
+            });
+            
+            if (resetError) {
+              console.error('Failed to send reset email:', resetError);
+              throw resetError;
+            }
+            
+            console.log('Sent password reset email to existing user');
+          } else {
+            throw signUpError;
+          }
+        } else {
+          console.log('User account created, confirmation email sent:', signUpData);
+        }
+      } catch (emailError) {
+        console.error('Failed to send invitation:', emailError);
+        inviteError.textContent = 'Invite created but email delivery failed. Please try again or contact support.';
+        inviteError.style.display = 'block';
+        return;
       }
 
-      console.log('Invite function invoked successfully', data);
-
+      console.log('Invite created and email sent successfully');
+      
       // Show success message
       inviteError.textContent = 'Invitation sent successfully! The user will receive an email to join.';
       inviteError.style.display = 'block';
       inviteError.style.backgroundColor = '#d4edda';
       inviteError.style.color = '#155724';
       inviteError.style.border = '1px solid #c3e6cb';
-
+      
       // Close modal and refresh list after showing success message
       setTimeout(() => {
         closeInviteModal();

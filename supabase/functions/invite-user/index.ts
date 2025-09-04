@@ -1,0 +1,140 @@
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+serve(async (req) => {
+  // Handle CORS preflight request
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  try {
+    // Parse request body
+    let requestBody
+    try {
+      requestBody = await req.json()
+    } catch (e) {
+      throw new Error('Invalid JSON in request body')
+    }
+
+    const { email, name, role, role_detail, reports_to_id } = requestBody
+
+    if (!email || !name || !role) {
+      throw new Error('Missing required fields: email, name, or role')
+    }
+
+    // Get environment variables
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Missing environment variables')
+    }
+
+    // Create Supabase admin client
+    const supabaseAdmin = createClient(
+      supabaseUrl,
+      supabaseServiceKey,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
+      }
+    )
+
+    // Get user from Authorization header
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) {
+      throw new Error('Missing Authorization header')
+    }
+
+    const token = authHeader.replace('Bearer ', '')
+    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token)
+    
+    if (userError) throw new Error(`Auth error: ${userError.message}`)
+    if (!user) throw new Error('User not found or invalid token')
+
+    // Get inviter's profile to check role and site_id
+    const { data: inviterProfile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('site_id, role')
+      .eq('user_id', user.id)
+      .single()
+
+    if (profileError) throw new Error(`Profile error: ${profileError.message}`)
+    if (!inviterProfile) throw new Error('Inviter profile not found')
+
+    if (inviterProfile.role !== 'admin') {
+      return new Response(JSON.stringify({ error: 'Unauthorized: Only admins can invite users' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const site_id = inviterProfile.site_id
+
+    // Create the site invitation record first
+    const inviteToken = crypto.randomUUID()
+    const { error: inviteRecordError } = await supabaseAdmin
+      .from('site_invites')
+      .insert({
+        email: email,
+        full_name: name,
+        role: role,
+        role_detail: role_detail,
+        reports_to_id: reports_to_id ? parseInt(reports_to_id, 10) : null,
+        site_id: site_id,
+        status: 'pending',
+        token: inviteToken,
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        invited_by: user.id,
+        allowed_pages: '[]'
+      })
+
+    if (inviteRecordError) throw new Error(`Failed to create invite record: ${inviteRecordError.message}`)
+
+    // Now send the actual invitation email using Supabase Auth
+    const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+      email,
+      {
+        data: {
+          full_name: name,
+          role: role,
+          role_detail: role_detail,
+          site_id: site_id,
+          invite_token: inviteToken,
+        },
+        redirectTo: `https://magicmanben.github.io/CheckLoops/set-password.html`,
+      }
+    )
+
+    if (inviteError) throw new Error(`Invite error: ${inviteError.message}`)
+
+    // The database triggers will handle creating the profile when the user confirms their email
+    return new Response(JSON.stringify({ 
+      success: true, 
+      message: 'Invitation sent successfully. User profile will be created when they accept the invitation.',
+      invite_token: inviteToken
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 200,
+    })
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    
+    return new Response(JSON.stringify({ 
+      error: errorMessage,
+      timestamp: new Date().toISOString()
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+})
+
