@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complaints Management</title>
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+            font-weight: 700;
+            font-size: 2.2em;
+        }
+
+        .section {
+            margin-bottom: 40px;
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .section h2 {
+            color: #34495e;
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-weight: 600;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #2c3e50;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e6ed;
+            border-radius: 10px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+            box-sizing: border-box;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .btn {
+            background: #3498db;
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background-color 0.3s ease;
+        }
+
+        .btn:hover {
+            background: #2980b9;
+        }
+
+        .btn-secondary {
+            background: #95a5a6;
+        }
+
+        .btn-secondary:hover {
+            background: #7f8c8d;
+        }
+
+        .complaints-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .complaints-table th,
+        .complaints-table td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #ecf0f1;
+        }
+
+        .complaints-table th {
+            background: #34495e;
+            color: white;
+            font-weight: 500;
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 0.5px;
+        }
+
+        .complaints-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .status-new { background: #e74c3c; color: white; }
+        .status-investigating { background: #f39c12; color: white; }
+        .status-resolved { background: #27ae60; color: white; }
+        .status-closed { background: #95a5a6; color: white; }
+
+        .priority-high { color: #e74c3c; font-weight: 600; }
+        .priority-medium { color: #f39c12; font-weight: 600; }
+        .priority-low { color: #27ae60; font-weight: 600; }
+
+        .no-complaints {
+            text-align: center;
+            color: #7f8c8d;
+            font-style: italic;
+            padding: 40px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #3498db;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 20px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        .loading {
+            text-align: center;
+            color: #7f8c8d;
+            padding: 20px;
+        }
+
+        .error {
+            background: #ffe6e6;
+            border: 1px solid #ff9999;
+            color: #d63031;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+
+        @media (max-width: 768px) {
+            .form-row {
+                flex-direction: column;
+            }
+            
+            .container {
+                padding: 20px;
+            }
+            
+            h1 {
+                font-size: 1.8em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="index.html" class="back-link">← Back to Dashboard</a>
+        
+        <h1>Complaints Management</h1>
+
+        <!-- Submit New Complaint Section -->
+        <div class="section">
+            <h2>Submit New Complaint</h2>
+            <form id="complaintForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="patientInitials">Patient Initials:</label>
+                        <input type="text" id="patientInitials" name="patientInitials" required maxlength="10">
+                    </div>
+                    <div class="form-group">
+                        <label for="category">Category:</label>
+                        <select id="category" name="category" required>
+                            <option value="">Loading categories...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="priority">Priority:</label>
+                        <select id="priority" name="priority" required>
+                            <option value="">Select Priority</option>
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="originalComplaint">Original Complaint:</label>
+                    <textarea id="originalComplaint" name="originalComplaint" required 
+                        placeholder="Describe the complaint in detail..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="response">Response/Action Taken:</label>
+                    <textarea id="response" name="response" 
+                        placeholder="Describe what action was taken or response given..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="lessonsLearned">Lessons Learned:</label>
+                    <textarea id="lessonsLearned" name="lessonsLearned" 
+                        placeholder="What was learned from this complaint? Any process improvements?"></textarea>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="shareWithTeam">Share with Team:</label>
+                        <select id="shareWithTeam" name="shareWithTeam">
+                            <option value="false">No</option>
+                            <option value="true">Yes</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="status">Status:</label>
+                        <select id="status" name="status" required>
+                            <option value="pending">Pending</option>
+                            <option value="investigating">Investigating</option>
+                            <option value="resolved">Resolved</option>
+                            <option value="closed">Closed</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn">Submit Complaint</button>
+            </form>
+            <div id="submitError" class="error" style="display: none;"></div>
+        </div>
+
+        <!-- View All Complaints Section -->
+        <div class="section">
+            <h2>All Complaints</h2>
+            <div id="complaintsTableContainer">
+                <div class="loading">Loading complaints...</div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+        // Initialize Supabase client
+        const SUPABASE_URL = "https://unveoqnlqnobufhublyw.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME";
+        const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+            auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+        });
+
+        // Context for site information
+        let ctx = { site_id: null, user: null };
+
+        // Load user context
+        async function loadContext() {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) {
+                window.location.href = 'Home.html';
+                return;
+            }
+            ctx.user = user;
+
+            // Get profile to get site_id
+            const { data: prof, error } = await supabase.from("profiles")
+                .select("site_id, role, full_name")
+                .eq("user_id", user.id)
+                .maybeSingle();
+            
+            if (error) {
+                console.warn("Error loading profile:", error);
+            }
+            
+            if (prof) {
+                ctx.site_id = prof.site_id;
+                ctx.role = prof.role;
+            }
+
+            // Fallback to first site if no profile
+            if (!ctx.site_id) {
+                const { data: sites } = await supabase.from("sites")
+                    .select("id,name")
+                    .limit(1);
+                ctx.site_id = sites?.[0]?.id ?? null;
+            }
+        }
+
+        // Escape HTML to prevent XSS
+        function escapeHtml(unsafe) {
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // Format date for display
+        function formatDate(dateString) {
+            if (!dateString) return 'N/A';
+            const date = new Date(dateString);
+            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        }
+
+        // Load and display all complaints
+        async function loadComplaints() {
+            const container = document.getElementById('complaintsTableContainer');
+            
+            if (!ctx.site_id) {
+                container.innerHTML = '<div class="no-complaints">No site selected</div>';
+                return;
+            }
+
+            try {
+                const { data: complaints, error } = await supabase
+                    .from('complaints') // Reverted to use the 'complaints' table directly
+                    .select('*')
+                    .eq('site_id', ctx.site_id)
+                    .order('datetime', { ascending: false });
+
+                if (error) {
+                    console.error('Error loading complaints:', error);
+                    container.innerHTML = '<div class="error">Error loading complaints: ' + escapeHtml(error.message) + '</div>';
+                    return;
+                }
+
+                if (!complaints || complaints.length === 0) {
+                    container.innerHTML = '<div class="no-complaints">No complaints found</div>';
+                    return;
+                }
+
+                // Build table HTML
+                let tableHtml = `
+                    <table class="complaints-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Patient</th>
+                                <th>Category</th>
+                                <th>Priority</th>
+                                <th>Complaint</th>
+                                <th>Status</th>
+                                <th>Response</th>
+                                <th>Lessons Learned</th>
+                                <th>Team Share</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+
+                complaints.forEach(complaint => {
+                    tableHtml += `
+                        <tr>
+                            <td>${formatDate(complaint.datetime)}</td>
+                            <td>${escapeHtml(complaint.patient_initials || 'N/A')}</td>
+                            <td>${escapeHtml(complaint.category || 'N/A')}</td>
+                            <td><span class="priority-${(complaint.priority || '').toLowerCase()}">${escapeHtml(complaint.priority || 'N/A')}</span></td>
+                            <td title="${escapeHtml(complaint.original_complaint || '')}">${escapeHtml((complaint.original_complaint || '').substring(0, 50) + ((complaint.original_complaint || '').length > 50 ? '...' : ''))}</td>
+                            <td><span class="status-badge status-${(complaint.status || '').toLowerCase().replace(' ', '')}">${escapeHtml(complaint.status || 'N/A')}</span></td>
+                            <td title="${escapeHtml(complaint.response || 'No response')}">${escapeHtml((complaint.response || 'No response').substring(0, 30) + ((complaint.response || '').length > 30 ? '...' : ''))}</td>
+                            <td title="${escapeHtml(complaint.lessons_learned || 'None')}">${escapeHtml((complaint.lessons_learned || 'None').substring(0, 30) + ((complaint.lessons_learned || '').length > 30 ? '...' : ''))}</td>
+                            <td>${complaint.share_with_team ? 'Yes' : 'No'}</td>
+                        </tr>`;
+                });
+
+                tableHtml += '</tbody></table>';
+                container.innerHTML = tableHtml;
+
+            } catch (error) {
+                console.error('Error loading complaints:', error);
+                container.innerHTML = '<div class="error">Error loading complaints: ' + escapeHtml(error.message) + '</div>';
+            }
+        }
+
+        // Load complaint categories into the dropdown
+        async function loadCategories() {
+            const categorySelect = document.getElementById('category');
+            
+            const { data: categories, error } = await supabase
+                .from('complaint_categories')
+                .select('name')
+                .or(`site_id.eq.${ctx.site_id},site_id.eq.0`) // site-specific or global
+                .order('name');
+
+            if (error) {
+                console.error('Error loading categories:', error);
+                categorySelect.innerHTML = '<option value="">Error loading</option>';
+                return;
+            }
+
+            categorySelect.innerHTML = '<option value="">Select Category</option>';
+            categories.forEach(category => {
+                const option = document.createElement('option');
+                option.value = category.name;
+                option.textContent = category.name;
+                categorySelect.appendChild(option);
+            });
+        }
+
+        // Handle form submission
+        async function handleSubmit(event) {
+            event.preventDefault();
+            
+            const errorDiv = document.getElementById('submitError');
+            errorDiv.style.display = 'none';
+
+            if (!ctx.site_id) {
+                errorDiv.textContent = 'No site selected. Please log in again.';
+                errorDiv.style.display = 'block';
+                return;
+            }
+
+            const formData = new FormData(event.target);
+
+            // Normalize and validate priority/status to match DB constraints (lowercase expected)
+            const rawPriority = (formData.get('priority') || '').toString().trim();
+            const rawStatus = (formData.get('status') || '').toString().trim();
+            const normalizedStatus = rawStatus.toLowerCase() === 'new' ? 'pending' : rawStatus.toLowerCase();
+            const priority = rawPriority ? rawPriority.toLowerCase() : null;
+            const status = normalizedStatus || null;
+
+            const allowedPriorities = ['low', 'medium', 'high'];
+            const allowedStatus = ['pending', 'investigating', 'resolved', 'closed'];
+
+            if (!priority || !allowedPriorities.includes(priority)) {
+                errorDiv.textContent = 'Invalid priority. Choose Low, Medium or High.';
+                errorDiv.style.display = 'block';
+                return;
+            }
+
+            if (!status || !allowedStatus.includes(status)) {
+                errorDiv.textContent = 'Invalid status. Choose Pending, Investigating, Resolved or Closed.';
+                errorDiv.style.display = 'block';
+                return;
+            }
+
+            const complaintData = {
+                site_id: ctx.site_id,
+                datetime: new Date().toISOString(),
+                patient_initials: formData.get('patientInitials'),
+                category: formData.get('category'),
+                original_complaint: formData.get('originalComplaint'),
+                response: formData.get('response'),
+                lessons_learned: formData.get('lessonsLearned'),
+                status: status,
+                priority: priority,
+                share_with_team: formData.get('shareWithTeam') === 'true'
+            };
+
+            try {
+                const { data, error } = await supabase
+                    .from('complaints')
+                    .insert([complaintData])
+                    .select();
+
+                if (error) {
+                    throw error;
+                }
+
+                // Clear form
+                event.target.reset();
+                
+                // Reload complaints table
+                await loadComplaints();
+                
+                // Show success message (you could add a success div if desired)
+                alert('Complaint submitted successfully!');
+
+            } catch (error) {
+                console.error('Error submitting complaint:', error);
+                errorDiv.textContent = 'Error submitting complaint: ' + error.message;
+                errorDiv.style.display = 'block';
+            }
+        }
+
+        // Initialize page
+        async function init() {
+            try {
+                // Check if user is authenticated
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session) {
+                    window.location.href = 'Home.html';
+                    return;
+                }
+
+                await loadContext();
+                await loadCategories(); // Load categories before complaints
+                await loadComplaints();
+
+                // Add form submit handler
+                document.getElementById('complaintForm').addEventListener('submit', handleSubmit);
+
+            } catch (error) {
+                console.error('Error initializing complaints page:', error);
+                const container = document.getElementById('complaintsTableContainer');
+                container.innerHTML = '<div class="error">Error initializing page: ' + escapeHtml(error.message) + '</div>';
+            }
+        }
+
+        // Start the app
+        init();
+    </script>
+</body>
+</html>

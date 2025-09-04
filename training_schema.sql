@@ -2,9 +2,9 @@
 -- Run these commands in your Supabase SQL editor
 
 -- 1. Training Types Table
-CREATE TABLE training_types (
+CREATE TABLE IF NOT EXISTS training_types (
     id SERIAL PRIMARY KEY,
-    site_id INTEGER NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+    site_id BIGINT NOT NULL, -- Changed to match sites table structure
     name VARCHAR(255) NOT NULL,
     description TEXT,
     validity_months INTEGER, -- How many months the training is valid for (NULL = no expiry)
@@ -16,10 +16,10 @@ CREATE TABLE training_types (
 );
 
 -- 2. Training Records Table
-CREATE TABLE training_records (
+CREATE TABLE IF NOT EXISTS training_records (
     id SERIAL PRIMARY KEY,
-    site_id INTEGER NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
-    staff_id INTEGER NOT NULL REFERENCES kiosk_users(id) ON DELETE CASCADE,
+    site_id BIGINT NOT NULL, -- Changed to match sites table structure
+    staff_id BIGINT NOT NULL, -- References kiosk_users(id)
     training_type_id INTEGER NOT NULL REFERENCES training_types(id) ON DELETE CASCADE,
     completion_date DATE NOT NULL,
     expiry_date DATE, -- Calculated or manually set
