@@ -1,7 +1,61 @@
--- Complete invitation system setup for CheckLoop
--- This handles the entire user creation workflow from invitation to profile setup
+-- Fix to immediately add invited users to kiosk_users table when invitation is created
+-- This addresses the issue where users should be added to kiosk_users when the inviter clicks "invite"
 
--- 1. Create or replace the function to handle new user signup
+-- 1. Create or replace function to handle immediate kiosk user creation on invite
+CREATE OR REPLACE FUNCTION public.handle_site_invite_created()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Only process if this is a new invitation (INSERT)
+    IF TG_OP != 'INSERT' THEN
+        RETURN NEW;
+    END IF;
+
+    RAISE LOG 'Processing new site invitation for email: %, site_id: %', NEW.email, NEW.site_id;
+
+    -- If role_detail is provided, add to kiosk_users immediately
+    IF NEW.role_detail IS NOT NULL AND NEW.role_detail != '' THEN
+        INSERT INTO public.kiosk_users (
+            site_id, 
+            full_name, 
+            role, 
+            active, 
+            created_at,
+            reports_to_id
+        )
+        VALUES (
+            NEW.site_id,
+            NEW.full_name,
+            NEW.role_detail,
+            true,
+            NOW(),
+            NEW.reports_to_id
+        )
+        ON CONFLICT (site_id, full_name) DO UPDATE SET
+            role = EXCLUDED.role,
+            active = true,
+            reports_to_id = EXCLUDED.reports_to_id;
+        
+        RAISE LOG 'Kiosk user created immediately for: %, role: %', NEW.full_name, NEW.role_detail;
+    ELSE
+        RAISE LOG 'No role_detail provided for invite: %, skipping immediate kiosk_users creation', NEW.email;
+    END IF;
+
+    RETURN NEW;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE LOG 'Error in handle_site_invite_created: %', SQLERRM;
+        RETURN NEW; -- Don't fail the invitation creation if kiosk_users insert has issues
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 2. Create the trigger on site_invites for INSERT (new invitations)
+DROP TRIGGER IF EXISTS on_site_invite_created ON public.site_invites;
+CREATE TRIGGER on_site_invite_created
+    AFTER INSERT ON public.site_invites
+    FOR EACH ROW EXECUTE FUNCTION public.handle_site_invite_created();
+
+-- 3. Update the existing trigger functions to avoid duplicate kiosk_users entries
+-- Modify the handle_new_user_signup function to check if kiosk_user already exists
 CREATE OR REPLACE FUNCTION public.handle_new_user_signup()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -42,8 +96,9 @@ BEGIN
 
         RAISE LOG 'Profile created for user: %', NEW.id;
 
-        -- If role_detail is provided, also add to kiosk_users
+        -- If role_detail is provided, add to kiosk_users (only if not already exists from invitation trigger)
         IF invite_record.role_detail IS NOT NULL AND invite_record.role_detail != '' THEN
+            -- Use ON CONFLICT DO NOTHING since the record may already exist from the invitation trigger
             INSERT INTO public.kiosk_users (
                 site_id, 
                 full_name, 
@@ -60,12 +115,9 @@ BEGIN
                 NOW(),
                 invite_record.reports_to_id
             )
-            ON CONFLICT (site_id, full_name) DO UPDATE SET
-                role = EXCLUDED.role,
-                active = EXCLUDED.active,
-                reports_to_id = EXCLUDED.reports_to_id;
+            ON CONFLICT (site_id, full_name) DO NOTHING; -- Changed from DO UPDATE to DO NOTHING
             
-            RAISE LOG 'Kiosk user created for: %', invite_record.full_name;
+            RAISE LOG 'Kiosk user ensured for: % (may have already existed)', invite_record.full_name;
         END IF;
 
         -- Update the invitation status to accepted
@@ -101,13 +153,7 @@ EXCEPTION
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 2. Create the trigger on auth.users for INSERT (new signups)
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
-    AFTER INSERT ON auth.users
-    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user_signup();
-
--- 3. Also handle email confirmation updates (for users who were created but not yet confirmed)
+-- 4. Update the email confirmation handler as well
 CREATE OR REPLACE FUNCTION public.handle_user_email_confirmed()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -148,7 +194,7 @@ BEGIN
                 NOW()
             );
 
-            -- If role_detail is provided, also add to kiosk_users
+            -- If role_detail is provided, ensure kiosk_users exists (may already exist from invitation trigger)
             IF invite_record.role_detail IS NOT NULL AND invite_record.role_detail != '' THEN
                 INSERT INTO public.kiosk_users (
                     site_id, 
@@ -166,7 +212,7 @@ BEGIN
                     NOW(),
                     invite_record.reports_to_id
                 )
-                ON CONFLICT (site_id, full_name) DO NOTHING;
+                ON CONFLICT (site_id, full_name) DO NOTHING; -- Changed from DO UPDATE to DO NOTHING
             END IF;
 
             -- Update the invitation status to accepted
@@ -186,31 +232,9 @@ EXCEPTION
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 4. Create the trigger for email confirmation updates
-DROP TRIGGER IF EXISTS on_auth_user_confirmed ON auth.users;
-CREATE TRIGGER on_auth_user_confirmed
-    AFTER UPDATE ON auth.users
-    FOR EACH ROW 
-    WHEN (OLD.email_confirmed_at IS DISTINCT FROM NEW.email_confirmed_at)
-    EXECUTE FUNCTION public.handle_user_email_confirmed();
-
--- 5. Ensure role permissions are set up correctly
-INSERT INTO public.role_permissions (role, allowed_pages) 
-VALUES ('staff', '["dashboard", "calendar", "items", "rooms", "checks", "staff"]'::jsonb)
-ON CONFLICT (role) DO UPDATE SET allowed_pages = EXCLUDED.allowed_pages;
-
--- 6. Make sure the profiles table has the right constraint
-ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_role_chk;
-ALTER TABLE public.profiles ADD CONSTRAINT profiles_role_chk 
-CHECK (role IN ('admin', 'member', 'staff', 'owner', 'manager'));
-
--- 7. Enable logging for debugging (optional)
--- You can disable this later if you don't want the logs
--- ALTER SYSTEM SET log_statement = 'all';
--- SELECT pg_reload_conf();
-
 -- Final success message
 DO $$
 BEGIN
-    RAISE NOTICE 'Complete invitation system setup completed successfully!';
+    RAISE NOTICE 'Immediate kiosk user creation trigger setup completed successfully!';
+    RAISE NOTICE 'Now when an invitation is created, the user will be immediately added to kiosk_users table.';
 END $$;
