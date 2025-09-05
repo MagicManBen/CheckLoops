@@ -88,7 +88,29 @@ serve(async (req) => {
 
     console.log('Site invite created:', inviteRecord)
 
-    // STEP 2: Send Supabase auth invitation
+    // STEP 2: Add user to kiosk_users table immediately (if role_detail is provided)
+    if (role_detail && role_detail.trim() !== '') {
+      const { data: kioskUserData, error: kioskUserError } = await supabaseAdmin
+        .from('kiosk_users')
+        .insert({
+          site_id: site_id,
+          full_name: name,
+          role: role_detail,
+          active: true,
+          reports_to_id: reports_to_id ? parseInt(reports_to_id, 10) : null,
+          created_at: new Date().toISOString()
+        })
+        .select()
+
+      if (kioskUserError) {
+        console.log('Warning: Failed to create kiosk user (but continuing with invitation):', kioskUserError)
+        // Don't fail the invitation if kiosk_users insert fails
+      } else {
+        console.log('Kiosk user created:', kioskUserData)
+      }
+    }
+
+    // STEP 3: Send Supabase auth invitation
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       email,
       {
@@ -110,6 +132,15 @@ serve(async (req) => {
         .from('site_invites')
         .delete()
         .eq('id', inviteRecord.id)
+      
+      // Also try to clean up kiosk_users if it was created
+      if (role_detail && role_detail.trim() !== '') {
+        await supabaseAdmin
+          .from('kiosk_users')
+          .delete()
+          .eq('site_id', site_id)
+          .eq('full_name', name)
+      }
       
       throw new Error(`Failed to send invite: ${authError.message}`)
     }
