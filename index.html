@@ -2949,13 +2949,15 @@ window.PIR_DEFINITIONS_DATA = [
     // Initialize the context with the session
     try {
       await loadContext();
+      console.log('✅ Context loaded successfully');
       await Promise.all([
-        loadCounts(),
-        loadDue(),
-        loadActivity()
+        loadCounts().catch(err => console.error('loadCounts failed:', err)),
+        loadDue().catch(err => console.error('loadDue failed:', err)),
+        loadActivity().catch(err => console.error('loadActivity failed:', err))
       ]);
+      console.log('✅ All data loaded successfully');
     } catch (err) {
-      console.error('Failed to initialize:', err);
+      console.error('❌ Failed to initialize:', err);
       // If we fail to load the context, we should probably log out
       await supabase.auth.signOut();
       window.location.href = 'Home.html';
@@ -3030,6 +3032,27 @@ window.PIR_DEFINITIONS_DATA = [
             throw new Error("Failed to create user profile");
           }
 
+          // If role_detail is provided, also create kiosk_users entry
+          if (invitation.role_detail && invitation.role_detail.trim() !== '') {
+            console.log('Creating kiosk_users entry...', invitation.role_detail);
+            const { error: kioskError } = await supabase
+              .from("kiosk_users")
+              .insert({
+                site_id: invitation.site_id,
+                full_name: invitation.full_name,
+                role: invitation.role_detail,
+                active: true,
+                reports_to_id: invitation.reports_to_id
+              });
+
+            if (kioskError) {
+              console.error('Failed to create kiosk_users entry:', kioskError);
+              // Don't throw here - profile creation succeeded, this is just additional
+            } else {
+              console.log('Kiosk user created successfully');
+            }
+          }
+
           // Update invitation status to accepted
           await supabase
             .from("site_invites")
@@ -3039,6 +3062,9 @@ window.PIR_DEFINITIONS_DATA = [
 
           profile = newProfile;
           console.log('Profile created successfully:', profile);
+          
+          // Give the database a moment to commit the transaction
+          await new Promise(resolve => setTimeout(resolve, 100));
         } else {
           throw new Error("No profile found and no valid invitation");
         }
@@ -3047,6 +3073,8 @@ window.PIR_DEFINITIONS_DATA = [
       ctx.site_id = profile.site_id;
       ctx.role = profile.role;
       ctx.full_name = profile.full_name;
+
+      console.log('Context loaded:', { site_id: ctx.site_id, role: ctx.role, full_name: ctx.full_name });
 
       // Load site information
       if(ctx.site_id){
