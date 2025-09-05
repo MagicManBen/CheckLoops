@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Invite Process</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+        .test-section { background: #f5f5f5; padding: 20px; margin: 20px 0; border-radius: 8px; }
+        .result { background: #e8f5e8; padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .error { background: #ffeaea; color: #d63031; }
+        button { background: #0984e3; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0770c7; }
+        .log { background: #f8f9fa; padding: 15px; border-radius: 4px; font-family: monospace; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h1>Invitation Process Test</h1>
+    
+    <div class="test-section">
+        <h3>Step 1: Check URL Parameters</h3>
+        <button onclick="checkUrlParams()">Check Current URL</button>
+        <div id="urlResult"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>Step 2: Test Supabase Connection</h3>
+        <button onclick="testSupabaseConnection()">Test Connection</button>
+        <div id="connectionResult"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>Step 3: Check Auth Session</h3>
+        <button onclick="checkAuthSession()">Check Session</button>
+        <div id="sessionResult"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>Step 4: Manual Token Processing</h3>
+        <input type="text" id="manualToken" placeholder="Paste access token here" style="width: 100%; margin: 10px 0; padding: 8px;">
+        <input type="text" id="manualRefreshToken" placeholder="Paste refresh token here" style="width: 100%; margin: 10px 0; padding: 8px;">
+        <button onclick="setManualSession()">Set Session Manually</button>
+        <div id="manualResult"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>Debug Logs</h3>
+        <div id="debugLog" class="log"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        const { createClient } = supabase;
+        const supabaseClient = createClient('https://unveoqnlqnobufhublyw.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME');
+        
+        function log(message) {
+            const debugLog = document.getElementById('debugLog');
+            const timestamp = new Date().toLocaleTimeString();
+            debugLog.textContent += `[${timestamp}] ${message}\n`;
+        }
+
+        function checkUrlParams() {
+            const params = new URLSearchParams(window.location.search);
+            const hash = window.location.hash.substring(1);
+            const hashParams = new URLSearchParams(hash);
+            
+            const result = {
+                url: window.location.href,
+                search: window.location.search,
+                hash: window.location.hash,
+                params: Object.fromEntries(params),
+                hashParams: Object.fromEntries(hashParams)
+            };
+            
+            document.getElementById('urlResult').innerHTML = `
+                <div class="result">
+                    <pre>${JSON.stringify(result, null, 2)}</pre>
+                </div>
+            `;
+            
+            log('URL parameters checked: ' + JSON.stringify(result));
+        }
+
+        async function testSupabaseConnection() {
+            try {
+                const { data, error } = await supabaseClient.from('profiles').select('count').limit(1);
+                
+                const resultDiv = document.getElementById('connectionResult');
+                if (error) {
+                    resultDiv.innerHTML = `<div class="result error">Connection Error: ${error.message}</div>`;
+                    log('Connection error: ' + error.message);
+                } else {
+                    resultDiv.innerHTML = `<div class="result">✅ Connection successful</div>`;
+                    log('Connection successful');
+                }
+            } catch (err) {
+                document.getElementById('connectionResult').innerHTML = `<div class="result error">Connection Error: ${err.message}</div>`;
+                log('Connection exception: ' + err.message);
+            }
+        }
+
+        async function checkAuthSession() {
+            try {
+                const { data: { session }, error } = await supabaseClient.auth.getSession();
+                
+                const resultDiv = document.getElementById('sessionResult');
+                if (error) {
+                    resultDiv.innerHTML = `<div class="result error">Session Error: ${error.message}</div>`;
+                    log('Session error: ' + error.message);
+                } else if (session) {
+                    resultDiv.innerHTML = `
+                        <div class="result">
+                            ✅ Session found<br>
+                            User ID: ${session.user.id}<br>
+                            Email: ${session.user.email}<br>
+                            Expires: ${new Date(session.expires_at * 1000).toLocaleString()}
+                        </div>
+                    `;
+                    log('Session found for user: ' + session.user.email);
+                } else {
+                    resultDiv.innerHTML = `<div class="result error">❌ No active session</div>`;
+                    log('No active session found');
+                }
+            } catch (err) {
+                document.getElementById('sessionResult').innerHTML = `<div class="result error">Session Error: ${err.message}</div>`;
+                log('Session exception: ' + err.message);
+            }
+        }
+
+        async function setManualSession() {
+            const accessToken = document.getElementById('manualToken').value.trim();
+            const refreshToken = document.getElementById('manualRefreshToken').value.trim();
+            
+            if (!accessToken || !refreshToken) {
+                document.getElementById('manualResult').innerHTML = `<div class="result error">Please provide both access and refresh tokens</div>`;
+                return;
+            }
+            
+            try {
+                const { data, error } = await supabaseClient.auth.setSession({
+                    access_token: accessToken,
+                    refresh_token: refreshToken
+                });
+                
+                const resultDiv = document.getElementById('manualResult');
+                if (error) {
+                    resultDiv.innerHTML = `<div class="result error">Set Session Error: ${error.message}</div>`;
+                    log('Set session error: ' + error.message);
+                } else {
+                    resultDiv.innerHTML = `<div class="result">✅ Session set successfully!</div>`;
+                    log('Session set successfully for user: ' + data.user?.email);
+                }
+            } catch (err) {
+                document.getElementById('manualResult').innerHTML = `<div class="result error">Set Session Error: ${err.message}</div>`;
+                log('Set session exception: ' + err.message);
+            }
+        }
+
+        // Auto-run some tests on page load
+        window.onload = function() {
+            log('Test page loaded');
+            checkUrlParams();
+            setTimeout(testSupabaseConnection, 1000);
+            setTimeout(checkAuthSession, 2000);
+        };
+
+        // Listen for auth changes
+        supabaseClient.auth.onAuthStateChange((event, session) => {
+            log(`Auth state change: ${event}, Session: ${session ? 'present' : 'none'}`);
+        });
+    </script>
+</body>
+</html>
