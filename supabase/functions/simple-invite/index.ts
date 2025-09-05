@@ -60,7 +60,19 @@ serve(async (req) => {
     const site_id = inviterProfile.site_id
 
     // Step 1: Use Supabase's built-in invite system (MUCH SIMPLER)
-    const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email)
+    const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+      email,
+      {
+        data: {
+          full_name: name,
+          role: role,
+          site_id: site_id,
+          role_detail: role_detail,
+          reports_to_id: reports_to_id
+        },
+        redirectTo: 'https://magicmanben.github.io/CheckLoops/simple-set-password.html'
+      }
+    )
 
     if (inviteError) {
       throw new Error(`Failed to send invite: ${inviteError.message}`)
@@ -68,28 +80,7 @@ serve(async (req) => {
 
     console.log('Invite sent successfully:', inviteData)
 
-    // Step 2: Create a profile record immediately (don't wait for user confirmation)
-    const { error: profileInsertError } = await supabaseAdmin
-      .from('profiles')
-      .insert({
-        user_id: inviteData.user.id,
-        email: email,
-        full_name: name,
-        role: role,
-        role_detail: role_detail,
-        reports_to_id: reports_to_id ? parseInt(reports_to_id, 10) : null,
-        site_id: site_id,
-        active: false, // Will be set to true when they set their password
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-
-    if (profileInsertError) {
-      console.error('Profile insert error:', profileInsertError)
-      // Don't fail the whole process if profile creation fails
-    }
-
-    // Step 3: Also create a simple invite tracking record
+    // Step 2: Create a simple invite tracking record only
     const { error: inviteRecordError } = await supabaseAdmin
       .from('site_invites')
       .insert({
@@ -101,8 +92,7 @@ serve(async (req) => {
         site_id: site_id,
         status: 'pending',
         expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        invited_by: user.id,
-        invited_user_id: inviteData.user.id
+        invited_by: user.id
       })
 
     if (inviteRecordError) {
