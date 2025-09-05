@@ -3,7 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-redirect-url',
 }
 
 serve(async (req) => {
@@ -59,11 +59,37 @@ serve(async (req) => {
 
     const site_id = inviterProfile.site_id
 
-    // Get the redirect URL from the request (so client can tell us where to redirect)
+    console.log('Processing invitation for:', { email, name, role, site_id })
+
+    // Get the redirect URL from the request
     const redirectTo = req.headers.get('x-redirect-url') || 'https://magicmanben.github.io/CheckLoops/simple-set-password.html'
     
-    // Step 1: Use Supabase's built-in invite system (MUCH SIMPLER)
-    const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+    // STEP 1: Create the site_invites record FIRST
+    const { data: inviteRecord, error: inviteRecordError } = await supabaseAdmin
+      .from('site_invites')
+      .insert({
+        email: email,
+        full_name: name,
+        role: role,
+        role_detail: role_detail,
+        reports_to_id: reports_to_id ? parseInt(reports_to_id, 10) : null,
+        site_id: site_id,
+        status: 'pending',
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        invited_by: user.id
+      })
+      .select()
+      .single()
+
+    if (inviteRecordError) {
+      console.error('Failed to create site invite:', inviteRecordError)
+      throw new Error(`Failed to create site invite: ${inviteRecordError.message}`)
+    }
+
+    console.log('Site invite created:', inviteRecord)
+
+    // STEP 2: Send Supabase auth invitation
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       email,
       {
         data: {
@@ -77,35 +103,24 @@ serve(async (req) => {
       }
     )
 
-    if (inviteError) {
-      throw new Error(`Failed to send invite: ${inviteError.message}`)
+    if (authError) {
+      console.error('Supabase auth invite failed:', authError)
+      // If auth invite fails, clean up the site invite
+      await supabaseAdmin
+        .from('site_invites')
+        .delete()
+        .eq('id', inviteRecord.id)
+      
+      throw new Error(`Failed to send invite: ${authError.message}`)
     }
 
-    console.log('Invite sent successfully:', inviteData)
-
-    // Step 2: Create a simple invite tracking record only
-    const { error: inviteRecordError } = await supabaseAdmin
-      .from('site_invites')
-      .insert({
-        email: email,
-        full_name: name,
-        role: role,
-        role_detail: role_detail,
-        reports_to_id: reports_to_id ? parseInt(reports_to_id, 10) : null,
-        site_id: site_id,
-        status: 'pending',
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        invited_by: user.id
-      })
-
-    if (inviteRecordError) {
-      console.error('Invite record error:', inviteRecordError)
-    }
+    console.log('Auth invite sent successfully:', authData)
 
     return new Response(JSON.stringify({ 
       success: true, 
       message: 'Invitation sent successfully!',
-      user_id: inviteData.user.id
+      user_id: authData.user.id,
+      invite_id: inviteRecord.id
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
