@@ -59,6 +59,9 @@ serve(async (req) => {
 
     const site_id = inviterProfile.site_id
 
+    // Get the redirect URL from the request (so client can tell us where to redirect)
+    const redirectTo = req.headers.get('x-redirect-url') || 'https://magicmanben.github.io/CheckLoops/simple-set-password.html'
+    
     // Step 1: Use Supabase's built-in invite system (MUCH SIMPLER)
     const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       email,
@@ -70,7 +73,7 @@ serve(async (req) => {
           role_detail: role_detail,
           reports_to_id: reports_to_id
         },
-        redirectTo: 'https://magicmanben.github.io/CheckLoops/simple-set-password.html'
+        redirectTo: redirectTo
       }
     )
 
