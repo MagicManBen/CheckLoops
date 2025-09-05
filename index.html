@@ -2987,14 +2987,62 @@ window.PIR_DEFINITIONS_DATA = [
       emailPill.textContent = user.email || "—";
 
       // Load user profile to get site_id and role
-      const { data: profile, error: profileError } = await supabase
+      let { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("site_id, role, full_name")
         .eq("user_id", user.id)
         .maybeSingle();
 
       if(profileError) throw profileError;
-      if(!profile) throw new Error("No profile found for user");
+      
+      // If no profile exists, try to create one from pending invitation
+      if(!profile) {
+        console.log('No profile found, checking for pending invitation...');
+        
+        // Look for pending invitation for this email
+        const { data: invitation } = await supabase
+          .from("site_invites")
+          .select("site_id, role, full_name, role_detail, reports_to_id")
+          .eq("email", user.email)
+          .eq("status", "pending")
+          .gt("expires_at", new Date().toISOString())
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (invitation) {
+          console.log('Found invitation, creating profile...', invitation);
+          
+          // Create profile from invitation data
+          const { data: newProfile, error: createError } = await supabase
+            .from("profiles")
+            .insert({
+              user_id: user.id,
+              site_id: invitation.site_id,
+              role: invitation.role,
+              full_name: invitation.full_name
+            })
+            .select("site_id, role, full_name")
+            .single();
+
+          if (createError) {
+            console.error('Failed to create profile:', createError);
+            throw new Error("Failed to create user profile");
+          }
+
+          // Update invitation status to accepted
+          await supabase
+            .from("site_invites")
+            .update({ status: "accepted" })
+            .eq("email", user.email)
+            .eq("status", "pending");
+
+          profile = newProfile;
+          console.log('Profile created successfully:', profile);
+        } else {
+          throw new Error("No profile found and no valid invitation");
+        }
+      }
 
       ctx.site_id = profile.site_id;
       ctx.role = profile.role;
