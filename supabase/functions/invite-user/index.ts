@@ -98,6 +98,18 @@ serve(async (req) => {
 
     if (inviteRecordError) throw new Error(`Failed to create invite record: ${inviteRecordError.message}`)
 
+    // Determine redirect URL based on environment or allow override
+    const redirectTo = requestBody.redirect_to || `http://127.0.0.1:5500/set-password.html`
+
+    console.log('Invite details:', {
+      email,
+      name, 
+      role,
+      site_id,
+      redirectTo,
+      inviteToken
+    });
+
     // Now send the actual invitation email using Supabase Auth
     const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       email,
@@ -109,7 +121,7 @@ serve(async (req) => {
           site_id: site_id,
           invite_token: inviteToken,
         },
-        redirectTo: `https://magicmanben.github.io/CheckLoops/set-password.html`,
+        redirectTo: redirectTo,
       }
     )
 
