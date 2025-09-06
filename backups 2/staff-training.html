@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CheckLoop — My Training</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+  <script src="config.js"></script>
+  <link rel="stylesheet" href="staff.css">
+</head>
+<body>
+  <div class="bg"><div class="wave"></div><div class="wave wave2"></div></div>
+  <main class="content">
+    <div class="topbar panel">
+      <div class="nav">
+        <a href="staff.html" data-page="home">Home</a>
+        <a href="staff-scans.html" data-page="scans">My Scans</a>
+        <a href="staff-training.html" data-page="training" class="active">My Training</a>
+        <a href="staff-quiz.html" data-page="quiz">Quiz</a>
+      </div>
+      <div class="spacer"></div>
+      <div class="pill" id="site-pill">Site: —</div>
+      <div class="pill" id="email-pill">—</div>
+      <div class="pill" id="role-pill">—</div>
+      <a class="btn secondary" href="Home.html">New Scan</a>
+    </div>
+
+    <section class="panel g-12" style="margin:0;">
+      <div class="panel-header"><div class="panel-title">Mandatory Training</div></div>
+      <div id="training-loading" class="empty">Loading…</div>
+      <div class="table-wrap" id="training-wrap" style="display:none;">
+        <table id="training-table">
+          <thead><tr><th>Course</th><th>Status</th><th class="right">Valid until</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="training-empty" class="empty" style="display:none">No training records found.</div>
+    </section>
+  </main>
+
+  <script type="module">
+    import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate } from './staff-common.js';
+    const daysBetween = (a,b) => Math.ceil((new Date(a).setHours(0,0,0,0) - new Date(b).setHours(0,0,0,0)) / 86400000);
+    const isClinicalRole = (roleDetail='') => /doctor|nurse|clin|pharmacist/i.test(roleDetail);
+
+    const supabase = await initSupabase();
+    handleAuthState(supabase);
+    navActivate('training');
+
+    try{
+      const { session, profileRow } = await requireStaffSession(supabase);
+      const user = session.user;
+      const displayName = profileRow?.full_name || user?.raw_user_meta_data?.full_name || (user?.email?.split('@')[0]);
+      const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
+      const roleDetail = user?.raw_user_meta_data?.role_detail || 'Staff';
+      setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: roleDetail });
+
+      let required = [];
+      let myRecords = [];
+
+      if (siteId){
+        const tt = await supabase
+          .from('training_types')
+          .select('id,name,validity_months,is_clinical_required,is_non_clinical_required,active')
+          .eq('site_id', siteId)
+          .eq('active', true);
+        const allTypes = (!tt.error && tt.data) ? tt.data : [];
+        required = allTypes.filter(t => isClinicalRole(roleDetail) ? t.is_clinical_required : t.is_non_clinical_required);
+      }
+
+      let kioskId = null;
+      if (siteId){
+        const ku = await supabase
+          .from('kiosk_users')
+          .select('id')
+          .eq('site_id', siteId)
+          .eq('full_name', displayName)
+          .maybeSingle();
+        kioskId = ku?.data?.id || null;
+      }
+
+      if (siteId && kioskId){
+        const tr = await supabase
+          .from('training_records')
+          .select('id,training_type_id,completion_date,expiry_date,certificate_url')
+          .eq('site_id', siteId)
+          .eq('staff_id', kioskId);
+        if (!tr.error && tr.data) myRecords = tr.data;
+      }
+
+      const now = new Date();
+      const rows = (required.length ? required : []).map(t => {
+        const recs = myRecords.filter(r => r.training_type_id === t.id);
+        const latest = recs.sort((a,b)=> new Date(b.expiry_date||b.completion_date||0) - new Date(a.expiry_date||a.completion_date||0))[0];
+        let statusHtml = '<span class="badge info">Not started</span>';
+        let validUntil = '—';
+        if (latest){
+          const expiry = latest.expiry_date || (t.validity_months ? new Date(new Date(latest.completion_date).setMonth(new Date(latest.completion_date).getMonth()+Number(t.validity_months))) : null);
+          if (expiry){
+            const days = daysBetween(expiry, now);
+            validUntil = new Date(expiry).toLocaleDateString();
+            if (days < 0){ statusHtml = '<span class="badge danger">Expired</span>'; }
+            else if (days <= 30){ statusHtml = '<span class="badge warn">Due soon</span>'; }
+            else { statusHtml = '<span class="badge ok">Valid</span>'; }
+          } else {
+            statusHtml = '<span class="badge ok">Completed</span>';
+          }
+        }
+        return `<tr><td>${t.name}</td><td>${statusHtml}</td><td class="right">${validUntil}</td></tr>`;
+      });
+
+      document.getElementById('training-loading').style.display='none';
+      if (!rows.length){ document.getElementById('training-empty').style.display='block'; }
+      else {
+        document.getElementById('training-wrap').style.display='';
+        document.querySelector('#training-table tbody').innerHTML = rows.join('');
+      }
+    } catch(e){
+      if (String(e.message).includes('NO_SESSION')) { window.location.replace('Home.html'); return; }
+      if (String(e.message).includes('NOT_STAFF')) { window.location.replace('index.html'); return; }
+      console.error(e);
+      document.getElementById('training-loading').style.display='none';
+      document.getElementById('training-empty').style.display='block';
+    }
+  </script>
+</body>
+</html>

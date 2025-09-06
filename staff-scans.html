@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CheckLoop — My Scans</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+  <script src="config.js"></script>
+  <link rel="stylesheet" href="staff.css">
+  <style>
+    #search { width:320px; max-width:100%; padding:8px 10px; border-radius:6px; border:1px solid #ddd; }
+    .small-note { color:var(--muted); font-size:0.9rem; }
+  </style>
+</head>
+<body>
+  <div class="bg"><div class="wave"></div><div class="wave wave2"></div></div>
+  <main class="content">
+    <div class="topbar panel">
+      <div class="nav">
+        <a href="staff.html" data-page="home">Home</a>
+        <a href="staff-scans.html" data-page="scans" class="active">My Scans</a>
+        <a href="staff-training.html" data-page="training">My Training</a>
+        <a href="staff-quiz.html" data-page="quiz">Quiz</a>
+      </div>
+      <div class="spacer"></div>
+      <div class="pill" id="site-pill">Site: —</div>
+    </div>
+
+    <div class="panel">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <h2 style="margin:0">My Scans</h2>
+        <div class="small-note">Recent items you've scanned or submitted</div>
+        <div style="flex:1"></div>
+        <input id="search" placeholder="Filter results..." />
+      </div>
+
+      <div id="scan-loading" style="padding:30px;text-align:center">Loading...</div>
+      <div id="scan-empty" style="display:none;padding:20px;text-align:center">No scans found.</div>
+
+      <div id="scan-wrap" style="display:none;margin-top:12px">
+        <table id="scan-table" class="table" style="width:100%">
+          <thead><tr><th>Date</th><th>Item</th><th>Room</th><th>Type</th><th>Value</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script type="module">
+  import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate } from './staff-common.js';
+    (async function(){
+      try{
+        console.debug('[staff-scans] start');
+        const fmtDate = (d) => new Date(d).toLocaleString(undefined, { year:'numeric', month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+
+        const supabase = await initSupabase();
+        console.debug('[staff-scans] supabase inited');
+        handleAuthState(supabase);
+        navActivate('scans');
+
+        try{
+          const { session, profileRow } = await requireStaffSession(supabase);
+          console.debug('[staff-scans] requireStaffSession OK', session?.user?.id, profileRow);
+          const user = session.user;
+          const displayName = profileRow?.full_name || user?.raw_user_meta_data?.full_name || (user?.email?.split('@')[0]);
+          const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
+          setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: (user?.raw_user_meta_data?.role_detail || 'Staff') });
+
+          let rows = [];
+          if (siteId){
+            const v = await supabase
+              .from('v_submission_detail')
+              .select('submitted_at,item_name,room,check_type,check_value,staff_name,site_id')
+              .eq('site_id', siteId)
+              .eq('staff_name', displayName)
+              .order('submitted_at', { ascending:false })
+              .limit(50);
+            if (!v.error && v.data) rows = v.data;
+          }
+          if (!rows?.length){
+            const s = await supabase
+              .from('submissions')
+              .select('submitted_at, staff_name, comment')
+              .eq('staff_name', displayName)
+              .order('submitted_at', { ascending:false })
+              .limit(50);
+            if (!s.error && s.data){ rows = s.data.map(r => ({ submitted_at:r.submitted_at, item_name:'\u2014', room:'\u2014', check_type:'\u2014', check_value:r.comment||'Done' })); }
+          }
+
+          document.getElementById('scan-loading').style.display='none';
+          if (!rows?.length){ document.getElementById('scan-empty').style.display='block'; }
+          else {
+            document.getElementById('scan-wrap').style.display='';
+            const tbody = document.querySelector('#scan-table tbody');
+            const render = (rs) => tbody.innerHTML = rs.map(r => `<tr><td>${fmtDate(r.submitted_at)}</td><td>${r.item_name||'\u2014'}</td><td>${r.room||'\u2014'}</td><td>${r.check_type||'\u2014'}</td><td>${r.check_value||'\u2014'}</td></tr>`).join('');
+            render(rows);
+            const input = document.getElementById('search');
+            input.addEventListener('input', () => {
+              const q = input.value.toLowerCase();
+              const filtered = rows.filter(r => [r.item_name, r.room, r.check_type, r.check_value].join(' ').toLowerCase().includes(q));
+              render(filtered);
+            });
+          }
+        } catch(e){
+          if (String(e.message).includes('NO_SESSION')) { window.location.replace('Home.html'); return; }
+          if (String(e.message).includes('NOT_STAFF')) { window.location.replace('index.html'); return; }
+          console.error('[staff-scans] inner error', e);
+          document.getElementById('scan-loading').style.display='none';
+          document.getElementById('scan-empty').style.display='block';
+        }
+      } catch(e){
+        console.error('[staff-scans] startup error', e);
+        document.getElementById('scan-loading').style.display='none';
+        document.getElementById('scan-empty').style.display='block';
+      }
+    })();
+  </script>
+</body>
+</html>
+</body>
