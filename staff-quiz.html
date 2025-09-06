@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CheckLoop — Quiz</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+  <script src="config.js"></script>
+  <link rel="stylesheet" href="staff.css">
+  <style>
+    .q{ padding:16px; border-radius:16px; background:var(--glass); border:1px solid var(--glass-2); }
+    .choices{ display:grid; gap:8px; }
+    .choices label{ display:flex; gap:8px; align-items:center; padding:8px; border-radius:10px; background:#ffffff12; border:1px solid #ffffff21; cursor:pointer; }
+    .progress{ height:8px; background:#ffffff1a; border-radius:999px; overflow:hidden; }
+    .bar{ height:100%; width:0%; background:linear-gradient(135deg,#7db1ff,#4f89ff); transition: width .3s ease; }
+  </style>
+</head>
+<body>
+  <div class="bg"><div class="wave"></div><div class="wave wave2"></div></div>
+  <main class="content">
+    <div class="topbar panel">
+      <div class="nav">
+        <a href="staff.html" data-page="home">Home</a>
+        <a href="staff-scans.html" data-page="scans">My Scans</a>
+        <a href="staff-training.html" data-page="training">My Training</a>
+        <a href="staff-quiz.html" data-page="quiz" class="active">Quiz</a>
+      </div>
+      <div class="spacer"></div>
+      <div class="pill" id="site-pill">Site: —</div>
+      <div class="pill" id="email-pill">—</div>
+      <div class="pill" id="role-pill">—</div>
+      <a class="btn secondary" href="Home.html">New Scan</a>
+    </div>
+
+    <section class="panel g-12" style="margin:0;">
+      <div class="panel-header" style="justify-content:space-between; align-items:center;">
+        <div class="panel-title">Quick Knowledge Check</div>
+        <div class="progress" style="width:220px"><div class="bar" id="prog"></div></div>
+      </div>
+      <div class="muted" style="margin-bottom:10px">Answer 5 random questions. Your score appears instantly.</div>
+      <div id="quiz-container"></div>
+      <div style="margin-top:12px; display:flex; gap:8px;">
+        <button class="btn" id="submit-quiz">Submit</button>
+        <button class="btn secondary" id="retry-quiz" style="display:none;">Retry</button>
+      </div>
+      <div id="quiz-result" class="empty" style="margin-top:12px; display:none;"></div>
+    </section>
+  </main>
+
+  <script type="module">
+    import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate } from './staff-common.js';
+    const supabase = await initSupabase();
+    handleAuthState(supabase);
+    navActivate('quiz');
+
+    // Example question bank. You can later fetch from Supabase table 'quiz_questions'.
+  async function fetchQuestions(){
+      // Try to fetch from Supabase if table exists; otherwise fallback to local
+      try{
+        const { data, error } = await supabase.from('quiz_questions').select('id,question,choices,answer').limit(50);
+        if (!error && data?.length){
+          return data.map(q => ({ id:q.id, question:q.question, choices:q.choices, answer:q.answer }));
+        }
+      } catch(_) {}
+      // Fallback local set
+      return [
+        { question:'What should you check first in a safety inspection?', choices:['PPE availability','Kitchen menu','Visitor log','Weather forecast'], answer:0 },
+        { question:'Hand hygiene should last at least how many seconds?', choices:['5s','10s','20s','40s'], answer:2 },
+        { question:'Which waste goes into a sharps bin?', choices:['Used needles','Food scraps','Paper towels','Plastics'], answer:0 },
+        { question:'When should you report a near-miss?', choices:['End of the week','Immediately','During monthly review','Never'], answer:1 },
+        { question:'Which is NOT a fire class?', choices:['A','B','D','H'], answer:3 },
+        { question:'What’s the correct method to lift a box?', choices:['Back bent, legs straight','Back straight, bend knees','Twist the spine','Hold with fingertips'], answer:1 },
+        { question:'Spill kit is used to handle?', choices:['Electrical faults','Chemical spills','Printer jams','Lost property'], answer:1 },
+        { question:'PAT testing refers to?', choices:['Patient testing','Portable Appliance Testing','Public Area Testing','Pressure and Temperature'], answer:1 },
+      ];
+    }
+
+    function pickRandomFive(arr){
+      const a = [...arr];
+      for (let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+      return a.slice(0,5);
+    }
+
+    function renderQuiz(questions){
+      const container = document.getElementById('quiz-container');
+      container.innerHTML = questions.map((q,qi)=>{
+        const name = `q_${qi}`;
+        return `<div class="q" style="margin-bottom:12px;">
+          <div style="font-weight:700; margin-bottom:8px;">${qi+1}. ${q.question}</div>
+          <div class="choices">
+            ${q.choices.map((c,ci)=>`<label>
+              <input type="radio" name="${name}" value="${ci}" /> <span>${c}</span>
+            </label>`).join('')}
+          </div>
+          <div class="muted" id="f_${qi}" style="display:none; margin-top:8px;"></div>
+        </div>`;
+      }).join('');
+    }
+
+    async function main(){
+      try{
+        const { session, profileRow } = await requireStaffSession(supabase);
+        const user = session.user;
+        const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
+        const roleDetail = user?.raw_user_meta_data?.role_detail || 'Staff';
+        setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: roleDetail });
+
+        const bank = await fetchQuestions();
+        const picked = pickRandomFive(bank);
+        renderQuiz(picked);
+
+        function updateProgress(){
+          const total = picked.length;
+          const answered = picked.filter((_,idx)=> document.querySelector(`input[name="q_${idx}"]:checked`)).length;
+          document.getElementById('prog').style.width = `${Math.round((answered/total)*100)}%`;
+        }
+
+        document.getElementById('quiz-container').addEventListener('change', updateProgress);
+        updateProgress();
+
+        document.getElementById('submit-quiz').onclick = async () => {
+          let score = 0, total = picked.length;
+          const answers = [];
+          picked.forEach((q,idx)=>{
+            const sel = document.querySelector(`input[name="q_${idx}"]:checked`);
+            const chosen = sel ? Number(sel.value) : -1;
+            const correct = typeof q.answer === 'number' ? q.answer : Number(q.answer);
+            if (chosen === correct) score++;
+            answers.push({ idx, chosen, correct });
+            const fb = document.getElementById(`f_${idx}`);
+            if (fb){
+              fb.style.display='block';
+              fb.innerHTML = chosen === correct ? '<span class="badge ok">Correct</span>' : `<span class="badge danger">Incorrect</span> <span class="muted">(answer: ${q.choices[correct]})</span>`;
+            }
+          });
+          const resultEl = document.getElementById('quiz-result');
+          resultEl.style.display='block';
+          resultEl.innerHTML = `You scored <strong>${score}/${total}</strong>.`;
+
+          // Best-effort: store attempt if table exists
+          try{
+            await supabase.from('quiz_attempts').insert({
+              user_id: user.id,
+              score,
+              total,
+              answers,
+              created_at: new Date().toISOString()
+            });
+          } catch(_) {}
+
+          document.getElementById('retry-quiz').style.display='inline-block';
+        };
+
+        document.getElementById('retry-quiz').onclick = () => window.location.reload();
+      } catch(e){
+        if (String(e.message).includes('NO_SESSION')) { window.location.replace('Home.html'); return; }
+        if (String(e.message).includes('NOT_STAFF')) { window.location.replace('index.html'); return; }
+        console.error(e);
+      }
+    }
+
+    main();
+  </script>
+</body>
+</html>

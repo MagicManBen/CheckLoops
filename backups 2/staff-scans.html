@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CheckLoop — My Scans</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+  <script src="config.js"></script>
+  <link rel="stylesheet" href="staff.css">
+</head>
+<body>
+  <div class="bg"><div class="wave"></div><div class="wave wave2"></div></div>
+  <main class="content">
+    <div class="topbar panel">
+      <div class="nav">
+        <a href="staff.html" data-page="home">Home</a>
+        <a href="staff-scans.html" data-page="scans" class="active">My Scans</a>
+        <a href="staff-training.html" data-page="training">My Training</a>
+        <a href="staff-quiz.html" data-page="quiz">Quiz</a>
+      </div>
+      <div class="spacer"></div>
+      <div class="pill" id="site-pill">Site: —</div>
+      <div class="pill" id="email-pill">—</div>
+      <div class="pill" id="role-pill">—</div>
+      <a class="btn secondary" href="Home.html">New Scan</a>
+    </div>
+
+    <section class="panel g-12" style="margin:0;">
+      <div class="panel-header"><div class="panel-title">My Recent Scans</div></div>
+      <div class="table-wrap" id="scan-wrap" style="display:none;">
+        <table id="scan-table">
+          <thead><tr><th>Date</th><th>Item</th><th>Room</th><th>Check</th><th>Result</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="scan-loading" class="empty">Loading…</div>
+      <div id="scan-empty" class="empty" style="display:none;">No scans found.</div>
+    </section>
+  </main>
+
+  <script type="module">
+    import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate } from './staff-common.js';
+    const fmtDate = (d) => new Date(d).toLocaleString(undefined, { year:'numeric', month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+
+    const supabase = await initSupabase();
+    handleAuthState(supabase);
+    navActivate('scans');
+
+    try{
+      const { session, profileRow } = await requireStaffSession(supabase);
+      const user = session.user;
+      const displayName = profileRow?.full_name || user?.raw_user_meta_data?.full_name || (user?.email?.split('@')[0]);
+      const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
+      setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: (user?.raw_user_meta_data?.role_detail || 'Staff') });
+
+      let rows = [];
+      if (siteId){
+        const v = await supabase
+          .from('v_submission_detail')
+          .select('submitted_at,item_name,room,check_type,check_value,staff_name,site_id')
+          .eq('site_id', siteId)
+          .eq('staff_name', displayName)
+          .order('submitted_at', { ascending:false })
+          .limit(50);
+        if (!v.error && v.data) rows = v.data;
+      }
+      if (!rows?.length){
+        const s = await supabase
+          .from('submissions')
+          .select('submitted_at, staff_name, comment')
+          .eq('staff_name', displayName)
+          .order('submitted_at', { ascending:false })
+          .limit(50);
+        if (!s.error && s.data){ rows = s.data.map(r => ({ submitted_at:r.submitted_at, item_name:'—', room:'—', check_type:'—', check_value:r.comment||'Done' })); }
+      }
+
+      document.getElementById('scan-loading').style.display='none';
+      if (!rows?.length){ document.getElementById('scan-empty').style.display='block'; }
+      else {
+        document.getElementById('scan-wrap').style.display='';
+        const tbody = document.querySelector('#scan-table tbody');
+        tbody.innerHTML = rows.map(r => `<tr><td>${fmtDate(r.submitted_at)}</td><td>${r.item_name||'—'}</td><td>${r.room||'—'}</td><td>${r.check_type||'—'}</td><td>${r.check_value||'—'}</td></tr>`).join('');
+      }
+    } catch(e){
+      if (String(e.message).includes('NO_SESSION')) { window.location.replace('Home.html'); return; }
+      if (String(e.message).includes('NOT_STAFF')) { window.location.replace('index.html'); return; }
+      console.error(e);
+      document.getElementById('scan-loading').style.display='none';
+      document.getElementById('scan-empty').style.display='block';
+    }
+  </script>
+</body>
+</html>

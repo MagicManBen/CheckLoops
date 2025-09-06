@@ -244,6 +244,27 @@
     }
   });
 
+  // If arriving with ?logout=1, force a cleanup here as well.
+  (async function finalizeForcedLogout(){
+    const params = new URLSearchParams(window.location.search);
+    if (!params.get('logout')) return;
+    try {
+      const { data } = await supabase.auth.getSession();
+      if (data?.session) {
+        await supabase.auth.signOut({ scope: 'global' });
+      }
+    } catch(e) {
+      console.warn('Final signOut on Home failed (ok to ignore):', e);
+    }
+    try { localStorage.clear(); } catch(_) {}
+    try { sessionStorage.clear(); } catch(_) {}
+    try { document.cookie.split(';').forEach(c => document.cookie = c.replace(/^ +/, '').replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`)); } catch(_) {}
+    // Remove query params so we don't loop
+    const url = new URL(window.location.href);
+    url.searchParams.delete('logout');
+    window.history.replaceState({}, '', url.toString());
+  })();
+
   // Helper: Clear any stale auth data that might cause session confusion
   function clearStaleAuthData() {
     console.log('Clearing any stale auth data...');
@@ -271,29 +292,33 @@
   // Helper: redirect the current user to the correct site based on their profile.role
   // Placed here (inside the module) so it can use the module-scoped `supabase` client.
   async function redirectByRole(user) {
-    console.log('redirectByRole called with user:', user?.email || 'no user provided');
+    console.log('🔵 redirectByRole called with user:', user?.email || 'no user provided');
     try {
       let theUser = user;
       if (!theUser) {
-        console.log('No user provided, fetching from auth...');
+        console.log('🔵 No user provided, fetching from auth...');
         const res = await supabase.auth.getUser();
         theUser = res?.data?.user;
       }
       if (!theUser) {
-        console.log('Cannot determine user, falling back to admin index');
+        console.log('🔴 Cannot determine user, falling back to admin index');
         // If we can't determine user, fallback to admin index
         window.location.href = 'index.html';
         return;
       }
 
-      console.log('Querying profile for user:', theUser.id);
+      console.log('🔵 Querying profile for user:', theUser.id);
+      console.log('🔍 Debug: User email:', theUser.email);
+      console.log('🔍 Debug: User raw metadata:', theUser.raw_user_meta_data);
+      
       const { data: profile, error } = await supabase
         .from('profiles')
         .select('role')
         .eq('user_id', theUser.id)
         .maybeSingle();
 
-      console.log('Profile query result:', { profile, error });
+      console.log('🔵 Profile query result:', { profile, error });
+      console.log('🔍 Debug: SQL equivalent would be: SELECT role FROM profiles WHERE user_id =', theUser.id);
 
       // If profile row missing or has no role, fall back to auth user metadata
       let effectiveRole = (profile && profile.role) ? profile.role : null;
@@ -301,23 +326,24 @@
         try {
           const rawRole = theUser?.raw_user_meta_data?.role;
           if (rawRole) effectiveRole = rawRole;
-          console.log('Using fallback role from metadata:', rawRole);
+          console.log('🔵 Using fallback role from metadata:', rawRole);
         } catch (e) {
-          console.log('Failed to get fallback role:', e);
+          console.log('🔴 Failed to get fallback role:', e);
         }
       }
 
-      console.log('Final effective role:', effectiveRole);
+      console.log('🔵 Final effective role:', effectiveRole);
+      console.log('🔍 Debug: Role comparison check:', (effectiveRole || '').toLowerCase(), '=== staff?', (effectiveRole || '').toLowerCase() === 'staff');
 
       if ((effectiveRole || '').toLowerCase() === 'staff') {
-        console.log('Redirecting to staff.html for role:', effectiveRole);
+        console.log('🟢 Redirecting to staff.html for role:', effectiveRole);
         window.location.href = 'staff.html';
       } else {
-        console.log('Redirecting to index.html for role:', effectiveRole || 'unknown');
+        console.log('🟢 Redirecting to index.html for role:', effectiveRole || 'unknown');
         window.location.href = 'index.html';
       }
     } catch (err) {
-      console.error('redirectByRole failed', err);
+      console.error('🔴 redirectByRole failed', err);
       window.location.href = 'index.html';
     }
   }
@@ -729,9 +755,10 @@
 
       // Redirect after successful authentication based on role
       console.log('About to redirect after sign-in, authResponse:', !!authResponse.data.session);
+      console.log('🔵 Auth response user:', authResponse.data.session?.user?.email);
       setTimeout(() => {
         console.log('Executing redirect after sign-in...');
-        redirectByRole();
+        redirectByRole(authResponse.data.session?.user);
       }, inviteToken ? 2000 : 500);
       
     } catch (err) {
