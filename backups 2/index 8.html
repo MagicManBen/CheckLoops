@@ -5052,19 +5052,51 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
         <div class="panel">
           <div class="page-header">
             <div class="page-title-wrapper">
-              <h1 class="page-title">Training Tracker</h1>
+              <h1 class="page-title">Mandatory Training Management</h1>
               <button class="help-icon" onclick="showHelp('view-training')" title="Help">?</button>
             </div>
             <div style="display:flex; gap:10px;">
-              <button class="btn secondary" id="btn-refresh-training">Refresh</button>
-              <button class="btn" id="btn-add-training">Add Training</button>
+              <button class="btn secondary" id="btn-manage-training-types">Manage Training Types</button>
+              <button class="btn" id="btn-export-training">Export Report</button>
             </div>
           </div>
           
-          <div id="training-content" style="padding: 20px;">
-            <!-- Training content will be populated here -->
-            <div class="loading-indicator" style="text-align: center; padding: 40px;">
-              <div style="color: var(--muted);">Loading training data...</div>
+          <div class="tab-controls" style="margin-bottom: 24px; display:flex; gap:8px;">
+            <button class="btn secondary active" id="tab-clinical" data-tab="clinical">Clinical Staff</button>
+            <button class="btn secondary" id="tab-non-clinical" data-tab="non-clinical">Non-Clinical Staff</button>
+          </div>
+
+          <div class="training-matrix" id="training-matrix-container">
+            <!-- Simple Training Matrix Table -->
+
+            <table id="training-matrix-table">
+              <thead>
+                <tr id="training-headers">
+                  <th>Staff Member</th>
+                </tr>
+              </thead>
+              <tbody id="training-tbody">
+                <tr><td colspan="100%" class="muted">Loading training matrix...</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div style="margin-top: 16px; display: flex; gap: 20px; font-size: 12px; color: var(--muted);">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <div style="width: 12px; height: 12px; background: var(--stat-2-bg); border-radius: 2px;"></div>
+              <span>Valid</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <div style="width: 12px; height: 12px; background: var(--stat-3-bg); border-radius: 2px;"></div>
+              <span>Expiring ≤30 days</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <div style="width: 12px; height: 12px; background: var(--stat-4-bg); border-radius: 2px;"></div>
+              <span>Expired</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <div style="width: 12px; height: 12px; background: var(--glass); border-radius: 2px;"></div>
+              <span>No Record</span>
             </div>
           </div>
         </div>
@@ -6693,7 +6725,11 @@ window.PIR_DEFINITIONS_DATA = [
         loadPracticeUsers();
         break;
       case 'training':
-        // Load training matrix
+        // Ensure proper tab state initialization
+        currentTrainingTab = 'clinical';
+        document.querySelectorAll('#view-training .tab-controls button').forEach(btn => btn.classList.remove('active'));
+        document.getElementById('tab-clinical')?.classList.add('active');
+        // Check if loadTrainingMatrix is defined, otherwise wait for it
         if (typeof loadTrainingMatrix === 'function') {
           loadTrainingMatrix();
         } else if (typeof window.loadTrainingMatrix === 'function') {
@@ -6737,7 +6773,11 @@ window.PIR_DEFINITIONS_DATA = [
     // Special handling for training section
     if (id === 'training') {
       setTimeout(() => {
-        // Load training matrix
+        // Ensure proper tab state initialization
+        currentTrainingTab = 'clinical';
+        document.querySelectorAll('#view-training .tab-controls button').forEach(btn => btn.classList.remove('active'));
+        document.getElementById('tab-clinical')?.classList.add('active');
+        // Check if loadTrainingMatrix is defined, otherwise wait for it
         if (typeof loadTrainingMatrix === 'function') {
           loadTrainingMatrix();
         } else if (typeof window.loadTrainingMatrix === 'function') {
@@ -12947,216 +12987,723 @@ for (const f of (crudState.entity.fields || [])) {
   }
   submissionDetailModal.addEventListener("click", (e) => { if (e.target === submissionDetailModal || e.target.closest("#submission-detail-close")) { submissionDetailModal.classList.remove("show"); } });
 
-  // === SIMPLIFIED TRAINING FUNCTIONALITY ===
-  let trainingData = { staff: [], types: [], records: [] };
+  // === TRAINING FUNCTIONALITY ===
+  // Use var + guard so early calls to loadTrainingMatrix (before this point) don't hit TDZ errors.
+  // In previous version this block appeared earlier; moving lots of code pushed it below first invocations.
+  // Error observed: "Cannot access uninitialized variable" when loadTrainingMatrix ran before let decls.
+  // Switching to var with existing-value guard preserves state if already created earlier.
+  // Enhanced Training Matrix with all quick win features
+  var trainingData = typeof trainingData !== 'undefined' ? trainingData : { staff: [], types: [], records: [] };
+  var currentTrainingTab = typeof currentTrainingTab !== 'undefined' ? currentTrainingTab : 'clinical';
+  var trainingFilters = typeof trainingFilters !== 'undefined' ? trainingFilters : {
+    search: '',
+    status: 'all',
+    role: 'all',
+    sort: 'name',
+    compact: false
+  };
 
   async function loadTrainingMatrix() {
-    console.log('[Training] Starting to load training data...');
-    const content = document.getElementById('training-content');
-    if (!content) return;
-    
-    content.innerHTML = '<div style="text-align: center; padding: 40px;"><div style="color: var(--muted);">Loading training data...</div></div>';
-    
     try {
-      // Check if we have site context
-      if (!ctx || !ctx.site_id) {
-        throw new Error('Site context not available. Please sign in again.');
-      }
-      
-      console.log('[Training] Loading data for site:', ctx.site_id);
-      
-      // Load staff
-      const staffRes = await supabase
-        .from('kiosk_users')
-        .select('*')
-        .eq('site_id', ctx.site_id);
-      
+      const [staffRes, typesRes, recordsRes] = await Promise.all([
+        supabase.from('kiosk_users').select('*').eq('site_id', ctx.site_id),
+        supabase.from('training_types').select('*').eq('site_id', ctx.site_id).eq('active', true),
+        // no relational select here (avoids RLS join issues on live)
+        supabase.from('training_records').select('*').eq('site_id', ctx.site_id)
+      ]);
+
       if (staffRes.error) throw staffRes.error;
-      
-      // Load training types
-      const typesRes = await supabase
-        .from('training_types')
-        .select('*')
-        .eq('site_id', ctx.site_id)
-        .eq('active', true);
-      
       if (typesRes.error) throw typesRes.error;
-      
-      // Load training records
-      const recordsRes = await supabase
-        .from('training_records')
-        .select('*')
-        .eq('site_id', ctx.site_id);
-      
       if (recordsRes.error) throw recordsRes.error;
-      
+
       trainingData = {
         staff: staffRes.data || [],
         types: typesRes.data || [],
         records: recordsRes.data || []
       };
-      
-      console.log('[Training] Data loaded:', {
+
+      console.log('Training data loaded:', {
         staff: trainingData.staff.length,
         types: trainingData.types.length,
         records: trainingData.records.length
       });
+
+      // Initialize controls
+      initializeTrainingControls();
       
-      renderTrainingMatrix();
+      // Ensure we render with a slight delay to allow DOM to be ready
+      setTimeout(() => renderTrainingMatrix(), 10);
     } catch (err) {
-      console.error('[Training] Failed to load data:', err);
-      content.innerHTML = `
-        <div style="text-align: center; padding: 40px;">
-          <div style="color: var(--danger); margin-bottom: 20px;">Failed to load training data</div>
-          <div style="color: var(--muted); margin-bottom: 20px;">${err.message}</div>
-          <button class="btn secondary" onclick="loadTrainingMatrix()">Retry</button>
-        </div>
-      `;
+      console.error('Failed to load training data:', err);
+      document.getElementById('training-tbody').innerHTML =
+        '<tr><td colspan="100%" class="muted">Failed to load training data: ' + (err?.message || err) + '</td></tr>';
     }
   }
-  
-  // Expose globally
+
+  // Expose loader so early bootstrap shims can retrigger after ctx becomes ready
   window.loadTrainingMatrix = loadTrainingMatrix;
 
+  function initializeTrainingControls() {
+    try {
+      const searchInput = document.getElementById('training-search');
+    const filterPills = document.querySelectorAll('.filter-pill');
+    const densityToggle = document.getElementById('density-toggle');
+    const roleFilter = document.getElementById('role-filter');
+    const sortSelect = document.getElementById('sort-select');
+    const closeDrawer = document.getElementById('close-drawer');
 
-  function renderTrainingMatrix() {
-    console.log('[Training] Rendering matrix...');
-    const content = document.getElementById('training-content');
-    if (!content) return;
-    
-    // Check if we have data
-    if (!trainingData.staff || trainingData.staff.length === 0) {
-      content.innerHTML = `
-        <div style="text-align: center; padding: 40px;">
-          <div style="color: var(--muted); margin-bottom: 20px;">No staff members found</div>
-          <button class="btn secondary" onclick="loadTrainingMatrix()">Refresh</button>
-        </div>
-      `;
-      return;
-    }
-    
-    if (!trainingData.types || trainingData.types.length === 0) {
-      content.innerHTML = `
-        <div style="text-align: center; padding: 40px;">
-          <div style="color: var(--muted); margin-bottom: 20px;">No training types configured</div>
-          <button class="btn secondary" onclick="loadTrainingMatrix()">Refresh</button>
-        </div>
-      `;
-      return;
-    }
-    
-    // Build simple table
-    let html = `
-      <div style="overflow-x: auto;">
-        <table style="width: 100%; border-collapse: collapse;">
-          <thead>
-            <tr style="background: var(--glass);">
-              <th style="padding: 12px; text-align: left; border-bottom: 2px solid var(--border-color);">Staff Member</th>
-              ${trainingData.types.map(type => `
-                <th style="padding: 12px; text-align: center; border-bottom: 2px solid var(--border-color); min-width: 100px;">
-                  ${esc(type.name)}
-                </th>
-              `).join('')}
-            </tr>
-          </thead>
-          <tbody>
-    `;
-    
-    // Add rows for each staff member
-    trainingData.staff.forEach(staff => {
-      html += `<tr style="border-bottom: 1px solid var(--border-color);">`;
-      html += `<td style="padding: 12px; font-weight: 500;">${esc(staff.full_name || 'Unknown')}</td>`;
-      
-      // Add cell for each training type
-      trainingData.types.forEach(type => {
-        const record = trainingData.records.find(r => 
-          r.staff_id === staff.id && r.training_type_id === type.id
-        );
-        
-        let cellContent = '—';
-        let cellStyle = 'text-align: center; padding: 12px; color: var(--muted);';
-        
-        if (record) {
-          const today = new Date();
-          if (record.expiry_date) {
-            const expiry = new Date(record.expiry_date);
-            const daysToExpiry = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
-            
-            if (daysToExpiry < 0) {
-              cellContent = 'Expired';
-              cellStyle = 'text-align: center; padding: 12px; background: var(--stat-4-bg); color: var(--stat-4-color);';
-            } else if (daysToExpiry <= 30) {
-              cellContent = `${daysToExpiry}d`;
-              cellStyle = 'text-align: center; padding: 12px; background: var(--stat-3-bg); color: var(--stat-3-color);';
-            } else {
-              cellContent = '✓';
-              cellStyle = 'text-align: center; padding: 12px; background: var(--stat-2-bg); color: var(--stat-2-color);';
-            }
-          } else {
-            cellContent = '✓';
-            cellStyle = 'text-align: center; padding: 12px; background: var(--stat-2-bg); color: var(--stat-2-color);';
-          }
-        }
-        
-        html += `<td style="${cellStyle}">${cellContent}</td>`;
+    // Search functionality
+    if (searchInput) {
+      searchInput.addEventListener('input', (e) => {
+        trainingFilters.search = e.target.value.toLowerCase();
+        renderTrainingMatrix();
       });
-      
-      html += `</tr>`;
+    }
+
+    // Status filter pills
+    filterPills.forEach(pill => {
+      pill.addEventListener('click', () => {
+        filterPills.forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        trainingFilters.status = pill.dataset.filter;
+        renderTrainingMatrix();
+      });
     });
-    
-    html += `
-          </tbody>
-        </table>
-      </div>
+
+    // Density toggle
+    if (densityToggle) {
+      densityToggle.addEventListener('click', () => {
+        trainingFilters.compact = !trainingFilters.compact;
+        densityToggle.classList.toggle('active');
+        const matrixContainer = document.getElementById('training-matrix-container');
+        if (matrixContainer) {
+          matrixContainer.classList.toggle('compact', trainingFilters.compact);
+        }
+      });
+    }
+
+    // Role filter
+    if (roleFilter) {
+      // Populate role options
+      const uniqueRoles = [...new Set(trainingData.staff.map(s => s.role).filter(Boolean))];
+      roleFilter.innerHTML = '<option value="all">All Roles</option>' + 
+        uniqueRoles.map(role => `<option value="${role}">${role}</option>`).join('');
       
-      <div style="margin-top: 20px; display: flex; gap: 20px; font-size: 12px; color: var(--muted);">
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <div style="width: 12px; height: 12px; background: var(--stat-2-bg); border-radius: 2px;"></div>
-          <span>Valid</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <div style="width: 12px; height: 12px; background: var(--stat-3-bg); border-radius: 2px;"></div>
-          <span>Expiring Soon</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <div style="width: 12px; height: 12px; background: var(--stat-4-bg); border-radius: 2px;"></div>
-          <span>Expired</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <div style="width: 12px; height: 12px; background: var(--glass); border-radius: 2px;"></div>
-          <span>No Record</span>
-        </div>
-      </div>
-    `;
-    
-    content.innerHTML = html;
+      roleFilter.addEventListener('change', (e) => {
+        trainingFilters.role = e.target.value;
+        renderTrainingMatrix();
+      });
+    }
+
+    // Sort select
+    if (sortSelect) {
+      sortSelect.addEventListener('change', (e) => {
+        trainingFilters.sort = e.target.value;
+        renderTrainingMatrix();
+      });
+    }
+
+      // Drawer close
+      if (closeDrawer) {
+        closeDrawer.addEventListener('click', () => {
+          document.getElementById('cell-drawer').classList.remove('open');
+        });
+      }
+    } catch (err) {
+      console.error('initializeTrainingControls error', err);
+      const tbody = document.getElementById('training-tbody');
+      if (tbody) tbody.innerHTML = `<tr><td colspan="100%" class="muted">Controls init error: ${esc(err?.message || err)}</td></tr>`;
+    }
   }
 
+  function switchTrainingTab(tab) {
+    currentTrainingTab = tab;
+    document.querySelectorAll('#view-training .tab-controls button').forEach(btn => btn.classList.remove('active'));
+    document.getElementById(`tab-${tab}`).classList.add('active');
+    renderTrainingMatrix();
+  }
 
+  function renderTrainingMatrix() {
+    try {
+      try { window.debugLog && window.debugLog('renderTrainingMatrix:enter', { now: Date.now() }); } catch(_) {}
+      if (window.trainingData) { try { trainingData = window.trainingData; } catch(_){} }
+      const headers = document.getElementById('training-headers');
+      const tbody = document.getElementById('training-tbody');
+      
+      if (!headers || !tbody) return;
+
+      try { window.debugLog && window.debugLog('renderTrainingMatrix:starting', { staffLen: trainingData.staff?.length, typesLen: trainingData.types?.length }); } catch(_) {}
+
+      // If there's no data loaded, provide a helpful fallback so UI can be inspected
+      if ((!trainingData.staff || trainingData.staff.length === 0) || (!trainingData.types || trainingData.types.length === 0)) {
+        tbody.innerHTML = `
+          <tr><td colspan="100%" class="muted">No training data available.</td></tr>
+          <tr><td colspan="100%" style="text-align:center; padding: 16px;">
+            <button class="btn secondary" id="btn-use-demo-training">Use demo data to preview matrix</button>
+          </td></tr>`;
+
+        const demoBtn = document.getElementById('btn-use-demo-training');
+        if (demoBtn) {
+          demoBtn.addEventListener('click', () => {
+            // Small, non-destructive demo dataset
+            trainingData.staff = [
+              { id: 1, full_name: 'Alice Example', role: 'Nurse' },
+              { id: 2, full_name: 'Bob Example', role: 'HCA' }
+            ];
+            trainingData.types = [
+              { id: 101, name: 'BLS', validity_months: 12 },
+              { id: 102, name: 'GDPR', validity_months: 24 }
+            ];
+            const now = new Date();
+            const nextYear = new Date(); nextYear.setMonth(nextYear.getMonth() + 9);
+            trainingData.records = [
+              { id: 1001, staff_id: 1, training_type_id: 101, completion_date: now.toISOString(), expiry_date: nextYear.toISOString(), provider: 'Acme Training', verified_by: 'Manager' },
+              { id: 1002, staff_id: 2, training_type_id: 102, completion_date: now.toISOString(), expiry_date: null, provider: 'Acme Training' }
+            ];
+            renderTrainingMatrix();
+          });
+        }
+
+        return;
+      }
+
+      // ...existing code continues
+    } catch (err) {
+      console.error('renderTrainingMatrix error', err);
+      const tbody = document.getElementById('training-tbody');
+      if (tbody) tbody.innerHTML = `<tr><td colspan="100%" class="muted">Render error: ${esc(err?.message || err)}</td></tr>`;
+      return;
+    }
+
+    // Filter staff by type and search
+    let filteredStaff = trainingData.staff.filter(staff => {
+      const isClinical = ['GP', 'Nurse', 'HCA', 'Practice Nurse', 'ANP'].some(role => 
+        (staff.role || '').toLowerCase().includes(role.toLowerCase())
+      );
+      
+      const matchesTab = currentTrainingTab === 'clinical' ? isClinical : !isClinical;
+      const matchesSearch = !trainingFilters.search || 
+        (staff.full_name || '').toLowerCase().includes(trainingFilters.search);
+      const matchesRole = trainingFilters.role === 'all' || staff.role === trainingFilters.role;
+      
+      return matchesTab && matchesSearch && matchesRole;
+    });
+
+    // Apply status filter
+    if (trainingFilters.status !== 'all') {
+      filteredStaff = filteredStaff.filter(staff => {
+        const staffRecords = trainingData.records.filter(r => r.staff_id === staff.id);
+        const staffStatus = calculateStaffStatus(staff.id, staffRecords);
+        return staffStatus === trainingFilters.status;
+      });
+    }
+
+    // Sort staff
+    filteredStaff.sort((a, b) => {
+      switch (trainingFilters.sort) {
+        case 'compliance':
+          const aCompliance = calculateCompliancePercentage(a.id);
+          const bCompliance = calculateCompliancePercentage(b.id);
+          return bCompliance - aCompliance;
+        case 'expiry':
+          const aSoonest = getSoonestExpiry(a.id);
+          const bSoonest = getSoonestExpiry(b.id);
+          if (!aSoonest && !bSoonest) return 0;
+          if (!aSoonest) return 1;
+          if (!bSoonest) return -1;
+          return new Date(aSoonest) - new Date(bSoonest);
+        case 'overdue':
+          const aOverdue = getOverdueCount(a.id);
+          const bOverdue = getOverdueCount(b.id);
+          return bOverdue - aOverdue;
+        default:
+          return (a.full_name || '').localeCompare(b.full_name || '');
+      }
+    });
+
+    // Build sortable headers
+    headers.innerHTML = '<th>Staff Member</th>' + 
+      trainingData.types.map(type => `
+        <th class="sortable" data-type-id="${type.id}" title="${esc(type.description || type.name)}">
+          ${esc(type.name)}
+        </th>
+      `).join('');
+
+    // Add column sort handlers
+    headers.querySelectorAll('th.sortable').forEach(th => {
+      th.addEventListener('click', () => {
+        sortByColumn(th.dataset.typeId);
+      });
+    });
+
+    // Build matrix rows
+    if (filteredStaff.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="${trainingData.types.length + 1}" class="muted">No ${currentTrainingTab} staff found</td></tr>`;
+    } else {
+      tbody.innerHTML = filteredStaff.map(staff => {
+        const staffRecords = trainingData.records.filter(r => r.staff_id === staff.id);
+        const compliance = calculateCompliancePercentage(staff.id);
+        
+        const cells = trainingData.types.map(type => {
+          const record = staffRecords.find(r => r.training_type_id === type.id);
+          return renderTrainingCell(staff.id, type.id, record, staff, type);
+        }).join('');
+        
+        return `<tr>
+          <td title="${esc(staff.full_name)} - ${compliance}% compliant">${esc(staff.full_name || 'Unknown')}<br><small class="compliance-badge">${compliance}% compliant</small></td>
+          ${cells}
+        </tr>`;
+      }).join('');
+    }
+
+    // Update counts and legend
+    updateFilterCounts(filteredStaff);
+    
+    // Add click handlers for cells
+    tbody.querySelectorAll('.training-cell').forEach(cell => {
+      cell.addEventListener('click', () => {
+        const staffId = cell.dataset.staffId;
+        const typeId = cell.dataset.typeId;
+        openCellDrawer(staffId, typeId);
+      });
+    });
+  }
+
+  function renderTrainingCell(staffId, typeId, record, staff, type) {
+    const today = new Date();
+    let status = 'training-missing';
+    let content = '—';
+    let tooltipText = 'No record found';
+    
+    if (record) {
+      const completionDate = new Date(record.completion_date);
+      const expiryDate = record.expiry_date ? new Date(record.expiry_date) : null;
+      
+      if (expiryDate) {
+        const daysToExpiry = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
+        
+        if (daysToExpiry < 0) {
+          status = 'training-expired';
+          content = `Expired`;
+          tooltipText = `Expired ${Math.abs(daysToExpiry)} days ago\\nCompleted: ${fmtDateShort(record.completion_date)}\\nExpired: ${fmtDateShort(record.expiry_date)}`;
+        } else if (daysToExpiry <= 30) {
+          status = 'training-expiring';
+          content = `${daysToExpiry}d`;
+          tooltipText = `Expires in ${daysToExpiry} days\\nCompleted: ${fmtDateShort(record.completion_date)}\\nExpires: ${fmtDateShort(record.expiry_date)}`;
+        } else {
+          status = 'training-completed';
+          content = `✓`;
+          tooltipText = `Valid until ${fmtDateShort(record.expiry_date)}\\nCompleted: ${fmtDateShort(record.completion_date)}`;
+        }
+      } else {
+        status = 'training-completed';
+        content = `✓`;
+        tooltipText = `Completed: ${fmtDateShort(record.completion_date)}\\nNo expiry date`;
+      }
+      
+      if (record.verified_by) {
+        tooltipText += `\\nVerified by: ${record.verified_by}`;
+      }
+    }
+
+    return `<td class="training-cell ${status}" data-staff-id="${staffId}" data-type-id="${typeId}" title="${tooltipText}">
+      ${content}
+      <div class="training-tooltip">${tooltipText.replace(/\\n/g, '<br>')}</div>
+    </td>`;
+  }
+
+  function calculateStaffStatus(staffId, staffRecords) {
+    const today = new Date();
+    let hasExpired = false;
+    let hasExpiring = false;
+    let hasValid = false;
+    let hasMissing = false;
+
+    trainingData.types.forEach(type => {
+      const record = staffRecords.find(r => r.training_type_id === type.id);
+      
+      if (!record) {
+        hasMissing = true;
+      } else if (record.expiry_date) {
+        const expiryDate = new Date(record.expiry_date);
+        const daysToExpiry = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
+        
+        if (daysToExpiry < 0) {
+          hasExpired = true;
+        } else if (daysToExpiry <= 30) {
+          hasExpiring = true;
+        } else {
+          hasValid = true;
+        }
+      } else {
+        hasValid = true;
+      }
+    });
+
+    // Priority order: expired > expiring > missing > valid
+    if (hasExpired) return 'expired';
+    if (hasExpiring) return 'expiring';
+    if (hasMissing) return 'missing';
+    return 'valid';
+  }
+
+  function calculateCompliancePercentage(staffId) {
+    const staffRecords = trainingData.records.filter(r => r.staff_id === staffId);
+    const today = new Date();
+    let compliantCount = 0;
+    
+    trainingData.types.forEach(type => {
+      const record = staffRecords.find(r => r.training_type_id === type.id);
+      
+      if (record) {
+        if (!record.expiry_date) {
+          compliantCount++;
+        } else {
+          const expiryDate = new Date(record.expiry_date);
+          if (expiryDate >= today) {
+            compliantCount++;
+          }
+        }
+      }
+    });
+    
+    return trainingData.types.length > 0 ? Math.round((compliantCount / trainingData.types.length) * 100) : 0;
+  }
+
+  function getSoonestExpiry(staffId) {
+    const staffRecords = trainingData.records.filter(r => r.staff_id === staffId);
+    const today = new Date();
+    let soonestExpiry = null;
+    
+    staffRecords.forEach(record => {
+      if (record.expiry_date) {
+        const expiryDate = new Date(record.expiry_date);
+        if (expiryDate >= today && (!soonestExpiry || expiryDate < new Date(soonestExpiry))) {
+          soonestExpiry = record.expiry_date;
+        }
+      }
+    });
+    
+    return soonestExpiry;
+  }
+
+  function getOverdueCount(staffId) {
+    const staffRecords = trainingData.records.filter(r => r.staff_id === staffId);
+    const today = new Date();
+    let overdueCount = 0;
+    
+    staffRecords.forEach(record => {
+      if (record.expiry_date) {
+        const expiryDate = new Date(record.expiry_date);
+        if (expiryDate < today) {
+          overdueCount++;
+        }
+      }
+    });
+    
+    // Add missing records as overdue
+    const missingCount = trainingData.types.length - staffRecords.length;
+    return overdueCount + missingCount;
+  }
+
+  function updateFilterCounts(filteredStaff) {
+    let counts = { all: 0, missing: 0, expiring: 0, expired: 0, valid: 0 };
+    
+    trainingData.staff.forEach(staff => {
+      const staffRecords = trainingData.records.filter(r => r.staff_id === staff.id);
+      const status = calculateStaffStatus(staff.id, staffRecords);
+      counts.all++;
+      counts[status]++;
+    });
+
+    // Update filter pills
+    Object.keys(counts).forEach(status => {
+      const countElement = document.getElementById(`count-${status}`);
+      if (countElement) {
+        countElement.textContent = counts[status];
+      }
+    });
+
+    // Update legend counts
+    const legendCounts = {
+      'legend-valid-count': counts.valid,
+      'legend-expiring-count': counts.expiring,
+      'legend-expired-count': counts.expired,
+      'legend-missing-count': counts.missing
+    };
+
+    Object.entries(legendCounts).forEach(([id, count]) => {
+      const element = document.getElementById(id);
+      if (element) {
+        element.textContent = count;
+      }
+    });
+  }
+  
   // Expose renderTrainingMatrix to window for early calls
   window.renderTrainingMatrix = renderTrainingMatrix;
-  
-  // Add button handlers
-  document.addEventListener('DOMContentLoaded', () => {
-    // Refresh button
-    const refreshBtn = document.getElementById('btn-refresh-training');
-    if (refreshBtn) {
-      refreshBtn.addEventListener('click', () => {
-        console.log('[Training] Refresh button clicked');
-        loadTrainingMatrix();
-      });
+
+  function sortByColumn(typeId) {
+    // Toggle sort state for column
+    const th = document.querySelector(`th[data-type-id="${typeId}"]`);
+    const currentSort = th.dataset.sort || 'none';
+    
+    // Clear other sorts
+    document.querySelectorAll('th.sortable').forEach(header => {
+      header.classList.remove('sort-asc', 'sort-desc');
+      delete header.dataset.sort;
+    });
+    
+    // Apply new sort
+    if (currentSort === 'none' || currentSort === 'desc') {
+      th.classList.add('sort-asc');
+      th.dataset.sort = 'asc';
+    } else {
+      th.classList.add('sort-desc');
+      th.dataset.sort = 'desc';
     }
     
-    // Add training button
-    const addBtn = document.getElementById('btn-add-training');
-    if (addBtn) {
-      addBtn.addEventListener('click', () => {
-        console.log('[Training] Add training button clicked');
-        alert('Add training functionality will be implemented soon');
+    // Re-render with custom sort
+    renderTrainingMatrix();
+  }
+
+  function openCellDrawer(staffId, typeId) {
+    const staff = trainingData.staff.find(s => s.id == staffId);
+    const type = trainingData.types.find(t => t.id == typeId);
+    const record = trainingData.records.find(r => r.staff_id == staffId && r.training_type_id == typeId);
+
+    if (!staff || !type) return;
+
+    // Populate drawer
+    document.getElementById('drawer-staff-name').textContent = staff.full_name || 'Unknown';
+    document.getElementById('drawer-module-name').textContent = type.name;
+    
+    if (record) {
+      const today = new Date();
+      const expiryDate = record.expiry_date ? new Date(record.expiry_date) : null;
+      let statusText = 'Completed';
+      
+      if (expiryDate) {
+        const daysToExpiry = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
+        if (daysToExpiry < 0) {
+          statusText = `Expired (${Math.abs(daysToExpiry)} days ago)`;
+        } else if (daysToExpiry <= 30) {
+          statusText = `Expiring in ${daysToExpiry} days`;
+        } else {
+          statusText = 'Valid';
+        }
+      }
+      
+      document.getElementById('drawer-status').textContent = statusText;
+      document.getElementById('drawer-issue-date').textContent = record.completion_date ? fmtDateShort(record.completion_date) : '-';
+      document.getElementById('drawer-expiry-date').textContent = record.expiry_date ? fmtDateShort(record.expiry_date) : 'No expiry';
+      document.getElementById('drawer-provider').textContent = record.provider || '-';
+      document.getElementById('drawer-evidence').textContent = record.certificate_url ? 'Certificate on file' : 'No evidence';
+      document.getElementById('drawer-notes').textContent = record.notes || '-';
+      document.getElementById('drawer-verified').textContent = record.verified_by ? `${record.verified_by} on ${fmtDateShort(record.verified_date)}` : 'Not verified';
+    } else {
+      document.getElementById('drawer-status').textContent = 'No record';
+      document.getElementById('drawer-issue-date').textContent = '-';
+      document.getElementById('drawer-expiry-date').textContent = '-';
+      document.getElementById('drawer-provider').textContent = '-';
+      document.getElementById('drawer-evidence').textContent = 'No evidence';
+      document.getElementById('drawer-notes').textContent = '-';
+      document.getElementById('drawer-verified').textContent = 'Not verified';
+    }
+
+    // Set up action buttons
+    setupDrawerActions(staffId, typeId, record);
+    
+    // Open drawer
+    document.getElementById('cell-drawer').classList.add('open');
+  }
+
+  function setupDrawerActions(staffId, typeId, record) {
+    const uploadBtn = document.getElementById('drawer-upload');
+    const replaceBtn = document.getElementById('drawer-replace');
+    const reviewBtn = document.getElementById('drawer-review');
+    const reminderBtn = document.getElementById('drawer-reminder');
+
+    // Clear previous handlers
+    [uploadBtn, replaceBtn, reviewBtn, reminderBtn].forEach(btn => {
+      if (btn) btn.replaceWith(btn.cloneNode(true));
+    });
+
+    // Upload/Replace handler
+    const newUploadBtn = document.getElementById('drawer-upload');
+    const newReplaceBtn = document.getElementById('drawer-replace');
+    
+    if (newUploadBtn) {
+      newUploadBtn.addEventListener('click', () => openTrainingModal(staffId, typeId));
+    }
+    if (newReplaceBtn) {
+      newReplaceBtn.addEventListener('click', () => openTrainingModal(staffId, typeId));
+    }
+
+    // Mark as reviewed handler
+    const newReviewBtn = document.getElementById('drawer-review');
+    if (newReviewBtn) {
+      newReviewBtn.addEventListener('click', async () => {
+        if (record) {
+          try {
+            await supabase.from('training_records')
+              .update({ 
+                verified_by: ctx.user?.email || 'System',
+                verified_date: new Date().toISOString()
+              })
+              .eq('id', record.id);
+            
+            showToast('Record marked as reviewed', 'success');
+            loadTrainingMatrix();
+          } catch (err) {
+            showToast('Failed to mark as reviewed: ' + err.message, 'error');
+          }
+        }
       });
     }
-  });
 
+    // Send reminder handler
+    const newReminderBtn = document.getElementById('drawer-reminder');
+    if (newReminderBtn) {
+      newReminderBtn.addEventListener('click', () => {
+        showToast('Reminder functionality coming soon', 'info');
+      });
+    }
+  }
+
+  function closeTrainingModal() {
+    document.getElementById('training-modal').classList.remove('show');
+    document.getElementById('training-error').style.display = 'none';
+    document.getElementById('training-form').reset();
+  }
+
+  async function handleTrainingFileUpload() {
+    const fileInput = document.getElementById('training-certificate');
+    const file = fileInput.files[0];
+    
+    if (!file) return;
+    
+    if (file.size > 10 * 1024 * 1024) {
+      document.getElementById('training-error').textContent = 'File size must be less than 10MB';
+      document.getElementById('training-error').style.display = 'block';
+      return;
+    }
+
+    // Show file selected
+    const uploadZone = document.getElementById('training-upload-zone');
+    uploadZone.innerHTML = `
+      <div style="color: var(--success);">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        <p style="margin-top: 8px;">Selected: ${file.name}</p>
+      </div>
+    `;
+  }
+
+  function calculateTrainingExpiry() {
+    const completionDate = document.getElementById('training-completion-date').value;
+    const typeId = document.getElementById('training-type-id').value;
+    
+    if (!completionDate || !typeId) return;
+    
+    // Find the training type to get validity period
+    const trainingType = trainingData.types.find(t => t.id == typeId);
+    if (!trainingType || !trainingType.validity_months) return;
+    
+    // Calculate expiry date
+    const completion = new Date(completionDate);
+    const expiry = new Date(completion);
+    expiry.setMonth(expiry.getMonth() + trainingType.validity_months);
+    
+    // Set the expiry date field
+    const expiryField = document.getElementById('training-expiry-date');
+    expiryField.value = expiry.toISOString().split('T')[0];
+  }
+
+  async function saveTrainingRecord(e) {
+    e.preventDefault();
+    
+    const errorDiv = document.getElementById('training-error');
+    errorDiv.style.display = 'none';
+
+    try {
+      const staffId = document.getElementById('training-staff-id').value;
+      const typeId = document.getElementById('training-type-id').value;
+      const completionDate = document.getElementById('training-completion-date').value;
+      const expiryDate = document.getElementById('training-expiry-date').value;
+      const notes = document.getElementById('training-notes').value;
+      const fileInput = document.getElementById('training-certificate');
+      
+      let certificateUrl = null;
+
+      // Upload certificate if provided
+      if (fileInput.files[0]) {
+        const file = fileInput.files[0];
+        const fileName = `training-${staffId}-${typeId}-${Date.now()}.${file.name.split('.').pop()}`;
+        
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('training-certificates')
+          .upload(fileName, file);
+
+        if (uploadError) throw uploadError;
+        
+        const { data: urlData } = supabase.storage
+          .from('training-certificates')
+          .getPublicUrl(fileName);
+          
+        certificateUrl = urlData.publicUrl;
+      }
+
+      // Save or update training record
+      const recordData = {
+        site_id: ctx.site_id,
+        staff_id: parseInt(staffId),
+        training_type_id: parseInt(typeId),
+        completion_date: completionDate,
+        expiry_date: expiryDate || null,
+        notes: notes || null,
+        certificate_url: certificateUrl
+      };
+
+      const existingRecord = trainingData.records.find(r => 
+        r.staff_id == staffId && r.training_type_id == typeId
+      );
+
+      if (existingRecord) {
+        const { error } = await supabase
+          .from('training_records')
+          .update(recordData)
+          .eq('id', existingRecord.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('training_records')
+          .insert(recordData);
+        if (error) throw error;
+      }
+
+      closeTrainingModal();
+      loadTrainingMatrix();
+    } catch (err) {
+      console.error('Failed to save training record:', err);
+      errorDiv.textContent = err.message || 'Failed to save training record';
+      errorDiv.style.display = 'block';
+    }
+  }
+
+  // Global function for downloading training certificates
+  window.downloadTrainingCertificate = function() {
+    const staffId = document.getElementById('training-staff-id').value;
+    const typeId = document.getElementById('training-type-id').value;
+    const record = trainingData.records.find(r => 
+      r.staff_id == staffId && r.training_type_id == typeId
+    );
+    
+    if (record?.certificate_url) {
+      window.open(record.certificate_url, '_blank');
+    }
+  };
 
   // Logout function
   window.logout = async function() {
