@@ -4561,11 +4561,26 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
             <button class="btn secondary" id="tab-features" data-filter="feature" data-hide-done="false">✨ Features</button>
           </div>
 
+          <!-- Bulk Actions Bar -->
+          <div class="bulk-actions-bar" id="bulk-actions-bar" style="display: none; background: var(--primary-color); color: white; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <span id="selected-count">0</span> tasks selected
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn secondary" id="bulk-copy-btn" style="background: white; color: var(--primary-color);">📋 Copy Selected</button>
+              <button class="btn secondary" id="bulk-delete-btn" style="background: #dc3545; color: white;">🗑️ Delete Selected</button>
+              <button class="btn secondary" id="clear-selection-btn" style="background: transparent; border: 1px solid white; color: white;">Clear Selection</button>
+            </div>
+          </div>
+
           <!-- Tasks Table -->
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
+                  <th style="width: 40px;">
+                    <input type="checkbox" id="select-all-tasks" title="Select all tasks" />
+                  </th>
                   <th style="width: 48px;">#</th>
                   <th style="width: 64px;">Done</th>
                   <th style="width: 50px;">Status</th>
@@ -4576,7 +4591,7 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
                 </tr>
               </thead>
               <tbody id="project-tasks-tbody">
-                <tr><td colspan="7" class="muted">Loading tasks...</td></tr>
+                <tr><td colspan="8" class="muted">Loading tasks...</td></tr>
               </tbody>
             </table>
           </div>
@@ -14343,6 +14358,146 @@ function setupProjectManagementEventListeners() {
       navigateToTaskTarget(task);
     });
   }
+
+  // Bulk selection functionality
+  const selectAllCheckbox = document.getElementById('select-all-tasks');
+  if (selectAllCheckbox) {
+    selectAllCheckbox.addEventListener('change', (e) => {
+      const checkboxes = document.querySelectorAll('.task-select');
+      checkboxes.forEach(checkbox => {
+        checkbox.checked = e.target.checked;
+      });
+      updateBulkActionsVisibility();
+    });
+  }
+
+  // Individual checkbox selection
+  document.addEventListener('change', (e) => {
+    if (e.target.classList.contains('task-select')) {
+      updateBulkActionsVisibility();
+      updateSelectAllState();
+    }
+  });
+
+  // Bulk action buttons
+  document.getElementById('bulk-copy-btn')?.addEventListener('click', bulkCopyTasks);
+  document.getElementById('bulk-delete-btn')?.addEventListener('click', bulkDeleteTasks);
+  document.getElementById('clear-selection-btn')?.addEventListener('click', clearTaskSelection);
+}
+
+// Helper functions for bulk operations
+function updateBulkActionsVisibility() {
+  const selectedCheckboxes = document.querySelectorAll('.task-select:checked');
+  const bulkBar = document.getElementById('bulk-actions-bar');
+  const selectedCount = document.getElementById('selected-count');
+  
+  if (selectedCheckboxes.length > 0) {
+    bulkBar.style.display = 'flex';
+    selectedCount.textContent = selectedCheckboxes.length;
+  } else {
+    bulkBar.style.display = 'none';
+  }
+}
+
+function updateSelectAllState() {
+  const allCheckboxes = document.querySelectorAll('.task-select');
+  const checkedCheckboxes = document.querySelectorAll('.task-select:checked');
+  const selectAllCheckbox = document.getElementById('select-all-tasks');
+  
+  if (allCheckboxes.length === 0) {
+    selectAllCheckbox.checked = false;
+    selectAllCheckbox.indeterminate = false;
+  } else if (checkedCheckboxes.length === allCheckboxes.length) {
+    selectAllCheckbox.checked = true;
+    selectAllCheckbox.indeterminate = false;
+  } else if (checkedCheckboxes.length > 0) {
+    selectAllCheckbox.checked = false;
+    selectAllCheckbox.indeterminate = true;
+  } else {
+    selectAllCheckbox.checked = false;
+    selectAllCheckbox.indeterminate = false;
+  }
+}
+
+function clearTaskSelection() {
+  const checkboxes = document.querySelectorAll('.task-select');
+  checkboxes.forEach(checkbox => checkbox.checked = false);
+  document.getElementById('select-all-tasks').checked = false;
+  updateBulkActionsVisibility();
+}
+
+async function bulkDeleteTasks() {
+  const selectedCheckboxes = document.querySelectorAll('.task-select:checked');
+  const selectedIds = Array.from(selectedCheckboxes).map(cb => cb.dataset.taskId);
+  
+  if (selectedIds.length === 0) return;
+  
+  const confirmed = confirm(`Are you sure you want to delete ${selectedIds.length} task(s)? This action cannot be undone.`);
+  if (!confirmed) return;
+  
+  try {
+    for (const taskId of selectedIds) {
+      await deleteTask(taskId);
+    }
+    showToast(`${selectedIds.length} task(s) deleted successfully!`, 'success');
+    clearTaskSelection();
+    await loadProjectTasks();
+  } catch (error) {
+    console.error('Error deleting tasks:', error);
+    showToast('Error deleting tasks. Please try again.', 'error');
+  }
+}
+
+function bulkCopyTasks() {
+  const selectedCheckboxes = document.querySelectorAll('.task-select:checked');
+  const selectedIds = Array.from(selectedCheckboxes).map(cb => cb.dataset.taskId);
+  const selectedTasks = projectTasks.filter(task => selectedIds.includes(String(task.id)));
+  
+  if (selectedTasks.length === 0) return;
+  
+  const prompt = buildBulkCopilotPrompt(selectedTasks);
+  copyTextToClipboard(prompt).then(success => {
+    if (success) {
+      showToast(`Copied ${selectedTasks.length} task(s) to clipboard`, 'success');
+    } else {
+      showToast('Could not copy to clipboard', 'error');
+    }
+  });
+}
+
+function buildBulkCopilotPrompt(tasks) {
+  const lines = [];
+  
+  // Opening instruction
+  lines.push('Hi — please do this:');
+  lines.push('');
+  lines.push('**Testing Instructions:** When testing in a live browser, use the email ben.howard@stoke.nhs.uk and the password Hello1!');
+  lines.push('');
+  
+  // Add each task
+  tasks.forEach((task, index) => {
+    const { base, notes } = splitNotes(task.description || '');
+    const status = task.status || 'open';
+    const type = task.type || 'task';
+    
+    lines.push(`**Task ${index + 1}: ${task.title || 'Untitled'}** (${type}, ${status})`);
+    lines.push('');
+    lines.push('Details:' + (task.element_type ? ` Element: ${task.element_type}` : ''));
+    if (task.element_text) lines.push(`Text: ${task.element_text}`);
+    if (base.trim()) lines.push(`Reporter notes: ${base}`);
+    if (task.page) lines.push(`Page: ${task.page}`);
+    if (task.element_selector) lines.push(`Selector: ${task.element_selector}`);
+    if (notes.trim()) lines.push(`Notes: ${notes}`);
+    lines.push('');
+  });
+  
+  lines.push('**Final Instructions:**');
+  lines.push('- Complete all tasks listed above in order');
+  lines.push('- Test functionality thoroughly');
+  lines.push('- Use the provided credentials for any live browser testing');
+  lines.push('- Ensure all changes are properly saved and committed');
+  
+  return lines.join('\n');
 }
 
 // Navigate to the task's page and highlight the target element
@@ -14770,7 +14925,7 @@ function renderProjectTasks(filteredTasks = null) {
   const tasksToRender = filteredTasks || projectTasks;
   
   if (tasksToRender.length === 0) {
-  tbody.innerHTML = '<tr><td colspan="7" class="muted">No tasks found.</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="8" class="muted">No tasks found.</td></tr>';
     return;
   }
   
@@ -14815,6 +14970,9 @@ function renderProjectTasks(filteredTasks = null) {
     const rowNumber = idx + 1;
   return `
       <tr class="${isBug ? 'task-issue-row' : ''}" data-task-id="${task.id}">
+        <td style="text-align:center;">
+          <input type="checkbox" class="task-select" data-task-id="${task.id}" />
+        </td>
         <td class="muted" style="text-align:center;">${rowNumber}</td>
         <td style="text-align:center;">
           <input type="checkbox" ${isClosed ? 'checked' : ''} aria-label="Mark done" onclick="toggleTaskDone('${task.id}', this.checked)" />
