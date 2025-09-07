@@ -4583,7 +4583,12 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
                   </th>
                   <th style="width: 48px;">#</th>
                   <th style="width: 64px;">Done</th>
-                  <th style="width: 50px;">Status</th>
+                  <th style="width: 50px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                      Status
+                      <button id="toggle-completed-btn" title="Toggle completed items visibility" style="background: none; border: none; cursor: pointer; font-size: 16px; padding: 2px;">👁️</button>
+                    </div>
+                  </th>
                   <th>Task</th>
                   <th>Type</th>
                   <th>Created</th>
@@ -14383,6 +14388,9 @@ function setupProjectManagementEventListeners() {
   document.getElementById('bulk-copy-btn')?.addEventListener('click', bulkCopyTasks);
   document.getElementById('bulk-delete-btn')?.addEventListener('click', bulkDeleteTasks);
   document.getElementById('clear-selection-btn')?.addEventListener('click', clearTaskSelection);
+
+  // Toggle completed items visibility
+  document.getElementById('toggle-completed-btn')?.addEventListener('click', toggleCompletedVisibility);
 }
 
 // Helper functions for bulk operations
@@ -14498,6 +14506,33 @@ function buildBulkCopilotPrompt(tasks) {
   lines.push('- **IMPORTANT:** Once finished, please go into the project management table and mark all these tasks as done/complete');
   
   return lines.join('\n');
+}
+
+// Global state for completed items visibility
+let hideCompletedTasks = false;
+
+function toggleCompletedVisibility() {
+  hideCompletedTasks = !hideCompletedTasks;
+  const button = document.getElementById('toggle-completed-btn');
+  
+  // Update button appearance based on state
+  if (hideCompletedTasks) {
+    button.textContent = '🙈'; // Hidden
+    button.title = 'Show completed items';
+  } else {
+    button.textContent = '👁️'; // Visible
+    button.title = 'Hide completed items';
+  }
+  
+  // Re-render tasks with current filter
+  const activeFilter = document.querySelector('[data-filter].active');
+  if (activeFilter) {
+    const filter = activeFilter.dataset.filter;
+    const hideDone = activeFilter.dataset.hideDone === 'true';
+    filterTasks(filter, hideDone);
+  } else {
+    renderProjectTasks();
+  }
 }
 
 // Navigate to the task's page and highlight the target element
@@ -14922,7 +14957,12 @@ function renderProjectTasks(filteredTasks = null) {
   const tbody = document.getElementById('project-tasks-tbody');
   if (!tbody) return;
   
-  const tasksToRender = filteredTasks || projectTasks;
+  let tasksToRender = filteredTasks || projectTasks;
+  
+  // Apply completed items filter if enabled
+  if (hideCompletedTasks) {
+    tasksToRender = tasksToRender.filter(task => task.status !== 'closed' && task.status !== 'completed');
+  }
   
   if (tasksToRender.length === 0) {
   tbody.innerHTML = '<tr><td colspan="8" class="muted">No tasks found.</td></tr>';
