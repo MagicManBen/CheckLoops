@@ -80,13 +80,17 @@ document.addEventListener('DOMContentLoaded', () => {
       return typeof window.ctx === 'object' && window.ctx && Number(window.ctx.site_id) > 0;
     }
     function tryLoadTrainingMatrix(tag){
-      if (!('loadTrainingMatrix' in window)) return false;
+      if (!('loadTrainingData' in window) && !('loadTrainingMatrix' in window)) return false;
       if (!hasSiteCtx()) return false;
       try{
-        console.info('[training-shim] triggering loadTrainingMatrix()', { tag, site_id: window.ctx.site_id });
-        window.loadTrainingMatrix();
+        console.info('[training-shim] triggering loadTrainingData()', { tag, site_id: window.ctx.site_id });
+        if (window.loadTrainingData) {
+          window.loadTrainingData();
+        } else if (window.loadTrainingMatrix) {
+          window.loadTrainingMatrix();
+        }
         return true;
-      }catch(e){ console.warn('[training-shim] loadTrainingMatrix threw', e); return false; }
+      }catch(e){ console.warn('[training-shim] loadTrainingData threw', e); return false; }
     }
 
     // 1) Intercept profile fetch to learn ctx when it arrives
@@ -553,6 +557,8 @@ document.addEventListener('DOMContentLoaded', () => {
     max-height: 400px; /* Reasonable max height for grid tables */
   }
   @keyframes fadeIn{ from{opacity:0; transform:translateY(3px)} to{opacity:1; transform:none} }
+  @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  @keyframes slideOut { from { transform: translateX(0); opacity: 1; } to { transform: translateX(100%); opacity: 0; } }
 
   /* Auth overlay */
   .auth{
@@ -5056,15 +5062,52 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
               <button class="help-icon" onclick="showHelp('view-training')" title="Help">?</button>
             </div>
             <div style="display:flex; gap:10px;">
-              <button class="btn secondary" id="btn-refresh-training">Refresh</button>
-              <button class="btn" id="btn-add-training">Add Training</button>
+              <button class="btn secondary" onclick="window.loadTrainingData()">Refresh</button>
+              <button class="btn" onclick="window.openAddTrainingModal()">Add Training Record</button>
+              <button class="btn secondary" onclick="window.exportTrainingReport()">Export Report</button>
             </div>
           </div>
           
-          <div id="training-content" style="padding: 20px;">
-            <!-- Training content will be populated here -->
+          <div class="training-controls" style="padding: 20px; border-bottom: 1px solid var(--border-color);">
+            <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+              <input type="text" id="training-search" placeholder="Search staff..." style="padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--glass); color: var(--white); width: 200px;">
+              <select id="training-filter" style="padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--glass); color: var(--white);">
+                <option value="all">All Staff</option>
+                <option value="clinical">Clinical Staff</option>
+                <option value="non-clinical">Non-Clinical Staff</option>
+              </select>
+              <select id="training-status-filter" style="padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--glass); color: var(--white);">
+                <option value="all">All Status</option>
+                <option value="valid">Valid</option>
+                <option value="expiring">Expiring Soon</option>
+                <option value="expired">Expired</option>
+                <option value="missing">Missing</option>
+              </select>
+            </div>
+          </div>
+          
+          <div id="training-content" style="padding: 20px; overflow: auto;">
             <div class="loading-indicator" style="text-align: center; padding: 40px;">
               <div style="color: var(--muted);">Loading training data...</div>
+            </div>
+          </div>
+          
+          <div id="training-legend" style="padding: 16px; display: flex; gap: 20px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--border-color);">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <div style="width: 12px; height: 12px; background: var(--stat-2-bg); border-radius: 2px;"></div>
+              <span>Valid</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <div style="width: 12px; height: 12px; background: var(--stat-3-bg); border-radius: 2px;"></div>
+              <span>Expiring ≤30 days</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <div style="width: 12px; height: 12px; background: var(--stat-4-bg); border-radius: 2px;"></div>
+              <span>Expired</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <div style="width: 12px; height: 12px; background: var(--glass); opacity: 0.6; border-radius: 2px;"></div>
+              <span>No Record</span>
             </div>
           </div>
         </div>
@@ -6693,13 +6736,21 @@ window.PIR_DEFINITIONS_DATA = [
         loadPracticeUsers();
         break;
       case 'training':
-        // Load training matrix
-        if (typeof loadTrainingMatrix === 'function') {
-          loadTrainingMatrix();
-        } else if (typeof window.loadTrainingMatrix === 'function') {
-          window.loadTrainingMatrix();
+        // Load training data
+        console.log('[Navigation] Loading training section');
+        if (typeof loadTrainingData === 'function') {
+          loadTrainingData();
+        } else if (typeof window.loadTrainingData === 'function') {
+          window.loadTrainingData();
         } else {
-          console.log('loadTrainingMatrix not yet defined, will be called by shim');
+          // Fallback - try after a small delay
+          setTimeout(() => {
+            if (typeof window.loadTrainingData === 'function') {
+              window.loadTrainingData();
+            } else {
+              console.error('[Training] loadTrainingData function not found');
+            }
+          }, 100);
         }
         break;
     }
@@ -6737,13 +6788,11 @@ window.PIR_DEFINITIONS_DATA = [
     // Special handling for training section
     if (id === 'training') {
       setTimeout(() => {
-        // Load training matrix
-        if (typeof loadTrainingMatrix === 'function') {
-          loadTrainingMatrix();
-        } else if (typeof window.loadTrainingMatrix === 'function') {
-          window.loadTrainingMatrix();
+        // Load training data
+        if (typeof window.loadTrainingData === 'function') {
+          window.loadTrainingData();
         } else {
-          console.log('loadTrainingMatrix not yet defined, will be called by shim');
+          console.error('[Training] loadTrainingData function not found');
         }
       }, 100); // Small delay to ensure context is loaded
     }
@@ -12947,11 +12996,36 @@ for (const f of (crudState.entity.fields || [])) {
   }
   submissionDetailModal.addEventListener("click", (e) => { if (e.target === submissionDetailModal || e.target.closest("#submission-detail-close")) { submissionDetailModal.classList.remove("show"); } });
 
-  // === SIMPLIFIED TRAINING FUNCTIONALITY ===
+  // === TRAINING TRACKER FUNCTIONALITY ===
   let trainingData = { staff: [], types: [], records: [] };
+  let trainingFilters = { search: '', filter: 'all', status: 'all' };
+  
+  // Toast notification function
+  function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.style.cssText = `
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 12px 20px;
+      background: ${type === 'success' ? 'var(--stat-2-bg)' : type === 'error' ? 'var(--stat-4-bg)' : 'var(--glass)'};
+      color: ${type === 'success' ? 'var(--stat-2-color)' : type === 'error' ? 'var(--stat-4-color)' : 'var(--white)'};
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      z-index: 10000;
+      animation: slideIn 0.3s ease;
+    `;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+      toast.style.animation = 'slideOut 0.3s ease';
+      setTimeout(() => toast.remove(), 300);
+    }, 3000);
+  }
 
-  async function loadTrainingMatrix() {
-    console.log('[Training] Starting to load training data...');
+  async function loadTrainingData() {
+    console.log('[Training] Loading training data...');
     const content = document.getElementById('training-content');
     if (!content) return;
     
@@ -12963,31 +13037,15 @@ for (const f of (crudState.entity.fields || [])) {
         throw new Error('Site context not available. Please sign in again.');
       }
       
-      console.log('[Training] Loading data for site:', ctx.site_id);
-      
-      // Load staff
-      const staffRes = await supabase
-        .from('kiosk_users')
-        .select('*')
-        .eq('site_id', ctx.site_id);
+      // Load all data in parallel
+      const [staffRes, typesRes, recordsRes] = await Promise.all([
+        supabase.from('kiosk_users').select('*').eq('site_id', ctx.site_id).eq('active', true),
+        supabase.from('training_types').select('*').eq('site_id', ctx.site_id).eq('active', true),
+        supabase.from('training_records').select('*').eq('site_id', ctx.site_id)
+      ]);
       
       if (staffRes.error) throw staffRes.error;
-      
-      // Load training types
-      const typesRes = await supabase
-        .from('training_types')
-        .select('*')
-        .eq('site_id', ctx.site_id)
-        .eq('active', true);
-      
       if (typesRes.error) throw typesRes.error;
-      
-      // Load training records
-      const recordsRes = await supabase
-        .from('training_records')
-        .select('*')
-        .eq('site_id', ctx.site_id);
-      
       if (recordsRes.error) throw recordsRes.error;
       
       trainingData = {
@@ -13002,6 +13060,7 @@ for (const f of (crudState.entity.fields || [])) {
         records: trainingData.records.length
       });
       
+      setupTrainingFilters();
       renderTrainingMatrix();
     } catch (err) {
       console.error('[Training] Failed to load data:', err);
@@ -13009,18 +13068,50 @@ for (const f of (crudState.entity.fields || [])) {
         <div style="text-align: center; padding: 40px;">
           <div style="color: var(--danger); margin-bottom: 20px;">Failed to load training data</div>
           <div style="color: var(--muted); margin-bottom: 20px;">${err.message}</div>
-          <button class="btn secondary" onclick="loadTrainingMatrix()">Retry</button>
+          <button class="btn secondary" onclick="loadTrainingData()">Retry</button>
         </div>
       `;
     }
   }
   
+  // Setup filter handlers
+  function setupTrainingFilters() {
+    const searchInput = document.getElementById('training-search');
+    const filterSelect = document.getElementById('training-filter');
+    const statusSelect = document.getElementById('training-status-filter');
+    
+    if (searchInput && !searchInput.hasListener) {
+      searchInput.hasListener = true;
+      searchInput.addEventListener('input', (e) => {
+        trainingFilters.search = e.target.value.toLowerCase();
+        renderTrainingMatrix();
+      });
+    }
+    
+    if (filterSelect && !filterSelect.hasListener) {
+      filterSelect.hasListener = true;
+      filterSelect.addEventListener('change', (e) => {
+        trainingFilters.filter = e.target.value;
+        renderTrainingMatrix();
+      });
+    }
+    
+    if (statusSelect && !statusSelect.hasListener) {
+      statusSelect.hasListener = true;
+      statusSelect.addEventListener('change', (e) => {
+        trainingFilters.status = e.target.value;
+        renderTrainingMatrix();
+      });
+    }
+  }
+  
   // Expose globally
-  window.loadTrainingMatrix = loadTrainingMatrix;
+  window.loadTrainingData = loadTrainingData;
+  window.loadTrainingMatrix = loadTrainingData; // Alias for compatibility
 
 
   function renderTrainingMatrix() {
-    console.log('[Training] Rendering matrix...');
+    console.log('[Training] Rendering matrix with filters:', trainingFilters);
     const content = document.getElementById('training-content');
     if (!content) return;
     
@@ -13029,7 +13120,7 @@ for (const f of (crudState.entity.fields || [])) {
       content.innerHTML = `
         <div style="text-align: center; padding: 40px;">
           <div style="color: var(--muted); margin-bottom: 20px;">No staff members found</div>
-          <button class="btn secondary" onclick="loadTrainingMatrix()">Refresh</button>
+          <button class="btn secondary" onclick="loadTrainingData()">Refresh</button>
         </div>
       `;
       return;
@@ -13039,123 +13130,447 @@ for (const f of (crudState.entity.fields || [])) {
       content.innerHTML = `
         <div style="text-align: center; padding: 40px;">
           <div style="color: var(--muted); margin-bottom: 20px;">No training types configured</div>
-          <button class="btn secondary" onclick="loadTrainingMatrix()">Refresh</button>
+          <button class="btn secondary" onclick="loadTrainingData()">Refresh</button>
         </div>
       `;
       return;
     }
     
-    // Build simple table
+    // Filter staff based on filters
+    let filteredStaff = trainingData.staff.filter(staff => {
+      // Search filter
+      if (trainingFilters.search) {
+        const searchTerm = trainingFilters.search.toLowerCase();
+        if (!staff.full_name?.toLowerCase().includes(searchTerm)) {
+          return false;
+        }
+      }
+      
+      // Staff type filter
+      if (trainingFilters.filter !== 'all') {
+        const isClinical = ['GP', 'Nurse', 'HCA', 'Practice Nurse', 'ANP', 'Doctor', 'Physician'].some(role => 
+          staff.role?.toLowerCase().includes(role.toLowerCase())
+        );
+        
+        if (trainingFilters.filter === 'clinical' && !isClinical) return false;
+        if (trainingFilters.filter === 'non-clinical' && isClinical) return false;
+      }
+      
+      // Status filter
+      if (trainingFilters.status !== 'all') {
+        const staffStatus = getStaffTrainingStatus(staff.id);
+        if (trainingFilters.status !== staffStatus) return false;
+      }
+      
+      return true;
+    });
+    
+    // Sort staff by name
+    filteredStaff.sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
+    
+    // Build table
     let html = `
       <div style="overflow-x: auto;">
         <table style="width: 100%; border-collapse: collapse;">
           <thead>
             <tr style="background: var(--glass);">
-              <th style="padding: 12px; text-align: left; border-bottom: 2px solid var(--border-color);">Staff Member</th>
+              <th style="padding: 12px; text-align: left; border-bottom: 2px solid var(--border-color); position: sticky; left: 0; background: var(--glass); z-index: 10;">
+                Staff Member
+              </th>
               ${trainingData.types.map(type => `
-                <th style="padding: 12px; text-align: center; border-bottom: 2px solid var(--border-color); min-width: 100px;">
+                <th style="padding: 12px; text-align: center; border-bottom: 2px solid var(--border-color); min-width: 120px; font-size: 12px;" title="${esc(type.description || type.name)}">
                   ${esc(type.name)}
+                  ${type.validity_months ? `<br><small style="color: var(--muted); font-weight: normal;">${type.validity_months}mo</small>` : ''}
                 </th>
               `).join('')}
+              <th style="padding: 12px; text-align: center; border-bottom: 2px solid var(--border-color); min-width: 100px;">
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody>
     `;
     
-    // Add rows for each staff member
-    trainingData.staff.forEach(staff => {
-      html += `<tr style="border-bottom: 1px solid var(--border-color);">`;
-      html += `<td style="padding: 12px; font-weight: 500;">${esc(staff.full_name || 'Unknown')}</td>`;
-      
-      // Add cell for each training type
-      trainingData.types.forEach(type => {
-        const record = trainingData.records.find(r => 
-          r.staff_id === staff.id && r.training_type_id === type.id
-        );
+    if (filteredStaff.length === 0) {
+      html += `
+        <tr>
+          <td colspan="${trainingData.types.length + 2}" style="text-align: center; padding: 40px; color: var(--muted);">
+            No staff members match the current filters
+          </td>
+        </tr>
+      `;
+    } else {
+      // Add rows for each staff member
+      filteredStaff.forEach(staff => {
+        const compliance = calculateStaffCompliance(staff.id);
+        const statusBadge = getStaffStatusBadge(staff.id);
         
-        let cellContent = '—';
-        let cellStyle = 'text-align: center; padding: 12px; color: var(--muted);';
+        html += `<tr style="border-bottom: 1px solid var(--border-color);">`;
+        html += `
+          <td style="padding: 12px; position: sticky; left: 0; background: var(--panel-bg); z-index: 5;">
+            <div style="font-weight: 500;">${esc(staff.full_name || 'Unknown')}</div>
+            <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">
+              ${esc(staff.role || 'No role')} | ${compliance}% complete ${statusBadge}
+            </div>
+          </td>
+        `;
         
-        if (record) {
-          const today = new Date();
-          if (record.expiry_date) {
-            const expiry = new Date(record.expiry_date);
-            const daysToExpiry = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
-            
-            if (daysToExpiry < 0) {
-              cellContent = 'Expired';
-              cellStyle = 'text-align: center; padding: 12px; background: var(--stat-4-bg); color: var(--stat-4-color);';
-            } else if (daysToExpiry <= 30) {
-              cellContent = `${daysToExpiry}d`;
-              cellStyle = 'text-align: center; padding: 12px; background: var(--stat-3-bg); color: var(--stat-3-color);';
-            } else {
-              cellContent = '✓';
-              cellStyle = 'text-align: center; padding: 12px; background: var(--stat-2-bg); color: var(--stat-2-color);';
-            }
-          } else {
-            cellContent = '✓';
-            cellStyle = 'text-align: center; padding: 12px; background: var(--stat-2-bg); color: var(--stat-2-color);';
-          }
-        }
+        // Add cell for each training type
+        trainingData.types.forEach(type => {
+          const record = trainingData.records.find(r => 
+            r.staff_id === staff.id && r.training_type_id === type.id
+          );
+          
+          html += renderTrainingCell(staff.id, type.id, record);
+        });
         
-        html += `<td style="${cellStyle}">${cellContent}</td>`;
+        // Add actions column
+        html += `
+          <td style="text-align: center; padding: 8px;">
+            <button class="btn secondary" style="padding: 4px 8px; font-size: 11px;" onclick="viewStaffTraining(${staff.id})">View</button>
+          </td>
+        `;
+        
+        html += `</tr>`;
       });
-      
-      html += `</tr>`;
-    });
+    }
     
     html += `
           </tbody>
         </table>
       </div>
-      
-      <div style="margin-top: 20px; display: flex; gap: 20px; font-size: 12px; color: var(--muted);">
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <div style="width: 12px; height: 12px; background: var(--stat-2-bg); border-radius: 2px;"></div>
-          <span>Valid</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <div style="width: 12px; height: 12px; background: var(--stat-3-bg); border-radius: 2px;"></div>
-          <span>Expiring Soon</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <div style="width: 12px; height: 12px; background: var(--stat-4-bg); border-radius: 2px;"></div>
-          <span>Expired</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <div style="width: 12px; height: 12px; background: var(--glass); border-radius: 2px;"></div>
-          <span>No Record</span>
-        </div>
-      </div>
     `;
     
     content.innerHTML = html;
+  }
+  
+  function renderTrainingCell(staffId, typeId, record) {
+    let cellContent = '—';
+    let cellStyle = 'text-align: center; padding: 8px; color: var(--muted); cursor: pointer;';
+    let cellTitle = 'No record - Click to add';
+    let onclick = `onclick="editTrainingRecord(${staffId}, ${typeId})"`;
+    
+    if (record) {
+      const today = new Date();
+      const completionDate = new Date(record.completion_date);
+      
+      if (record.expiry_date) {
+        const expiry = new Date(record.expiry_date);
+        const daysToExpiry = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
+        
+        if (daysToExpiry < 0) {
+          cellContent = `<div>Expired</div><div style="font-size: 10px;">${Math.abs(daysToExpiry)}d ago</div>`;
+          cellStyle = 'text-align: center; padding: 6px; background: var(--stat-4-bg); color: var(--stat-4-color); cursor: pointer; border-radius: 4px;';
+          cellTitle = `Expired ${Math.abs(daysToExpiry)} days ago - Click to update`;
+        } else if (daysToExpiry <= 30) {
+          cellContent = `<div>⚠️</div><div style="font-size: 10px;">${daysToExpiry}d left</div>`;
+          cellStyle = 'text-align: center; padding: 6px; background: var(--stat-3-bg); color: var(--stat-3-color); cursor: pointer; border-radius: 4px;';
+          cellTitle = `Expires in ${daysToExpiry} days - Click to update`;
+        } else {
+          cellContent = `<div>✓</div><div style="font-size: 10px;">${fmtDateShort(record.expiry_date)}</div>`;
+          cellStyle = 'text-align: center; padding: 6px; background: var(--stat-2-bg); color: var(--stat-2-color); cursor: pointer; border-radius: 4px;';
+          cellTitle = `Valid until ${fmtDateShort(record.expiry_date)} - Click to view`;
+        }
+      } else {
+        cellContent = `<div>✓</div><div style="font-size: 10px;">No expiry</div>`;
+        cellStyle = 'text-align: center; padding: 6px; background: var(--stat-2-bg); color: var(--stat-2-color); cursor: pointer; border-radius: 4px;';
+        cellTitle = `Completed ${fmtDateShort(record.completion_date)} - No expiry`;
+      }
+    }
+    
+    return `<td style="${cellStyle}" title="${cellTitle}" ${onclick}>${cellContent}</td>`;
+  }
+  
+  function getStaffTrainingStatus(staffId) {
+    const today = new Date();
+    let hasExpired = false;
+    let hasExpiring = false;
+    let hasMissing = false;
+    
+    trainingData.types.forEach(type => {
+      const record = trainingData.records.find(r => 
+        r.staff_id === staffId && r.training_type_id === type.id
+      );
+      
+      if (!record) {
+        hasMissing = true;
+      } else if (record.expiry_date) {
+        const expiry = new Date(record.expiry_date);
+        const daysToExpiry = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
+        
+        if (daysToExpiry < 0) hasExpired = true;
+        else if (daysToExpiry <= 30) hasExpiring = true;
+      }
+    });
+    
+    if (hasExpired) return 'expired';
+    if (hasExpiring) return 'expiring';
+    if (hasMissing) return 'missing';
+    return 'valid';
+  }
+  
+  function calculateStaffCompliance(staffId) {
+    const today = new Date();
+    let completeCount = 0;
+    
+    trainingData.types.forEach(type => {
+      const record = trainingData.records.find(r => 
+        r.staff_id === staffId && r.training_type_id === type.id
+      );
+      
+      if (record) {
+        if (!record.expiry_date) {
+          completeCount++;
+        } else {
+          const expiry = new Date(record.expiry_date);
+          if (expiry >= today) completeCount++;
+        }
+      }
+    });
+    
+    const totalTypes = trainingData.types.length;
+    return totalTypes > 0 ? Math.round((completeCount / totalTypes) * 100) : 0;
+  }
+  
+  function getStaffStatusBadge(staffId) {
+    const status = getStaffTrainingStatus(staffId);
+    const badges = {
+      expired: '<span style="color: var(--stat-4-color);">⚠️ Expired</span>',
+      expiring: '<span style="color: var(--stat-3-color);">⏰ Expiring</span>',
+      missing: '<span style="color: var(--muted);">📋 Incomplete</span>',
+      valid: '<span style="color: var(--stat-2-color);">✓ Complete</span>'
+    };
+    return badges[status] || '';
   }
 
 
   // Expose renderTrainingMatrix to window for early calls
   window.renderTrainingMatrix = renderTrainingMatrix;
   
-  // Add button handlers
-  document.addEventListener('DOMContentLoaded', () => {
-    // Refresh button
-    const refreshBtn = document.getElementById('btn-refresh-training');
-    if (refreshBtn) {
-      refreshBtn.addEventListener('click', () => {
-        console.log('[Training] Refresh button clicked');
-        loadTrainingMatrix();
+  // Training record management functions
+  window.editTrainingRecord = function(staffId, typeId) {
+    const staff = trainingData.staff.find(s => s.id === staffId);
+    const type = trainingData.types.find(t => t.id === typeId);
+    const record = trainingData.records.find(r => 
+      r.staff_id === staffId && r.training_type_id === typeId
+    );
+    
+    if (!staff || !type) return;
+    
+    const modalHtml = `
+      <div class="modal show" id="training-record-modal" style="display: flex;">
+        <div class="modal-content" style="width: 500px;">
+          <h2>Training Record</h2>
+          <p style="color: var(--muted); margin-bottom: 20px;">
+            ${esc(staff.full_name)} - ${esc(type.name)}
+          </p>
+          
+          <div class="field">
+            <label>Completion Date</label>
+            <input type="date" id="modal-completion-date" value="${record ? record.completion_date : ''}" required>
+          </div>
+          
+          <div class="field">
+            <label>Expiry Date ${type.validity_months ? `(${type.validity_months} months)` : ''}</label>
+            <input type="date" id="modal-expiry-date" value="${record ? record.expiry_date : ''}">
+          </div>
+          
+          <div class="field">
+            <label>Certificate URL (optional)</label>
+            <input type="url" id="modal-certificate-url" value="${record ? record.certificate_url || '' : ''}" placeholder="https://...">
+          </div>
+          
+          <div class="field">
+            <label>Notes (optional)</label>
+            <textarea id="modal-notes" rows="3">${record ? record.notes || '' : ''}</textarea>
+          </div>
+          
+          <div style="display: flex; gap: 12px; margin-top: 20px;">
+            <button class="btn" onclick="saveTrainingRecord(${staffId}, ${typeId}, ${record ? record.id : 'null'})">Save</button>
+            <button class="btn secondary" onclick="document.getElementById('training-record-modal').remove()">Cancel</button>
+            ${record ? `<button class="btn danger" onclick="deleteTrainingRecord(${record.id})" style="margin-left: auto;">Delete</button>` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // Auto-calculate expiry date if type has validity months
+    if (type.validity_months && !record) {
+      const completionInput = document.getElementById('modal-completion-date');
+      const expiryInput = document.getElementById('modal-expiry-date');
+      
+      completionInput.addEventListener('change', () => {
+        if (completionInput.value) {
+          const completion = new Date(completionInput.value);
+          const expiry = new Date(completion);
+          expiry.setMonth(expiry.getMonth() + type.validity_months);
+          expiryInput.value = expiry.toISOString().split('T')[0];
+        }
       });
+    }
+  };
+  
+  window.saveTrainingRecord = async function(staffId, typeId, recordId) {
+    const completionDate = document.getElementById('modal-completion-date').value;
+    const expiryDate = document.getElementById('modal-expiry-date').value;
+    const certificateUrl = document.getElementById('modal-certificate-url').value;
+    const notes = document.getElementById('modal-notes').value;
+    
+    if (!completionDate) {
+      alert('Please enter a completion date');
+      return;
     }
     
-    // Add training button
-    const addBtn = document.getElementById('btn-add-training');
-    if (addBtn) {
-      addBtn.addEventListener('click', () => {
-        console.log('[Training] Add training button clicked');
-        alert('Add training functionality will be implemented soon');
-      });
+    try {
+      const data = {
+        site_id: ctx.site_id,
+        staff_id: staffId,
+        training_type_id: typeId,
+        completion_date: completionDate,
+        expiry_date: expiryDate || null,
+        certificate_url: certificateUrl || null,
+        notes: notes || null
+      };
+      
+      let result;
+      if (recordId && recordId !== 'null') {
+        // Update existing record
+        result = await supabase
+          .from('training_records')
+          .update(data)
+          .eq('id', recordId);
+      } else {
+        // Insert new record
+        result = await supabase
+          .from('training_records')
+          .insert(data);
+      }
+      
+      if (result.error) throw result.error;
+      
+      document.getElementById('training-record-modal').remove();
+      await loadTrainingData();
+      showToast('Training record saved successfully', 'success');
+    } catch (err) {
+      console.error('Failed to save training record:', err);
+      alert('Failed to save training record: ' + err.message);
     }
-  });
+  };
+  
+  window.deleteTrainingRecord = async function(recordId) {
+    if (!confirm('Are you sure you want to delete this training record?')) return;
+    
+    try {
+      const result = await supabase
+        .from('training_records')
+        .delete()
+        .eq('id', recordId);
+      
+      if (result.error) throw result.error;
+      
+      document.getElementById('training-record-modal').remove();
+      await loadTrainingData();
+      showToast('Training record deleted', 'success');
+    } catch (err) {
+      console.error('Failed to delete training record:', err);
+      alert('Failed to delete: ' + err.message);
+    }
+  };
+  
+  window.viewStaffTraining = function(staffId) {
+    const staff = trainingData.staff.find(s => s.id === staffId);
+    if (!staff) return;
+    
+    const staffRecords = trainingData.records.filter(r => r.staff_id === staffId);
+    const compliance = calculateStaffCompliance(staffId);
+    
+    let recordsHtml = '';
+    trainingData.types.forEach(type => {
+      const record = staffRecords.find(r => r.training_type_id === type.id);
+      const status = record ? (record.expiry_date ? 
+        (new Date(record.expiry_date) < new Date() ? 'Expired' : 'Valid') : 'Complete') : 'Missing';
+      
+      recordsHtml += `
+        <div style="padding: 12px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <div style="font-weight: 500;">${esc(type.name)}</div>
+            <div style="font-size: 12px; color: var(--muted);">
+              ${record ? `Completed: ${fmtDateShort(record.completion_date)}` : 'No record'}
+              ${record?.expiry_date ? ` | Expires: ${fmtDateShort(record.expiry_date)}` : ''}
+            </div>
+          </div>
+          <button class="btn secondary" style="padding: 4px 8px; font-size: 11px;" onclick="editTrainingRecord(${staffId}, ${type.id})">
+            ${record ? 'Edit' : 'Add'}
+          </button>
+        </div>
+      `;
+    });
+    
+    const modalHtml = `
+      <div class="modal show" id="staff-training-modal" style="display: flex;">
+        <div class="modal-content" style="width: 600px; max-height: 80vh; overflow-y: auto;">
+          <h2>${esc(staff.full_name)}'s Training</h2>
+          <p style="color: var(--muted);">
+            ${esc(staff.role || 'No role')} | ${compliance}% complete
+          </p>
+          
+          <div style="margin: 20px 0;">
+            ${recordsHtml}
+          </div>
+          
+          <div style="display: flex; gap: 12px; margin-top: 20px;">
+            <button class="btn secondary" onclick="document.getElementById('staff-training-modal').remove()">Close</button>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+  };
+  
+  window.openAddTrainingModal = function() {
+    alert('Select a cell in the matrix to add a training record');
+  };
+  
+  window.exportTrainingReport = function() {
+    let csv = 'Staff Member,Role,';
+    csv += trainingData.types.map(t => t.name).join(',') + ',Compliance %\\n';
+    
+    trainingData.staff.forEach(staff => {
+      csv += `"${staff.full_name}","${staff.role || ''}",`;
+      
+      trainingData.types.forEach(type => {
+        const record = trainingData.records.find(r => 
+          r.staff_id === staff.id && r.training_type_id === type.id
+        );
+        
+        if (record) {
+          if (record.expiry_date) {
+            csv += `"${fmtDateShort(record.expiry_date)}",`;
+          } else {
+            csv += '"Complete",';
+          }
+        } else {
+          csv += '"Missing",';
+        }
+      });
+      
+      csv += calculateStaffCompliance(staff.id) + '\\n';
+    });
+    
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `training_report_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    showToast('Training report exported', 'success');
+  };
+  
 
 
   // Logout function
