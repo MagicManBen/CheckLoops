@@ -14496,31 +14496,45 @@ function buildBulkCopilotPrompt(tasks) {
   // Opening instruction
   lines.push('Hi — please do this:');
   lines.push('');
-  lines.push('**Testing Instructions:** When the browser opens and takes you to the login screen, use the email ben.howard@stoke.nhs.uk and the password Hello1!');
-  lines.push('');
   
-  // Add each task
+  // Add each task in the specified format
   tasks.forEach((task, index) => {
     const { base, notes } = splitNotes(task.description || '');
     const status = task.status || 'open';
     const type = task.type || 'task';
     
-    lines.push(`**Task ${index + 1}: ${task.title || 'Untitled'}** (${type}, ${status})`);
-    lines.push('');
-    lines.push('Details:' + (task.element_type ? ` Element: ${task.element_type}` : ''));
-    if (task.element_text) lines.push(`Text: ${task.element_text}`);
-    if (base.trim()) lines.push(`Reporter notes: ${base}`);
+    lines.push(`Task: ${task.title || 'Untitled'} (${type}, ${status})`);
+    
+    // Extract element details from description
+    const elementMatch = base.match(/Element:\s*([^\n]+)/);
+    const textMatch = base.match(/Text:\s*([^\n]+)/);
+    
+    if (elementMatch) lines.push(`Details: Element: ${elementMatch[1].trim()}`);
+    if (textMatch) lines.push(`Text: ${textMatch[1].trim()}`);
+    if (notes.trim()) lines.push(`Reporter notes: ${notes}`);
     if (task.page) lines.push(`Page: ${task.page}`);
     if (task.element_selector) lines.push(`Selector: ${task.element_selector}`);
-    if (notes.trim()) lines.push(`Notes: ${notes}`);
+    lines.push(`ID: ${task.id}`);
+    if (task.created_at) lines.push(`Created: ${task.created_at}`);
     lines.push('');
   });
   
-  lines.push('**Final Instructions:**');
-  lines.push('- Complete all tasks listed above in order');
-  lines.push('- Test functionality thoroughly using the provided login credentials when the browser takes you to the login screen');
-  lines.push('- Ensure all changes are properly saved and committed');
-  lines.push('- **IMPORTANT:** Once finished, please go into the project management table and mark all these tasks as done/complete');
+  lines.push('Use `SupabaseInfo.txt` (in this repo) to understand how the tables are laid out.');
+  lines.push('Only if you need to dig deeper or make amendments to Supabase, use the Supabase CLI.');
+  lines.push('');
+  
+  lines.push('Apply the fix in this repository, then verify the result:');
+  lines.push('- Open http://127.0.0.1:5500 in a browser.');
+  lines.push('- Log in with email: ben.howard@stoke.nhs.uk');
+  lines.push('- Password: Hello1!');
+  lines.push('- Reproduce the issue and confirm the fix works.');
+  lines.push('- If it does not work, iterate and try again until it is fixed.');
+  lines.push('- you must open the browser in chromium in order to test. You must open this at the start to see the issue and then after each iteration to confirm..');
+  lines.push('');
+  
+  lines.push('When done, simply list which of the to do items have been completed.');
+  lines.push('');
+  lines.push('If multiple tasks are sent, please work through them in order double checking that all tasks have been completed before finishing.');
   
   return lines.join('\n');
 }
@@ -15217,11 +15231,17 @@ function buildCopilotPrompt(task) {
   lines.push('Hi — please do this:');
   lines.push('');
 
-  // Concise task details
+  // Task details in the specified format
   const status = task.status || 'open';
   const type = task.type || 'task';
   lines.push(`Task: ${task.title || '(no title)'} (${type}, ${status})`);
-  if (base) lines.push(`Details: ${base}`);
+  
+  // Extract element details from description
+  const elementMatch = base.match(/Element:\s*([^\n]+)/);
+  const textMatch = base.match(/Text:\s*([^\n]+)/);
+  
+  if (elementMatch) lines.push(`Details: Element: ${elementMatch[1].trim()}`);
+  if (textMatch) lines.push(`Text: ${textMatch[1].trim()}`);
   if (notes) lines.push(`Reporter notes: ${notes}`);
   if (task.page) lines.push(`Page: ${task.page}`);
   if (task.element_selector) lines.push(`Selector: ${task.element_selector}`);
@@ -15231,23 +15251,20 @@ function buildCopilotPrompt(task) {
 
   // Supabase guidance
   lines.push('Use `SupabaseInfo.txt` (in this repo) to understand how the tables are laid out.');
-  lines.push('Only if you REALLY need to dig deeper or make amendments to Supabase, use the Supabase CLI.');
+  lines.push('Only if you need to dig deeper or make amendments to Supabase, use the Supabase CLI.');
   lines.push('');
 
   // Action + verification loop
   lines.push('Apply the fix in this repository, then verify the result:');
   lines.push('- Open http://127.0.0.1:5500 in a browser.');
-  lines.push('- When the browser opens and takes you to the login screen, use email: ben.howard@stoke.nhs.uk');
+  lines.push('- Log in with email: ben.howard@stoke.nhs.uk');
   lines.push('- Password: Hello1!');
   lines.push('- Reproduce the issue and confirm the fix works.');
   lines.push('- If it does not work, iterate and try again until it is fixed.');
+  lines.push('- you must open the browser in chromium in order to test. You must open this at the start to see the issue and then after each iteration to confirm..');
   lines.push('');
 
-  // Deliverables guidance (kept concise)
-  lines.push('When done, provide:');
-  lines.push('- Exact file paths and code edits made');
-  lines.push('- A brief summary of why the change works');
-  lines.push('- **IMPORTANT:** Once finished, please go into the project management table and mark this task as done/complete');
+  lines.push('When done, simply list which of the to do items have been completed.');
 
   return lines.join('\n');
 }
