@@ -52,6 +52,33 @@ export function handleAuthState(supabase){
   });
 }
 
+// Attach a click handler to a #logout-btn that signs the user out
+export function attachLogout(supabase){
+  const btn = document.getElementById('logout-btn');
+  if (!btn) return;
+  let loggingOut = false;
+  const manualCleanupRedirect = () => {
+    try { localStorage.clear(); } catch(_) {}
+    try { sessionStorage.clear(); } catch(_) {}
+    try { document.cookie.split(';').forEach(c => document.cookie = c.replace(/^ +/, '').replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`)); } catch(_) {}
+    try { window.location.replace('Home.html?_=' + Date.now()); } catch(_) { window.location.href = 'Home.html'; }
+  };
+  btn.addEventListener('click', async (e) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    if (loggingOut) return;
+    loggingOut = true;
+    try {
+      await supabase.auth.signOut();
+    } catch(err){
+      console.error('Sign out failed:', err);
+    } finally {
+      // Fallback in case onAuthStateChange doesn't fire promptly
+      setTimeout(manualCleanupRedirect, 600);
+    }
+  });
+}
+
 export function navActivate(page){
   document.querySelectorAll('.nav a').forEach(a => {
     if (a.getAttribute('data-page') === page) a.classList.add('active');
