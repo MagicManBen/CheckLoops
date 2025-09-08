@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CheckLoop — Quiz</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+  <script src="config.js"></script>
+  <link rel="stylesheet" href="staff.css">
+  <!-- Mobile redirect: if a sibling .mobile.html exists and device is phone/small, redirect -->
+  <script>
+    (function(){
+      try{
+        const url = new URL(location.href);
+        if (url.searchParams.get('view') === 'desktop') return;
+        if (url.pathname.includes('.mobile.')) return;
+        const ua = navigator.userAgent || '';
+        const isMobileUA = /Mobi|Android|iPhone|iPad|iPod|Windows Phone|Opera Mini|IEMobile/i.test(ua);
+        const small = (window.innerWidth || screen.width || 0) <= 480;
+        if (!isMobileUA && !small) return;
+        const mobilePath = url.pathname.replace(/\.html$/, '.mobile.html');
+        // check existence to avoid 404s (same-origin)
+        fetch(mobilePath, { method: 'HEAD', cache: 'no-store' })
+          .then(res => { if (res.ok) location.replace(mobilePath + url.search); })
+          .catch(()=>{ /* ignore - don't redirect if check fails */ });
+      }catch(e){ /* noop */ }
+    })();
+  </script>
+  <style>
+    /* Quiz Animations */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 20px rgba(99, 102, 241, 0.3); }
+      50% { box-shadow: 0 0 30px rgba(99, 102, 241, 0.6); }
+    }
+    
+    @keyframes correctAnswer {
+      0% { background: var(--glass); }
+      50% { background: linear-gradient(135deg, #dcfce7, #bbf7d0); }
+      100% { background: linear-gradient(135deg, #dcfce7, #bbf7d0); }
+    }
+    
+    @keyframes wrongAnswer {
+      0% { background: var(--glass); }
+      50% { background: linear-gradient(135deg, #fee2e2, #fca5a5); }
+      100% { background: linear-gradient(135deg, #fee2e2, #fca5a5); }
+    }
+
+    @keyframes confetti {
+      0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(-100vh) rotate(720deg); opacity: 0; }
+    }
+
+    .quiz-due-banner {
+      background: linear-gradient(135deg, #fbbf24, #f59e0b);
+      color: white;
+      padding: 16px;
+      border-radius: 12px;
+      margin-bottom: 16px;
+      text-align: center;
+      font-weight: 700;
+      animation: pulseGlow 2s infinite;
+      border: 2px solid #fbbf24;
+    }
+
+    .quiz-due-banner .countdown {
+      font-size: 1.2em;
+      margin-top: 8px;
+      font-family: 'Courier New', monospace;
+    }
+
+    .q{ 
+      padding:16px; 
+      border-radius:16px; 
+      background:var(--glass); 
+      border:1px solid var(--glass-2);
+      animation: fadeInUp 0.6s ease-out;
+      transition: all 0.3s ease;
+    }
+    
+    .q:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    }
+    
+    .choices{ display:grid; gap:8px; }
+    .choices label{ 
+      display:flex; 
+      gap:8px; 
+      align-items:center; 
+      padding:12px; 
+      border-radius:10px; 
+      background:#ffffff12; 
+      border:1px solid #ffffff21; 
+      cursor:pointer;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .choices label:hover {
+      background: #ffffff20;
+      border-color: #ffffff40;
+      transform: translateX(4px);
+    }
+    
+    .choices label.correct {
+      animation: correctAnswer 0.8s ease-out;
+      border-color: #16a34a !important;
+    }
+    
+    .choices label.wrong {
+      animation: wrongAnswer 0.8s ease-out;
+      border-color: #ef4444 !important;
+    }
+    
+    .progress{ 
+      height:12px; 
+      background:#ffffff1a; 
+      border-radius:999px; 
+      overflow:hidden;
+      position: relative;
+    }
+    
+    .bar{ 
+      height:100%; 
+      width:0%; 
+      background:linear-gradient(135deg,#7db1ff,#4f89ff); 
+      transition: width .5s ease;
+      position: relative;
+    }
+    
+    .bar::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+      animation: shimmer 2s infinite;
+    }
+    
+    @keyframes shimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+
+    .confetti-piece {
+      position: fixed;
+      width: 10px;
+      height: 10px;
+      background: #fbbf24;
+      pointer-events: none;
+      z-index: 1000;
+      animation: confetti 3s linear forwards;
+    }
+
+    .quiz-result {
+      padding: 20px;
+      border-radius: 16px;
+      text-align: center;
+      font-weight: 700;
+      animation: fadeInUp 0.6s ease-out;
+    }
+
+    .quiz-result.excellent {
+      background: linear-gradient(135deg, #dcfce7, #bbf7d0);
+      color: #166534;
+      border: 2px solid #16a34a;
+    }
+
+    .quiz-result.good {
+      background: linear-gradient(135deg, #fef3c7, #fde68a);
+      color: #92400e;
+      border: 2px solid #f59e0b;
+    }
+
+    .quiz-result.needs-improvement {
+      background: linear-gradient(135deg, #fee2e2, #fca5a5);
+      color: #991b1b;
+      border: 2px solid #ef4444;
+    }
+
+    .score-display {
+      font-size: 2em;
+      margin: 10px 0;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .btn.quiz-btn {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      transform: scale(1);
+    }
+
+    .btn.quiz-btn:hover {
+      transform: scale(1.05);
+      box-shadow: 0 8px 25px rgba(99, 102, 241, 0.4);
+    }
+
+    .btn.quiz-btn:active {
+      transform: scale(0.98);
+    }
+
+    .pulse {
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+      100% { transform: scale(1); }
+    }
+  </style>
+
+<!-- === CheckLoop Quiz: Polished Visual Layer (2025) — presentation only, no logic/ID changes === -->
+<style id="polish-quiz-2025">
+  :root{
+    --ink:#e8edf5;
+    --ink-2:#b7c5d9;
+    --bg:#0b1120;
+    --glass: rgba(255,255,255,.06);
+    --glass-2: rgba(255,255,255,.12);
+    --border: rgba(255,255,255,.16);
+    --accent:#7c3aed;
+    --accent-2:#4f46e5;
+    --ok:#22c55e;
+    --warn:#f59e0b;
+    --bad:#ef4444;
+  }
+
+  @keyframes floaty{ from{transform:translateY(0)} to{transform:translateY(-2px)} }
+  @keyframes glow { 0%,100%{ box-shadow:0 0 0 0 rgba(124,58,237,.35)} 50%{ box-shadow:0 0 0 8px rgba(124,58,237,0)} }
+
+  body.polished{
+    font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial;
+    color:var(--ink) !important;
+    background:
+      radial-gradient(1200px 800px at 10% -10%, #172554 0%, transparent 60%),
+      radial-gradient(900px 700px at 110% 10%, #0b132e 0%, transparent 60%),
+      linear-gradient(180deg, var(--bg), var(--bg)) !important;
+    letter-spacing:.1px;
+  }
+
+  /* Hide any legacy noisy background if present, or soften it */
+  body.polished .bg{ opacity:.25 !important; filter: blur(.5px) !important; }
+
+  /* Content container */
+  body.polished .content{ max-width:1120px !important; margin:0 auto !important; padding:20px !important; }
+
+  /* Topbar */
+  body.polished .topbar{
+    position: sticky !important; top:16px !important; z-index:40 !important;
+    display:flex !important; align-items:center !important; gap:12px !important;
+    background: linear-gradient(180deg, rgba(13,18,35,.85), rgba(13,18,35,.6)) !important;
+    border:1px solid var(--border) !important;
+    border-radius:16px !important;
+    backdrop-filter: blur(10px) !important;
+    box-shadow: 0 12px 28px rgba(0,0,0,.35) !important;
+    padding:10px 12px !important;
+  }
+  body.polished .topbar .halo{ display:none !important; }
+
+  body.polished .pill{
+    background: var(--glass) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 999px !important;
+    color: var(--ink) !important;
+    font-weight:700 !important;
+    padding:8px 12px !important;
+  }
+
+  /* Navigation */
+  body.polished .nav.seg-nav a{
+    color:#c7d2fe !important;
+    text-decoration:none !important;
+    padding:10px 12px !important;
+    border-radius: 12px !important;
+    border:1px solid transparent !important;
+    transition: transform .12s ease, background-color .2s ease, border-color .2s ease !important;
+    display:inline-block !important;
+  }
+  body.polished .nav.seg-nav a:hover{
+    transform: translateY(-1px) !important;
+    background: rgba(99,102,241,.12) !important;
+    border-color: rgba(99,102,241,.35) !important;
+  }
+  body.polished .nav.seg-nav a.active{
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)) !important;
+    color:#fff !important;
+    border-color: transparent !important;
+    box-shadow: 0 6px 18px rgba(79,70,229,.45) !important;
+  }
+
+  /* Panels */
+  body.polished .panel{
+    background: var(--glass) !important;
+    border:1px solid var(--border) !important;
+    border-radius: 18px !important;
+    backdrop-filter: blur(8px) !important;
+    box-shadow: 0 12px 32px rgba(0,0,0,.28) !important;
+  }
+  body.polished .panel-header{
+    display:flex !important; align-items:center !important; justify-content:space-between !important; gap:12px !important;
+    padding:14px 16px !important;
+    border-bottom:1px dashed var(--border) !important;
+  }
+  body.polished .panel-title{ font-weight:900 !important; color:#fff !important; letter-spacing:.2px !important; }
+
+  /* Illus circle around icon */
+  body.polished .illus-circle{
+    width:44px !important; height:44px !important; border-radius:12px !important;
+    display:grid !important; place-items:center !important;
+    background: linear-gradient(180deg,#eef2ff,#e0e7ff) !important;
+    box-shadow: inset 0 0 0 2px #e5e7eb, 0 10px 24px rgba(2,6,23,.12) !important;
+    animation: floaty 2s ease-in-out infinite alternate;
+  }
+  body.polished .illus-circle img{ width:28px !important; height:28px !important; }
+
+  /* Buttons */
+  body.polished .btn{
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)) !important;
+    color:#fff !important;
+    border:none !important;
+    padding:12px 18px !important;
+    border-radius:12px !important;
+    font-weight:800 !important;
+    letter-spacing:.2px !important;
+    cursor:pointer !important;
+    transition: transform .12s ease, box-shadow .2s ease, filter .2s ease !important;
+    box-shadow: 0 10px 20px rgba(79,70,229,.35) !important;
+  }
+  body.polished .btn:hover{ transform: translateY(-1px) !important; filter: brightness(1.03) !important; }
+  body.polished .btn:active{ transform: translateY(0) !important; filter: brightness(.98) !important; }
+  body.polished .btn.secondary, body.polished #logout-btn{
+    background:#0f172a !important; color:#e2e8f0 !important; border:1px solid var(--border) !important; box-shadow:none !important;
+  }
+  body.polished .btn.quiz-btn.pulse{ animation: glow 1.6s infinite !important; }
+
+  /* Quiz due banner */
+  body.polished .quiz-due-banner{
+    border-radius: 14px !important;
+    border: 1px solid rgba(255,255,255,.15) !important;
+    box-shadow: 0 12px 28px rgba(0,0,0,.25) !important;
+  }
+
+  /* Question card */
+  body.polished .q{
+    padding:16px !important; border-radius:16px !important;
+    background: var(--glass) !important; border:1px solid var(--glass-2) !important;
+    transition: transform .15s ease, box-shadow .2s ease !important;
+  }
+  body.polished .q:hover{ transform: translateY(-2px) !important; box-shadow: 0 10px 28px rgba(0,0,0,.25) !important; }
+
+  /* Choices */
+  body.polished .choices{ display:grid !important; gap:8px !important; }
+  body.polished .choices label{
+    display:flex !important; align-items:center !important; gap:10px !important;
+    padding:12px 14px !important; border-radius:12px !important;
+    background: #ffffff12 !important; border:1px solid #ffffff21 !important; cursor:pointer !important;
+    transition: transform .12s ease, background-color .2s ease, border-color .2s ease !important;
+    position:relative !important; overflow:hidden !important;
+  }
+  body.polished .choices label:hover{ background:#ffffff22 !important; border-color:#ffffff40 !important; transform: translateX(4px) !important; }
+  body.polished .choices label.correct{ border-color: var(--ok) !important; box-shadow: 0 0 0 3px rgba(34,197,94,.25) inset !important; }
+  body.polished .choices label.wrong{ border-color: var(--bad) !important; box-shadow: 0 0 0 3px rgba(239,68,68,.25) inset !important; }
+
+  /* Custom radio look (keeps native input for JS) */
+  body.polished .choices input[type="radio"]{ appearance:none !important; width:18px !important; height:18px !important; border-radius:999px !important; border:2px solid #93c5fd !important; display:inline-block !important; position:relative !important; }
+  body.polished .choices input[type="radio"]::after{ content:""; position:absolute; inset:3px; border-radius:999px; background:linear-gradient(135deg,#7db1ff,#4f89ff); transform: scale(0); transition: transform .12s ease; }
+  body.polished .choices input[type="radio"]:checked::after{ transform: scale(1); }
+
+  /* Progress bar */
+  body.polished .progress{
+    height: 12px !important; background: #ffffff1a !important; border-radius:999px !important; overflow:hidden !important; border:1px solid #ffffff2a !important;
+  }
+  body.polished .bar{
+    background: linear-gradient(90deg,#60a5fa,#a78bfa) !important; height:100% !important; transition: width .45s ease !important;
+    position:relative !important;
+  }
+  body.polished .bar::after{
+    content: ""; position:absolute; inset:0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent) !important;
+    animation: shimmer 1.8s infinite !important;
+  }
+  @keyframes shimmer{ 0%{ transform:translateX(-100%); } 100%{ transform:translateX(100%);} }
+
+  /* Result states */
+  body.polished .quiz-result{ border:1px solid var(--border) !important; }
+  body.polished .quiz-result.excellent{ background: linear-gradient(135deg, #dcfce7, #bbf7d0) !important; color:#14532d !important; }
+  body.polished .quiz-result.good{ background: linear-gradient(135deg, #fef3c7, #fde68a) !important; color:#92400e !important; }
+  body.polished .quiz-result.needs-improvement{ background: linear-gradient(135deg, #fee2e2, #fca5a5) !important; color:#991b1b !important; }
+
+  /* Accessibility */
+  body.polished a:focus-visible, body.polished button:focus-visible, body.polished input:focus-visible{
+    outline:2px solid var(--accent) !important; outline-offset:2px !important;
+  }
+
+  /* Mobile tweaks */
+  @media (max-width:640px){
+    body.polished .nav.seg-nav{ display:none !important; }
+    body.polished .topbar{ justify-content: space-between !important; }
+    body.polished .pill{ display:none !important; }
+    body.polished .content{ padding:14px !important; }
+  }
+</style>
+</head>
+<body class="polished">
+  <div class="bg"><div class="wave"></div><div class="wave wave2"></div></div>
+  <main class="content">
+    <div class="topbar panel" style="position:relative;">
+      <div class="halo"></div>
+      <div class="nav seg-nav">
+        <a href="staff.html" data-page="home">Home</a>
+        <a href="staff-welcome.html" data-page="welcome">Welcome</a>
+        <a href="staff-scans.html" data-page="scans">My Scans</a>
+        <a href="staff-training.html" data-page="training">My Training</a>
+        <a href="staff-quiz.html" data-page="quiz" class="active">Quiz</a>
+        <a href="index.html" data-page="admin" class="admin-only" style="display:none;">Admin Site</a>
+      </div>
+      <div class="spacer"></div>
+      <div class="pill" id="site-pill">Site: —</div>
+      <div class="pill" id="email-pill">—</div>
+      <div class="pill" id="role-pill">—</div>
+      
+      <button class="btn" id="logout-btn">Sign Out</button>
+    </div>
+
+    <section class="panel g-12" style="margin:0;">
+      <div class="panel-header" style="justify-content:space-between; align-items:center; gap:12px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div class="illus-circle" aria-hidden="true"><img src="https://api.iconify.design/fluent-emoji-flat:brain.svg" alt="Quiz"></div>
+          <div class="panel-title">Quick Knowledge Check</div>
+        </div>
+        <div class="progress" style="width:220px"><div class="bar" id="prog"></div></div>
+      </div>
+      
+      <!-- Quiz Due Banner -->
+      <div id="quiz-due-banner" class="quiz-due-banner" style="display:none;">
+        <div>🧠 Your Weekly Quiz is Due! 🧠</div>
+        <div class="countdown" id="quiz-countdown-banner">Complete now to stay on track</div>
+      </div>
+      
+      <div class="muted" style="margin-bottom:10px" id="quiz-description">Loading quiz status...</div>
+      <div id="quiz-container"></div>
+      <div style="margin-top:12px; display:flex; gap:8px;">
+        <button class="btn quiz-btn" id="submit-quiz">Submit</button>
+        <button class="btn secondary" id="retry-quiz" style="display:none;">Retry</button>
+      </div>
+      <div id="quiz-result" class="empty" style="margin-top:12px; display:none;"></div>
+    </section>
+  </main>
+
+  <script type="module">
+    import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, revealAdminNav, attachLogout } from './staff-common.js';
+    const supabase = await initSupabase();
+    handleAuthState(supabase);
+    navActivate('quiz');
+    attachLogout(supabase);
+
+    // Animation and effect functions
+    function createConfetti() {
+      for (let i = 0; i < 50; i++) {
+        const confetti = document.createElement('div');
+        confetti.className = 'confetti-piece';
+        confetti.style.left = Math.random() * 100 + 'vw';
+        confetti.style.backgroundColor = ['#fbbf24', '#f59e0b', '#16a34a', '#6366f1', '#8b5cf6'][Math.floor(Math.random() * 5)];
+        confetti.style.animationDelay = Math.random() * 3 + 's';
+        document.body.appendChild(confetti);
+        setTimeout(() => confetti.remove(), 3000);
+      }
+    }
+
+    function animateAnswer(label, isCorrect) {
+      label.classList.add(isCorrect ? 'correct' : 'wrong');
+      setTimeout(() => {
+        label.classList.remove('correct', 'wrong');
+      }, 800);
+    }
+
+    function showQuizResult(score, total, isPractice) {
+      const resultEl = document.getElementById('quiz-result');
+      const percentage = Math.round((score / total) * 100);
+      let resultClass = 'needs-improvement';
+      let message = 'Keep practicing!';
+      let emoji = '📚';
+
+      if (percentage >= 90) {
+        resultClass = 'excellent';
+        message = 'Outstanding work!';
+        emoji = '🏆';
+        if (!isPractice) createConfetti();
+      } else if (percentage >= 70) {
+        resultClass = 'good';
+        message = 'Well done!';
+        emoji = '👍';
+      }
+
+      resultEl.className = `quiz-result ${resultClass}`;
+      resultEl.innerHTML = `
+        <div>${emoji}</div>
+        <div class="score-display">${score}/${total}</div>
+        <div>${message}</div>
+        <div style="margin-top: 10px; font-size: 0.9em;">
+          ${isPractice ? 'Practice Mode - Not recorded' : 'Official Quiz - Recorded'}
+        </div>
+      `;
+      resultEl.style.display = 'block';
+    }
+
+    async function unlockAchievement(key, kioskUserId) {
+      try {
+        await supabase.from('user_achievements').upsert({
+          kiosk_user_id: kioskUserId,
+          achievement_key: key,
+          status: 'unlocked',
+          progress_percent: 100,
+          unlocked_at: new Date().toISOString()
+        });
+        console.log(`Achievement unlocked: ${key}`);
+      } catch (error) {
+        console.error('Failed to unlock achievement:', error);
+      }
+    }
+
+    async function fetchQuestions() {
+      try {
+        const { data, error } = await supabase.from('quiz_questions').select('*').limit(50);
+        if (!error && data?.length){
+          return data.map(q => {
+            // Support different schema shapes: question_text/options/correct_index OR question/choices/answer
+            const question = q.question_text || q.question || q.question_text_raw || '';
+            const choices = q.options || q.choices || q.options_list || [];
+            const answer = (typeof q.correct_index !== 'undefined' && q.correct_index !== null) ? q.correct_index : (typeof q.answer !== 'undefined' ? q.answer : null);
+            return { id:q.id, question, choices, answer };
+          });
+        }
+      } catch (err) {
+        console.error('Error fetching questions:', err);
+      }
+      return [];
+    }
+
+    function pickRandom(arr, n){
+      const a = [...arr];
+      for (let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+      return a.slice(0,Math.min(n,a.length));
+    }
+
+    function renderQuiz(questions){
+      const container = document.getElementById('quiz-container');
+      container.innerHTML = questions.map((q,qi)=>{
+        const name = `q_${qi}`;
+        return `<div class="q" style="margin-bottom:12px; animation-delay: ${qi * 0.1}s">
+          <div style="font-weight:700; margin-bottom:8px;">${qi+1}. ${q.question}</div>
+          <div class="choices">
+            ${q.choices.map((c,ci)=>`<label>
+              <input type="radio" name="${name}" value="${ci}" /> <span>${c}</span>
+            </label>`).join('')}
+          </div>
+          <div class="muted" id="f_${qi}" style="display:none; margin-top:8px;"></div>
+        </div>`;
+      }).join('');
+    }
+
+    function showCountdown(nextDue){
+      const container = document.getElementById('quiz-container');
+      const banner = document.getElementById('quiz-due-banner');
+      
+      container.innerHTML = `<div style="padding:16px; border-radius:12px; background:var(--glass); animation: fadeInUp 0.6s ease-out;">`+
+        `<div style="font-weight:700; margin-bottom:8px;">Next required quiz in:</div>`+
+        `<div id="quiz-countdown" style="font-size:24px; font-weight:700; font-family: 'Courier New', monospace;">Calculating…</div>`+
+        `<div style="margin-top:12px; color:var(--muted);">You can practise anytime using the Practice button below (practice attempts are not recorded).</div>`+
+        `</div>`;
+      
+      const cdEl = document.getElementById('quiz-countdown');
+      function tick(){
+        const ms = nextDue - new Date();
+        if (ms <= 0){ 
+          cdEl.textContent = 'Now due — refresh to start the required quiz.'; 
+          banner.style.display = 'block';
+          banner.querySelector('.countdown').textContent = 'Quiz is overdue! Complete now.';
+          clearInterval(iv); 
+          return; 
+        }
+        const s = Math.floor(ms/1000)%60; 
+        const m = Math.floor(ms/60000)%60; 
+        const h = Math.floor(ms/3600000)%24; 
+        const d = Math.floor(ms/86400000);
+        const timeStr = (d?d+'d ':'') + (h?h+'h ':'') + (m?m+'m ':'') + s+'s';
+        cdEl.textContent = timeStr;
+        
+        if (ms <= 24 * 60 * 60 * 1000) { // Less than 24 hours
+          banner.style.display = 'block';
+          banner.querySelector('.countdown').textContent = `Due in: ${timeStr}`;
+        }
+      }
+      tick(); 
+      const iv = setInterval(tick,1000);
+    }
+
+    async function main(){
+      try{
+        const { session, profileRow } = await requireStaffSession(supabase);
+        const user = session.user;
+        const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
+        const roleDetail = user?.raw_user_meta_data?.role_detail || 'Staff';
+        setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: roleDetail });
+        revealAdminNav(profileRow?.role || user?.raw_user_meta_data?.role);
+
+        // Get kiosk_user_id for achievements
+        let kioskUserId = null;
+        try {
+          const { data: ku } = await supabase.from('kiosk_users').select('id').eq('user_id', user.id).maybeSingle();
+          if (ku) kioskUserId = ku.id;
+        } catch(e) { console.error('Failed to get kiosk_user_id', e); }
+
+        // Get next_quiz_due from profile first, fallback to computing from last attempt
+        const now = new Date();
+        let nextDue = null;
+        
+        // First check profiles.next_quiz_due (prioritize server-side value)
+        if (profileRow?.next_quiz_due) {
+          nextDue = new Date(profileRow.next_quiz_due);
+        } else {
+          // Fallback: compute from last quiz attempt
+          try{
+            const { data: last, error } = await supabase.from('quiz_attempts').select('completed_at,created_at').eq('user_id', user.id).eq('is_practice', false).order('completed_at', { ascending:false }).limit(1).maybeSingle();
+            if (!error && last){ 
+              const lastCompleted = last.completed_at || last.created_at || null;
+              if (lastCompleted){ 
+                nextDue = new Date(lastCompleted); 
+                nextDue.setDate(nextDue.getDate() + 7); 
+              }
+            }
+          } catch(_){ /* ignore: table may not exist */ }
+        }
+
+        const submitBtn = document.getElementById('submit-quiz');
+        const retryBtn = document.getElementById('retry-quiz');
+        const resultEl = document.getElementById('quiz-result');
+
+        let picked = [];
+        let practiceMode = false;
+
+        async function startRequired(){
+          practiceMode = false;
+          const bank = await fetchQuestions();
+          picked = pickRandom(bank, 10);
+          renderQuiz(picked);
+          document.getElementById('quiz-description').textContent = 'Required quiz: Answer 10 random questions. This attempt will be recorded.';
+          document.getElementById('quiz-due-banner').style.display = 'none';
+          submitBtn.style.display='inline-block';
+          submitBtn.classList.add('pulse');
+          retryBtn.style.display='none';
+          resultEl.style.display='none';
+          document.getElementById('quiz-container').addEventListener('change', updateProgress);
+          updateProgress();
+          actionsWrap.style.display='none';
+        }
+
+        async function startPractice(){
+          practiceMode = true;
+          const bank = await fetchQuestions();
+          picked = pickRandom(bank, 10);
+          renderQuiz(picked);
+          document.getElementById('quiz-description').textContent = 'Practice mode: Answer 10 random questions. This attempt will NOT be recorded.';
+          submitBtn.style.display='inline-block';
+          submitBtn.classList.remove('pulse');
+          retryBtn.style.display='none';
+          resultEl.style.display='none';
+          document.getElementById('quiz-container').addEventListener('change', updateProgress);
+          updateProgress();
+          actionsWrap.style.display='none';
+        }
+
+        function updateProgress(){
+          const total = picked.length || 1;
+          const answered = picked.filter((_,idx)=> document.querySelector(`input[name="q_${idx}"]:checked`)).length;
+          document.getElementById('prog').style.width = `${Math.round((answered/total)*100)}%`;
+        }
+
+        // Build action buttons area (Practice / Start Required)
+        const actionsWrap = document.createElement('div');
+        actionsWrap.style.marginTop = '12px';
+        actionsWrap.style.display = 'flex';
+        actionsWrap.style.gap = '8px';
+        const practiceBtn = document.createElement('button'); 
+        practiceBtn.className='btn secondary'; 
+        practiceBtn.textContent='Practice Quiz';
+        const startBtn = document.createElement('button'); 
+        startBtn.className='btn quiz-btn'; 
+        startBtn.textContent='Start Required Quiz';
+        actionsWrap.appendChild(startBtn);
+        actionsWrap.appendChild(practiceBtn);
+        document.querySelector('.panel').appendChild(actionsWrap);
+
+        practiceBtn.onclick = async () => { await startPractice(); };
+        startBtn.onclick = async () => { await startRequired(); };
+
+        // Show current status and determine which buttons to show
+        if (nextDue && now < nextDue){
+          showCountdown(nextDue);
+          document.getElementById('quiz-description').textContent = 'Your required weekly quiz is not due yet. You can practice anytime!';
+          startBtn.style.display='none';
+          practiceBtn.style.display='inline-block';
+        } else {
+          // Quiz is due or never taken
+          document.getElementById('quiz-description').textContent = 'Your weekly quiz is due! Complete the required quiz or practice.';
+          document.getElementById('quiz-container').innerHTML = '<div class="empty">Click "Start Required Quiz" to begin your weekly assessment.</div>';
+          document.getElementById('quiz-due-banner').style.display = 'block';
+          startBtn.style.display='inline-block';
+          startBtn.classList.add('pulse');
+          practiceBtn.style.display='inline-block';
+        }
+
+        submitBtn.onclick = async () => {
+          if (!picked || picked.length===0) return;
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Submitting...';
+          
+          let score = 0, total = picked.length;
+          const answers = [];
+          
+          // Animate answers and calculate score
+          picked.forEach((q,idx)=>{
+            const sel = document.querySelector(`input[name="q_${idx}"]:checked`);
+            const chosen = sel ? Number(sel.value) : -1;
+            const correct = typeof q.answer === 'number' ? q.answer : Number(q.answer);
+            const isCorrect = chosen === correct;
+            if (isCorrect) score++;
+            answers.push({ idx, chosen, correct });
+            
+            // Animate the selected answer
+            if (sel) {
+              animateAnswer(sel.closest('label'), isCorrect);
+            }
+            
+            const fb = document.getElementById(`f_${idx}`);
+            if (fb){
+              fb.style.display='block';
+              fb.innerHTML = isCorrect ? 
+                '<span class="badge ok">✓ Correct</span>' : 
+                `<span class="badge danger">✗ Incorrect</span> <span class="muted">(Correct: ${q.choices[correct]})</span>`;
+            }
+          });
+
+          // Show result after animation
+          setTimeout(() => {
+            showQuizResult(score, total, practiceMode);
+          }, 1000);
+
+          // Record attempt
+          if (practiceMode) {
+            // Store in quiz_practices table
+            try {
+              await supabase.from('quiz_practices').insert({
+                user_id: user.id,
+                site_id: siteId,
+                started_at: new Date().toISOString(),
+                completed_at: new Date().toISOString(),
+                score_percent: Math.round((score/total)*100),
+                score: score,
+                total_questions: total,
+                answers: answers
+              });
+            } catch(err) { 
+              console.warn('Failed to store practice attempt:', err); 
+            }
+          } else {
+            // Store in quiz_attempts table
+            const score_percent = Math.round((score/total)*100);
+            try{
+              await supabase.from('quiz_attempts').insert({
+                user_id: user.id,
+                site_id: siteId,
+                started_at: new Date().toISOString(),
+                completed_at: new Date().toISOString(),
+                score_percent,
+                score: score,
+                total_questions: total,
+                is_practice: false,
+                answers: answers
+              });
+
+              // Unlock achievements
+              if (kioskUserId) {
+                await unlockAchievement('quiz_complete', kioskUserId);
+                if (score_percent === 100) {
+                  await unlockAchievement('quiz_perfect', kioskUserId);
+                }
+              }
+            } catch(err){ 
+              console.warn('Failed to store quiz attempt:', err); 
+            }
+
+            // Update profiles.next_quiz_due to 7 days from now
+            try{
+              const dueDate = new Date(); 
+              dueDate.setDate(dueDate.getDate() + 7);
+              await supabase.from('profiles').update({ next_quiz_due: dueDate.toISOString() }).eq('id', user.id);
+            } catch(err){ 
+              console.warn('Failed to update next quiz due date:', err); 
+            }
+          }
+
+          submitBtn.style.display = 'none';
+          retryBtn.style.display='inline-block';
+        };
+
+        retryBtn.onclick = () => window.location.reload();
+      } catch(e){
+        if (String(e.message).includes('NO_SESSION')) { window.location.replace('Home.html'); return; }
+        if (String(e.message).includes('NOT_STAFF')) { window.location.replace('index.html'); return; }
+        console.error(e);
+      }
+    }
+
+    main();
+  </script>
+</body>
+</html>
+        if (String(e.message).includes('NO_SESSION')) { window.location.replace('Home.html'); return; }
+        if (String(e.message).includes('NOT_STAFF')) { window.location.replace('index.html'); return; }
+        console.error(e);
+      }
+    }
+
+    main();
+  </script>
+</body>
+</html>
