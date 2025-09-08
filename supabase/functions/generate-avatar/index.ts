@@ -9,12 +9,31 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
+  // Log all incoming requests
+  console.log('🚀 Generate Avatar Function Called')
+  console.log('Method:', req.method)
+  console.log('URL:', req.url)
+  console.log('Headers:', Object.fromEntries(req.headers.entries()))
+
   if (req.method === 'OPTIONS') {
+    console.log('✅ Responding to OPTIONS request')
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    // Simple auth check - just ensure we have a Bearer token that looks like a JWT
+    // Get Supabase environment variables
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error('Missing Supabase environment variables')
+      return json({ error: 'Server configuration error' }, 500)
+    }
+
+    // Create Supabase client for auth verification
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
+    // Get auth header
     const authHeader = req.headers.get('Authorization')
     console.log('Auth header received:', authHeader ? 'Bearer token present' : 'none')
     
@@ -25,18 +44,44 @@ serve(async (req) => {
 
     const token = authHeader.replace('Bearer ', '')
     
-    // Basic JWT validation - check if it has the right structure
-    if (!token || token.split('.').length !== 3) {
-      console.log('Invalid JWT token structure')
-      return json({ error: 'Unauthorized: Invalid token format' }, 401)
+    // Verify JWT with Supabase
+    console.log('Verifying JWT token with Supabase...')
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+      
+      if (authError || !user) {
+        console.log('JWT verification failed:', authError?.message || 'No user found')
+        return json({ error: 'Unauthorized: Invalid or expired token' }, 401)
+      }
+      
+      console.log('JWT verification successful for user:', user.email)
+    } catch (authErr) {
+      console.log('JWT verification exception:', authErr)
+      return json({ error: 'Unauthorized: Token validation failed' }, 401)
     }
-    
-    console.log('Token validation passed, proceeding with AI generation')
 
     // Read body
-    const { description, options, seedHint } = await req.json()
-    if (!description || typeof description !== 'string') return json({ error: 'Missing description' }, 400)
-    if (!options || typeof options !== 'object') return json({ error: 'Missing options' }, 400)
+    console.log('📖 Reading request body...')
+    let requestBody
+    try {
+      requestBody = await req.json()
+      console.log('Request body received:', requestBody)
+    } catch (bodyError) {
+      console.error('❌ Failed to parse request body:', bodyError)
+      return json({ error: 'Invalid JSON in request body' }, 400)
+    }
+
+    const { description, options, seedHint } = requestBody
+    console.log('Extracted fields:', { description: description?.substring(0, 50), hasOptions: !!options, seedHint })
+    
+    if (!description || typeof description !== 'string') {
+      console.error('❌ Missing or invalid description')
+      return json({ error: 'Missing description' }, 400)
+    }
+    if (!options || typeof options !== 'object') {
+      console.error('❌ Missing or invalid options')
+      return json({ error: 'Missing options' }, 400)
+    }
 
     const apiKey = Deno.env.get('OPENAI_API_KEY')
     if (!apiKey) return json({ error: 'OPENAI_API_KEY not configured' }, 500)

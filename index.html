@@ -10751,53 +10751,41 @@ function applySchedulesFilters() {
     function downloadCSV(data, filename) {
         if (!data.length) return;
         
-        // Create colorful HTML Excel file
-        const headers = Object.keys(data[0]);
+        // Create workbook and worksheet
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(data);
+        
+        // Get range of the worksheet
+        const range = XLSX.utils.decode_range(ws['!ref']);
+        
+        // Set column widths
+        const cols = [];
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+            cols.push({ wch: 15 }); // Set width to 15 characters
+        }
+        ws['!cols'] = cols;
+        
+        // Add autofilter
+        ws['!autofilter'] = { ref: ws['!ref'] };
+        
+        // Format headers (first row) - Note: Community edition has limited styling
+        // We'll add a note about formatting in the first cell
         const isComplaint = filename.includes('complaint');
         const isTraining = filename.includes('training');
+        const reportType = isComplaint ? 'Complaints Report' : (isTraining ? 'Training Matrix Report' : 'Report');
         
-        // Color schemes
-        const headerBg = isComplaint ? '#dc3545' : (isTraining ? '#007bff' : '#28a745');
+        // Add the worksheet to the workbook
+        XLSX.utils.book_append_sheet(wb, ws, reportType);
         
-        // Build HTML with Excel formatting
-        let html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" ';
-        html += 'xmlns:x="urn:schemas-microsoft-com:office:excel" ';
-        html += 'xmlns="http://www.w3.org/TR/REC-html40">';
-        html += '<head><meta charset="utf-8" />';
-        html += '<style>';
-        html += 'table {border-collapse:collapse;}';
-        html += 'th {background-color:' + headerBg + ';color:white;font-weight:bold;padding:10px;border:1px solid #ccc;text-align:left;}';
-        html += 'td {padding:8px;border:1px solid #ccc;}';
-        html += 'tr:nth-child(even) td {background-color:#f2f2f2;}';
-        html += '</style></head><body>';
-        html += '<table>';
+        // Write the Excel file
+        const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         
-        // Header row
-        html += '<tr>';
-        headers.forEach(h => {
-            html += '<th>' + (h || '') + '</th>';
-        });
-        html += '</tr>';
-        
-        // Data rows
-        data.forEach((row, i) => {
-            html += '<tr>';
-            headers.forEach(h => {
-                let val = row[h];
-                if (val === null || val === undefined) val = '';
-                html += '<td>' + String(val).replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</td>';
-            });
-            html += '</tr>';
-        });
-        
-        html += '</table></body></html>';
-        
-        // Download as Excel file
-        const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
+        // Download the file
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = filename.replace('.csv', '.xls');
+        a.download = filename.replace('.csv', '.xlsx');
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -13092,6 +13080,117 @@ for (const f of (crudState.entity.fields || [])) {
       alert('Invalid training record data');
       return;
     }
+    
+    // Store data for saving
+    window.currentTrainingEditData = { staff, type, record };
+    
+    // Convert display fields to editable inputs
+    const issueDiv = document.getElementById('drawer-issue-date');
+    const expiryDiv = document.getElementById('drawer-expiry-date');
+    const providerDiv = document.getElementById('drawer-provider');
+    const verifiedDiv = document.getElementById('drawer-verified');
+    
+    // Save original values for cancel functionality
+    const originalIssue = issueDiv.textContent;
+    const originalExpiry = expiryDiv.textContent;
+    const originalProvider = providerDiv.textContent;
+    const originalVerified = verifiedDiv.textContent;
+    
+    // Replace with input fields
+    issueDiv.innerHTML = `<input type="date" id="edit-issue-date" value="${record && record.completion_date ? record.completion_date.split('T')[0] : ''}" style="width: 100%; padding: 4px;">`;
+    expiryDiv.innerHTML = `<input type="date" id="edit-expiry-date" value="${record && record.expiry_date ? record.expiry_date.split('T')[0] : ''}" style="width: 100%; padding: 4px;">`;
+    providerDiv.innerHTML = `<input type="text" id="edit-provider" value="${record && record.provider ? record.provider : ''}" placeholder="Enter provider" style="width: 100%; padding: 4px;">`;
+    verifiedDiv.innerHTML = `<select id="edit-verified" style="width: 100%; padding: 4px;">
+      <option value="No" ${!record || !record.verified ? 'selected' : ''}>No</option>
+      <option value="Yes" ${record && record.verified ? 'selected' : ''}>Yes</option>
+    </select>`;
+    
+    // Replace buttons with Save and Cancel
+    const buttonContainer = document.querySelector('#cell-drawer .btn').parentElement;
+    buttonContainer.innerHTML = `
+      <button class="btn" onclick="saveInlineTrainingEdit()">Save</button>
+      <button class="btn secondary" onclick="cancelInlineTrainingEdit('${originalIssue}', '${originalExpiry}', '${originalProvider}', '${originalVerified}')">Cancel</button>
+    `;
+  }
+  
+  async function saveInlineTrainingEdit() {
+    try {
+      const { staff, type, record } = window.currentTrainingEditData;
+      const issueDate = document.getElementById('edit-issue-date').value;
+      const expiryDate = document.getElementById('edit-expiry-date').value;
+      const provider = document.getElementById('edit-provider').value;
+      const verified = document.getElementById('edit-verified').value === 'Yes';
+      
+      if (!issueDate) {
+        alert('Please provide an issue/completion date');
+        return;
+      }
+      
+      // Update or insert training record
+      const { data, error } = record && record.id
+        ? await supabase.from('training_records').update({
+            completion_date: issueDate,
+            expiry_date: expiryDate || null,
+            provider: provider || null,
+            verified: verified,
+            updated_at: new Date().toISOString()
+          }).eq('id', record.id)
+        : await supabase.from('training_records').insert({
+            staff_id: staff.id,
+            training_type_id: type.id,
+            completion_date: issueDate,
+            expiry_date: expiryDate || null,
+            provider: provider || null,
+            verified: verified,
+            created_at: new Date().toISOString()
+          });
+      
+      if (error) throw error;
+      
+      // Refresh the training matrix
+      await loadTrainingData();
+      renderTrainingMatrix();
+      
+      // Close drawer
+      document.getElementById('cell-drawer').classList.remove('open');
+      
+      // Show success message
+      const successDiv = document.createElement('div');
+      successDiv.className = 'alert success';
+      successDiv.textContent = 'Training record updated successfully';
+      successDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 10000; padding: 10px 20px; background: #28a745; color: white; border-radius: 4px;';
+      document.body.appendChild(successDiv);
+      setTimeout(() => successDiv.remove(), 3000);
+      
+    } catch (error) {
+      console.error('Error saving training record:', error);
+      alert('Failed to save training record: ' + error.message);
+    }
+  }
+  
+  function cancelInlineTrainingEdit(originalIssue, originalExpiry, originalProvider, originalVerified) {
+    // Restore original values
+    document.getElementById('drawer-issue-date').textContent = originalIssue;
+    document.getElementById('drawer-expiry-date').textContent = originalExpiry;
+    document.getElementById('drawer-provider').textContent = originalProvider;
+    document.getElementById('drawer-verified').textContent = originalVerified;
+    
+    // Restore original buttons
+    const buttonContainer = document.querySelector('#cell-drawer .btn').parentElement;
+    buttonContainer.innerHTML = `
+      <button class="btn" onclick="editTrainingRecord()">Edit Record</button>
+      <button class="btn secondary" onclick="document.getElementById('cell-drawer').classList.remove('open')">Close</button>
+    `;
+  }
+  
+  // Original function continues below for modal approach...
+  function openTrainingModalOriginal() {
+    // Keep the original modal code for backward compatibility
+    const { staffId, typeId, record } = window.currentTrainingEdit || {};
+    const staff = trainingData.staff.find(s => s.id == staffId);
+    const type = trainingData.types.find(t => t.id == typeId);
+    
+    if (!staff || !type) return;
     
     // Store data for saving
     window.currentTrainingEditData = { staff, type, record };
