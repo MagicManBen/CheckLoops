@@ -154,6 +154,22 @@
               </div>
               <div class="meta-note" id="avatar-save-msg" style="margin-top:6px; text-align:center;"></div>
               <div class="meta-note" id="avatar-url-note" style="margin-top:8px; word-break:break-all; max-width:260px; font-size:10px; opacity:0.7;"></div>
+
+              <!-- AI debug panel (shows payload sent to edge function and returned response) -->
+              <div id="ai-debug-panel" style="margin-top:12px; background: linear-gradient(145deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border:1px solid var(--border-color); padding:12px; border-radius:10px;">
+                <div style="font-weight:700; margin-bottom:8px; color:var(--white);">AI Debug (edge function)</div>
+                <div style="font-size:13px; color:var(--muted); margin-bottom:10px;">Shows the payload sent to the serverless function and the raw response returned (for debugging).</div>
+                <div style="display:flex; gap:12px;">
+                  <div style="flex:1; min-width:0;">
+                    <div style="font-weight:600; color:var(--white); margin-bottom:6px;">Payload sent</div>
+                    <pre id="ai-debug-request" style="background:rgba(0,0,0,0.06); color:var(--white); padding:8px; border-radius:8px; max-height:240px; overflow:auto; font-size:12px; white-space:pre-wrap;"></pre>
+                  </div>
+                  <div style="flex:1; min-width:0;">
+                    <div style="font-weight:600; color:var(--white); margin-bottom:6px;">Response</div>
+                    <pre id="ai-debug-response" style="background:rgba(0,0,0,0.06); color:var(--white); padding:8px; border-radius:8px; max-height:240px; overflow:auto; font-size:12px; white-space:pre-wrap;"></pre>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -513,21 +529,20 @@
             throw new Error('You must be logged in to generate avatars. Please refresh and log in again.');
           }
           
+          // Build payload for debug and real invoke
+          const payload = { description: prompt, options, seedHint };
+          // Render payload to debug panel
+          try { document.getElementById('ai-debug-request').textContent = JSON.stringify(payload, null, 2); } catch(_) {}
+
           try {
-            const { data, error } = await globalSupabase.functions.invoke('generate-avatar', { 
-              body: { 
-                description: prompt, 
-                options, 
-                seedHint 
-              } 
-            });
-            
+            const { data, error } = await globalSupabase.functions.invoke('generate-avatar', { body: payload });
+            // Render raw response to debug panel
+            try { document.getElementById('ai-debug-response').textContent = JSON.stringify({ data, error }, null, 2); } catch(_) {}
+
             console.log('Supabase Edge Function response:', { data, error });
-            
+
             if (error) {
               console.error('Edge Function error details:', error);
-              
-              // Handle different types of errors
               if (error.message && error.message.includes('FunctionsHttpError')) {
                 throw new Error('Authentication required. Please refresh and log in again.');
               } else if (error.message && error.message.includes('Unauthorized')) {
@@ -535,30 +550,27 @@
               } else if (error.context && error.context.status === 401) {
                 throw new Error('Authentication failed. Please refresh and log in again.');
               }
-              
               throw new Error(`AI generation failed: ${error.message || JSON.stringify(error)}`);
             }
-            
+
             if (!data || Object.keys(data).length === 0) {
               throw new Error('No avatar data returned from AI. Please try a different description.');
             }
-            
+
             console.log('Successfully generated avatar data:', data);
             applyAiResult(data);
-            
-            return data; // Return for potential chaining
+            return data;
           } catch (supabaseError) {
+            // Render error to debug panel as well
+            try { document.getElementById('ai-debug-response').textContent = JSON.stringify({ error: String(supabaseError), stack: supabaseError.stack }, null, 2); } catch(_) {}
             console.error('Supabase Edge Function error:', supabaseError);
-            
-            // Provide more specific error messages
-            if (supabaseError.message.includes('Authentication') || supabaseError.message.includes('Unauthorized')) {
+            if (String(supabaseError).includes('Authentication') || String(supabaseError).includes('Unauthorized')) {
               throw new Error('Authentication failed. Please refresh the page and log in again.');
-            } else if (supabaseError.message.includes('fetch')) {
+            } else if (String(supabaseError).includes('fetch')) {
               throw new Error('Network error. Please check your connection and try again.');
-            } else if (supabaseError.message.includes('timeout')) {
+            } else if (String(supabaseError).includes('timeout')) {
               throw new Error('Request timed out. Please try again with a shorter description.');
             }
-            
             throw new Error(`AI generation failed: ${supabaseError.message || 'Unknown error'}`);
           }
         }

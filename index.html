@@ -4157,24 +4157,14 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
                 <input type="email" id="invite-email" name="email" required>
               </div>
               <div class="field">
-                <label>Access</label>
+                <label>Role Type</label>
                 <select id="invite-access" name="access" required>
+                  <option value="">Select role type</option>
+                  <option value="owner">Owner</option>
                   <option value="admin">Admin</option>
                   <option value="staff">Staff</option>
                 </select>
-                <div class="hint">Choose account access level (Admin or Staff)</div>
-              </div>
-              <div class="field">
-                <label>Role</label>
-                <select id="invite-role" name="role_detail">
-                  <option value="">—</option>
-                </select>
-              </div>
-              <div class="field">
-                <label>Reports To</label>
-                <select id="invite-reports-to" name="reports_to_id">
-                  <option value="">—</option>
-                </select>
+                <div class="hint">Owner/Admin can access admin settings. Staff have limited access.</div>
               </div>
               <div class="error" id="invite-error" style="display:none"></div>
               <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px">
@@ -6213,50 +6203,7 @@ window.PIR_DEFINITIONS_DATA = [
   const inviteError = document.getElementById('invite-error');
 
   function showInviteModal() {
-    // Populate reports-to list and role list
-    (async () => {
-      const reportsToSel = document.getElementById('invite-reports-to');
-      const roleSel = document.getElementById('invite-role');
-      
-      if (reportsToSel) {
-        reportsToSel.innerHTML = '<option value="">—</option>';
-      }
-      if (roleSel) {
-        roleSel.innerHTML = '<option value="">—</option>';
-      }
-      
-      if (!ctx.site_id) return;
-      
-      try {
-        // Load reports-to list from kiosk_users
-        if (reportsToSel) {
-          const { data: users, error: usersError } = await supabase.from('kiosk_users').select('id, full_name').eq('site_id', ctx.site_id).eq('active', true).order('full_name');
-          if (!usersError && Array.isArray(users)) {
-            users.forEach(u => {
-              const opt = document.createElement('option');
-              opt.value = u.id;
-              opt.textContent = u.full_name || u.id;
-              reportsToSel.appendChild(opt);
-            });
-          }
-        }
-        
-        // Load roles list from kiosk_roles
-        if (roleSel) {
-          const { data: roles, error: rolesError } = await supabase.from('kiosk_roles').select('role').order('role');
-          if (!rolesError && Array.isArray(roles)) {
-            roles.forEach(r => {
-              const opt = document.createElement('option');
-              opt.value = r.role;
-              opt.textContent = r.role;
-              roleSel.appendChild(opt);
-            });
-          }
-        }
-      } catch (e) { 
-        console.warn('Failed to load dropdown lists', e); 
-      }
-    })();
+    // No need to populate any dropdowns since we only ask for name, email, and role type
 
     inviteModal.classList.add('show');
     inviteError.style.display = 'none';
@@ -6500,11 +6447,9 @@ window.PIR_DEFINITIONS_DATA = [
     const name = document.getElementById('invite-name').value.trim();
     const email = document.getElementById('invite-email').value.trim();
     const access = document.getElementById('invite-access').value;
-    const roleDetail = document.getElementById('invite-role').value;
-    const reportsToId = document.getElementById('invite-reports-to').value || null;
 
     if (!name || !email || !access) {
-      inviteError.textContent = 'Please fill in Name, Email and Access';
+      inviteError.textContent = 'Please fill in Name, Email and Role Type';
       inviteError.style.display = 'block';
       return;
     }
@@ -6522,9 +6467,7 @@ window.PIR_DEFINITIONS_DATA = [
         body: {
           email: email,
           name: name,
-          role: access,
-          role_detail: roleDetail,
-          reports_to_id: reportsToId,
+          role: access
         },
         headers: {
           'x-redirect-url': CONFIG.passwordRedirectUrl
@@ -7189,14 +7132,8 @@ window.PIR_DEFINITIONS_DATA = [
           .eq('user_id', user.id)
           .maybeSingle();
 
-        let quickRole = null;
-        if (profileRow && profileRow.role) quickRole = profileRow.role;
-        if (!quickRole && user?.raw_user_meta_data?.role) quickRole = user.raw_user_meta_data.role;
-
-        if ((quickRole || '').toLowerCase() === 'staff') {
-          window.location.replace('staff.html');
-          return;
-        }
+        // No longer automatically redirect staff users away
+        // They can be here if they have admin/owner privileges
       } catch (e) {
         console.warn('Role guard check failed, continuing initialization', e);
       }
@@ -7239,15 +7176,8 @@ window.PIR_DEFINITIONS_DATA = [
       // If staff, kick back to staff view
       try {
         const user = session.user;
-        const { data: profileRow } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('user_id', user.id)
-          .maybeSingle();
-        let quickRole = profileRow?.role || user?.raw_user_meta_data?.role || null;
-        if ((quickRole || '').toLowerCase() === 'staff') {
-          window.location.replace('staff.html');
-        }
+        // No longer automatically redirect staff users on page refresh
+        // They can be here if they have admin/owner privileges
       } catch(_) { /* ignore */ }
     } catch (err) {
       console.warn('pageshow auth re-check failed:', err);

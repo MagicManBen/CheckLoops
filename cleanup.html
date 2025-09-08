@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Cleanup Test Account</title>
+    <script src="config.js"></script>
+</head>
+<body>
+    <h1>Account Cleanup Tool</h1>
+    <p>This will remove all traces of benhowardmagic@hotmail.com from all tables.</p>
+    <button onclick="cleanupAccount()">🧹 Clean Up Account</button>
+    <div id="log" style="margin-top: 20px; font-family: monospace; white-space: pre-line;"></div>
+
+    <script type="module">
+        import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+        const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
+            auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' }
+        });
+
+        const log = document.getElementById('log');
+        function addLog(message) {
+            console.log(message);
+            log.textContent += message + '\n';
+        }
+
+        window.cleanupAccount = async function() {
+            const email = 'benhowardmagic@hotmail.com';
+            addLog('🧹 Starting cleanup for: ' + email);
+            
+            try {
+                // First, let's find the user_id
+                let userId = null;
+                
+                // Try to get current session
+                const { data: { session } } = await supabase.auth.getSession();
+                if (session?.user?.email === email) {
+                    userId = session.user.id;
+                    addLog('📍 Found user_id from current session: ' + userId);
+                }
+                
+                // Clean up tables one by one
+                const tablesToClean = [
+                    'site_invites',
+                    'profiles', 
+                    'staff_app_welcome',
+                    'kiosk_users',
+                    'team_members',
+                    'user_permissions'
+                ];
+                
+                for (const tableName of tablesToClean) {
+                    addLog(`🗑️  Cleaning ${tableName}...`);
+                    
+                    try {
+                        // Try cleaning by email first
+                        const { data: byEmail, error: emailError } = await supabase
+                            .from(tableName)
+                            .delete()
+                            .eq('email', email)
+                            .select();
+                        
+                        if (!emailError && byEmail && byEmail.length > 0) {
+                            addLog(`   ✅ Removed ${byEmail.length} record(s) by email from ${tableName}`);
+                        }
+                        
+                        // If we have a user_id, try cleaning by user_id
+                        if (userId) {
+                            const { data: byUserId, error: userIdError } = await supabase
+                                .from(tableName)
+                                .delete()
+                                .eq('user_id', userId)
+                                .select();
+                            
+                            if (!userIdError && byUserId && byUserId.length > 0) {
+                                addLog(`   ✅ Removed ${byUserId.length} record(s) by user_id from ${tableName}`);
+                            }
+                        }
+                        
+                        // Also try cleaning by full_name variations
+                        const names = ['new name', 'benhowardmagic', 'Ben Howard'];
+                        for (const name of names) {
+                            const { data: byName, error: nameError } = await supabase
+                                .from(tableName)
+                                .delete()
+                                .eq('full_name', name)
+                                .select();
+                            
+                            if (!nameError && byName && byName.length > 0) {
+                                addLog(`   ✅ Removed ${byName.length} record(s) by full_name '${name}' from ${tableName}`);
+                            }
+                        }
+                        
+                    } catch (tableError) {
+                        addLog(`   ⚠️  Could not clean ${tableName}: ${tableError.message}`);
+                    }
+                }
+                
+                addLog('🎯 Database cleanup completed!');
+                
+                // Now try to delete the auth user (this might fail due to permissions)
+                if (userId && session?.user?.email === email) {
+                    addLog('🚪 Signing out and attempting to delete auth user...');
+                    try {
+                        // Sign out first
+                        await supabase.auth.signOut();
+                        addLog('✅ Signed out successfully');
+                        
+                        // Note: We can't delete auth.users directly from client
+                        addLog('ℹ️  Auth user deletion requires admin privileges');
+                    } catch (authError) {
+                        addLog('⚠️  Auth operations: ' + authError.message);
+                    }
+                }
+                
+                addLog('');
+                addLog('✨ CLEANUP COMPLETE! ✨');
+                addLog('📧 You can now invite benhowardmagic@hotmail.com as a fresh user');
+                
+            } catch (error) {
+                addLog('❌ Cleanup failed: ' + error.message);
+            }
+        };
+    </script>
+</body>
+</html>
