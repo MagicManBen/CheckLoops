@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CheckLoop — Achievements</title>
+  <script src="config.js"></script>
+  <link rel="stylesheet" href="staff.css">
+  <style>
+    .ach-list{ display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; }
+    .ach-card{ padding:12px; border-radius:8px; background:var(--panel-bg); box-shadow:0 6px 16px rgba(2,6,23,.06); border:1px solid var(--border-color); display:flex; gap:10px; align-items:center; }
+    .ach-card.locked{ opacity:.5; }
+    .ach-ico{ width:56px; height:56px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:20px; }
+    .ach-meta{ flex:1; }
+    .ach-meta .title{ font-weight:700; margin-bottom:4px; }
+    .ach-actions{ display:flex; gap:8px; align-items:center; }
+    .ring-small{ width:48px; height:48px; border-radius:50%; display:grid; place-items:center; background:#fff; }
+  </style>
+</head>
+<body>
+  <main class="content" style="max-width:980px; margin:24px auto;">
+    <div class="topbar panel" style="position:relative;">
+      <div class="nav seg-nav">
+        <a href="staff.html" data-page="home">Home</a>
+        <a href="achievements.html" data-page="achievements" class="active">Achievements</a>
+      </div>
+      <div class="spacer"></div>
+      <div class="pill" id="site-pill">Site: —</div>
+      <div class="pill" id="email-pill">—</div>
+      <div class="pill" id="role-pill">—</div>
+      <button class="btn" id="logout-btn">Sign Out</button>
+    </div>
+
+    <section class="panel" style="margin-top:12px;">
+      <div class="panel-header" style="align-items:center; gap:10px;">
+        <div class="illus-circle"><img src="https://api.iconify.design/fluent-emoji-flat:trophy.svg" alt="Achievements"></div>
+        <div class="panel-title">My Achievements</div>
+      </div>
+      <div style="margin-top:12px;">
+        <div id="ach-loading">Loading…</div>
+        <div id="ach-empty" style="display:none">No achievements found.</div>
+        <div class="ach-list" id="ach-list" style="display:none; margin-top:12px;"></div>
+      </div>
+    </section>
+
+    <div style="margin-top:18px; text-align:center;" class="muted">© CheckLoop</div>
+  </main>
+
+  <script type="module">
+    import { initSupabase, requireStaffSession, setTopbar, handleAuthState, navActivate, fmtDate, setRing, getUserAchievements, upsertAchievement } from './staff-common.js';
+    const supabase = await initSupabase();
+    handleAuthState(supabase);
+    navActivate('achievements');
+
+    requireStaffSession(supabase).then(async ({ session, profileRow }) => {
+      const siteId = profileRow?.site_id || session.user?.raw_user_meta_data?.site_id || null;
+      setTopbar({ siteText: (siteId ? await (async () => { const { data } = await supabase.from('sites').select('name,city').eq('id', siteId).maybeSingle(); return data ? `${data.name}${data.city? ' • ' + data.city: ''}` : null; })() : null), email: session.user.email, role: profileRow?.role || session.user?.raw_user_meta_data?.role });
+      await loadAchievements(session.user, profileRow);
+    }).catch(e => {
+      if (String(e.message).includes('NO_SESSION')) { window.location.replace('Home.html'); return; }
+      if (String(e.message).includes('NOT_STAFF')) { window.location.replace('index.html'); return; }
+      console.error(e);
+    });
+
+    async function loadAchievements(user, profileRow){
+      const loading = document.getElementById('ach-loading');
+      const listEl = document.getElementById('ach-list');
+      const empty = document.getElementById('ach-empty');
+      loading.style.display='block'; listEl.style.display='none'; empty.style.display='none';
+
+      // resolve kiosk_user_id
+      let kioskUserId = null;
+      try{ const { data: ku } = await supabase.from('kiosk_users').select('id').eq('user_id', user.id).maybeSingle(); if (ku) kioskUserId = ku.id; }catch(e){ console.error('kiosk lookup failed', e); }
+
+      try{
+        // Fetch canonical achievements and user's states in one query
+        const { data, error } = await supabase.rpc('get_achievements_with_user', { p_kiosk_user_id: kioskUserId });
+        // Fallback if rpc doesn't exist
+        let rows = null;
+        if (error) {
+          console.debug('RPC get_achievements_with_user not available, using fallback queries', error.message);
+          const { data: ach } = await supabase.from('achievements').select('*').order('key');
+          const userRows = kioskUserId ? (await supabase.from('user_achievements').select('*').eq('kiosk_user_id', kioskUserId)).data : [];
+          rows = ach.map(a => ({ ...a, user: userRows.find(u => u.achievement_key === a.key) || null }));
+        } else {
+          rows = data;
+        }
+
+        loading.style.display='none';
+        if (!rows || !rows.length){ empty.style.display='block'; return; }
+        listEl.style.display='grid';
+        listEl.innerHTML = rows.map(r => {
+          const status = r.user?.status || r.status || 'locked';
+          const pct = r.user?.progress_percent || r.progress_percent || 0;
+          const unlockedAt = r.user?.unlocked_at || r.unlocked_at || null;
+          const lockedCls = (status !== 'unlocked') ? 'locked' : '';
+          return `<div class="ach-card ${lockedCls}" data-key="${r.key}">
+            <div class="ach-ico" style="background:#f8fafc;">${r.icon || '🏆'}</div>
+            <div class="ach-meta">
+              <div class="title">${r.name}</div>
+              <div class="desc">${r.description || ''}</div>
+              <div class="meta-note">Status: <strong>${status}</strong> ${unlockedAt ? ' • ' + fmtDate(unlockedAt) : ''}</div>
+            </div>
+            <div class="ach-actions">
+              <div class="ring-small" title="Progress"><div class="ring-label">${Math.round(pct)}%</div></div>
+              <button class="btn small unlock-btn" data-key="${r.key}" ${status==='unlocked'? 'disabled': ''}>Unlock</button>
+            </div>
+          </div>`;
+        }).join('');
+
+        // Attach unlock handlers
+        listEl.querySelectorAll('.unlock-btn').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            const key = btn.getAttribute('data-key');
+            if (!kioskUserId) { alert('Unable to find your staff record.'); return; }
+            btn.disabled = true; btn.textContent = 'Saving…';
+            try{
+              await upsertAchievement(supabase, kioskUserId, key, 'unlocked', 100);
+              // reflect in UI
+              const card = btn.closest('.ach-card'); if (card) { card.classList.remove('locked'); card.querySelector('.meta-note strong').textContent = 'unlocked'; card.querySelector('.ring-label').textContent = '100%'; }
+              btn.textContent = 'Unlocked';
+            }catch(err){ console.error(err); alert('Save failed. See console.'); btn.disabled = false; btn.textContent = 'Unlock'; }
+          });
+        });
+
+      }catch(e){ console.error('Load achievements failed', e); loading.style.display='none'; empty.style.display='block'; }
+    }
+  </script>
+</body>
+</html>
