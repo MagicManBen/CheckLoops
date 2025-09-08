@@ -7,6 +7,26 @@ export async function initSupabase() {
   });
 }
 
+// Clear auth-related localStorage keys but optionally preserve remember-me fields
+export function clearAuthData(preserveRememberMe = false) {
+  try {
+    const preserveKeys = preserveRememberMe ? ['rememberMe', 'rememberedEmail', 'rememberedUsername', 'rememberedPassword'] : [];
+    const keys = Object.keys(localStorage || {});
+    keys.forEach(k => {
+      try {
+        // Keep any remembered fields when requested
+        if (preserveKeys.includes(k)) return;
+        // Keep unrelated app persistence keys that don't look like auth tokens
+        if (!k.startsWith('sb-') && !k.includes('supabase') && !k.startsWith('auth')) return;
+        localStorage.removeItem(k);
+      } catch(_) { /* ignore individual removal errors */ }
+    });
+  } catch (e) {
+    // If localStorage isn't available or an error occurs, don't throw
+    try { /* noop */ } catch(_){}
+  }
+}
+
 export async function requireStaffSession(supabase) {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session || !session.user) throw new Error('NO_SESSION');
@@ -44,10 +64,10 @@ export function setTopbar({siteText, email, role}){
 export function handleAuthState(supabase){
   supabase.auth.onAuthStateChange((event, session) => {
     if (event === 'SIGNED_OUT' || !session) {
-      try { localStorage.clear(); } catch(_) {}
-      try { sessionStorage.clear(); } catch(_) {}
-      try { document.cookie.split(';').forEach(c => document.cookie = c.replace(/^ +/, '').replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`)); } catch(_) {}
-      window.location.replace('Home.html?_=' + Date.now());
+  try { clearAuthData(true); } catch(_) {}
+  try { sessionStorage.clear(); } catch(_) {}
+  try { document.cookie.split(';').forEach(c => document.cookie = c.replace(/^ +/, '').replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`)); } catch(_) {}
+  window.location.replace('Home.html?_=' + Date.now());
     }
   });
 }
@@ -58,10 +78,10 @@ export function attachLogout(supabase){
   if (!btn) return;
   let loggingOut = false;
   const manualCleanupRedirect = () => {
-    try { localStorage.clear(); } catch(_) {}
-    try { sessionStorage.clear(); } catch(_) {}
-    try { document.cookie.split(';').forEach(c => document.cookie = c.replace(/^ +/, '').replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`)); } catch(_) {}
-    try { window.location.replace('Home.html?_=' + Date.now()); } catch(_) { window.location.href = 'Home.html'; }
+  try { clearAuthData(true); } catch(_) {}
+  try { sessionStorage.clear(); } catch(_) {}
+  try { document.cookie.split(';').forEach(c => document.cookie = c.replace(/^ +/, '').replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`)); } catch(_) {}
+  try { window.location.replace('Home.html?_=' + Date.now()); } catch(_) { window.location.href = 'Home.html'; }
   };
   btn.addEventListener('click', async (e) => {
     e?.preventDefault?.();

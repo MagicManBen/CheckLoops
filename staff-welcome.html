@@ -665,6 +665,95 @@
             for(const v of arr){ el.appendChild(new Option(String(v), String(v))); }
           };
 
+          // Human‑readable labels for avatar options
+          const eyeLabels = {
+            variant01: 'Eyes: Neutral',
+            variant02: 'Eyes: Happy',
+            variant03: 'Eyes: Wink',
+            variant04: 'Eyes: Squint',
+            variant05: 'Eyes: Surprised',
+            variant06: 'Eyes: Sleepy'
+          };
+          const mouthLabels = {
+            variant01: 'Mouth: Smile',
+            variant02: 'Mouth: Grin',
+            variant03: 'Mouth: Serious',
+            variant04: 'Mouth: Open',
+            variant05: 'Mouth: Smirk'
+          };
+          const browLabels = {
+            variant01: 'Brows: Neutral',
+            variant02: 'Brows: Raised',
+            variant03: 'Brows: Angry',
+            variant04: 'Brows: Curved'
+          };
+          const glassesLabels = {
+            '': 'None',
+            variant01: 'Glasses: Round',
+            variant02: 'Glasses: Square',
+            variant03: 'Glasses: Thin',
+            variant04: 'Glasses: Thick',
+            variant05: 'Glasses: Cat‑eye'
+          };
+          const earringsLabels = {
+            '': 'None',
+            variant01: 'Earrings: Studs',
+            variant02: 'Earrings: Hoops',
+            variant03: 'Earrings: Drops',
+            variant04: 'Earrings: Small Hoops',
+            variant05: 'Earrings: Bars',
+            variant06: 'Earrings: Stars'
+          };
+          const hairColorNames = {
+            '0e0e0e': 'Black',
+            'e5d7a3': 'Blonde',
+            '9e5622': 'Brown',
+            '763900': 'Dark Brown',
+            'cb6820': 'Red',
+            'ac6511': 'Copper',
+            'b9a05f': 'Sandy',
+            '796a45': 'Ash Brown',
+            '6a4e35': 'Chestnut',
+            '562306': 'Dark Chestnut',
+            'afafaf': 'Grey',
+            '3eac2c': 'Green',
+            '85c2c6': 'Teal',
+            'dba3be': 'Pink',
+            '592454': 'Plum'
+          };
+          const skinColorNames = {
+            'f2d3b1': 'Fair',
+            'ecad80': 'Tan',
+            '9e5622': 'Brown',
+            '763900': 'Dark Brown'
+          };
+
+          function labelFromVariant(prefix, v, map){
+            if (map && map[v]) return map[v];
+            const sv = String(v);
+            if (sv.startsWith('variant')) {
+              const n = parseInt(sv.slice(7), 10);
+              const num = isNaN(n) ? sv.replace('variant','') : n;
+              return `${prefix} Style ${num}`; // e.g., "Mouth Style 9"
+            }
+            return `${prefix} ${sv}`;
+          }
+          function hairLabel(key){
+            const m = String(key).match(/^(short|long)(\d+)$/);
+            if (!m) return String(key);
+            return `${m[1] === 'short' ? 'Short' : 'Long'} ${Number(m[2])}`;
+          }
+          function fillOptsLabeled(el, values, labeler, withBlank=false){
+            el.innerHTML = '';
+            if (withBlank) el.appendChild(new Option('Default',''));
+            for (const v of values){
+              const label = labeler(v);
+              const opt = new Option(label, String(v));
+              opt.title = label;
+              el.appendChild(opt);
+            }
+          }
+
           fillOpts(document.getElementById('opt-backgroundRotation'), rangeArr(0,360,15), true);
           fillOpts(document.getElementById('opt-radius'), rangeArr(0,50,5), true);
           fillOpts(document.getElementById('opt-rotate'), rangeArr(0,360,15), true);
@@ -686,12 +775,12 @@
           const hairColors = ['ac6511','cb6820','ab2a18','e5d7a3','b9a05f','796a45','6a4e35','562306','9e5622','763900','0e0e0e','afafaf','3eac2c','85c2c6','dba3be','592454'];
           const skinColors = ['f2d3b1','ecad80','9e5622','763900'];
 
-          fillOpts(document.getElementById('opt-eyes'), eyes, true);
-          fillOpts(document.getElementById('opt-mouth'), mouths, true);
-          fillOpts(document.getElementById('opt-eyebrows'), brows, true);
-          fillOpts(document.getElementById('opt-glasses'), ['','variant01','variant02','variant03','variant04','variant05']);
+          fillOptsLabeled(document.getElementById('opt-eyes'), eyes, v=>labelFromVariant('Eyes:', v, eyeLabels), true);
+          fillOptsLabeled(document.getElementById('opt-mouth'), mouths, v=>labelFromVariant('Mouth:', v, mouthLabels), true);
+          fillOptsLabeled(document.getElementById('opt-eyebrows'), brows, v=>labelFromVariant('Brows:', v, browLabels), true);
+          fillOptsLabeled(document.getElementById('opt-glasses'), ['','variant01','variant02','variant03','variant04','variant05'], v=>glassesLabels[v] || labelFromVariant('Glasses:', v, {}), false);
           fillOpts(document.getElementById('opt-glassesProbability'), rangeArr(0,100,10), true);
-          fillOpts(document.getElementById('opt-earrings'), ['','variant01','variant02','variant03','variant04','variant05','variant06']);
+          fillOptsLabeled(document.getElementById('opt-earrings'), ['','variant01','variant02','variant03','variant04','variant05','variant06'], v=>earringsLabels[v] || labelFromVariant('Earrings:', v, {}), false);
           fillOpts(document.getElementById('opt-earringsProbability'), rangeArr(0,100,10), true);
           // features (multi-select)
           const featuresEl = document.getElementById('opt-features');
@@ -700,10 +789,10 @@
             for (const v of features){ featuresEl.appendChild(new Option(v, v)); }
           }
           fillOpts(document.getElementById('opt-featuresProbability'), rangeArr(0,100,5), true);
-          fillOpts(document.getElementById('opt-hair'), [''].concat(hair));
-          fillOpts(document.getElementById('opt-hairColor'), [''].concat(hairColors));
+          fillOptsLabeled(document.getElementById('opt-hair'), [''].concat(hair), v=> v ? hairLabel(v) : 'Default', false);
+          fillOptsLabeled(document.getElementById('opt-hairColor'), [''].concat(hairColors), hex => hex ? ((hairColorNames[hex] ? `${hairColorNames[hex]} (${hex})` : hex)) : 'Default', false);
           fillOpts(document.getElementById('opt-hairProbability'), rangeArr(0,100,10), true);
-          fillOpts(document.getElementById('opt-skinColor'), [''].concat(skinColors));
+          fillOptsLabeled(document.getElementById('opt-skinColor'), [''].concat(skinColors), hex => hex ? ((skinColorNames[hex] ? `${skinColorNames[hex]} (${hex})` : hex)) : 'Default', false);
 
           // Bind changes
           const ids = [
