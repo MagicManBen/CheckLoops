@@ -9,134 +9,135 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
-  // Log all incoming requests
-  console.log('🚀 Generate Avatar Function Called')
-  console.log('Method:', req.method)
-  console.log('URL:', req.url)
-  console.log('Headers:', Object.fromEntries(req.headers.entries()))
-
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    console.log('✅ Responding to OPTIONS request')
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    // Get Supabase environment variables
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    console.log('🚀 Generate Avatar Function Called')
+    console.log('Method:', req.method)
     
-    if (!supabaseUrl || !supabaseServiceKey) {
-      console.error('Missing Supabase environment variables')
-      return json({ error: 'Server configuration error' }, 500)
-    }
-
-    // Create Supabase client for auth verification
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
-
-    // Get auth header
+    // Get authorization header - it should be the user's JWT from Supabase Auth
     const authHeader = req.headers.get('Authorization')
-    console.log('Auth header received:', authHeader ? 'Bearer token present' : 'none')
+    console.log('Auth header present:', !!authHeader)
     
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      console.log('No valid authorization header found')
-      return json({ error: 'Unauthorized: No authorization header' }, 401)
+    if (!authHeader) {
+      return json({ error: 'No authorization header' }, 401)
     }
 
-    const token = authHeader.replace('Bearer ', '')
-    
-    // Verify JWT with Supabase
-    console.log('Verifying JWT token with Supabase...')
-    try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-      
-      if (authError || !user) {
-        console.log('JWT verification failed:', authError?.message || 'No user found')
-        return json({ error: 'Unauthorized: Invalid or expired token' }, 401)
-      }
-      
-      console.log('JWT verification successful for user:', user.email)
-    } catch (authErr) {
-      console.log('JWT verification exception:', authErr)
-      return json({ error: 'Unauthorized: Token validation failed' }, 401)
-    }
-
-    // Read body
-    console.log('📖 Reading request body...')
-    let requestBody
-    try {
-      requestBody = await req.json()
-      console.log('Request body received:', requestBody)
-    } catch (bodyError) {
-      console.error('❌ Failed to parse request body:', bodyError)
-      return json({ error: 'Invalid JSON in request body' }, 400)
-    }
-
+    // Parse request body
+    const requestBody = await req.json()
     const { description, options, seedHint } = requestBody
-    console.log('Extracted fields:', { description: description?.substring(0, 50), hasOptions: !!options, seedHint })
     
     if (!description || typeof description !== 'string') {
-      console.error('❌ Missing or invalid description')
-      return json({ error: 'Missing description' }, 400)
+      return json({ error: 'Missing or invalid description' }, 400)
     }
+    
     if (!options || typeof options !== 'object') {
-      console.error('❌ Missing or invalid options')
-      return json({ error: 'Missing options' }, 400)
+      return json({ error: 'Missing or invalid options' }, 400)
     }
 
+    // Get OpenAI API key from environment
     const apiKey = Deno.env.get('OPENAI_API_KEY')
-    if (!apiKey) return json({ error: 'OPENAI_API_KEY not configured' }, 500)
+    if (!apiKey) {
+      console.error('OPENAI_API_KEY not configured')
+      return json({ error: 'OpenAI API key not configured' }, 500)
+    }
 
+    console.log('Calling OpenAI with description:', description.substring(0, 50) + '...')
+    
+    // Initialize OpenAI client
     const openai = new OpenAI({ apiKey })
 
-    const system = 'You are a precise UI assistant that selects DiceBear Adventurer options strictly from provided dropdowns. When "man" or "male" is mentioned, try to use more masculine seeds and serious expressions. When "woman" or "female" is mentioned, use more varied expressions. Always include probability values: hairProbability should be 100 for visible hair, featuresProbability should be 100 for visible features. Respond with valid JSON only.'
+    // Create system prompt for OpenAI
+    const system = `You are a precise UI assistant that generates DiceBear Adventurer avatar parameters from text descriptions.
+
+Key instructions:
+- Select values ONLY from the provided dropdown options
+- For gender hints: "man/male" = masculine seeds and serious expressions, "woman/female" = varied expressions
+- Always set probability values: hairProbability=100 for visible hair, featuresProbability=100 for visible features, glassesProbability=100 for glasses if mentioned
+- Map colors appropriately: brown hair = "9e5622" or "763900", blonde = "e5d7a3", black = "0e0e0e", red = "cb6820"
+- Return valid JSON only with these exact field names
+
+Available options for each field are provided in the user message.`
+
     const userMsg = JSON.stringify({
-      task: 'Map description to options',
-      style: 'adventurer',
-      seedHint, description,
+      task: 'Generate avatar parameters from description',
+      description,
+      seedHint: seedHint || 'User',
       allowedOptions: options,
-      expectedKeys: ['seed','backgroundType','backgroundColor','backgroundRotation','radius','rotate','scale','flip','clip','translateX','translateY','eyes','mouth','eyebrows','glasses','glassesProbability','earrings','earringsProbability','features','featuresProbability','hair','hairColor','hairProbability','skinColor']
+      requiredFields: [
+        'seed', 'backgroundType', 'backgroundColor', 'backgroundRotation',
+        'radius', 'rotate', 'scale', 'flip', 'clip', 'translateX', 'translateY',
+        'eyes', 'mouth', 'eyebrows', 'glasses', 'glassesProbability',
+        'earrings', 'earringsProbability', 'features', 'featuresProbability',
+        'hair', 'hairColor', 'hairProbability', 'skinColor'
+      ]
     })
 
-    const resp = await openai.chat.completions.create({
+    // Call OpenAI
+    const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       temperature: 0.3,
-      response_format: { type: 'json_object' } as any,
+      response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: userMsg }
       ]
     })
 
-    const raw = resp.choices?.[0]?.message?.content || '{}'
-    console.log('OpenAI raw response:', raw)
+    const responseContent = completion.choices?.[0]?.message?.content || '{}'
+    console.log('OpenAI response received, parsing...')
     
-    const parsed = safeParseJson(raw)
-    console.log('Parsed response:', parsed)
-    
-    const allowed = new Set(['seed','backgroundType','backgroundColor','backgroundRotation','radius','rotate','scale','flip','clip','translateX','translateY','eyes','mouth','eyebrows','glasses','glassesProbability','earrings','earringsProbability','features','featuresProbability','hair','hairColor','hairProbability','skinColor'])
-    const clean: Record<string, unknown> = {}
-    for (const [k,v] of Object.entries(parsed || {})) if (allowed.has(k)) clean[k] = v
+    // Parse the response
+    let parsed: Record<string, any>
+    try {
+      // Try to extract JSON from potential markdown code blocks
+      const jsonMatch = responseContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
+      const jsonString = jsonMatch ? jsonMatch[1] : responseContent
+      parsed = JSON.parse(jsonString)
+    } catch (parseError) {
+      console.error('Failed to parse OpenAI response:', parseError)
+      return json({ error: 'Failed to parse AI response' }, 500)
+    }
 
-    return json(clean)
-  } catch (e) {
-    console.error('[generate-avatar] error', e)
-    return json({ error: String(e?.message ?? e) }, 500)
+    // Filter to only allowed DiceBear fields
+    const allowedFields = new Set([
+      'seed', 'backgroundType', 'backgroundColor', 'backgroundRotation',
+      'radius', 'rotate', 'scale', 'flip', 'clip', 'translateX', 'translateY',
+      'eyes', 'mouth', 'eyebrows', 'glasses', 'glassesProbability',
+      'earrings', 'earringsProbability', 'features', 'featuresProbability',
+      'hair', 'hairColor', 'hairProbability', 'skinColor'
+    ])
+    
+    const cleanedResult: Record<string, any> = {}
+    for (const [key, value] of Object.entries(parsed)) {
+      if (allowedFields.has(key) && value !== undefined && value !== null && value !== '') {
+        cleanedResult[key] = value
+      }
+    }
+
+    // Ensure we have at least some basic fields
+    if (!cleanedResult.seed) {
+      cleanedResult.seed = seedHint || 'User'
+    }
+
+    console.log('Successfully generated avatar parameters:', Object.keys(cleanedResult).length, 'fields')
+    
+    return json(cleanedResult)
+  } catch (error) {
+    console.error('Error in generate-avatar function:', error)
+    return json({ 
+      error: error instanceof Error ? error.message : 'Internal server error',
+      details: String(error)
+    }, 500)
   }
 })
 
-function json(body: unknown, status = 200) {
+function json(body: any, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
   })
-}
-
-function safeParseJson(s: string) {
-  try {
-    const m = s.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
-    const body = m ? m[1] : s
-    return JSON.parse(body)
-  } catch {
-    return {}
-  }
 }

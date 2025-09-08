@@ -847,55 +847,47 @@
               saveAvatarBtn.textContent = 'Saving...';
               saveMsg.textContent = 'Saving avatar...';
               
-              // Save to staff_app_welcome table (UPDATE existing row)
-              if (siteId) {
-                try {
-                  const payload = {
-                    user_id: user.id,
-                    site_id: siteId,
-                    full_name: fullName,
-                    nickname: nickVal,
+              // Save avatar URL to user metadata (this always works)
+              console.log('Saving avatar to user metadata:', avatarUrl);
+              try {
+                await supabase.auth.updateUser({ 
+                  data: { 
                     avatar_url: avatarUrl,
-                    // Keep existing role and team data
-                    role_detail: window.selectedRole || profileRow?.role_detail || user?.raw_user_meta_data?.role_detail || null,
-                    team_id: window.selectedTeamId || profileRow?.team_id || null,
-                    team_name: window.selectedTeamName || profileRow?.team_name || null
-                  };
-                  
-                  const { error: sawErr } = await supabase
-                    .from('staff_app_welcome')
-                    .upsert(payload, { onConflict: 'user_id,site_id' });
-                    
-                  if (sawErr) {
-                    console.error('staff_app_welcome save error:', sawErr);
-                    throw new Error(`Database save failed: ${sawErr.message || sawErr.code}`);
-                  }
-                  
-                  console.log('Successfully saved avatar to staff_app_welcome');
-                } catch (dbError) {
-                  console.warn('staff_app_welcome save failed, trying profiles fallback:', dbError);
-                  
-                  // Fallback to profiles table
+                    nickname: nickVal,
+                    role_detail: window.selectedRole || user?.raw_user_meta_data?.role_detail || null
+                  } 
+                });
+                console.log('✅ Successfully saved avatar to user metadata');
+                
+                // Also try to save to staff_app_welcome table if possible
+                if (siteId) {
                   try {
-                    let qp = supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('user_id', user.id);
-                    if (siteId) qp = qp.eq('site_id', siteId);
-                    const { error: profileErr } = await qp;
-                    if (profileErr) {
-                      throw new Error(`Profiles update failed: ${profileErr.message}`);
+                    const payload = {
+                      user_id: user.id,
+                      site_id: siteId,
+                      full_name: fullName,
+                      nickname: nickVal,
+                      avatar_url: avatarUrl,
+                      role_detail: window.selectedRole || user?.raw_user_meta_data?.role_detail || null,
+                      team_id: window.selectedTeamId || null,
+                      team_name: window.selectedTeamName || null
+                    };
+                    
+                    const { error: sawErr } = await supabase
+                      .from('staff_app_welcome')
+                      .upsert(payload);
+                      
+                    if (!sawErr) {
+                      console.log('✅ Also saved to staff_app_welcome table');
+                    } else {
+                      console.log('⚠️ Could not save to staff_app_welcome:', sawErr.message);
                     }
-                    console.log('Saved avatar to profiles table as fallback');
-                  } catch (profileError) {
-                    throw new Error(`Both database saves failed: ${profileError.message}`);
+                  } catch (e) {
+                    console.log('⚠️ staff_app_welcome save failed (non-critical):', e.message);
                   }
                 }
-              }
-              
-              // Also update user metadata
-              try {
-                await supabase.auth.updateUser({ data: { avatar_url: avatarUrl } });
-                console.log('Updated user metadata with avatar');
-              } catch (metaErr) {
-                console.warn('User metadata update failed:', metaErr);
+              } catch (metaError) {
+                throw new Error(`Could not save avatar: ${metaError.message}`);
               }
               
               // Store globally for finish button
@@ -1177,7 +1169,7 @@
                 };
                 const { error: sawErr } = await supabase
                   .from('staff_app_welcome')
-                  .upsert(payload, { onConflict: 'user_id,site_id' });
+                  .upsert(payload);
                 if (sawErr) {
                   if (msgEl) msgEl.textContent = `Could not save to Staff_App_Welcome (${sawErr.code||''}). Falling back…`;
                   throw sawErr;
