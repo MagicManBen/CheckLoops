@@ -28,6 +28,7 @@
         <a href="staff-scans.html" data-page="scans">My Scans</a>
         <a href="staff-training.html" data-page="training">My Training</a>
         <a href="staff-quiz.html" data-page="quiz" class="active">Quiz</a>
+        <a href="index.html" data-page="admin" class="admin-only" style="display:none;">Admin Site</a>
       </div>
       <div class="spacer"></div>
       <div class="pill" id="site-pill">Site: —</div>
@@ -39,7 +40,7 @@
     <section class="panel g-12" style="margin:0;">
       <div class="panel-header" style="justify-content:space-between; align-items:center; gap:12px;">
         <div style="display:flex; align-items:center; gap:10px;">
-          <div class="illus-circle" aria-hidden="true"><img src="icons/icons8-brain-100.png" alt="Quiz"></div>
+          <div class="illus-circle" aria-hidden="true"><img src="https://api.iconify.design/fluent-emoji-flat:brain.svg" alt="Quiz"></div>
           <div class="panel-title">Quick Knowledge Check</div>
         </div>
         <div class="progress" style="width:220px"><div class="bar" id="prog"></div></div>
@@ -55,7 +56,7 @@
   </main>
 
   <script type="module">
-    import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate } from './staff-common.js';
+    import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, revealAdminNav } from './staff-common.js';
     const supabase = await initSupabase();
     handleAuthState(supabase);
     navActivate('quiz');
@@ -64,9 +65,16 @@
   async function fetchQuestions(){
       // Try to fetch from Supabase if table exists; otherwise fallback to local
       try{
-        const { data, error } = await supabase.from('quiz_questions').select('id,question,choices,answer').limit(50);
+        // Fetch a reasonable pool (50) and map multiple possible column names
+        const { data, error } = await supabase.from('quiz_questions').select('*').limit(50);
         if (!error && data?.length){
-          return data.map(q => ({ id:q.id, question:q.question, choices:q.choices, answer:q.answer }));
+          return data.map(q => {stopke
+            // Support different schema shapes: question_text/options/correct_index OR question/choices/answer
+            const question = q.question_text || q.question || q.question_text_raw || '';
+            const choices = q.options || q.choices || q.options_list || [];
+            const answer = (typeof q.correct_index !== 'undefined' && q.correct_index !== null) ? q.correct_index : (typeof q.answer !== 'undefined' ? q.answer : null);
+            return { id:q.id, question, choices, answer };
+          }).filter(q=>q.question && q.choices && q.choices.length);
         }
       } catch(_) {}
       // Fallback local set
@@ -82,10 +90,10 @@
       ];
     }
 
-    function pickRandomFive(arr){
+    function pickRandom(arr, n){
       const a = [...arr];
       for (let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
-      return a.slice(0,5);
+      return a.slice(0,Math.min(n,a.length));
     }
 
     function renderQuiz(questions){
@@ -104,6 +112,23 @@
       }).join('');
     }
 
+    function showCountdown(nextDue){
+      const container = document.getElementById('quiz-container');
+      container.innerHTML = `<div style="padding:16px; border-radius:12px; background:var(--glass);">`+
+        `<div style="font-weight:700; margin-bottom:8px;">Next required quiz in:</div>`+
+        `<div id="quiz-countdown" style="font-size:20px; font-weight:700;">Calculating…</div>`+
+        `<div style="margin-top:12px; color:var(--muted);">You can practise anytime using the Practice button below (practice attempts are not recorded).</div>`+
+        `</div>`;
+      const cdEl = document.getElementById('quiz-countdown');
+      function tick(){
+        const ms = nextDue - new Date();
+        if (ms <= 0){ cdEl.textContent = 'Now due — refresh to start the required quiz.'; clearInterval(iv); return; }
+        const s = Math.floor(ms/1000)%60; const m = Math.floor(ms/60000)%60; const h = Math.floor(ms/3600000)%24; const d = Math.floor(ms/86400000);
+        cdEl.textContent = (d?d+'d ':'') + (h?h+'h ':'') + (m?m+'m ':'') + s+'s';
+      }
+      tick(); const iv = setInterval(tick,1000);
+    }
+
     async function main(){
       try{
         const { session, profileRow } = await requireStaffSession(supabase);
@@ -111,21 +136,82 @@
         const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
         const roleDetail = user?.raw_user_meta_data?.role_detail || 'Staff';
         setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: roleDetail });
+        revealAdminNav(profileRow?.role || user?.raw_user_meta_data?.role);
 
-        const bank = await fetchQuestions();
-        const picked = pickRandomFive(bank);
-        renderQuiz(picked);
+        // Determine last completed quiz for this user
+        let lastCompleted = null;
+        try{
+          const { data: last, error } = await supabase.from('quiz_attempts').select('completed_at,created_at').eq('user_id', user.id).order('completed_at', { ascending:false }).limit(1).maybeSingle();
+          if (!error && last){ lastCompleted = last.completed_at || last.created_at || null; }
+        } catch(_){ /* ignore: table may not exist */ }
+
+        const now = new Date();
+        let nextDue = null;
+        if (lastCompleted){ nextDue = new Date(lastCompleted); nextDue.setDate(nextDue.getDate() + 7); }
+
+        const submitBtn = document.getElementById('submit-quiz');
+        const retryBtn = document.getElementById('retry-quiz');
+        const resultEl = document.getElementById('quiz-result');
+
+        let picked = [];
+        let practiceMode = false;
+
+        async function startRequired(){
+          practiceMode = false;
+          const bank = await fetchQuestions();
+          picked = pickRandom(bank, 10);
+          renderQuiz(picked);
+          submitBtn.style.display='inline-block';
+          retryBtn.style.display='none';
+          resultEl.style.display='none';
+          document.getElementById('quiz-container').addEventListener('change', updateProgress);
+          updateProgress();
+        }
+
+        async function startPractice(){
+          practiceMode = true;
+          const bank = await fetchQuestions();
+          picked = pickRandom(bank, 5);
+          renderQuiz(picked);
+          submitBtn.style.display='inline-block';
+          retryBtn.style.display='none';
+          resultEl.style.display='none';
+          document.getElementById('quiz-container').addEventListener('change', updateProgress);
+          updateProgress();
+        }
 
         function updateProgress(){
-          const total = picked.length;
+          const total = picked.length || 1;
           const answered = picked.filter((_,idx)=> document.querySelector(`input[name="q_${idx}"]:checked`)).length;
           document.getElementById('prog').style.width = `${Math.round((answered/total)*100)}%`;
         }
 
-        document.getElementById('quiz-container').addEventListener('change', updateProgress);
-        updateProgress();
+        // Build action buttons area (Practice / Start Required)
+        const actionsWrap = document.createElement('div');
+        actionsWrap.style.marginTop = '12px';
+        actionsWrap.style.display = 'flex';
+        actionsWrap.style.gap = '8px';
+        const practiceBtn = document.createElement('button'); practiceBtn.className='btn secondary'; practiceBtn.textContent='Practice';
+        const startBtn = document.createElement('button'); startBtn.className='btn'; startBtn.textContent='Start Required Quiz';
+        actionsWrap.appendChild(startBtn);
+        actionsWrap.appendChild(practiceBtn);
+        document.querySelector('.panel').appendChild(actionsWrap);
+
+        practiceBtn.onclick = async () => { await startPractice(); };
+        startBtn.onclick = async () => { await startRequired(); };
+
+        // If nextDue exists and now < nextDue, show countdown and keep practice available
+        if (nextDue && now < nextDue){
+          showCountdown(nextDue);
+          // still allow practice button — hide direct start required button until due
+          startBtn.style.display='none';
+        } else {
+          // due now — automatically prepare required quiz (but let user click Start to begin)
+          startBtn.style.display='inline-block';
+        }
 
         document.getElementById('submit-quiz').onclick = async () => {
+          if (!picked || picked.length===0) return;
           let score = 0, total = picked.length;
           const answers = [];
           picked.forEach((q,idx)=>{
@@ -140,20 +226,32 @@
               fb.innerHTML = chosen === correct ? '<span class="badge ok">Correct</span>' : `<span class="badge danger">Incorrect</span> <span class="muted">(answer: ${q.choices[correct]})</span>`;
             }
           });
-          const resultEl = document.getElementById('quiz-result');
           resultEl.style.display='block';
           resultEl.innerHTML = `You scored <strong>${score}/${total}</strong>.`;
 
-          // Best-effort: store attempt if table exists
-          try{
-            await supabase.from('quiz_attempts').insert({
-              user_id: user.id,
-              score,
-              total,
-              answers,
-              created_at: new Date().toISOString()
-            });
-          } catch(_) {}
+          // If practice mode, do not record
+          if (!practiceMode){
+            const score_percent = Math.round((score/total)*100);
+            try{
+              await supabase.from('quiz_attempts').insert({
+                user_id: user.id,
+                site_id: siteId,
+                started_at: new Date().toISOString(),
+                completed_at: new Date().toISOString(),
+                score_percent,
+                correct_answers: score,
+                total_questions: total,
+                // answers JSON may not have a dedicated column — include in JSONB column if present
+                answers: answers
+              });
+            } catch(err){ console.warn('Failed to store quiz attempt (table may have different schema):', err); }
+
+            // Optionally update profiles.next_quiz_due if you have such a column — attempt update, ignore errors
+            try{
+              const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + 7);
+              await supabase.from('profiles').update({ next_quiz_due: dueDate.toISOString() }).eq('user_id', user.id);
+            } catch(_){ /* no-op if column/table doesn't exist or permission denied */ }
+          }
 
           document.getElementById('retry-quiz').style.display='inline-block';
         };

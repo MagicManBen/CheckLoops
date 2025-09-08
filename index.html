@@ -3629,7 +3629,7 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
     // Initialize any needed functionality
 });
 
-(function () {
+  (function () {
   var ua = navigator.userAgent || "";
   var isIOSiPad = /iPad|iPhone|iPod/.test(ua) ||
                   (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -3640,6 +3640,38 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
     location.replace("indexIpad.html"); // same folder
   }
 })();
+</script>
+<script>
+// Show "Back to Staff" if we arrived here from any staff page
+document.addEventListener('DOMContentLoaded', () => {
+  const wrap = document.getElementById('staff-return');
+  const btn = document.getElementById('back-to-staff');
+  if (!wrap || !btn) return;
+  const ref = document.referrer || '';
+  let fromStaff = false;
+  try{
+    const u = new URL(ref, location.href);
+    const p = (u.pathname || '').toLowerCase();
+    fromStaff = /\/staff(?:-[a-z]+)?\.html$/.test(p);
+  }catch(_){}
+  try{
+    if (!fromStaff && sessionStorage.getItem('cameFromStaff') === '1') {
+      fromStaff = true;
+      sessionStorage.removeItem('cameFromStaff');
+    }
+  }catch(_){}
+  if (fromStaff){
+    wrap.style.display = 'block';
+    btn.addEventListener('click', (e) => {
+      // Prefer history back to preserve state where possible
+      e.preventDefault();
+      try{
+        if (document.referrer && history.length > 1) { history.back(); return; }
+      }catch(_){}
+      location.href = 'staff.html';
+    });
+  }
+});
 </script>
 <script>
 // ——— Persisted sidebar group open/close ———
@@ -3795,6 +3827,10 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
           <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" fill="currentColor" />
         </svg>
       </button>
+      <!-- Back to Staff button (conditionally shown) -->
+      <div id="staff-return" style="display:none; margin: 6px;">
+        <a id="back-to-staff" class="btn secondary" href="staff.html" title="Return to Staff" style="display:block; width:100%; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">← Back to Staff</a>
+      </div>
       <div class="brand">
         <img src="Animated_Logo.gif" alt="CheckLoop Logo" class="logo">
         <div>
@@ -3878,6 +3914,12 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
 
     <main class="content">
       <section class="view active" id="view-dashboard">
+        <div class="panel" style="display:grid; place-items:center; min-height:220px; text-align:center;">
+          <div>
+            <div style="font-size:24px; font-weight:800; color: var(--white);">Dashboard Coming Soon</div>
+            <div style="margin-top:6px; color: var(--muted);">We’re building a fresh overview with live metrics and quick actions.</div>
+          </div>
+        </div>
       </section>
 
       <!-- Project Management Section -->
@@ -14335,17 +14377,27 @@ function clearTaskSelection() {
 
 async function bulkDeleteTasks() {
   const selectedCheckboxes = document.querySelectorAll('.task-select:checked');
-  const selectedIds = Array.from(selectedCheckboxes).map(cb => cb.dataset.taskId);
-  
+  const selectedIds = Array.from(selectedCheckboxes).map(cb => Number(cb.dataset.taskId));
   if (selectedIds.length === 0) return;
-  
+
   const confirmed = confirm(`Are you sure you want to delete ${selectedIds.length} task(s)? This action cannot be undone.`);
   if (!confirmed) return;
-  
+
   try {
-    for (const taskId of selectedIds) {
-      await deleteTask(taskId);
-    }
+    if (!window.supabase) throw new Error('Supabase not initialized');
+    if (!ctx || !ctx.site_id) throw new Error('Site context not available');
+
+    // Perform a single bulk delete in the database
+    const { error } = await supabase
+      .from('project_issues')
+      .delete()
+      .eq('site_id', ctx.site_id)
+      .in('id', selectedIds);
+
+    if (error) throw error;
+
+    // Update local cache and UI
+    projectTasks = projectTasks.filter(t => !selectedIds.includes(String(t.id)));
     showToast(`${selectedIds.length} task(s) deleted successfully!`, 'success');
     clearTaskSelection();
     await loadProjectTasks();
