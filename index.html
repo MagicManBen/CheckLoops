@@ -284,11 +284,38 @@ document.addEventListener('DOMContentLoaded', () => {
 
   .btn-signout:hover { background: rgba(255,255,255,0.14); transform: translateY(-1px); }
 
+  /* Staff View button spacing and fallback positioning */
+  #staff-return { padding: 6px 8px; }
+  #staff-return a { display:block; padding:8px 12px; width: calc(100% - 16px); box-sizing: border-box; margin: 0 6px; border-radius: 10px; text-align:left; }
+  /* ensure the arrow and text have breathing room within sidebar */
+  #staff-return a::before { content: '←'; margin-right:8px; opacity:0.95; }
+  #staff-fallback { left:18px; top:18px; }
+  #staff-fallback a { padding:8px 12px; border-radius:10px; box-shadow: 0 6px 18px rgba(2,6,23,0.06); }
+
+  /* Make Sign Out visually match the Staff View button and be same height */
+  #signout { display: block; width: 100%; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 8px; }
+  #signout::before {
+    content: '';
+    display: inline-block;
+    width: 14px; height: 14px;
+    margin-right: 8px;
+    vertical-align: -1px;
+    background-repeat: no-repeat;
+    background-size: 14px 14px;
+    /* small logout SVG (stroke color inherits via filter not reliable in data URI) */
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4'/><polyline points='16 17 21 12 16 7'/><line x1='21' y1='12' x2='9' y2='12'/></svg>");
+  }
+
   /* Collapsed sidebar adjustments */
   .app.collapsed .user-profile { padding: 12px 6px; }
   .app.collapsed .user-avatar { width: 36px; height: 36px; font-size: 14px; }
   .app.collapsed .user-details { display: none; }
   .app.collapsed .btn-signout { padding: 6px; }
+
+  /* Ensure the Sign Out button (now using .btn.secondary) mirrors the old collapsed behaviour */
+  .app.collapsed .user-profile .btn.secondary#signout { padding: 6px; width: auto; }
+  .app.collapsed .user-profile .btn.secondary#signout span { display: none; }
+  .app.collapsed .user-profile .btn.secondary#signout svg { margin-right: 0; }
 
   /* Hide nav-group-toggle label text when collapsed but keep the caret visible */
   .app.collapsed #sidebar .nav .nav-group-toggle { font-size: 0; }
@@ -3642,35 +3669,38 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
 })();
 </script>
 <script>
-// Show "Back to Staff" if we arrived here from any staff page
+// Show a persistent "Staff View" link for non-staff users (appear under profile).
+// Default: show the button. If we detect the signed-in user has role 'staff', hide it.
 document.addEventListener('DOMContentLoaded', () => {
   const wrap = document.getElementById('staff-return');
   const btn = document.getElementById('back-to-staff');
   if (!wrap || !btn) return;
-  const ref = document.referrer || '';
-  let fromStaff = false;
-  try{
-    const u = new URL(ref, location.href);
-    const p = (u.pathname || '').toLowerCase();
-    fromStaff = /\/staff(?:-[a-z]+)?\.html$/.test(p);
-  }catch(_){}
-  try{
-    if (!fromStaff && sessionStorage.getItem('cameFromStaff') === '1') {
-      fromStaff = true;
-      sessionStorage.removeItem('cameFromStaff');
-    }
-  }catch(_){}
-  if (fromStaff){
-    wrap.style.display = 'block';
-    btn.addEventListener('click', (e) => {
-      // Prefer history back to preserve state where possible
+  const fallbackWrap = document.getElementById('staff-fallback');
+  const fallbackLink = document.getElementById('staff-fallback-link');
+
+  // Show by default (user asked for it to always be visible except for staff accounts)
+  wrap.style.display = 'block';
+  if (fallbackWrap) fallbackWrap.style.display = 'block';
+
+  // Click: prefer history.back() when appropriate, otherwise open staff.html
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    try{
+      if (document.referrer && history.length > 1) { history.back(); return; }
+    }catch(_){ /* ignore */ }
+    location.href = 'staff.html';
+  });
+  if (fallbackLink) {
+    fallbackLink.addEventListener('click', (e) => {
       e.preventDefault();
       try{
         if (document.referrer && history.length > 1) { history.back(); return; }
-      }catch(_){}
+      }catch(_){ /* ignore */ }
       location.href = 'staff.html';
     });
   }
+
+  // Staff role checks removed: the Staff View control is intentionally ALWAYS visible on index.html.
 });
 </script>
 <script>
@@ -3819,6 +3849,11 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="wave wave2"></div>
   </div>
 
+  <!-- Fallback persistent Staff View button (visible unless user is staff). Positioned top-left above content. -->
+  <div id="staff-fallback" style="position:fixed; left:18px; top:18px; z-index:1200; display:none;">
+  <a id="staff-fallback-link" href="staff.html" class="btn secondary" title="Staff View" style="display:inline-block; padding:8px 12px; border-radius:10px;">Staff View</a>
+  </div>
+
   <div class="app" id="app" aria-live="polite">
     <aside class="sidebar" id="sidebar">
       <!-- Updated sidebar toggle: SVG chevron positioned at the sidebar edge for clearer affordance -->
@@ -3827,10 +3862,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" fill="currentColor" />
         </svg>
       </button>
-      <!-- Back to Staff button (conditionally shown) -->
-      <div id="staff-return" style="display:none; margin: 6px;">
-        <a id="back-to-staff" class="btn secondary" href="staff.html" title="Return to Staff" style="display:block; width:100%; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">← Back to Staff</a>
-      </div>
+  <!-- Back to Staff button (conditionally shown) - moved into user profile area below -->
       <div class="brand">
         <img src="Animated_Logo.gif" alt="CheckLoop Logo" class="logo">
         <div>
@@ -3899,13 +3931,15 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="site-info" id="site-info">Site</div>
           </div>
         </div>
-        <button class="btn-signout" id="signout" title="Sign Out">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-            <polyline points="16 17 21 12 16 7"/>
-            <line x1="21" y1="12" x2="9" y2="12"/>
-          </svg>
-        </button>
+        <!-- Back to Staff button (shown when we reliably came from staff.html) -->
+        <div id="staff-return" style="display:none;">
+          <a id="back-to-staff" class="btn secondary" href="staff.html" title="Staff View" style="display:block; width:100%; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:8px;">Staff View</a>
+        </div>
+        <div id="signout-return" style="display:block;">
+          <a id="signout" class="btn secondary" href="#" role="button" title="Sign Out" style="display:block; width:100%; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:8px;">
+            <span>Sign Out</span>
+          </a>
+        </div>
       </div>
       
       <!-- Resize handle for dragging sidebar width -->
@@ -7337,7 +7371,7 @@ window.PIR_DEFINITIONS_DATA = [
       console.log('🔍 Loading user profile...');
       let { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("site_id, role, full_name")
+        .select("site_id, role, full_name, avatar_url")
         .eq("user_id", user.id)
         .maybeSingle();
 
@@ -7424,6 +7458,7 @@ window.PIR_DEFINITIONS_DATA = [
       ctx.site_id = profile.site_id;
       ctx.role = profile.role;
       ctx.full_name = profile.full_name;
+      ctx.avatar_url = profile.avatar_url || user?.user_metadata?.avatar_url || null;
       
       // Make ctx available globally for training matrix and other features
       window.ctx = ctx;
@@ -7467,6 +7502,39 @@ window.PIR_DEFINITIONS_DATA = [
         initials = fullName.substring(0, 2).toUpperCase();
       }
       userInitials.textContent = initials;
+      
+      // If we have an avatar URL, show it instead of initials
+      try {
+        // Prefer staff_app_welcome avatar if available
+        let avatarUrl = null;
+        try {
+          const { data: saw } = await supabase
+            .from('staff_app_welcome')
+            .select('avatar_url, updated_at')
+            .eq('user_id', user.id)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          avatarUrl = saw?.avatar_url || null;
+        } catch(_) {}
+        if (!avatarUrl) avatarUrl = ctx.avatar_url || null;
+        if (!avatarUrl && user?.user_metadata?.avatar_url) avatarUrl = user.user_metadata.avatar_url;
+
+        if (avatarUrl) {
+          let img = userAvatar.querySelector('img');
+          if (!img) {
+            img = document.createElement('img');
+            img.alt = 'Avatar';
+            img.style.width = '100%';
+            img.style.height = '100%';
+            img.style.borderRadius = '50%';
+            img.style.objectFit = 'cover';
+            userAvatar.appendChild(img);
+          }
+          img.src = avatarUrl;
+          if (userInitials) userInitials.style.display = 'none';
+        }
+      } catch (e) { console.warn('Avatar render failed', e); }
       
       // Set user name
       userName.textContent = ctx.full_name || user.email || "User";

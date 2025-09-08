@@ -1,15 +1,30 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+// Configure CORS to only allow specific origins
+const getAllowedOrigin = (req: Request): string => {
+  const origin = req.headers.get('origin') || ''
+  const allowedOrigins = [
+    'http://127.0.0.1:58156',
+    'http://127.0.0.1:5500',
+    'http://localhost:5173',
+    'http://localhost:5500',
+    'https://magicmanben.github.io'
+  ]
+  
+  return allowedOrigins.includes(origin) ? origin : allowedOrigins[0]
 }
+
+const getCorsHeaders = (req: Request) => ({
+  'Access-Control-Allow-Origin': getAllowedOrigin(req),
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Credentials': 'true'
+})
 
 serve(async (req) => {
   // Handle CORS preflight request
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: getCorsHeaders(req) })
   }
 
   try {
@@ -72,7 +87,7 @@ serve(async (req) => {
     if (inviterProfile.role !== 'admin') {
       return new Response(JSON.stringify({ error: 'Unauthorized: Only admins can invite users' }), {
         status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' },
       })
     }
 
@@ -99,16 +114,12 @@ serve(async (req) => {
     if (inviteRecordError) throw new Error(`Failed to create invite record: ${inviteRecordError.message}`)
 
     // Determine redirect URL based on environment or allow override
-    const redirectTo = requestBody.redirect_to || `http://127.0.0.1:5500/set-password.html`
-
-    console.log('Invite details:', {
-      email,
-      name, 
-      role,
-      site_id,
-      redirectTo,
-      inviteToken
-    });
+    const origin = req.headers.get('origin') || ''
+    const isProduction = origin.includes('github.io')
+    const defaultRedirect = isProduction 
+      ? 'https://magicmanben.github.io/CheckLoops/set-password.html'
+      : 'http://127.0.0.1:5500/set-password.html'
+    const redirectTo = requestBody.redirect_to || defaultRedirect
 
     // Now send the actual invitation email using Supabase Auth
     const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
@@ -133,7 +144,7 @@ serve(async (req) => {
       message: 'Invitation sent successfully. User profile will be created when they accept the invitation.',
       invite_token: inviteToken
     }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' },
       status: 200,
     })
 
@@ -141,11 +152,10 @@ serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     
     return new Response(JSON.stringify({ 
-      error: errorMessage,
-      timestamp: new Date().toISOString()
+      error: errorMessage
     }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' },
     })
   }
 })

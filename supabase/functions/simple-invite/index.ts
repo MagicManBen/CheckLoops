@@ -1,14 +1,29 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-redirect-url',
+// Configure CORS to only allow specific origins
+const getAllowedOrigin = (req: Request): string => {
+  const origin = req.headers.get('origin') || ''
+  const allowedOrigins = [
+    'http://127.0.0.1:58156',
+    'http://127.0.0.1:5500',
+    'http://localhost:5173',
+    'http://localhost:5500',
+    'https://magicmanben.github.io'
+  ]
+  
+  return allowedOrigins.includes(origin) ? origin : allowedOrigins[0]
 }
+
+const getCorsHeaders = (req: Request) => ({
+  'Access-Control-Allow-Origin': getAllowedOrigin(req),
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-redirect-url',
+  'Access-Control-Allow-Credentials': 'true'
+})
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: getCorsHeaders(req) })
   }
 
   try {
@@ -59,10 +74,13 @@ serve(async (req) => {
 
     const site_id = inviterProfile.site_id
 
-    console.log('Processing invitation for:', { email, name, role, site_id })
-
     // Get the redirect URL from the request
-    const redirectTo = req.headers.get('x-redirect-url') || 'https://magicmanben.github.io/CheckLoops/simple-set-password.html'
+    const origin = req.headers.get('origin') || ''
+    const isProduction = origin.includes('github.io')
+    const defaultRedirect = isProduction 
+      ? 'https://magicmanben.github.io/CheckLoops/simple-set-password.html'
+      : 'http://127.0.0.1:5500/simple-set-password.html'
+    const redirectTo = req.headers.get('x-redirect-url') || defaultRedirect
     
     // STEP 1: Create the site_invites record FIRST
     const { data: inviteRecord, error: inviteRecordError } = await supabaseAdmin
@@ -82,11 +100,11 @@ serve(async (req) => {
       .single()
 
     if (inviteRecordError) {
-      console.error('Failed to create site invite:', inviteRecordError)
+      // Failed to create site invite
       throw new Error(`Failed to create site invite: ${inviteRecordError.message}`)
     }
 
-    console.log('Site invite created:', inviteRecord)
+    // Site invite created successfully
 
     // STEP 2: Add user to kiosk_users table immediately (if role_detail is provided)
     if (role_detail && role_detail.trim() !== '') {
@@ -103,10 +121,10 @@ serve(async (req) => {
         .select()
 
       if (kioskUserError) {
-        console.log('Warning: Failed to create kiosk user (but continuing with invitation):', kioskUserError)
+        // Warning: Failed to create kiosk user (but continuing with invitation)
         // Don't fail the invitation if kiosk_users insert fails
       } else {
-        console.log('Kiosk user created:', kioskUserData)
+        // Kiosk user created successfully
       }
     }
 
@@ -126,7 +144,7 @@ serve(async (req) => {
     )
 
     if (authError) {
-      console.error('Supabase auth invite failed:', authError)
+      // Supabase auth invite failed
       // If auth invite fails, clean up the site invite
       await supabaseAdmin
         .from('site_invites')
@@ -145,7 +163,7 @@ serve(async (req) => {
       throw new Error(`Failed to send invite: ${authError.message}`)
     }
 
-    console.log('Auth invite sent successfully:', authData)
+    // Auth invite sent successfully
 
     return new Response(JSON.stringify({ 
       success: true, 
@@ -153,17 +171,16 @@ serve(async (req) => {
       user_id: authData.user.id,
       invite_id: inviteRecord.id
     }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' },
       status: 200,
     })
 
   } catch (error) {
-    console.error('Invite error:', error)
     return new Response(JSON.stringify({ 
       error: error.message
     }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' },
     })
   }
 })
