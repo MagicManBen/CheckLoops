@@ -99,11 +99,83 @@ export function attachLogout(supabase){
   });
 }
 
-export function navActivate(page){
-  document.querySelectorAll('.nav a').forEach(a => {
-    if (a.getAttribute('data-page') === page) a.classList.add('active');
-    else a.classList.remove('active');
+// Create and render consistent staff navigation
+export function renderStaffNavigation(activePage = 'home') {
+  const navContainer = document.querySelector('.nav.seg-nav');
+  if (!navContainer) return;
+  
+  const navItems = [
+    { page: 'home', href: 'staff.html', label: 'Home' },
+    { page: 'welcome', href: 'staff-welcome.html', label: 'Welcome' },
+    { page: 'scans', href: 'staff-scans.html', label: 'My Scans' },
+    { page: 'training', href: 'staff-training.html', label: 'My Training' },
+    { page: 'achievements', href: 'achievements.html', label: 'Achievements' },
+    { page: 'quiz', href: 'staff-quiz.html', label: 'Quiz' },
+    { page: 'admin', href: 'index.html', label: 'Admin Site', adminOnly: true }
+  ];
+  
+  navContainer.innerHTML = navItems.map(item => {
+    const activeClass = item.page === activePage ? ' class="active"' : '';
+    const adminClass = item.adminOnly ? ' class="admin-only" style="display:none;"' : '';
+    const className = item.page === activePage && item.adminOnly ? ' class="admin-only active" style="display:none;"' : 
+                     item.page === activePage ? ' class="active"' : 
+                     item.adminOnly ? ' class="admin-only" style="display:none;"' : '';
+    
+    return `<a href="${item.href}" data-page="${item.page}"${className}>${item.label}</a>`;
+  }).join('');
+  
+  // Add event listener for admin navigation tracking
+  const adminLinks = navContainer.querySelectorAll('.admin-only');
+  adminLinks.forEach(link => {
+    link.addEventListener('click', () => {
+      try { 
+        sessionStorage.setItem('cameFromStaffAt', String(Date.now())); 
+      } catch(_) {}
+    }, { once: false });
   });
+}
+
+// Create and render mobile staff navigation  
+export function renderMobileStaffNavigation(activePage = 'home') {
+  const navContainer = document.querySelector('.nav[role="navigation"]');
+  if (!navContainer) return;
+  
+  const navItems = [
+    { page: 'home', href: 'staff.mobile.html', label: '🏠 Home' },
+    { page: 'welcome', href: 'staff-welcome.mobile.html', label: '👋 Welcome' },
+    { page: 'scans', href: 'staff-scans.mobile.html', label: '📝 My Scans' },
+    { page: 'training', href: 'staff-training.mobile.html', label: '📚 My Training' },
+    { page: 'achievements', href: 'achievements.mobile.html', label: '🏆 Achievements' },
+    { page: 'quiz', href: 'staff-quiz.mobile.html', label: '🧠 Quiz' },
+    { page: 'admin', href: 'index.html', label: '🔧 Admin', adminOnly: true }
+  ];
+  
+  navContainer.innerHTML = navItems.map(item => {
+    const activeClass = item.page === activePage ? ' active' : '';
+    const adminStyle = item.adminOnly ? ' style="display:none;"' : '';
+    const className = item.adminOnly ? `nav-link admin-only${activeClass}` : `nav-link${activeClass}`;
+    
+    return `<a class="${className}" href="${item.href}" data-page="${item.page}"${adminStyle}>${item.label}</a>`;
+  }).join('');
+  
+  // Add event listener for admin navigation tracking
+  const adminLinks = navContainer.querySelectorAll('.admin-only');
+  adminLinks.forEach(link => {
+    link.addEventListener('click', () => {
+      try { 
+        sessionStorage.setItem('cameFromStaffAt', String(Date.now())); 
+      } catch(_) {}
+    }, { once: false });
+  });
+}
+
+export function navActivate(page){
+  // Check if this is a mobile page or desktop page
+  if (document.querySelector('.nav[role="navigation"]')) {
+    renderMobileStaffNavigation(page);
+  } else {
+    renderStaffNavigation(page);
+  }
 }
 
 // Reveal admin-only navigation links if user has admin/owner role
@@ -112,12 +184,7 @@ export function revealAdminNav(role){
     const r = String(role || '').toLowerCase();
     if (r === 'admin' || r === 'owner') {
       document.querySelectorAll('.admin-only').forEach(el => {
-        el.style.display = 'inline-block';
-        // Mark navigation so index.html can show "Back to Staff" reliably.
-        // We store a timestamp so index can ignore stale flags when user opens index directly.
-        el.addEventListener('click', () => {
-          try { sessionStorage.setItem('cameFromStaffAt', String(Date.now())); } catch(_) {}
-        }, { once:true });
+        el.style.display = el.classList.contains('nav-link') ? 'block' : 'inline-block';
       });
     }
   }catch(_){ /* ignore */ }
