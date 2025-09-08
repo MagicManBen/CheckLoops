@@ -4339,6 +4339,53 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
           </div>
         </div>
         
+        <!-- Training Modal -->
+        <div id="training-modal" class="modal" style="display: none;">
+          <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+              <h3>Edit Training Record</h3>
+              <button class="close-btn" onclick="closeTrainingModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+              <form id="training-form">
+                <div class="form-group">
+                  <label for="training-staff">Staff Member</label>
+                  <input type="text" id="training-staff" readonly style="background: var(--panel-bg); color: var(--muted);">
+                </div>
+                <div class="form-group">
+                  <label for="training-type">Training Module</label>
+                  <input type="text" id="training-type" readonly style="background: var(--panel-bg); color: var(--muted);">
+                </div>
+                <div class="form-group">
+                  <label for="training-completion">Completion Date</label>
+                  <input type="date" id="training-completion" required>
+                </div>
+                <div class="form-group">
+                  <label for="training-expiry">Expiry Date</label>
+                  <input type="date" id="training-expiry">
+                </div>
+                <div class="form-group">
+                  <label for="training-provider">Provider</label>
+                  <input type="text" id="training-provider" placeholder="Training provider name">
+                </div>
+                <div class="form-group">
+                  <label for="training-notes">Notes</label>
+                  <textarea id="training-notes" rows="3" placeholder="Additional notes"></textarea>
+                </div>
+                <div class="form-group">
+                  <label for="training-certificate">Certificate Upload</label>
+                  <input type="file" id="training-certificate" accept=".pdf,.jpg,.jpeg,.png">
+                </div>
+              </form>
+              <div id="training-error" style="color: red; margin-top: 10px; display: none;"></div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn secondary" onclick="closeTrainingModal()">Cancel</button>
+              <button class="btn primary" onclick="saveTrainingRecord()">Save Record</button>
+            </div>
+          </div>
+        </div>
+        
         <!-- Training Cell Drawer -->
         <div id="cell-drawer" class="drawer" style="position: fixed; right: -400px; top: 0; width: 400px; height: 100%; background: var(--panel-bg); box-shadow: -2px 0 10px rgba(0,0,0,0.3); transition: right 0.3s ease; z-index: 1000; overflow-y: auto;">
           <div style="padding: 20px;">
@@ -4370,6 +4417,10 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
             <div style="margin-bottom: 16px;">
               <label style="font-weight: 600; color: var(--muted); font-size: 12px;">Expiry Date</label>
               <div id="drawer-expiry-date" style="font-size: 16px; margin-top: 4px;">-</div>
+            </div>
+            
+            <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+              <button onclick="editTrainingRecord()" style="width: 100%; padding: 10px; background: var(--accent); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Edit Report</button>
             </div>
             
             <div style="margin-bottom: 16px;">
@@ -8417,11 +8468,16 @@ function editComplaint() {
     return;
   }
   
-  // Close the complaint details modal
-  closeComplaintDetails();
-  
-  // Open the CRUD modal in edit mode
-  openCRUD("complaints", "edit", window.currentComplaintId);
+  // Don't close the details modal yet - wait for CRUD to open
+  setTimeout(() => {
+    // Open the CRUD modal in edit mode
+    openCRUD("complaints", "edit", window.currentComplaintId);
+    
+    // Close the complaint details modal after a brief delay
+    setTimeout(() => {
+      closeComplaintDetails();
+    }, 100);
+  }, 100);
 }
 
 // Make functions globally accessible for onclick handlers
@@ -10677,22 +10733,90 @@ function applySchedulesFilters() {
     function downloadCSV(data, filename) {
         if (!data.length) return;
         
-        // Create Excel workbook instead of CSV
+        // Check if SheetJS is available
+        if (typeof XLSX === 'undefined') {
+            console.warn('SheetJS not loaded, falling back to CSV');
+            // Fallback to CSV
+            const headers = Object.keys(data[0]);
+            const csvContent = [
+                headers.join(','),
+                ...data.map(row => headers.map(h => JSON.stringify(row[h] || '')).join(','))
+            ].join('\n');
+            
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+            return;
+        }
+        
+        // Create Excel workbook
         const workbook = XLSX.utils.book_new();
         
         // Convert data to worksheet
         const worksheet = XLSX.utils.json_to_sheet(data);
         
-        // Style the header row
+        // Get worksheet range
         const range = XLSX.utils.decode_range(worksheet['!ref']);
+        
+        // Apply header styling
         for (let C = range.s.c; C <= range.e.c; ++C) {
             const cellAddress = XLSX.utils.encode_cell({r: 0, c: C});
             if (!worksheet[cellAddress]) continue;
+            
+            // Add cell styling
+            if (!worksheet[cellAddress].s) worksheet[cellAddress].s = {};
             worksheet[cellAddress].s = {
-                font: { bold: true, color: { rgb: "FFFFFF" } },
-                fill: { fgColor: { rgb: "4F46E5" } },
-                alignment: { horizontal: "center" }
+                font: { 
+                    bold: true, 
+                    color: { rgb: "FFFFFF" },
+                    sz: 14
+                },
+                fill: { 
+                    patternType: "solid",
+                    fgColor: { rgb: "4F46E5" },
+                    bgColor: { rgb: "4F46E5" }
+                },
+                alignment: { 
+                    horizontal: "center",
+                    vertical: "center"
+                },
+                border: {
+                    top: { style: "thin", color: { rgb: "000000" } },
+                    bottom: { style: "thin", color: { rgb: "000000" } },
+                    left: { style: "thin", color: { rgb: "000000" } },
+                    right: { style: "thin", color: { rgb: "000000" } }
+                }
             };
+        }
+        
+        // Apply zebra striping to data rows
+        for (let R = 1; R <= range.e.r; ++R) {
+            for (let C = range.s.c; C <= range.e.c; ++C) {
+                const cellAddress = XLSX.utils.encode_cell({r: R, c: C});
+                if (!worksheet[cellAddress]) continue;
+                
+                if (!worksheet[cellAddress].s) worksheet[cellAddress].s = {};
+                worksheet[cellAddress].s = {
+                    fill: {
+                        patternType: "solid",
+                        fgColor: { rgb: R % 2 === 0 ? "F3F4F6" : "FFFFFF" },
+                        bgColor: { rgb: R % 2 === 0 ? "F3F4F6" : "FFFFFF" }
+                    },
+                    border: {
+                        top: { style: "thin", color: { rgb: "E5E7EB" } },
+                        bottom: { style: "thin", color: { rgb: "E5E7EB" } },
+                        left: { style: "thin", color: { rgb: "E5E7EB" } },
+                        right: { style: "thin", color: { rgb: "E5E7EB" } }
+                    },
+                    alignment: {
+                        wrapText: true
+                    }
+                };
+            }
         }
         
         // Auto-fit column widths
@@ -10703,21 +10827,32 @@ function applySchedulesFilters() {
             data.forEach(row => {
                 const cellValue = String(row[header] || '');
                 if (cellValue.length > maxWidth) {
-                    maxWidth = Math.min(cellValue.length, 50); // Cap at 50 chars
+                    maxWidth = Math.min(cellValue.length, 50);
                 }
             });
-            colWidths.push({ wch: Math.max(maxWidth + 2, 10) });
+            colWidths.push({ wch: Math.max(maxWidth + 2, 12) });
         });
         worksheet['!cols'] = colWidths;
         
-        // Add worksheet to workbook
+        // Add autofilter
+        worksheet['!autofilter'] = { ref: worksheet['!ref'] };
+        
+        // Set row height for header
+        if (!worksheet['!rows']) worksheet['!rows'] = [];
+        worksheet['!rows'][0] = { hpt: 30 };
+        
+        // Add worksheet to workbook with appropriate name
         const sheetName = filename.includes('complaint') ? 'Complaints Export' : 
                           filename.includes('training') ? 'Training Matrix' : 'Data Export';
         XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
         
         // Generate Excel file and download
         const excelFilename = filename.replace('.csv', '.xlsx');
-        XLSX.writeFile(workbook, excelFilename);
+        XLSX.writeFile(workbook, excelFilename, {
+            bookType: 'xlsx',
+            bookSST: true,
+            type: 'binary'
+        });
     }
 
     // Preview modal close handler
@@ -13052,6 +13187,7 @@ for (const f of (crudState.entity.fields || [])) {
   
   // Edit training record function
   function editTrainingRecord() {
+    // Get data from the drawer or use stored data
     if (!window.currentTrainingEdit) {
       alert('No training record selected for editing');
       return;
@@ -13066,39 +13202,137 @@ for (const f of (crudState.entity.fields || [])) {
       return;
     }
     
+    // Store current edit data
+    window.currentTrainingEditData = { staff, type, record };
+    
     // Close the drawer
     document.getElementById('cell-drawer').classList.remove('open');
     
-    // Open the existing training modal in edit mode
+    // Open the training modal
     openTrainingModal();
     
     // Pre-populate the form with existing data
-    setTimeout(() => {
-      document.getElementById('training-staff-id').value = staffId;
-      document.getElementById('training-type-id').value = typeId;
-      
-      if (record) {
-        if (record.completion_date) {
-          document.getElementById('training-completion-date').value = record.completion_date.split('T')[0];
-        }
-        if (record.expiry_date) {
-          document.getElementById('training-expiry-date').value = record.expiry_date.split('T')[0];
-        }
-        if (record.provider) {
-          document.getElementById('training-provider').value = record.provider;
-        }
-        if (record.notes) {
-          document.getElementById('training-notes').value = record.notes;
-        }
-        
-        // Set the modal title to indicate editing
-        const modalTitle = document.querySelector('#training-modal .modal-header h3');
-        if (modalTitle) {
-          modalTitle.textContent = `Edit Training Record - ${staff.full_name} - ${type.name}`;
-        }
+    document.getElementById('training-staff').value = staff.full_name;
+    document.getElementById('training-type').value = type.name;
+    
+    if (record) {
+      if (record.completion_date) {
+        document.getElementById('training-completion').value = record.completion_date.split('T')[0];
       }
-    }, 100);
+      if (record.expiry_date) {
+        document.getElementById('training-expiry').value = record.expiry_date.split('T')[0];
+      }
+      if (record.provider) {
+        document.getElementById('training-provider').value = record.provider;
+      }
+      if (record.notes) {
+        document.getElementById('training-notes').value = record.notes;
+      }
+    }
   }
+  
+  // Open training modal
+  function openTrainingModal() {
+    const modal = document.getElementById('training-modal');
+    if (modal) {
+      modal.style.display = 'flex';
+    }
+  }
+  
+  // Close training modal
+  function closeTrainingModal() {
+    const modal = document.getElementById('training-modal');
+    if (modal) {
+      modal.style.display = 'none';
+      // Clear form
+      document.getElementById('training-form').reset();
+      window.currentTrainingEditData = null;
+    }
+  }
+  
+  // Save training record
+  async function saveTrainingRecord() {
+    const errorDiv = document.getElementById('training-error');
+    errorDiv.style.display = 'none';
+    
+    if (!window.currentTrainingEditData) {
+      errorDiv.textContent = 'No training record data available';
+      errorDiv.style.display = 'block';
+      return;
+    }
+    
+    const { staff, type, record } = window.currentTrainingEditData;
+    
+    try {
+      // Get form values
+      const completionDate = document.getElementById('training-completion').value;
+      const expiryDate = document.getElementById('training-expiry').value;
+      const provider = document.getElementById('training-provider').value;
+      const notes = document.getElementById('training-notes').value;
+      const certificateFile = document.getElementById('training-certificate').files[0];
+      
+      let certificateUrl = record?.certificate_url || null;
+      
+      // Upload certificate if provided
+      if (certificateFile) {
+        const fileName = `training-${staff.id}-${type.id}-${Date.now()}.${certificateFile.name.split('.').pop()}`;
+        
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('training-certificates')
+          .upload(fileName, certificateFile);
+
+        if (uploadError) throw uploadError;
+        
+        const { data: urlData } = supabase.storage
+          .from('training-certificates')
+          .getPublicUrl(fileName);
+          
+        certificateUrl = urlData.publicUrl;
+      }
+
+      // Prepare record data
+      const recordData = {
+        site_id: ctx.site_id,
+        staff_id: staff.id,
+        training_type_id: type.id,
+        completion_date: completionDate,
+        expiry_date: expiryDate || null,
+        provider: provider || null,
+        notes: notes || null,
+        certificate_url: certificateUrl
+      };
+
+      // Update or insert record
+      if (record) {
+        const { error } = await supabase
+          .from('training_records')
+          .update(recordData)
+          .eq('id', record.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('training_records')
+          .insert(recordData);
+        if (error) throw error;
+      }
+
+      // Close modal and reload training matrix
+      closeTrainingModal();
+      if (typeof loadTrainingMatrix === 'function') {
+        loadTrainingMatrix();
+      }
+    } catch (err) {
+      console.error('Failed to save training record:', err);
+      errorDiv.textContent = err.message || 'Failed to save training record';
+      errorDiv.style.display = 'block';
+    }
+  }
+  
+  // Make functions globally accessible
+  window.editTrainingRecord = editTrainingRecord;
+  window.openTrainingModal = openTrainingModal;
+  window.closeTrainingModal = closeTrainingModal;
+  window.saveTrainingRecord = saveTrainingRecord;
 
   // Global function for downloading training certificates
   window.downloadTrainingCertificate = function() {
