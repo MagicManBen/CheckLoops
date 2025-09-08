@@ -143,8 +143,9 @@
               <div style="display:flex; gap:8px; margin-top:12px;">
                 <button class="btn btn-secondary" id="avatar-randomize">Randomize</button>
                 <button class="btn btn-secondary" id="avatar-reset">Reset</button>
+                <button class="btn btn-secondary" id="avatar-copy-url" title="Copy avatar URL to clipboard">Copy URL</button>
               </div>
-              <div class="meta-note" id="avatar-url-note" style="margin-top:8px; word-break:break-all; max-width:260px;"></div>
+              <div class="meta-note" id="avatar-url-note" style="margin-top:8px; word-break:break-all; max-width:260px; font-size:10px; opacity:0.7;"></div>
             </div>
           </div>
         </div>
@@ -156,7 +157,19 @@
               <textarea id="avatarPrompt" rows="3" placeholder="e.g. Friendly nurse with green scrubs, freckles, long brown hair, round glasses, gradient background" style="flex:1; padding:10px 12px; border-radius:10px; border:1px solid var(--border-color);"></textarea>
               <button class="btn" id="avatar-ai-generate" style="white-space:nowrap;">Generate with AI</button>
             </div>
-            <div class="meta-note" id="avatar-ai-msg">Your description stays local; a local proxy calls OpenAI with your key.</div>
+            
+            <!-- Example prompts for inspiration -->
+            <details style="margin-bottom:8px;">
+              <summary style="cursor:pointer; font-size:13px; color:#6b7280; margin-bottom:4px;">💡 Example prompts</summary>
+              <div style="display:grid; gap:4px; font-size:12px;">
+                <button onclick="document.getElementById('avatarPrompt').value='Professional doctor with short brown hair, serious expression, and glasses'" style="text-align:left; padding:4px 8px; border:1px solid #e5e7eb; border-radius:6px; background:#f9fafb; cursor:pointer; font-size:12px;">Professional doctor with short brown hair, serious expression, and glasses</button>
+                <button onclick="document.getElementById('avatarPrompt').value='Cheerful nurse with curly red hair, freckles, and a warm smile'" style="text-align:left; padding:4px 8px; border:1px solid #e5e7eb; border-radius:6px; background:#f9fafb; cursor:pointer; font-size:12px;">Cheerful nurse with curly red hair, freckles, and a warm smile</button>
+                <button onclick="document.getElementById('avatarPrompt').value='Pharmacist with long black hair, earrings, and professional appearance'" style="text-align:left; padding:4px 8px; border:1px solid #e5e7eb; border-radius:6px; background:#f9fafb; cursor:pointer; font-size:12px;">Pharmacist with long black hair, earrings, and professional appearance</button>
+                <button onclick="document.getElementById('avatarPrompt').value='Reception staff with blonde hair, friendly expression, and modern style'" style="text-align:left; padding:4px 8px; border:1px solid #e5e7eb; border-radius:6px; background:#f9fafb; cursor:pointer; font-size:12px;">Reception staff with blonde hair, friendly expression, and modern style</button>
+              </div>
+            </details>
+            
+            <div class="meta-note" id="avatar-ai-msg">Describe your ideal avatar and AI will configure all the options automatically. ✨</div>
           </div>
 
           <div class="panel" style="padding:16px; margin-top:12px;">
@@ -241,7 +254,7 @@
                 <select id="opt-translateY" style="padding:10px 12px; border-radius:10px; border:1px solid var(--border-color);"></select>
               </label>
 
-              <!-- Style-specific: Avataaars -->
+              <!-- Style-specific: Adventurer -->
               <label style="display:flex; flex-direction:column; gap:6px;">
                 <span style="font-weight:700; color:var(--ink);">Eyes</span>
                 <select id="opt-eyes" style="padding:10px 12px; border-radius:10px; border:1px solid var(--border-color);"></select>
@@ -358,12 +371,12 @@
           nicknameColumnExists = false;
         }
 
-        // ---- Step 3: DiceBear Avatar Builder (Avataaars) ----
+        // ---- Step 3: DiceBear Avatar Builder (Adventurer) ----
         function rangeArr(start, end, step=1){ const a=[]; for(let i=start;i<=end;i+=step) a.push(i); return a; }
         function pad2(n){ return String(n).padStart(2,'0'); }
 
         function buildAvatarUrlFromControls(){
-          const base = 'https://api.dicebear.com/7.x/avataaars/svg';
+          const base = 'https://api.dicebear.com/7.x/adventurer/svg';
           const seed = encodeURIComponent(document.getElementById('opt-seed').value || 'User');
           const params = new URLSearchParams();
           params.set('seed', seed);
@@ -464,58 +477,80 @@
           
           if (!globalSupabase) throw new Error('Supabase not initialized');
           
-          const endpoint = getAiEndpoint();
           const nickVal = String(document.getElementById('nickname')?.value || '').trim();
           const seedHint = nickVal || (document.getElementById('opt-seed')?.value||'User');
           const options = collectDropdownOptions();
           
-          // Try local proxy first if on localhost/127.0.0.1
-          if (endpoint && endpoint.startsWith('http')){
-            try {
-              const res = await fetch(endpoint, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ description: prompt, options, seedHint }) });
-              if (!res.ok){ 
-                // If local proxy fails, fall back to Supabase Edge Function
-                throw new Error('Local proxy failed, trying Supabase function');
-              }
-              const data = await res.json();
-              applyAiResult(data);
-              return;
-            } catch (localError) {
-              console.log('Local proxy not available, using Supabase Edge Function:', localError.message);
-              // Fall through to Supabase Edge Function
-            }
-          }
-          
-          // Use Supabase Edge Function
+          // Always use Supabase Edge Function (authenticated and working)
           console.log('Using Supabase Edge Function for AI generation');
-          console.log('globalSupabase:', globalSupabase ? 'initialized' : 'not initialized');
+          console.log('Generating avatar for description:', prompt);
           
           try {
             const { data, error } = await globalSupabase.functions.invoke('generate-avatar', { 
-              body: { description: prompt, options, seedHint } 
+              body: { 
+                description: prompt, 
+                options, 
+                seedHint 
+              } 
             });
-            console.log('Supabase response:', { data, error });
+            
+            console.log('Supabase Edge Function response:', { data, error });
             
             if (error) {
-              throw new Error(`Supabase function error: ${error.message || JSON.stringify(error)}`);
+              // Handle different types of errors
+              if (error.message && error.message.includes('FunctionsHttpError')) {
+                throw new Error('Authentication required. Please refresh and log in again.');
+              }
+              throw new Error(`AI generation failed: ${error.message || 'Unknown error'}`);
             }
             
-            if (!data) {
-              throw new Error('No data returned from Supabase function');
+            if (!data || Object.keys(data).length === 0) {
+              throw new Error('No avatar data returned from AI. Please try a different description.');
             }
             
+            console.log('Successfully generated avatar data:', data);
             applyAiResult(data);
+            
+            return data; // Return for potential chaining
           } catch (supabaseError) {
-            console.error('Supabase function call failed:', supabaseError);
-            throw new Error(`AI generation failed: ${supabaseError.message}`);
+            console.error('Supabase Edge Function error:', supabaseError);
+            
+            // Provide more specific error messages
+            if (supabaseError.message.includes('Authentication') || supabaseError.message.includes('Unauthorized')) {
+              throw new Error('Authentication failed. Please refresh the page and log in again.');
+            } else if (supabaseError.message.includes('fetch')) {
+              throw new Error('Network error. Please check your connection and try again.');
+            } else if (supabaseError.message.includes('timeout')) {
+              throw new Error('Request timed out. Please try again with a shorter description.');
+            }
+            
+            throw new Error(`AI generation failed: ${supabaseError.message || 'Unknown error'}`);
           }
         }
 
         function applyAiResult(data){
-          const setVal = (id, val) => { const el = document.getElementById(id); if (!el) return; el.value = String(val); };
+          console.log('Applying AI result:', data);
+          
+          const setVal = (id, val) => { 
+            const el = document.getElementById(id); 
+            if (!el) {
+              console.warn(`Element not found: ${id}`);
+              return; 
+            }
+            el.value = String(val); 
+            console.log(`Set ${id} = ${val}`);
+          };
+          
           const maybe = (k) => data[k] !== undefined && data[k] !== null && data[k] !== '';
-          if (maybe('seed')) document.getElementById('opt-seed').value = String(data.seed);
-          const map = new Map([
+          
+          // Handle seed specially
+          if (maybe('seed')) {
+            document.getElementById('opt-seed').value = String(data.seed);
+            console.log(`Set seed = ${data.seed}`);
+          }
+          
+          // Map all the standard fields
+          const fieldMappings = new Map([
             ['backgroundType','opt-backgroundType'],
             ['backgroundColor','opt-backgroundColor'],
             ['backgroundRotation','opt-backgroundRotation'],
@@ -533,21 +568,73 @@
             ['glassesProbability','opt-glassesProbability'],
             ['earrings','opt-earrings'],
             ['earringsProbability','opt-earringsProbability'],
+            ['featuresProbability','opt-featuresProbability'],
             ['hair','opt-hair'],
             ['hairColor','opt-hairColor'],
             ['hairProbability','opt-hairProbability'],
-            ['skinColor','opt-skinColor'],
+            ['skinColor','opt-skinColor']
           ]);
-          for (const [k,id] of map.entries()){ if (maybe(k)) setVal(id, data[k]); }
-
-          // features (multi)
-          if (Array.isArray(data.features)){
-            const el = document.getElementById('opt-features');
-            if (el){ Array.from(el.options).forEach(o=>{ o.selected = data.features.includes(o.value); }); }
+          
+          for (const [dataKey, elementId] of fieldMappings.entries()) { 
+            if (maybe(dataKey)) {
+              setVal(elementId, data[dataKey]); 
+            }
           }
-          if (maybe('featuresProbability')) setVal('opt-featuresProbability', data.featuresProbability);
 
+          // Handle features array (multi-select) separately
+          if (Array.isArray(data.features) && data.features.length > 0) {
+            const featuresEl = document.getElementById('opt-features');
+            if (featuresEl) {
+              // First clear all selections
+              Array.from(featuresEl.options).forEach(option => {
+                option.selected = false;
+              });
+              // Then select the ones from AI
+              Array.from(featuresEl.options).forEach(option => {
+                if (data.features.includes(option.value)) {
+                  option.selected = true;
+                  console.log(`Selected feature: ${option.value}`);
+                }
+              });
+            }
+          } else if (maybe('features') && typeof data.features === 'string') {
+            // Handle single feature as string
+            const featuresEl = document.getElementById('opt-features');
+            if (featuresEl) {
+              Array.from(featuresEl.options).forEach(option => {
+                option.selected = (option.value === data.features);
+              });
+              console.log(`Selected single feature: ${data.features}`);
+            }
+          }
+
+          // Log what we successfully applied
+          const appliedFields = [];
+          for (const [dataKey] of fieldMappings.entries()) {
+            if (maybe(dataKey)) appliedFields.push(dataKey);
+          }
+          if (Array.isArray(data.features) || maybe('features')) appliedFields.push('features');
+          console.log(`Applied fields: ${appliedFields.join(', ')}`);
+          
+          // Update the avatar preview with new settings
           updateAvatarPreview();
+          
+          // Show success feedback
+          const msg = document.getElementById('avatar-ai-msg');
+          if (msg) {
+            const probFields = [];
+            if (maybe('hairProbability')) probFields.push('hair probability');
+            if (maybe('featuresProbability')) probFields.push('features probability');
+            if (maybe('glassesProbability')) probFields.push('glasses probability');
+            if (maybe('earringsProbability')) probFields.push('earrings probability');
+            
+            let feedbackText = `Applied! Generated ${appliedFields.length} avatar settings.`;
+            if (probFields.length > 0) {
+              feedbackText += ` Including ${probFields.join(', ')}.`;
+            }
+            feedbackText += ' You can fine-tune with the dropdowns below.';
+            msg.textContent = feedbackText;
+          }
         }
 
         function initAvatarBuilder(fullName){
@@ -671,6 +758,37 @@
             updateAvatarPreview();
           }); reset.dataset.bound='1'; }
 
+          // Copy URL button
+          const copyBtn = document.getElementById('avatar-copy-url');
+          if (copyBtn && !copyBtn.dataset.bound){ copyBtn.addEventListener('click', async ()=>{
+            const url = window.currentAvatarUrl || buildAvatarUrlFromControls();
+            try {
+              await navigator.clipboard.writeText(url);
+              const originalText = copyBtn.textContent;
+              copyBtn.textContent = 'Copied!';
+              copyBtn.style.background = '#22c55e';
+              setTimeout(() => {
+                copyBtn.textContent = originalText;
+                copyBtn.style.background = '';
+              }, 2000);
+            } catch (e) {
+              console.error('Could not copy URL:', e);
+              // Fallback: select text in the URL note
+              const urlNote = document.getElementById('avatar-url-note');
+              if (urlNote) {
+                const selection = window.getSelection();
+                const range = document.createRange();
+                range.selectNodeContents(urlNote);
+                selection.removeAllRanges();
+                selection.addRange(range);
+                copyBtn.textContent = 'Selected!';
+                setTimeout(() => {
+                  copyBtn.textContent = 'Copy URL';
+                }, 2000);
+              }
+            }
+          }); copyBtn.dataset.bound='1'; }
+
           // Back button
           const back = document.getElementById('back-to-step2');
           if (back && !back.dataset.bound){ back.addEventListener('click', ()=>{
@@ -682,16 +800,55 @@
           const aiBtn = document.getElementById('avatar-ai-generate');
           if (aiBtn && !aiBtn.dataset.bound){ aiBtn.addEventListener('click', async ()=>{
             const msg = document.getElementById('avatar-ai-msg');
-            msg.textContent = 'Thinking…';
+            const originalText = msg.textContent;
+            
+            // Validate description input
+            const prompt = String(document.getElementById('avatarPrompt')?.value||'').trim();
+            if (!prompt) {
+              msg.textContent = '⚠️ Please enter a description first (e.g., "friendly nurse with brown hair")';
+              return;
+            }
+            
+            msg.innerHTML = '🤖 AI is generating your avatar... <span style="opacity:0.7">(this may take a few seconds)</span>';
             aiBtn.disabled = true;
+            aiBtn.textContent = 'Generating...';
+            
             try{
-              await aiGenerateFromDescription();
-              msg.textContent = 'Applied! You can fine-tune with the dropdowns.';
+              const result = await aiGenerateFromDescription();
+              
+              // Count how many fields were set
+              const setFields = Object.keys(result || {}).length;
+              msg.innerHTML = `✅ Success! Generated ${setFields} avatar settings. <span style="opacity:0.7">Fine-tune with dropdowns below.</span>`;
+              
+              // Auto-focus on preview to draw attention to the result
+              const preview = document.getElementById('avatarPreview');
+              if (preview) {
+                preview.style.transform = 'scale(1.05)';
+                setTimeout(() => {
+                  preview.style.transform = 'scale(1)';
+                  preview.style.transition = 'transform 0.3s ease';
+                }, 300);
+              }
+              
             }catch(e){
-              console.error('AI generate error:', e);
-              msg.textContent = `Error: ${e.message}`;
+              console.error('AI generation error:', e);
+              
+              // Provide helpful error messages
+              let errorMsg = '❌ ';
+              if (e.message.includes('Authentication') || e.message.includes('Unauthorized')) {
+                errorMsg += 'Please refresh the page and log in again.';
+              } else if (e.message.includes('description')) {
+                errorMsg += 'Please try a more detailed description.';
+              } else if (e.message.includes('Network') || e.message.includes('fetch')) {
+                errorMsg += 'Network error. Please check your connection.';
+              } else {
+                errorMsg += `Generation failed: ${e.message}`;
+              }
+              
+              msg.innerHTML = `${errorMsg} <button onclick="this.parentElement.textContent='${originalText}'" style="margin-left:8px;padding:2px 6px;font-size:11px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;">Dismiss</button>`;
             } finally {
               aiBtn.disabled = false;
+              aiBtn.textContent = 'Generate with AI';
             }
           }); aiBtn.dataset.bound='1'; }
 
@@ -704,6 +861,10 @@
               const teamIdNum = (window.selectedTeamId ?? null);
               const role = (window.selectedRole || null);
               const avatar = (window.currentAvatarUrl || buildAvatarUrlFromControls());
+
+              // Sync Staff_App_Welcome first (including avatar)
+              try { await persistRoleTeam(role, teamIdNum, (window.selectedTeamName || null), avatar); }
+              catch(e){ console.warn('staff_app_welcome sync failed', e); }
 
               try {
                 let qp = supabase.from('profiles').update({
@@ -852,10 +1013,63 @@
             }
           }catch(_){ ts.innerHTML = '<option value="">Select your team</option>'; }
 
+          // Persist selections helper
+          async function persistRoleTeam(role, teamIdNum, teamName, avatarUrl){
+            const msgEl = document.getElementById('finish-msg');
+            try {
+              // 1) Try upsert into new source-of-truth table if it exists
+              try {
+                const nicknameVal = String(document.getElementById('nickname')?.value || '').trim() || null;
+                if (!siteId) {
+                  if (msgEl) msgEl.textContent = 'No site detected — saving to profiles only.';
+                  throw new Error('NO_SITE_ID');
+                }
+                const payload = {
+                  user_id: user.id,
+                  site_id: siteId,
+                  full_name: fullName,
+                  nickname: nicknameVal,
+                  role_detail: role || null,
+                  team_id: teamIdNum ?? null,
+                  team_name: teamName || null,
+                  avatar_url: avatarUrl ?? null
+                };
+                const { error: sawErr } = await supabase
+                  .from('staff_app_welcome')
+                  .upsert(payload, { onConflict: 'user_id' });
+                if (sawErr) {
+                  if (msgEl) msgEl.textContent = `Could not save to Staff_App_Welcome (${sawErr.code||''}). Falling back…`;
+                  throw sawErr;
+                }
+              } catch (e) {
+                // If table doesn't exist or RLS blocks, continue to profiles fallback
+                if (msgEl) msgEl.textContent = 'Saving to profiles…';
+              }
+
+              // 2) Also update profiles so existing views stay in sync
+              try {
+                let qp2 = supabase.from('profiles').update({
+                  role_detail: role || null,
+                  team_id: teamIdNum ?? null,
+                  team_name: teamName || null
+                }).eq('user_id', user.id);
+                if (siteId) qp2 = qp2.eq('site_id', siteId);
+                const { error: pErr } = await qp2;
+                if (pErr) { console.warn('[welcome] profiles sync failed', pErr); }
+              } catch (e2) {
+                console.warn('[welcome] profiles sync exception', e2);
+              }
+              if (msgEl) msgEl.textContent = 'Saved!';
+            } catch (e) {
+              console.warn('[welcome] persist selections failed', e);
+              if (msgEl) msgEl.textContent = 'Could not save selections (continuing)…';
+            }
+          }
+
           // Continue to Step 3 (Avatar Builder)
           const toAvatar = document.getElementById('to-avatar-btn');
           if (toAvatar && !toAvatar.dataset.bound){
-            toAvatar.addEventListener('click', () => {
+            toAvatar.addEventListener('click', async () => {
               const role = (document.querySelector('input[name="role"]:checked')?.value || '').trim();
               const teamVal = document.getElementById('team-select').value || '';
               const teamName = teamVal ? (document.querySelector(`#team-select option[value="${CSS.escape(teamVal)}"]`)?.textContent || null) : null;
@@ -863,6 +1077,17 @@
               window.selectedRole = role || null;
               window.selectedTeamId = teamVal && /^\d+$/.test(String(teamVal)) ? parseInt(teamVal, 10) : null;
               window.selectedTeamName = teamName || null;
+
+              // Persist immediately so selections are saved even if user leaves before finishing
+              const btn = toAvatar;
+              const msgEl = document.getElementById('finish-msg');
+              if (msgEl) msgEl.textContent = '';
+              btn.disabled = true;
+              try {
+                await persistRoleTeam(window.selectedRole, window.selectedTeamId, window.selectedTeamName);
+              } finally {
+                btn.disabled = false;
+              }
 
               document.getElementById('welcome-step2').style.display = 'none';
               document.getElementById('welcome-step3').style.display = '';
