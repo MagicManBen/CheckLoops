@@ -15,7 +15,7 @@ WHERE email = 'benhowardmagic@hotmail.com';
 SELECT 'profiles' as table_name,
        user_id,
        full_name,
-       role_type,
+       nickname,
        created_at,
        updated_at
 FROM profiles 
@@ -26,7 +26,7 @@ SELECT 'site_invites' as table_name,
        id,
        email,
        full_name,
-       role_type,
+       role,
        status,
        accepted_at,
        created_at

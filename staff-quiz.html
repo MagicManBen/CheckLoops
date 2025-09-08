@@ -46,7 +46,7 @@
         </div>
         <div class="progress" style="width:220px"><div class="bar" id="prog"></div></div>
       </div>
-      <div class="muted" style="margin-bottom:10px">Answer 5 random questions. Your score appears instantly.</div>
+      <div class="muted" style="margin-bottom:10px" id="quiz-description">Loading quiz status...</div>
       <div id="quiz-container"></div>
       <div style="margin-top:12px; display:flex; gap:8px;">
         <button class="btn" id="submit-quiz">Submit</button>
@@ -70,7 +70,7 @@
         // Fetch a reasonable pool (50) and map multiple possible column names
         const { data, error } = await supabase.from('quiz_questions').select('*').limit(50);
         if (!error && data?.length){
-          return data.map(q => {stopke
+          return data.map(q => {
             // Support different schema shapes: question_text/options/correct_index OR question/choices/answer
             const question = q.question_text || q.question || q.question_text_raw || '';
             const choices = q.options || q.choices || q.options_list || [];
@@ -140,16 +140,26 @@
         setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: roleDetail });
         revealAdminNav(profileRow?.role || user?.raw_user_meta_data?.role);
 
-        // Determine last completed quiz for this user
-        let lastCompleted = null;
-        try{
-          const { data: last, error } = await supabase.from('quiz_attempts').select('completed_at,created_at').eq('user_id', user.id).order('completed_at', { ascending:false }).limit(1).maybeSingle();
-          if (!error && last){ lastCompleted = last.completed_at || last.created_at || null; }
-        } catch(_){ /* ignore: table may not exist */ }
-
+        // Get next_quiz_due from profile first, fallback to computing from last attempt
         const now = new Date();
         let nextDue = null;
-        if (lastCompleted){ nextDue = new Date(lastCompleted); nextDue.setDate(nextDue.getDate() + 7); }
+        
+        // First check profiles.next_quiz_due
+        if (profileRow?.next_quiz_due) {
+          nextDue = new Date(profileRow.next_quiz_due);
+        } else {
+          // Fallback: compute from last quiz attempt
+          try{
+            const { data: last, error } = await supabase.from('quiz_attempts').select('completed_at,created_at').eq('user_id', user.id).order('completed_at', { ascending:false }).limit(1).maybeSingle();
+            if (!error && last){ 
+              const lastCompleted = last.completed_at || last.created_at || null;
+              if (lastCompleted){ 
+                nextDue = new Date(lastCompleted); 
+                nextDue.setDate(nextDue.getDate() + 7); 
+              }
+            }
+          } catch(_){ /* ignore: table may not exist */ }
+        }
 
         const submitBtn = document.getElementById('submit-quiz');
         const retryBtn = document.getElementById('retry-quiz');
@@ -163,23 +173,27 @@
           const bank = await fetchQuestions();
           picked = pickRandom(bank, 10);
           renderQuiz(picked);
+          document.getElementById('quiz-description').textContent = 'Required quiz: Answer 10 random questions. This attempt will be recorded.';
           submitBtn.style.display='inline-block';
           retryBtn.style.display='none';
           resultEl.style.display='none';
           document.getElementById('quiz-container').addEventListener('change', updateProgress);
           updateProgress();
+          actionsWrap.style.display='none';
         }
 
         async function startPractice(){
           practiceMode = true;
           const bank = await fetchQuestions();
-          picked = pickRandom(bank, 5);
+          picked = pickRandom(bank, 10);
           renderQuiz(picked);
+          document.getElementById('quiz-description').textContent = 'Practice mode: Answer 10 random questions. This attempt will NOT be recorded.';
           submitBtn.style.display='inline-block';
           retryBtn.style.display='none';
           resultEl.style.display='none';
           document.getElementById('quiz-container').addEventListener('change', updateProgress);
           updateProgress();
+          actionsWrap.style.display='none';
         }
 
         function updateProgress(){
@@ -202,14 +216,18 @@
         practiceBtn.onclick = async () => { await startPractice(); };
         startBtn.onclick = async () => { await startRequired(); };
 
-        // If nextDue exists and now < nextDue, show countdown and keep practice available
+        // Show current status and determine which buttons to show
         if (nextDue && now < nextDue){
           showCountdown(nextDue);
-          // still allow practice button — hide direct start required button until due
+          document.getElementById('quiz-description').textContent = 'Your required weekly quiz is not due yet. You can practice anytime!';
           startBtn.style.display='none';
+          practiceBtn.style.display='inline-block';
         } else {
-          // due now — automatically prepare required quiz (but let user click Start to begin)
+          // Quiz is due or never taken
+          document.getElementById('quiz-description').textContent = 'Your weekly quiz is due! Complete the required quiz or practice.';
+          document.getElementById('quiz-container').innerHTML = '<div class="empty">Click "Start Required Quiz" to begin your weekly assessment.</div>';
           startBtn.style.display='inline-block';
+          practiceBtn.style.display='inline-block';
         }
 
         document.getElementById('submit-quiz').onclick = async () => {

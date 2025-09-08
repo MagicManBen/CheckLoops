@@ -93,9 +93,10 @@ export function revealAdminNav(role){
     if (r === 'admin' || r === 'owner') {
       document.querySelectorAll('.admin-only').forEach(el => {
         el.style.display = 'inline-block';
-        // Mark navigation so index.html can show "Back to Staff" reliably
+        // Mark navigation so index.html can show "Back to Staff" reliably.
+        // We store a timestamp so index can ignore stale flags when user opens index directly.
         el.addEventListener('click', () => {
-          try { sessionStorage.setItem('cameFromStaff', '1'); } catch(_) {}
+          try { sessionStorage.setItem('cameFromStaffAt', String(Date.now())); } catch(_) {}
         }, { once:true });
       });
     }

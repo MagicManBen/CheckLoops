@@ -12,6 +12,7 @@
   <style>
     /* Page-specific tweaks only; core styles live in staff.css */
     .subtitle{ color:#64748b; font-weight:600; }
+    .staff-avatar{ width:64px; height:64px; border-radius:50%; background:#fff; background-size:cover; background-position:center; box-shadow:0 4px 10px rgba(2,6,23,.10); border:1px solid var(--border-color); }
   </style>
 </head>
 <body>
@@ -54,6 +55,7 @@
           </div>
         </div>
         <div class="spacer"></div>
+        <div class="staff-avatar" id="staff-avatar" style="display:none;"></div>
         <div class="bubble-actions" aria-label="Quick actions">
           <a class="bubble" href="Home.html">
             <div class="i c-green"><img src="https://api.iconify.design/fluent-emoji-flat:camera.svg" alt="New Scan"/></div>
@@ -145,24 +147,140 @@
     });
 
     async function loadDashboard(user, profileRow){
+      // Resolve a friendly display name
       let displayName = profileRow?.full_name || user?.raw_user_meta_data?.full_name || (user?.email?.split('@')[0]) || 'Staff Member';
       try{
         const { data: nickRow } = await supabase.from('profiles').select('nickname').eq('user_id', user.id).maybeSingle();
         if (nickRow?.nickname) displayName = nickRow.nickname;
-      }catch(_){}
+      }catch(_){/* ignore */}
+
       const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
       const roleDetail = user?.raw_user_meta_data?.role_detail || 'Staff';
 
       document.getElementById('welcome').textContent = `Welcome, ${displayName}`;
+      // Resolve avatar and render into hero
+      try {
+        let avatarUrl = user?.raw_user_meta_data?.avatar_url || null;
+        try {
+          if (siteId) {
+            const { data: saw } = await supabase
+              .from('staff_app_welcome')
+              .select('avatar_url, updated_at')
+              .eq('user_id', user.id)
+              .eq('site_id', siteId)
+              .order('updated_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (saw?.avatar_url) avatarUrl = saw.avatar_url;
+          }
+        } catch(_) {}
+        if (!avatarUrl) {
+          try {
+            const { data: p } = await supabase.from('profiles').select('avatar_url').eq('user_id', user.id).maybeSingle();
+            if (p?.avatar_url) avatarUrl = p.avatar_url;
+          } catch(_) {}
+        }
+        const el = document.getElementById('staff-avatar');
+        if (el && avatarUrl) {
+          el.style.backgroundImage = `url(${avatarUrl})`;
+          el.style.display = '';
+        }
+      } catch(_){}
+      // Set top bar site/email/role
       setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: roleDetail });
       if (!siteId){ document.getElementById('site-subtitle').textContent = 'Your staff dashboard'; }
 
-      // Placeholder metrics & animated ring for vibe
-      setRing(document.getElementById('compliance-ring'), 76);
-      document.getElementById('badge-valid').textContent = `8 valid`;
-      document.getElementById('badge-due').textContent = `2 due`;
-      document.getElementById('badge-total').textContent = `10 total`;
+      // Fetch live metrics: try an aggregated view first, fallback to counting submissions
+      let valid = 0, due = 0, total = 0, ringPct = 0;
+      try{
+        // Prefer an aggregated view if available
+        try {
+          const agg = await supabase.from('v_submission_summary').select('valid_count,due_count,total_count').eq('site_id', siteId).eq('staff_name', displayName).maybeSingle();
+          if (!agg.error && agg.data) {
+            valid = Number(agg.data.valid_count || 0);
+            due = Number(agg.data.due_count || 0);
+            total = Number(agg.data.total_count || 0);
+          }
+        } catch(_) {
+          // ignore - view might not exist
+        }
 
+        // If aggregation failed or returned nothing, compute counts heuristically
+        if (!total) {
+          // total submissions
+          try {
+            const tRes = await supabase.from('v_submission_detail').select('id', { head: true, count: 'exact' }).eq('site_id', siteId).eq('staff_name', displayName);
+            if (!tRes.error) total = Number(tRes.count || 0);
+          } catch(_){}
+
+          // valid submissions (heuristic: check_value values that indicate pass)
+          try {
+            const vRes = await supabase.from('v_submission_detail').select('id', { head: true, count: 'exact' }).eq('site_id', siteId).eq('staff_name', displayName).in('check_value', ['Valid','OK','Pass','Good','Yes']);
+            if (!vRes.error) valid = Number(vRes.count || 0);
+          } catch(_){}
+
+          // due = total - valid (fallback)
+          due = Math.max(0, total - valid);
+        }
+
+        // Training/compliance ring: prefer a profile field, otherwise derive from counts
+        if (profileRow?.training_compliance_pct != null) {
+          ringPct = Math.round(Number(profileRow.training_compliance_pct));
+        } else if (profileRow?.training_percent != null) {
+          ringPct = Math.round(Number(profileRow.training_percent));
+        } else {
+          ringPct = total ? Math.round((valid / total) * 100) : 0;
+        }
+      } catch(e){
+        console.error('Error loading metrics', e);
+      }
+
+      // Update UI badges and ring
+      document.getElementById('badge-valid').textContent = `${valid} valid`;
+      document.getElementById('badge-due').textContent = `${due} due`;
+      document.getElementById('badge-total').textContent = `${total} total`;
+      setRing(document.getElementById('compliance-ring'), ringPct);
+
+      // Achievements heuristics (unlock based on simple signals)
+      try{
+        const achEls = document.querySelectorAll('.ach');
+        // index mapping matches markup: 0=First Login, 1=On-Time, 2=7-Day Streak, 3=100% Training
+        // First Login: if profile has created_at (always true for real users)
+        if (achEls[0]) achEls[0].classList.toggle('locked', !Boolean(profileRow?.created_at));
+
+        // On-Time Checker: any submission today before 10:00 local
+        let onTime = false;
+        try{
+          const start = new Date(); start.setHours(0,0,0,0);
+          const end = new Date(); end.setHours(23,59,59,999);
+          const todays = await supabase.from('v_submission_detail').select('submitted_at,check_value').eq('site_id', siteId).eq('staff_name', displayName).gte('submitted_at', start.toISOString()).lte('submitted_at', end.toISOString()).limit(50);
+          if (!todays.error && todays.data && todays.data.length){
+            for (const r of todays.data){
+              const d = new Date(r.submitted_at);
+              if (d.getHours() < 10) { onTime = true; break; }
+            }
+          }
+        }catch(_){ }
+        if (achEls[1]) achEls[1].classList.toggle('locked', !onTime);
+
+        // 7-Day Streak: count unique dates with submissions in last 7 days
+        let seven = false;
+        try{
+          const since = new Date(); since.setDate(since.getDate() - 7);
+          const recent = await supabase.from('v_submission_detail').select('submitted_at').eq('site_id', siteId).eq('staff_name', displayName).gte('submitted_at', since.toISOString()).limit(200);
+          if (!recent.error && recent.data){
+            const days = new Set(recent.data.map(r => (new Date(r.submitted_at)).toISOString().slice(0,10)));
+            seven = days.size >= 7;
+          }
+        }catch(_){ }
+        if (achEls[2]) achEls[2].classList.toggle('locked', !seven);
+
+        // 100% Training: profile field or fallback to ringPct === 100
+        const trainingOk = (profileRow?.training_compliance_pct != null && Number(profileRow.training_compliance_pct) >= 100) || ringPct === 100;
+        if (achEls[3]) achEls[3].classList.toggle('locked', !trainingOk);
+      }catch(e){ console.error('Achievement check failed', e); }
+
+      // Finally load recent activity
       await loadRecentActivity(displayName, siteId);
     }
 
