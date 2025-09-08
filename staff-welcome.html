@@ -518,9 +518,11 @@
 
             console.log('Successfully generated avatar data:', data);
             applyAiResult(data);
-            // Auto-save after applying AI result
+            // Auto-save after applying AI result (guard if helper not yet bound)
             updateAvatarPreview();
-            await saveAvatarToSupabase(window.currentAvatarUrl || buildAvatarUrlFromControls());
+            if (window.saveAvatarToSupabase) {
+              await window.saveAvatarToSupabase(window.currentAvatarUrl || buildAvatarUrlFromControls());
+            }
             const msg = document.getElementById('avatar-ai-msg');
             if (msg) msg.innerHTML = '✅ Avatar generated and saved automatically. You can fine-tune below.';
             return data;
@@ -815,6 +817,8 @@
               return false;
             }
           }
+          // Expose globally so other handlers (e.g., AI autosave) can call it safely
+          try { window.saveAvatarToSupabase = saveAvatarToSupabase; } catch(_) {}
 
           // (Copy URL removed)
 
@@ -863,10 +867,7 @@
             
             try{
               const result = await aiGenerateFromDescription();
-              
-              // Count how many fields were set
-              const setFields = Object.keys(result || {}).length;
-              msg.innerHTML = `✅ Success! Generated ${setFields} avatar settings. <span style="opacity:0.7">Fine-tune with dropdowns below.</span>`;
+              msg.innerHTML = `✅ Success! Adjust with settings below.`;
               
               // Auto-focus on preview to draw attention to the result
               const preview = document.getElementById('avatarPreview');

@@ -151,3 +151,14 @@ export function computeCompliance(requiredTypes = [], records = [], now = new Da
   const percent = total ? Math.round((ok / total) * 100) : 0;
   return { ok, due, total, percent };
 }
+
+export async function getUserAchievements(supabase, kioskUserId) {
+  const { data, error } = await supabase.from('user_achievements').select('achievement_key, status, progress_percent').eq('kiosk_user_id', kioskUserId);
+  if (error) throw error;
+  return data || [];
+}
+
+export async function upsertAchievement(supabase, kioskUserId, key, status, progress = 0) {
+  const { error } = await supabase.rpc('upsert_user_achievement', { p_kiosk_user_id: kioskUserId, p_achievement_key: key, p_status: status, p_progress_percent: progress });
+  if (error) throw error;
+}

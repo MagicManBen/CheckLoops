@@ -13,6 +13,7 @@
     /* Page-specific tweaks only; core styles live in staff.css */
     .subtitle{ color:#64748b; font-weight:600; }
     .staff-avatar{ width:64px; height:64px; border-radius:50%; background:#fff; background-size:cover; background-position:center; box-shadow:0 4px 10px rgba(2,6,23,.10); border:1px solid var(--border-color); }
+    .staff-hero-avatar{ width:96px; height:96px; border-radius:50%; background:#fff; background-size:cover; background-position:center; box-shadow:0 6px 16px rgba(2,6,23,.12); border:1px solid var(--border-color); }
   </style>
 </head>
 <body>
@@ -24,7 +25,8 @@
         <a href="staff.html" data-page="home" class="active">Home</a>
         <a href="staff-welcome.html" data-page="welcome">Welcome</a>
         <a href="staff-scans.html" data-page="scans">My Scans</a>
-        <a href="staff-training.html" data-page="training">My Training</a>
+  <a href="staff-training.html" data-page="training">My Training</a>
+  <a href="achievements.html" data-page="achievements">Achievements</a>
         <a href="staff-quiz.html" data-page="quiz">Quiz</a>
         <!-- Admin-specific navigation -->
         <a href="index.html" data-page="admin" class="admin-only" style="display:none;">Admin Site</a>
@@ -33,17 +35,16 @@
       <div class="pill" id="site-pill">Site: —</div>
       <div class="pill" id="email-pill">—</div>
       <div class="pill" id="role-pill">—</div>
-      <a class="btn secondary" href="Home.html">New Scan</a>
       <button class="btn" id="logout-btn">Sign Out</button>
     </div>
 
     <section class="panel g-12" style="margin:0; position:relative; overflow:hidden;">
       <div class="halo"></div>
       <div class="hero">
-        <div class="ring bounce" id="compliance-ring" title="Training compliance">
+        <div class="ring bounce" id="compliance-ring" title="Training compliance" style="position:relative;">
           <div class="ring-progress"></div>
           <div class="ring-hole"></div>
-          <div class="ring-label">0%</div>
+          <img id="ring-avatar" alt="Avatar" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:72px; height:72px; border-radius:50%; object-fit:cover; box-shadow:0 4px 10px rgba(2,6,23,.12);" />
         </div>
         <div style="min-width:200px;">
           <div class="subtitle" id="site-subtitle">Loading your profile…</div>
@@ -57,10 +58,6 @@
         <div class="spacer"></div>
         <div class="staff-avatar" id="staff-avatar" style="display:none;"></div>
         <div class="bubble-actions" aria-label="Quick actions">
-          <a class="bubble" href="Home.html">
-            <div class="i c-green"><img src="https://api.iconify.design/fluent-emoji-flat:camera.svg" alt="New Scan"/></div>
-            <div class="t">New Scan</div>
-          </a>
           <a class="bubble" href="staff-scans.html">
             <div class="i c-purple"><img src="https://api.iconify.design/fluent-emoji-flat:memo.svg" alt="My Scans"/></div>
             <div class="t">My Scans</div>
@@ -75,6 +72,12 @@
           </a>
         </div>
       </div>
+      <div class="progress-wrap" style="margin-top:10px; padding:0 8px;">
+        <div class="progress" style="height:10px; background:#e5e7eb; border-radius:999px; overflow:hidden; border:1px solid var(--border-color);">
+          <div id="training-progress-bar" class="bar" style="height:100%; width:0%; background:linear-gradient(90deg,#60a5fa,#a78bfa);"></div>
+        </div>
+        <div id="training-progress-label" class="meta-note" style="text-align:right; margin-top:4px;">0% Training</div>
+      </div>
       <div class="tile-grid" style="margin-top:14px;">
         <div class="tile">
           <div class="panel-header" style="align-items:center; gap:10px;">
@@ -83,7 +86,7 @@
           </div>
           <div class="ach-grid">
             <div class="ach">
-              <div class="ico" style="background:#dcfce7;"><img src="https://api.iconify.design/fluent-emoji-flat:party-popper.svg" alt="First Login"></div>
+            <div class="ico" style="background:#dcfce7;"><img src="https://api.iconify.design/fluent-emoji-flat:party-popper.svg" alt="First Login"></div>
               <div class="txt"><div class="name">First Login</div><div class="desc">Welcome aboard! You’re in.</div></div>
             </div>
             <div class="ach locked">
@@ -107,7 +110,7 @@
           </div>
           <div id="recent-scans-loading" style="padding:10px; text-align:center;">Loading…</div>
           <div class="timeline" id="timeline" style="display:none;"></div>
-          <div id="recent-scans-empty" class="empty" style="display:none">No activity yet. Use New Scan to get started.</div>
+          <div id="recent-scans-empty" class="empty" style="display:none">No activity yet.</div>
         </div>
       </div>
     </section>
@@ -116,7 +119,7 @@
   </main>
 
   <script type="module">
-    import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, setRing, fmtDate, revealAdminNav } from './staff-common.js';
+    import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, setRing, fmtDate, revealAdminNav, getUserAchievements, upsertAchievement } from './staff-common.js';
     const supabase = await initSupabase();
     handleAuthState(supabase);
     navActivate('home');
@@ -158,7 +161,7 @@
       const roleDetail = user?.raw_user_meta_data?.role_detail || 'Staff';
 
       document.getElementById('welcome').textContent = `Welcome, ${displayName}`;
-      // Resolve avatar and render into hero
+      // Resolve avatar and render into ring circle
       try {
         let avatarUrl = user?.raw_user_meta_data?.avatar_url || null;
         try {
@@ -180,11 +183,8 @@
             if (p?.avatar_url) avatarUrl = p.avatar_url;
           } catch(_) {}
         }
-        const el = document.getElementById('staff-avatar');
-        if (el && avatarUrl) {
-          el.style.backgroundImage = `url(${avatarUrl})`;
-          el.style.display = '';
-        }
+        const img = document.getElementById('ring-avatar');
+        if (img && avatarUrl) { img.src = avatarUrl; }
       } catch(_){}
       // Set top bar site/email/role
       setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: roleDetail });
@@ -223,7 +223,7 @@
           due = Math.max(0, total - valid);
         }
 
-        // Training/compliance ring: prefer a profile field, otherwise derive from counts
+        // Training/compliance percent: prefer a profile field, otherwise derive from counts
         if (profileRow?.training_compliance_pct != null) {
           ringPct = Math.round(Number(profileRow.training_compliance_pct));
         } else if (profileRow?.training_percent != null) {
@@ -235,25 +235,42 @@
         console.error('Error loading metrics', e);
       }
 
-      // Update UI badges and ring
+      // Update UI badges and progress bar
       document.getElementById('badge-valid').textContent = `${valid} valid`;
       document.getElementById('badge-due').textContent = `${due} due`;
       document.getElementById('badge-total').textContent = `${total} total`;
-      setRing(document.getElementById('compliance-ring'), ringPct);
+      try {
+        const bar = document.getElementById('training-progress-bar');
+        const lbl = document.getElementById('training-progress-label');
+        if (bar) bar.style.width = `${ringPct}%`;
+        if (lbl) lbl.textContent = `${ringPct}% Training`;
+      } catch(_){}
 
-      // Achievements heuristics (unlock based on simple signals)
+      // Get kiosk_user_id for achievements
+      let kioskUserId = null;
+      try {
+        const { data: ku } = await supabase.from('kiosk_users').select('id').eq('user_id', user.id).maybeSingle();
+        if (ku) kioskUserId = ku.id;
+      } catch(e) { console.error('Failed to get kiosk_user_id', e); }
+
+      // Achievements: compute heuristics and upsert to DB if unlocked
       try{
         const achEls = document.querySelectorAll('.ach');
-        // index mapping matches markup: 0=First Login, 1=On-Time, 2=7-Day Streak, 3=100% Training
-        // First Login: if profile has created_at (always true for real users)
-        if (achEls[0]) achEls[0].classList.toggle('locked', !Boolean(profileRow?.created_at));
+        // index mapping: 0=first_login, 1=on_time_submission, 2=seven_day_streak, 3=training_complete
 
-        // On-Time Checker: any submission today before 10:00 local
+        // First Login: if profile has created_at
+        const firstLogin = Boolean(profileRow?.created_at);
+        if (achEls[0]) achEls[0].classList.toggle('locked', !firstLogin);
+        if (kioskUserId && firstLogin) {
+          try { await upsertAchievement(supabase, kioskUserId, 'first_login', 'unlocked'); } catch(e) { console.error('Upsert first_login failed', e); }
+        }
+
+        // On-Time Checker: any submission today before 10:00
         let onTime = false;
         try{
           const start = new Date(); start.setHours(0,0,0,0);
           const end = new Date(); end.setHours(23,59,59,999);
-          const todays = await supabase.from('v_submission_detail').select('submitted_at,check_value').eq('site_id', siteId).eq('staff_name', displayName).gte('submitted_at', start.toISOString()).lte('submitted_at', end.toISOString()).limit(50);
+          const todays = await supabase.from('v_submission_detail').select('submitted_at').eq('site_id', siteId).eq('staff_name', displayName).gte('submitted_at', start.toISOString()).lte('submitted_at', end.toISOString()).limit(50);
           if (!todays.error && todays.data && todays.data.length){
             for (const r of todays.data){
               const d = new Date(r.submitted_at);
@@ -262,8 +279,11 @@
           }
         }catch(_){ }
         if (achEls[1]) achEls[1].classList.toggle('locked', !onTime);
+        if (kioskUserId && onTime) {
+          try { await upsertAchievement(supabase, kioskUserId, 'on_time_submission', 'unlocked'); } catch(e) { console.error('Upsert on_time failed', e); }
+        }
 
-        // 7-Day Streak: count unique dates with submissions in last 7 days
+        // 7-Day Streak: unique dates with submissions in last 7 days >=7
         let seven = false;
         try{
           const since = new Date(); since.setDate(since.getDate() - 7);
@@ -274,10 +294,17 @@
           }
         }catch(_){ }
         if (achEls[2]) achEls[2].classList.toggle('locked', !seven);
+        if (kioskUserId && seven) {
+          try { await upsertAchievement(supabase, kioskUserId, 'seven_day_streak', 'unlocked'); } catch(e) { console.error('Upsert seven_day failed', e); }
+        }
 
-        // 100% Training: profile field or fallback to ringPct === 100
+        // 100% Training: profile field or ringPct === 100
         const trainingOk = (profileRow?.training_compliance_pct != null && Number(profileRow.training_compliance_pct) >= 100) || ringPct === 100;
         if (achEls[3]) achEls[3].classList.toggle('locked', !trainingOk);
+        if (kioskUserId && trainingOk) {
+          try { await upsertAchievement(supabase, kioskUserId, 'training_complete', 'unlocked'); } catch(e) { console.error('Upsert training failed', e); }
+        }
+
       }catch(e){ console.error('Achievement check failed', e); }
 
       // Finally load recent activity
