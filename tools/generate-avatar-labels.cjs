@@ -1,187 +1,155 @@
-#!/usr/bin/env node
-/**
- * Generate human‑readable labels for DiceBear Adventurer options by
- * asking OpenAI (vision) to describe each variant from an SVG sample.
- *
- * Usage:
- *   OPENAI_API_KEY=... node tools/generate-avatar-labels.js [category ...]
- *
- * Categories (any subset): eyes mouth eyebrows glasses earrings hair
- * Default: eyes mouth eyebrows
- *
- * Outputs:
- *   - avatar_labels.generated.json (structured results)
- *   - avatar_option_labels.sql (UPSERT statements you can run in Supabase)
- */
+/* tools/generate-avatar-labels.cjs  — eyes-only test friendly
+   Examples:
+     node tools/generate-avatar-labels.cjs -m gpt-4o-mini eyes
+*/
+const fs = require('node:fs/promises');
 
-const fs = require('fs');
-const path = require('path');
-
-const API_KEY = process.env.OPENAI_API_KEY;
-if (!API_KEY) {
-  console.error('Missing OPENAI_API_KEY environment variable');
-  process.exit(1);
+const argv = process.argv.slice(2);
+function readFlag(name, alias) {
+  const iLong = argv.indexOf(`--${name}`);
+  if (iLong !== -1 && argv[iLong + 1]) return argv[iLong + 1];
+  const iShort = alias ? argv.indexOf(`-${alias}`) : -1;
+  if (iShort !== -1 && argv[iShort + 1]) return argv[iShort + 1];
+  return null;
 }
 
-const CATEGORIES_ALL = ['eyes', 'mouth', 'eyebrows', 'glasses', 'earrings', 'hair'];
-const rawArgs = process.argv.slice(2).filter(Boolean);
+const requested = argv.filter(a => !a.startsWith('-'));
+const model = readFlag('model','m') || process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+if (!OPENAI_API_KEY) { console.error('ERROR: OPENAI_API_KEY is required'); process.exit(1); }
+console.log(`Model: ${model}`);
 
-// Model selection: default via env OPENAI_MODEL or hardcoded fallback
-let MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-const parsedCats = [];
-for (let i = 0; i < rawArgs.length; i++) {
-  const a = rawArgs[i];
-  if (a === '--model' || a === '-m') { MODEL = rawArgs[i + 1]; i++; continue; }
-  if (a.startsWith('--model=')) { MODEL = a.split('=')[1]; continue; }
-  parsedCats.push(a);
-}
-const CATEGORIES = parsedCats.length ? parsedCats : ['eyes', 'mouth', 'eyebrows'];
-
-function range(n) { return Array.from({ length: n }, (_, i) => i + 1); }
-function v2(n) { return String(n).padStart(2, '0'); }
-
-const VARIANTS = {
-  eyes: range(26).map(i => `variant${v2(i)}`),
-  mouth: range(30).map(i => `variant${v2(i)}`),
-  eyebrows: range(15).map(i => `variant${v2(i)}`),
-  glasses: range(5).map(i => `variant${v2(i)}`),
-  earrings: range(6).map(i => `variant${v2(i)}`),
-  hair: [
-    ...range(19).map(i => `short${v2(i)}`),
-    ...range(26).map(i => `long${v2(i)}`)
-  ],
+// Minimal sets; you can add more later
+const variants = {
+  eyes: Array.from({ length: 26 }, (_, i) => `variant${String(i+1).padStart(2,'0')}`),
 };
+const allowed = Object.keys(variants);
 
-const OPTION_ID = {
-  eyes: 'opt-eyes',
-  mouth: 'opt-mouth',
-  eyebrows: 'opt-eyebrows',
-  glasses: 'opt-glasses',
-  earrings: 'opt-earrings',
-  hair: 'opt-hair',
-};
-
-function dicebearUrl(type, variant) {
-  const base = 'https://api.dicebear.com/7.x/adventurer/svg';
-  const params = new URLSearchParams();
-  params.set('seed', 'LabelSeed');
-  // Keep everything simple so the changed part is obvious
-  params.set('backgroundType', 'solid');
-  params.append('backgroundColor', 'ffffff');
-  params.set('radius', '0');
-  params.set('scale', '100');
-  params.set('translateX', '0');
-  params.set('translateY', '0');
-  // Hide occluding accessories unless they are the target
-  if (type !== 'glasses') params.set('glassesProbability', '0');
-  if (type !== 'earrings') params.set('earringsProbability', '0');
-  params.set('featuresProbability', '0');
-  // Fixed baseline
-  params.set('eyes', 'variant01');
-  params.set('mouth', 'variant01');
-  params.set('eyebrows', 'variant01');
-  params.set('hair', 'short01');
-  params.set('hairColor', '9e5622');
-  params.set('skinColor', 'f2d3b1');
-  // Apply the specific variant
-  if (type === 'hair') params.set('hair', variant);
-  else params.set(type, variant);
-  return `${base}?${params.toString()}`;
+// Default to eyes if none specified
+const categories = requested.length ? requested : ['eyes'];
+for (const c of categories) {
+  if (!allowed.includes(c)) {
+    console.error(`Unknown category: ${c}. Allowed: ${allowed.join(', ')}`);
+    process.exit(1);
+  }
 }
 
-function toDataUrl(svg) {
-  const b64 = Buffer.from(svg, 'utf8').toString('base64');
-  return `data:image/svg+xml;base64,${b64}`;
+function dicebearPngUrl(category, key) {
+  const u = new URL('https://api.dicebear.com/7.x/adventurer/png');
+  u.searchParams.set('seed','labeler');
+  u.searchParams.set('backgroundColor','ffffff');
+  u.searchParams.set('radius','0');
+  // neutral baseline
+  u.searchParams.set('eyes','variant01');
+  u.searchParams.set('mouth','variant01');
+  u.searchParams.set('eyebrows','variant01');
+  u.searchParams.set('glasses','variant01');
+  u.searchParams.set('earrings','variant01');
+  u.searchParams.set('features','');
+  u.searchParams.set('glassesProbability','0');
+  u.searchParams.set('earringsProbability','0');
+  u.searchParams.set('featuresProbability','0');
+  u.searchParams.set('hairProbability','0'); // avoid occluding eyes
+  // target part
+  u.searchParams.set(category, key);
+  return u.toString();
 }
 
-async function fetchSvg(url) {
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+function fallbackLabel(category, key) {
+  const m = key.match(/^variant(\d{2})$/);
+  return m ? `${cap(category)} Style ${Number(m[1])}` : `${cap(category)} ${key}`;
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function pngDataUrl(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`DiceBear ${res.status}`);
-  return res.text();
+  const buf = Buffer.from(await res.arrayBuffer());
+  return `data:image/png;base64,${buf.toString('base64')}`;
 }
 
-async function labelVariant({ type, variant, imageDataUrl }) {
-  const sys = {
-    role: 'system',
-    content: `You are labeling DiceBear Adventurer avatar options. Return concise, plain JSON with these keys: { label: string (<= 2-3 words), keywords: string[] (lowercase), emoji?: string }.
-The image shows a single change for the given category (type). Name the style succinctly (e.g., Smile, Open Smile, Wink, Surprised, Raised, Angry, Round, Cat-eye, Studs, Hoops, Short 5, Long 12).`
+async function askOpenAI(imageDataUrl, category, key) {
+  const sys = 'You are labeling avatar parts. Reply ONLY valid JSON: {"label":"2-3 words","keywords":["k1","k2"]}';
+  const userText = `Name this ${category} option '${key}' in 2-3 concise words.`;
+
+  const body = {
+    model,
+    messages: [
+      { role: "system", content: sys },
+      { role: "user", content: [
+          { type: "text", text: userText },
+          { type: "image_url", image_url: { url: imageDataUrl } }
+        ]
+      }
+    ],
+    temperature: 0.2,
   };
-  const user = {
-    role: 'user',
-    content: [
-      { type: 'text', text: `Type: ${type}\nVariant: ${variant}\nRespond JSON only.` },
-      { type: 'image_url', image_url: { url: imageDataUrl } }
-    ]
-  };
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      temperature: 0.2,
-      messages: [sys, user],
-      response_format: { type: 'json_object' }
-    })
+
+  const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body)
   });
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`OpenAI ${res.status}: ${t}`);
+  if (!resp.ok) throw new Error(`OpenAI ${resp.status}: ${await resp.text()}`);
+  const data = await resp.json();
+  const content = data.choices?.[0]?.message?.content?.trim() || "";
+  let parsed;
+  try { parsed = JSON.parse(content); } catch {}
+  if (!parsed || typeof parsed !== 'object' || !parsed.label) {
+    return { label: fallbackLabel(category, key), keywords: [] };
   }
-  const data = await res.json();
-  const content = data?.choices?.[0]?.message?.content || '{}';
-  let parsed = {};
-  try { parsed = JSON.parse(content); } catch (_) {}
-  const label = (parsed.label || '').trim();
-  const keywords = Array.isArray(parsed.keywords) ? parsed.keywords.map(String) : [];
-  const emoji = typeof parsed.emoji === 'string' ? parsed.emoji : undefined;
-  return { label: label || `${type} ${variant}`, keywords, emoji };
+  if (!Array.isArray(parsed.keywords)) parsed.keywords = [];
+  return parsed;
 }
 
 async function main() {
-  const list = [];
-  for (const type of CATEGORIES) {
-    const variants = VARIANTS[type] || [];
-    for (const variant of variants) {
-      list.push({ type, variant });
+  const outJsonPath = 'avatar_labels.generated.json';
+  const outSqlPath = 'avatar_option_labels.sql';
+  const total = categories.reduce((n,c)=>n+(variants[c]?.length||0),0);
+  console.log(`Labeling ${total} variants across: ${categories.join(', ')}`);
+
+  const results = [];
+  for (const cat of categories) {
+    for (const key of variants[cat]) {
+      try {
+        const img = await pngDataUrl(dicebearPngUrl(cat, key));
+        const { label, keywords } = await askOpenAI(img, cat, key);
+        results.push({ option_id: `opt-${cat}`, value_key: key, label, keywords });
+        console.log(`OK ${cat}:${key} -> ${label}`);
+        await sleep(150);
+      } catch (e) {
+        console.error(`Failed ${cat}:${key} -> ${e.message}`);
+      }
     }
   }
 
-  console.log(`Model: ${MODEL}`);
-  console.log(`Labeling ${list.length} variants across: ${CATEGORIES.join(', ')}`);
+  await fs.writeFile(outJsonPath, JSON.stringify(results, null, 2), 'utf8');
 
-  const out = [];
-  const sql = [];
-  // Header SQL for table (so user can copy-paste once)
-  sql.push(`-- Create table if not exists\ncreate table if not exists public.avatar_option_labels (\n  id bigserial primary key,\n  option_id text not null,\n  value_key text not null,\n  label text not null,\n  keywords text[] default '{}',\n  unique (option_id, value_key)\n);\n`);
+  let sql = `
+create table if not exists public.avatar_option_labels (
+  id bigserial primary key,
+  option_id text not null,
+  value_key text not null,
+  label text not null,
+  keywords text[] default '{}',
+  unique (option_id, value_key)
+);
+`.trim();
 
-  let i = 0;
-  for (const item of list) {
-    i++;
-    const url = dicebearUrl(item.type, item.variant);
-    try {
-      const svg = await fetchSvg(url);
-      const dataUrl = toDataUrl(svg);
-      const labeled = await labelVariant({ ...item, imageDataUrl: dataUrl });
-      const optionId = OPTION_ID[item.type] || item.type;
-      out.push({ option_id: optionId, value_key: item.variant, label: labeled.label, keywords: labeled.keywords, emoji: labeled.emoji });
-      const kws = (labeled.keywords || []).map(k => k.replace(/'/g, "''"));
-      sql.push(`insert into public.avatar_option_labels (option_id, value_key, label, keywords) values ('${optionId}','${item.variant}','${labeled.label.replace(/'/g, "''")}', '{${kws.join(',')}}') on conflict (option_id, value_key) do update set label=excluded.label, keywords=excluded.keywords;`);
-      if (i % 10 === 0) console.log(`.. ${i}/${list.length}`);
-      // simple pacing
-      await new Promise(r => setTimeout(r, 200));
-    } catch (e) {
-      console.warn(`Failed ${item.type}:${item.variant} -> ${e.message}`);
-    }
+  for (const r of results) {
+    const kw = `{${r.keywords.map(k => `"${String(k).replace(/"/g,'\\"')}"`).join(',')}}`;
+    const labelEsc = r.label.replace(/'/g,"''");
+    sql += `
+insert into public.avatar_option_labels (option_id, value_key, label, keywords)
+values ('${r.option_id}', '${r.value_key}', '${labelEsc}', '${kw}')
+on conflict (option_id, value_key)
+do update set label = excluded.label, keywords = excluded.keywords;`.trim();
   }
+  sql += '\n';
+  await fs.writeFile(outSqlPath, sql, 'utf8');
 
-  const jsonPath = path.join(process.cwd(), 'avatar_labels.generated.json');
-  const sqlPath = path.join(process.cwd(), 'avatar_option_labels.sql');
-  fs.writeFileSync(jsonPath, JSON.stringify(out, null, 2));
-  fs.writeFileSync(sqlPath, sql.join('\n'));
-  console.log(`\nWrote ${out.length} labels to:\n- ${jsonPath}\n- ${sqlPath}\n`);
+  console.log(`\nWrote ${results.length} labels to:\n  - ${outJsonPath}\n  - ${outSqlPath}\nNext: pbcopy < ${outSqlPath}  # then paste into Supabase SQL editor and Run.`);
 }
 
 main().catch(err => { console.error(err); process.exit(1); });
