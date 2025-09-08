@@ -38,13 +38,13 @@ serve(async (req) => {
 
     const openai = new OpenAI({ apiKey })
 
-    const system = 'You are a precise UI assistant that selects DiceBear Avataaars options strictly from provided dropdowns. For male descriptions, prioritize masculine features like facial hair (beardLight, beardMedium, beardMajestic, moustacheFancy), shorter hairstyles, and serious expressions. For female descriptions, avoid facial hair and use longer hairstyles. Respond with valid JSON only.'
+    const system = 'You are a precise UI assistant that selects DiceBear Adventurer options strictly from provided dropdowns. When "man" or "male" is mentioned, try to use more masculine seeds and serious expressions. When "woman" or "female" is mentioned, use more varied expressions. Always include probability values: hairProbability should be 100 for visible hair, featuresProbability should be 100 for visible features. Respond with valid JSON only.'
     const userMsg = JSON.stringify({
       task: 'Map description to options',
-      style: 'avataaars',
+      style: 'adventurer',
       seedHint, description,
       allowedOptions: options,
-      expectedKeys: ['seed','backgroundType','backgroundColor','backgroundRotation','radius','rotate','scale','flip','clip','translateX','translateY','accessories','accessoriesColor','accessoriesProbability','clothing','clothingColor','clothingGraphic','eyebrows','eyes','facialHair','facialHairColor','facialHairProbability','hairColor','hatColor','mouth','nose','skinColor','top']
+      expectedKeys: ['seed','backgroundType','backgroundColor','backgroundRotation','radius','rotate','scale','flip','clip','translateX','translateY','eyes','mouth','eyebrows','glasses','glassesProbability','earrings','earringsProbability','features','featuresProbability','hair','hairColor','hairProbability','skinColor']
     })
 
     const resp = await openai.chat.completions.create({
@@ -58,7 +58,11 @@ serve(async (req) => {
     })
 
     const raw = resp.choices?.[0]?.message?.content || '{}'
+    console.log('OpenAI raw response:', raw)
+    
     const parsed = safeParseJson(raw)
+    console.log('Parsed response:', parsed)
+    
     const allowed = new Set(['seed','backgroundType','backgroundColor','backgroundRotation','radius','rotate','scale','flip','clip','translateX','translateY','eyes','mouth','eyebrows','glasses','glassesProbability','earrings','earringsProbability','features','featuresProbability','hair','hairColor','hairProbability','skinColor'])
     const clean: Record<string, unknown> = {}
     for (const [k,v] of Object.entries(parsed || {})) if (allowed.has(k)) clean[k] = v

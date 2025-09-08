@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Direct Avatar Test</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Direct Avatar Generator Test</h1>
+    
+    <div id="auth-section">
+        <h2>Login First</h2>
+        <input type="email" id="email" placeholder="Email" value="test@checkloop.com">
+        <input type="password" id="password" placeholder="Password" value="testpassword">
+        <button onclick="login()">Login</button>
+        <div id="auth-status"></div>
+    </div>
+
+    <div id="test-section" style="display:none;">
+        <h2>Test Avatar Generation</h2>
+        <textarea id="description" placeholder="Describe the avatar">man with long blue hair and earrings</textarea><br>
+        <button onclick="testAvatar()">Generate Avatar</button>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        // Initialize Supabase
+        const supabase = window.supabase.createClient(
+            'https://unveoqnlqnobufhublyw.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME'
+        );
+
+        // Check if user is already logged in
+        supabase.auth.onAuthStateChange((event, session) => {
+            if (session?.user) {
+                document.getElementById('auth-section').style.display = 'none';
+                document.getElementById('test-section').style.display = 'block';
+                document.getElementById('auth-status').innerHTML = `Logged in as: ${session.user.email}`;
+            } else {
+                document.getElementById('auth-section').style.display = 'block';
+                document.getElementById('test-section').style.display = 'none';
+                document.getElementById('auth-status').innerHTML = 'Not logged in';
+            }
+        });
+
+        async function login() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            const { error } = await supabase.auth.signInWithPassword({
+                email: email,
+                password: password
+            });
+            
+            if (error) {
+                document.getElementById('auth-status').innerHTML = `Login error: ${error.message}`;
+            }
+        }
+
+        async function testAvatar() {
+            const description = document.getElementById('description').value;
+            
+            // Sample options for testing
+            const options = {
+                "opt-hair": ["short", "long", "curly", "straight"],
+                "opt-hairColor": ["black", "brown", "blue", "red", "blonde"],
+                "opt-earrings": ["none", "hoops", "studs"],
+                "opt-eyes": ["default", "happy", "wink", "surprised"],
+                "opt-mouth": ["smile", "serious", "default", "open"],
+                "opt-eyebrows": ["default", "raised", "angry"],
+                "opt-glasses": ["none", "round", "square"],
+                "opt-features": ["none", "freckles", "blush"]
+            };
+
+            try {
+                console.log('Calling Edge Function with:', { description, options });
+                
+                const { data, error } = await supabase.functions.invoke('generate-avatar', {
+                    body: { 
+                        description: description,
+                        options: options,
+                        seedHint: "DirectTest"
+                    }
+                });
+
+                if (error) {
+                    console.error('Function error:', error);
+                    document.getElementById('result').innerHTML = `<h3>Error:</h3><pre>${JSON.stringify(error, null, 2)}</pre>`;
+                } else {
+                    console.log('Success:', data);
+                    document.getElementById('result').innerHTML = `<h3>Result:</h3><pre>${JSON.stringify(data, null, 2)}</pre>`;
+                    
+                    // Check for probability fields
+                    if (data.hairProbability !== undefined) {
+                        document.getElementById('result').innerHTML += `<p style="color:green;">✅ hairProbability included: ${data.hairProbability}</p>`;
+                    } else {
+                        document.getElementById('result').innerHTML += `<p style="color:red;">❌ hairProbability missing</p>`;
+                    }
+                    
+                    if (data.featuresProbability !== undefined) {
+                        document.getElementById('result').innerHTML += `<p style="color:green;">✅ featuresProbability included: ${data.featuresProbability}</p>`;
+                    } else {
+                        document.getElementById('result').innerHTML += `<p style="color:red;">❌ featuresProbability missing</p>`;
+                    }
+                }
+            } catch (err) {
+                console.error('Unexpected error:', err);
+                document.getElementById('result').innerHTML = `<h3>Unexpected Error:</h3><pre>${err.message}</pre>`;
+            }
+        }
+    </script>
+</body>
+</html>
