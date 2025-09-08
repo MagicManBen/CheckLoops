@@ -254,14 +254,28 @@
 
       console.log('Final effective role:', effectiveRole);
 
-      // Always redirect to staff.html regardless of role
+      // Check if user has completed their profile setup
+      const { data: profileCheck } = await supabase
+        .from('profiles')
+        .select('full_name, nickname')
+        .eq('user_id', theUser.id)
+        .single();
+
+      // If user has no profile or incomplete profile, send to welcome
+      if (!profileCheck || !profileCheck.full_name) {
+        console.log('User has incomplete profile, redirecting to staff-welcome.html');
+        window.location.href = 'staff-welcome.html';
+        return;
+      }
+
+      // For existing users, redirect to staff.html regardless of role
       // Admin/Owner users will see an admin button in the navigation
       console.log('Redirecting to staff.html for all users');
       window.location.href = 'staff.html';
     } catch (err) {
       console.error('redirectByRole failed', err);
-      // Default to staff.html even on error
-      window.location.href = 'staff.html';
+      // Default to staff-welcome for safety
+      window.location.href = 'staff-welcome.html';
     }
   }
 
