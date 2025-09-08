@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>AI Avatar Test</title>
+</head>
+<body>
+  <h1>AI Avatar Generation Test</h1>
+  <input id="description" placeholder="Enter description" value="man with long blue hair and a beard">
+  <button onclick="testAI()">Test AI</button>
+  <div id="result"></div>
+
+  <script src="config.js"></script>
+  <script type="module">
+    import { initSupabase } from './staff-common.js';
+    
+    let supabase;
+    
+    async function init() {
+      try {
+        supabase = await initSupabase();
+        console.log('Supabase initialized:', !!supabase);
+        document.getElementById('result').innerHTML = '<p style="color: green;">✅ Supabase initialized successfully</p>';
+      } catch (error) {
+        console.error('Failed to initialize Supabase:', error);
+        document.getElementById('result').innerHTML = `<p style="color: red;">❌ Failed to initialize Supabase: ${error.message}</p>`;
+      }
+    }
+    
+    window.testAI = async function() {
+      const result = document.getElementById('result');
+      const description = document.getElementById('description').value;
+      
+      if (!supabase) {
+        result.innerHTML = '<p style="color: red;">❌ Supabase not initialized</p>';
+        return;
+      }
+      
+      result.innerHTML = '<p>🤔 Testing AI generation...</p>';
+      
+      try {
+        console.log('Calling Supabase function...');
+        
+        const { data, error } = await supabase.functions.invoke('generate-avatar', { 
+          body: { 
+            description,
+            options: {},
+            seedHint: "Test"
+          } 
+        });
+        
+        console.log('Response:', { data, error });
+        
+        if (error) {
+          result.innerHTML = `<h3 style="color: red;">❌ Error:</h3><pre>${JSON.stringify(error, null, 2)}</pre>`;
+        } else {
+          result.innerHTML = `<h3 style="color: green;">✅ Success:</h3><pre>${JSON.stringify(data, null, 2)}</pre>`;
+        }
+      } catch (err) {
+        console.error('Exception:', err);
+        result.innerHTML = `<h3 style="color: red;">❌ Exception:</h3><pre>${err.message}</pre>`;
+      }
+    };
+    
+    init();
+  </script>
+</body>
+</html>

@@ -241,7 +241,7 @@
                 <select id="opt-translateY" style="padding:10px 12px; border-radius:10px; border:1px solid var(--border-color);"></select>
               </label>
 
-              <!-- Style-specific: Adventurer -->
+              <!-- Style-specific: Avataaars -->
               <label style="display:flex; flex-direction:column; gap:6px;">
                 <span style="font-weight:700; color:var(--ink);">Eyes</span>
                 <select id="opt-eyes" style="padding:10px 12px; border-radius:10px; border:1px solid var(--border-color);"></select>
@@ -316,8 +316,13 @@
 
   <script type="module">
     import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate } from './staff-common.js';
+    
+    // Make supabase globally available for AI generation
+    let globalSupabase;
+    
     (async function(){
       const supabase = await initSupabase();
+      globalSupabase = supabase; // Store in global variable
       handleAuthState(supabase);
       navActivate('welcome');
 
@@ -353,12 +358,12 @@
           nicknameColumnExists = false;
         }
 
-        // ---- Step 3: DiceBear Avatar Builder (Adventurer) ----
+        // ---- Step 3: DiceBear Avatar Builder (Avataaars) ----
         function rangeArr(start, end, step=1){ const a=[]; for(let i=start;i<=end;i+=step) a.push(i); return a; }
         function pad2(n){ return String(n).padStart(2,'0'); }
 
         function buildAvatarUrlFromControls(){
-          const base = 'https://api.dicebear.com/7.x/adventurer/svg';
+          const base = 'https://api.dicebear.com/7.x/avataaars/svg';
           const seed = encodeURIComponent(document.getElementById('opt-seed').value || 'User');
           const params = new URLSearchParams();
           params.set('seed', seed);
@@ -455,21 +460,54 @@
 
         async function aiGenerateFromDescription(){
           const prompt = String(document.getElementById('avatarPrompt')?.value||'').trim();
-          if (!prompt) throw new Error('EMPTY_PROMPT');
+          if (!prompt) throw new Error('Please enter a description first');
+          
+          if (!globalSupabase) throw new Error('Supabase not initialized');
+          
           const endpoint = getAiEndpoint();
           const nickVal = String(document.getElementById('nickname')?.value || '').trim();
           const seedHint = nickVal || (document.getElementById('opt-seed')?.value||'User');
           const options = collectDropdownOptions();
+          
+          // Try local proxy first if on localhost/127.0.0.1
           if (endpoint && endpoint.startsWith('http')){
-            const res = await fetch(endpoint, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ description: prompt, options, seedHint }) });
-            if (!res.ok){ const t = await res.text().catch(()=>res.statusText); throw new Error('AI_HTTP_'+res.status+': '+t); }
-            const data = await res.json();
+            try {
+              const res = await fetch(endpoint, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ description: prompt, options, seedHint }) });
+              if (!res.ok){ 
+                // If local proxy fails, fall back to Supabase Edge Function
+                throw new Error('Local proxy failed, trying Supabase function');
+              }
+              const data = await res.json();
+              applyAiResult(data);
+              return;
+            } catch (localError) {
+              console.log('Local proxy not available, using Supabase Edge Function:', localError.message);
+              // Fall through to Supabase Edge Function
+            }
+          }
+          
+          // Use Supabase Edge Function
+          console.log('Using Supabase Edge Function for AI generation');
+          console.log('globalSupabase:', globalSupabase ? 'initialized' : 'not initialized');
+          
+          try {
+            const { data, error } = await globalSupabase.functions.invoke('generate-avatar', { 
+              body: { description: prompt, options, seedHint } 
+            });
+            console.log('Supabase response:', { data, error });
+            
+            if (error) {
+              throw new Error(`Supabase function error: ${error.message || JSON.stringify(error)}`);
+            }
+            
+            if (!data) {
+              throw new Error('No data returned from Supabase function');
+            }
+            
             applyAiResult(data);
-          } else {
-            // Use Supabase Edge Function in non-local environments
-            const { data, error } = await supabase.functions.invoke('generate-avatar', { body: { description: prompt, options, seedHint } });
-            if (error) throw error;
-            applyAiResult(data || {});
+          } catch (supabaseError) {
+            console.error('Supabase function call failed:', supabaseError);
+            throw new Error(`AI generation failed: ${supabaseError.message}`);
           }
         }
 
@@ -650,8 +688,8 @@
               await aiGenerateFromDescription();
               msg.textContent = 'Applied! You can fine-tune with the dropdowns.';
             }catch(e){
-              console.error('AI generate error', e);
-              msg.textContent = 'Could not generate. Ensure proxy is running with your OpenAI key.';
+              console.error('AI generate error:', e);
+              msg.textContent = `Error: ${e.message}`;
             } finally {
               aiBtn.disabled = false;
             }

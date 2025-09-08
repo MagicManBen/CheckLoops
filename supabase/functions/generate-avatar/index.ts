@@ -38,17 +38,17 @@ serve(async (req) => {
 
     const openai = new OpenAI({ apiKey })
 
-    const system = 'You are a precise UI assistant that selects DiceBear Adventurer options strictly from provided dropdowns. Respond with valid JSON only.'
+    const system = 'You are a precise UI assistant that selects DiceBear Avataaars options strictly from provided dropdowns. For male descriptions, prioritize masculine features like facial hair (beardLight, beardMedium, beardMajestic, moustacheFancy), shorter hairstyles, and serious expressions. For female descriptions, avoid facial hair and use longer hairstyles. Respond with valid JSON only.'
     const userMsg = JSON.stringify({
       task: 'Map description to options',
-      style: 'adventurer',
+      style: 'avataaars',
       seedHint, description,
       allowedOptions: options,
-      expectedKeys: ['seed','backgroundType','backgroundColor','backgroundRotation','radius','rotate','scale','flip','clip','translateX','translateY','eyes','mouth','eyebrows','glasses','glassesProbability','earrings','earringsProbability','features','featuresProbability','hair','hairColor','hairProbability','skinColor']
+      expectedKeys: ['seed','backgroundType','backgroundColor','backgroundRotation','radius','rotate','scale','flip','clip','translateX','translateY','accessories','accessoriesColor','accessoriesProbability','clothing','clothingColor','clothingGraphic','eyebrows','eyes','facialHair','facialHairColor','facialHairProbability','hairColor','hatColor','mouth','nose','skinColor','top']
     })
 
     const resp = await openai.chat.completions.create({
-      model: 'gpt-5-nano',
+      model: 'gpt-4o-mini',
       temperature: 0.3,
       response_format: { type: 'json_object' } as any,
       messages: [
