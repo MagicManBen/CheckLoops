@@ -137,9 +137,19 @@
             try {
                 log('Clearing all sessions...');
                 await supabaseClient.auth.signOut();
-                // Also clear local storage
-                localStorage.clear();
-                sessionStorage.clear();
+                    // Also clear only auth-related localStorage keys while preserving 'remember me' entries
+                    try {
+                        const preserve = ['rememberMe','rememberedEmail','rememberedUsername','rememberedPassword'];
+                        const keys = Object.keys(localStorage || {});
+                        keys.forEach(k => {
+                            try {
+                                if (preserve.includes(k)) return;
+                                if (!k.startsWith('sb-') && !k.includes('supabase') && !k.startsWith('auth')) return;
+                                localStorage.removeItem(k);
+                            } catch(_){}
+                        });
+                    } catch(_){}
+                    sessionStorage.clear();
                 log('All sessions cleared', 'success');
                 checkCurrentSession();
             } catch (err) {

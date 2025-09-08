@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CheckLoop — Achievements</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+  <script src="config.js"></script>
+  <link rel="stylesheet" href="staff.css">
+
+  <style>
+    :root{
+      --brand:#6366f1;              /* indigo */
+      --brand-2:#22d3ee;            /* cyan */
+      --ok:#16a34a;                 /* green */
+      --warn:#f59e0b;               /* amber */
+      --danger:#ef4444;             /* red */
+      --ring-bg: rgba(2,6,23,.08);
+      --muted:#6b7280;
+      --card-bg: var(--panel-bg, #fff);
+      --blur: saturate(140%) blur(4px);
+    }
+    /* Page scaffolding */
+    .ach-wrap{ display:grid; gap:14px; }
+
+    /* Toolbar */
+    .ach-toolbar{ display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+    .seg{ display:flex; gap:6px; padding:4px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:999px; box-shadow:0 6px 16px rgba(2,6,23,.05); }
+    .seg button{ border:0; padding:8px 14px; border-radius:999px; background:transparent; font-weight:600; cursor:pointer; color:var(--muted); }
+    .seg button.active{ background:linear-gradient(135deg,var(--brand),var(--brand-2)); color:#fff; }
+    .ach-search{ flex:1; min-width:220px; max-width:340px; padding:10px 12px; border-radius:10px; border:1px solid var(--border-color); background:var(--card-bg); box-shadow:0 6px 14px rgba(2,6,23,.05) inset; }
+
+    /* Summary */
+    .ach-summary{ display:flex; gap:16px; align-items:center; padding:14px; border-radius:14px; border:1px solid var(--border-color); background:linear-gradient(135deg, rgba(99,102,241,.08), rgba(34,211,238,.08)); }
+    .ach-summary .illus-circle{ width:64px; height:64px; border-radius:16px; display:grid; place-items:center; background:linear-gradient(135deg,#fff,rgba(255,255,255,.6)); border:1px solid var(--border-color); box-shadow:0 10px 22px rgba(2,6,23,.08); }
+    .ach-summary h3{ margin:0; font-size:18px; }
+    .ach-kpis{ display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+    .kpi{ padding:6px 10px; border-radius:999px; background:#fff; border:1px solid var(--border-color); font-weight:600; }
+    .meter{ flex:1; min-width:220px; height:10px; background:var(--ring-bg); border-radius:999px; position:relative; overflow:hidden; }
+    .meter > i{ position:absolute; inset:0; display:block; background:linear-gradient(90deg,var(--brand),var(--brand-2)); width:0%; border-radius:999px; transition:width .6s ease; }
+
+    /* Grid */
+    .ach-list{ display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; }
+
+    /* Cards */
+    .ach-card{ position:relative; padding:14px; border-radius:14px; background:var(--card-bg); box-shadow:0 8px 22px rgba(2,6,23,.06); border:1px solid var(--border-color); display:flex; gap:12px; align-items:flex-start; transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
+    .ach-card:hover{ transform:translateY(-2px); box-shadow:0 14px 34px rgba(2,6,23,.10); }
+    .ach-card.unlocked{ border-color:rgba(99,102,241,.45); box-shadow:0 14px 34px rgba(99,102,241,.16); }
+    .ach-ico{ width:58px; height:58px; border-radius:14px; display:grid; place-items:center; font-weight:700; font-size:24px; color:#222; border:1px solid rgba(2,6,23,.06); }
+    .ach-ico.cat-milestone{ background:linear-gradient(135deg,#fde68a,#f59e0b); }
+    .ach-ico.cat-behavior{ background:linear-gradient(135deg,#a7f3d0,#10b981); }
+    .ach-ico.cat-streak{ background:linear-gradient(135deg,#c7d2fe,#6366f1); }
+    .ach-meta{ flex:1; }
+    .ach-meta .title{ font-weight:800; margin-bottom:6px; letter-spacing:.2px; }
+    .ach-meta .desc{ color:var(--muted); font-size:13px; }
+    .ach-meta .meta-note{ margin-top:8px; font-size:12px; color:var(--muted); }
+    .ach-actions{ display:flex; gap:10px; align-items:center; }
+
+    /* Points ribbon */
+    .pts{ position:absolute; top:8px; right:8px; background:#111; color:#fff; font-weight:700; font-size:12px; padding:4px 8px; border-radius:999px; opacity:.9; }
+
+    /* Progress ring */
+    .pr{ width:56px; height:56px; border-radius:50%; background:conic-gradient(var(--brand) var(--p,0%), var(--ring-bg) 0); padding:4px; display:grid; place-items:center; box-shadow:inset 0 0 0 1px rgba(2,6,23,.06); }
+    .pr-inner{ width:100%; height:100%; border-radius:50%; background:var(--card-bg); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px; }
+
+    /* Buttons */
+    .btn.small{ padding:8px 12px; font-size:13px; }
+    .btn.primary{ background:linear-gradient(135deg,var(--brand),var(--brand-2)); color:#fff; border:0; }
+    .btn.primary:disabled{ filter:grayscale(.3); opacity:.7; }
+
+    /* Skeletons */
+    .skeleton-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; }
+    .skeleton-card{ height:112px; border-radius:14px; background:linear-gradient(100deg, rgba(2,6,23,.08), rgba(2,6,23,.04) 40%, rgba(2,6,23,.08) 80%); background-size:200% 100%; animation:shimmer 1.2s infinite; }
+    @keyframes shimmer{ 0%{background-position:0% 0} 100%{background-position:200% 0} }
+
+    /* Empty state */
+    .ach-empty{ display:grid; place-items:center; padding:24px; color:var(--muted); }
+
+    /* Confetti */
+    .confetti{ position:fixed; width:8px; height:8px; background:#000; top:0; left:0; pointer-events:none; opacity:0; transform:translate(-50%,-50%); animation:confetti-fall 900ms ease-out forwards; z-index:60; }
+    @keyframes confetti-fall{ 0%{opacity:1; transform:translate(-50%,-50%) scale(1)} 100%{ opacity:0; transform:translate(calc(-50% + var(--dx,0px)), calc(-50% + var(--dy,40px))) rotate(var(--rot,0deg)); } }
+
+    /* Toast */
+    .toast{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px); background:#111; color:#fff; padding:10px 14px; border-radius:10px; opacity:0; transition:opacity .2s, transform .2s; font-weight:600; box-shadow:0 10px 22px rgba(2,6,23,.22); z-index:70; }
+    .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+  <div class="bg"><div class="wave"></div><div class="wave wave2"></div></div>
+  <main class="content">
+    <div class="topbar panel" style="position:relative;">
+      <div class="halo"></div>
+      <div class="nav seg-nav">
+        <a href="staff.html" data-page="home">Home</a>
+        <a href="staff-welcome.html" data-page="welcome">Welcome</a>
+        <a href="staff-scans.html" data-page="scans">My Scans</a>
+        <a href="staff-training.html" data-page="training">My Training</a>
+        <a href="achievements.html" data-page="achievements" class="active">Achievements</a>
+        <a href="staff-quiz.html" data-page="quiz">Quiz</a>
+        <a href="index.html" data-page="admin" class="admin-only" style="display:none;">Admin Site</a>
+      </div>
+      <div class="spacer"></div>
+      <div class="pill" id="site-pill">Site: —</div>
+      <div class="pill" id="email-pill">—</div>
+      <div class="pill" id="role-pill">—</div>
+      <a class="btn" href="Home.html">Sign Out</a>
+    </div>
+
+    <section class="panel g-12">
+      <div class="panel-header" style="gap:10px; align-items:center;">
+        <div class="illus-circle"><img src="https://api.iconify.design/fluent-emoji-flat:trophy.svg" alt="Trophy"></div>
+        <div class="panel-title" style="font-size:20px;">My Achievements</div>
+      </div>
+
+      <div class="ach-wrap">
+        <div class="ach-toolbar">
+          <div class="seg" role="tablist" aria-label="Filter achievements">
+            <button class="active" data-filter="all" role="tab" aria-selected="true">All</button>
+            <button data-filter="unlocked" role="tab" aria-selected="false">Unlocked</button>
+            <button data-filter="locked" role="tab" aria-selected="false">Locked</button>
+          </div>
+          <input id="ach-search" class="ach-search" type="search" placeholder="Search achievements…" aria-label="Search achievements">
+        </div>
+
+        <div class="ach-summary" id="ach-summary">
+          <div class="illus-circle"><img src="https://api.iconify.design/fluent-emoji-flat:sports-medal.svg" alt="Progress"></div>
+          <div style="flex:1; min-width:220px;">
+            <h3>Progress</h3>
+            <div class="meter" aria-hidden="true"><i id="ach-meter"></i></div>
+            <div class="ach-kpis" style="margin-top:8px;">
+              <div class="kpi"><span id="ach-unlocked">0</span>/<span id="ach-total">0</span> unlocked</div>
+              <div class="kpi"><span id="ach-points">0</span> pts</div>
+            </div>
+          </div>
+        </div>
+
+        <div id="ach-loading" aria-live="polite">
+          <div class="skeleton-grid">
+            <div class="skeleton-card"></div>
+            <div class="skeleton-card"></div>
+            <div class="skeleton-card"></div>
+          </div>
+        </div>
+        <div id="ach-empty" class="ach-empty" style="display:none">No achievements yet. Come back after completing some checks ✨</div>
+        <div class="ach-list" id="ach-list" style="display:none;"></div>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script type="module">
+    import { initSupabase, requireStaffSession, setTopbar, handleAuthState, navActivate } from './staff-common.js';
+
+    const supabase = await initSupabase();
+    handleAuthState(supabase);
+    navActivate('achievements');
+
+    // Utilities
+    const iconMap = { star:'⭐', clock:'⏰', calendar:'📅', certificate:'🎓', trophy:'🏆' };
+    const esc = (s)=> (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;');
+    const $ = (sel, root=document)=> root.querySelector(sel);
+    const fmtDate = (d)=>{
+      try{
+        const dt = (d instanceof Date) ? d : new Date(d);
+        return dt.toLocaleDateString(undefined, { year:'numeric', month:'short', day:'numeric' });
+      }catch(_){ return ''; }
+    };
+    function toast(msg){ const t=$('#toast'); if(!t) return; t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 2200); }
+    function confettiBurst(x,y){
+      for(let i=0;i<28;i++){
+        const el = document.createElement('div');
+        el.className = 'confetti';
+        el.style.left = x+'px';
+        el.style.top = y+'px';
+        el.style.background = ['#60a5fa','#a78bfa','#34d399','#f472b6','#fbbf24'][i%5];
+        el.style.setProperty('--dx', (Math.random()*120-60)+'px');
+        el.style.setProperty('--dy', (80+Math.random()*120)+'px');
+        el.style.setProperty('--rot', (Math.random()*720-360)+'deg');
+        document.body.appendChild(el);
+        setTimeout(()=> el.remove(), 1000);
+      }
+    }
+
+    // Data helpers (page‑local to avoid external deps)
+    async function getKioskUserId(userId){
+      const { data } = await supabase.from('kiosk_users').select('id').eq('user_id', userId).maybeSingle();
+      return data?.id || null;
+    }
+    async function listAchievements(){
+      const { data, error } = await supabase.from('achievements').select('*').order('key');
+      if (error) { console.warn('[achievements] load error', error); return []; }
+      return data || [];
+    }
+    async function listUserAchievements(kioskUserId){
+      if (!kioskUserId) return [];
+      const { data, error } = await supabase.from('user_achievements').select('*').eq('kiosk_user_id', kioskUserId);
+      if (error) { console.warn('[user_achievements] load error', error); return []; }
+      return data || [];
+    }
+    async function upsertUserAchievement(kioskUserId, key, status='unlocked', progress=100){
+      const payload = {
+        kiosk_user_id: kioskUserId,
+        achievement_key: key,
+        status,
+        progress_percent: progress,
+        unlocked_at: (status==='unlocked'? new Date().toISOString() : null)
+      };
+      const { error } = await supabase.from('user_achievements').upsert(payload, { onConflict:'kiosk_user_id,achievement_key' });
+      if (error) throw error;
+      return true;
+    }
+
+    // Load page
+    try{
+      const { session, profileRow } = await requireStaffSession(supabase);
+      const user = session.user;
+      const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
+      // Site text
+      try{
+        if (siteId){
+          const { data } = await supabase.from('sites').select('name,city').eq('id', siteId).maybeSingle();
+          const txt = data ? \`\${data.name}\${data.city? ' • ' + data.city: ''}\` : null;
+          setTopbar({ siteText: txt, email: user.email, role: profileRow?.role || user?.raw_user_meta_data?.role });
+        }else{
+          setTopbar({ siteText: null, email: user.email, role: profileRow?.role || user?.raw_user_meta_data?.role });
+        }
+      }catch(_){ setTopbar({ siteText: null, email: user.email, role: profileRow?.role || user?.raw_user_meta_data?.role }); }
+
+      await loadAchievements(user);
+    }catch(e){
+      if (String(e.message).includes('NO_SESSION')) { window.location.replace('Home.html'); }
+      if (String(e.message).includes('NOT_STAFF')) { window.location.replace('index.html'); }
+      console.error(e);
+    }
+
+    async function loadAchievements(user){
+      const loading = $('#ach-loading');
+      const listEl = $('#ach-list');
+      const empty = $('#ach-empty');
+      const meter = $('#ach-meter');
+      const kpiUnlocked = $('#ach-unlocked');
+      const kpiTotal = $('#ach-total');
+      const kpiPoints = $('#ach-points');
+
+      loading.style.display='block'; listEl.style.display='none'; empty.style.display='none';
+
+      const kioskUserId = await getKioskUserId(user.id);
+      const [ach, ua] = await Promise.all([listAchievements(), listUserAchievements(kioskUserId)]);
+
+      loading.style.display='none';
+      if (!ach.length){ empty.style.display='block'; return; }
+      listEl.style.display='grid';
+
+      const merged = ach.map(a => ({ 
+        ...a, 
+        user: ua.find(u => u.achievement_key === a.key) || null 
+      }));
+
+      // KPIs
+      const total = merged.length;
+      const unlockedRows = merged.filter(r => (r.user?.status || r.status) === 'unlocked');
+      const unlocked = unlockedRows.length;
+      const totalPts = merged.reduce((a,r)=>a + (r.points||0), 0);
+      const unlockedPts = unlockedRows.reduce((a,r)=>a + (r.points||0), 0);
+      kpiUnlocked.textContent = unlocked; kpiTotal.textContent = total; kpiPoints.textContent = unlockedPts;
+      const pctOverall = totalPts ? Math.round((unlockedPts/totalPts)*100) : 0;
+      meter.style.width = pctOverall + '%';
+
+      // Render cards
+      listEl.innerHTML = merged.map(r => {
+        const status = r.user?.status || r.status || 'locked';
+        const pct = r.user?.progress_percent ?? r.progress_percent ?? 0;
+        const unlockedAt = r.user?.unlocked_at || r.unlocked_at || null;
+        const pts = r.points || 0;
+        const cat = (r.metadata && r.metadata.category) ? String(r.metadata.category).toLowerCase() : '';
+        const catCls = cat === 'streak' ? 'cat-streak' : cat === 'behavior' ? 'cat-behavior' : 'cat-milestone';
+        const lockedCls = (status !== 'unlocked') ? 'locked' : 'unlocked';
+        const ico = iconMap[r.icon] || r.icon || '🏆';
+        return \`<div class="ach-card \${lockedCls}" data-key="\${esc(r.key)}" data-status="\${status}" data-title="\${esc(r.name)} \${esc(r.description||'')}">
+          <span class="pts">\${pts} pts</span>
+          <div class="ach-ico \${catCls}">\${esc(ico)}</div>
+          <div class="ach-meta">
+            <div class="title">\${esc(r.name)}</div>
+            <div class="desc">\${esc(r.description || '')}</div>
+            <div class="meta-note">Status: <strong>\${status}</strong> \${unlockedAt ? ' • ' + fmtDate(unlockedAt) : ''}</div>
+          </div>
+          <div class="ach-actions">
+            <div class="pr" style="--p:\${Math.max(0, Math.min(100, Math.round(pct)))}%"><div class="pr-inner"><span>\${Math.round(pct)}%</span></div></div>
+            <button class="btn small primary unlock-btn" data-key="\${esc(r.key)}" \${status==='unlocked'? 'disabled': ''}>\${status==='unlocked' ? 'Unlocked' : 'Unlock'}</button>
+          </div>
+        </div>\`;
+      }).join('');
+
+      // Unlock interactions
+      listEl.querySelectorAll('.unlock-btn').forEach(btn => {
+        btn.addEventListener('click', async (ev) => {
+          const key = btn.getAttribute('data-key');
+          if (!kioskUserId) { alert('Unable to find your staff record.'); return; }
+          btn.disabled = true; const old = btn.textContent; btn.textContent = 'Saving…';
+          try{
+            await upsertUserAchievement(kioskUserId, key, 'unlocked', 100);
+            const card = btn.closest('.ach-card');
+            if (card) {
+              card.dataset.status = 'unlocked';
+              card.classList.add('unlocked');
+              card.classList.remove('locked');
+              const note = card.querySelector('.meta-note strong');
+              if (note) note.textContent = 'unlocked';
+              const ring = card.querySelector('.pr');
+              if (ring) ring.style.setProperty('--p','100%');
+              const ringLbl = card.querySelector('.pr-inner span');
+              if (ringLbl) ringLbl.textContent = '100%';
+              // confetti at button loc
+              const rect = btn.getBoundingClientRect();
+              confettiBurst(rect.left + rect.width/2, rect.top + window.scrollY);
+            }
+            btn.textContent = 'Unlocked';
+            toast('Achievement unlocked!');
+            // update summary KPIs
+            const u = Number(kpiUnlocked.textContent||'0') + 1;
+            const pts = Number(kpiPoints.textContent||'0') + Number(btn.closest('.ach-card')?.querySelector('.pts')?.textContent.replace(/\\D/g,'') || 0);
+            kpiUnlocked.textContent = String(u);
+            kpiPoints.textContent = String(pts);
+            const totalPts2 = Array.from(listEl.children).reduce((a,el)=> a + Number(el.querySelector('.pts')?.textContent.replace(/\\D/g,'')||0), 0);
+            meter.style.width = totalPts2 ? Math.round((pts/totalPts2)*100)+'%' : '0%';
+          }catch(e){
+            console.error(e);
+            btn.textContent = old;
+            btn.disabled = false;
+            alert('Could not unlock this achievement.');
+          }
+        });
+      });
+
+      // Search + Filter
+      const search = $('#ach-search');
+      const seg = document.querySelectorAll('.seg button');
+      function applyFilter(){
+        const q = (search.value||'').toLowerCase().trim();
+        const active = Array.from(seg).find(b=>b.classList.contains('active'))?.dataset.filter || 'all';
+        let visible = 0;
+        listEl.querySelectorAll('.ach-card').forEach(card => {
+          const title = (card.dataset.title||'').toLowerCase();
+          const status = card.dataset.status || 'locked';
+          const matchQ = !q || title.includes(q);
+          const matchF = active === 'all' || status === active;
+          const show = matchQ && matchF;
+          card.style.display = show ? '' : 'none';
+          if (show) visible++;
+        });
+        empty.style.display = visible ? 'none' : 'block';
+      }
+      search.addEventListener('input', applyFilter);
+      seg.forEach(b=> b.addEventListener('click', ()=>{
+        seg.forEach(x=> x.classList.remove('active'));
+        b.classList.add('active');
+        applyFilter();
+      }));
+    }
+  </script>
+</body>
+</html>
