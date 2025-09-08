@@ -29,16 +29,19 @@ for each row execute function public._saw_touch_updated_at();
 alter table public.staff_app_welcome enable row level security;
 
 -- Allow a signed-in user to insert their own record
+drop policy if exists "saw_insert_own" on public.staff_app_welcome;
 create policy "saw_insert_own" on public.staff_app_welcome
   for insert to authenticated
   with check (user_id = auth.uid());
 
 -- Allow a signed-in user to select their own record
+drop policy if exists "saw_select_own" on public.staff_app_welcome;
 create policy "saw_select_own" on public.staff_app_welcome
   for select to authenticated
   using (user_id = auth.uid());
 
 -- Allow a signed-in user to update their own record
+drop policy if exists "saw_update_own" on public.staff_app_welcome;
 create policy "saw_update_own" on public.staff_app_welcome
   for update to authenticated
   using (user_id = auth.uid())
