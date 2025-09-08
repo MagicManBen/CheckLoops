@@ -32,12 +32,23 @@ serve(async (req) => {
     const token = authHeader.replace('Bearer ', '')
     console.log('Attempting to verify token:', token.substring(0, 20) + '...')
     
-    const { data: { user }, error: userErr } = await supabase.auth.getUser(token)
-    console.log('User verification result:', { user: user ? `${user.email} (${user.id})` : null, error: userErr })
+    // Try to verify the user with the token
+    let user = null;
+    let userError = null;
     
-    if (userErr) {
-      console.log('User verification failed:', userErr)
-      return json({ error: `Unauthorized: ${userErr.message}` }, 401)
+    try {
+      const { data: { user: verifiedUser }, error: verifyErr } = await supabase.auth.getUser(token)
+      user = verifiedUser;
+      userError = verifyErr;
+      console.log('User verification result:', { user: user ? `${user.email} (${user.id})` : null, error: userError })
+    } catch (authErr) {
+      console.log('Auth verification threw exception:', authErr);
+      userError = authErr;
+    }
+    
+    if (userError) {
+      console.log('User verification failed:', userError)
+      return json({ error: `Unauthorized: ${userError.message || 'Token verification failed'}` }, 401)
     }
     
     if (!user) {
