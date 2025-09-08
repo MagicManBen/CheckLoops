@@ -4339,6 +4339,51 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
           </div>
         </div>
         
+        <!-- Training Edit Modal -->
+        <div id="training-edit-modal" class="modal" style="display: none;">
+          <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+              <h3>Edit Training Record</h3>
+              <button class="close-btn" onclick="closeTrainingModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+              <form id="training-edit-form" onsubmit="saveTrainingRecord(event); return false;">
+                <div class="form-group">
+                  <label>Staff Member</label>
+                  <input type="text" id="training-edit-staff-name" readonly style="background: var(--panel-bg); color: var(--muted);">
+                  <input type="hidden" id="training-edit-staff-id">
+                </div>
+                <div class="form-group">
+                  <label>Training Module</label>
+                  <input type="text" id="training-edit-type-name" readonly style="background: var(--panel-bg); color: var(--muted);">
+                  <input type="hidden" id="training-edit-type-id">
+                </div>
+                <div class="form-group">
+                  <label>Completion Date</label>
+                  <input type="date" id="training-edit-completion" required>
+                </div>
+                <div class="form-group">
+                  <label>Expiry Date</label>
+                  <input type="date" id="training-edit-expiry">
+                </div>
+                <div class="form-group">
+                  <label>Provider</label>
+                  <input type="text" id="training-edit-provider" placeholder="Training provider name">
+                </div>
+                <div class="form-group">
+                  <label>Notes</label>
+                  <textarea id="training-edit-notes" rows="3" placeholder="Additional notes"></textarea>
+                </div>
+              </form>
+              <div id="training-edit-error" style="color: red; margin-top: 10px; display: none;"></div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn secondary" onclick="closeTrainingModal()">Cancel</button>
+              <button class="btn primary" onclick="saveTrainingRecord(event)">Save Changes</button>
+            </div>
+          </div>
+        </div>
+        
         <!-- Training Cell Drawer -->
         <div id="cell-drawer" class="drawer" style="position: fixed; right: -400px; top: 0; width: 400px; height: 100%; background: var(--panel-bg); box-shadow: -2px 0 10px rgba(0,0,0,0.3); transition: right 0.3s ease; z-index: 1000; overflow-y: auto;">
           <div style="padding: 20px;">
@@ -13066,38 +13111,115 @@ for (const f of (crudState.entity.fields || [])) {
       return;
     }
     
+    // Store data for saving
+    window.currentTrainingEditData = { staff, type, record };
+    
     // Close the drawer
     document.getElementById('cell-drawer').classList.remove('open');
     
-    // Open the existing training modal in edit mode
+    // Open the training modal
     openTrainingModal();
     
     // Pre-populate the form with existing data
     setTimeout(() => {
-      document.getElementById('training-staff-id').value = staffId;
-      document.getElementById('training-type-id').value = typeId;
+      document.getElementById('training-edit-staff-name').value = staff.full_name;
+      document.getElementById('training-edit-staff-id').value = staffId;
+      document.getElementById('training-edit-type-name').value = type.name;
+      document.getElementById('training-edit-type-id').value = typeId;
       
       if (record) {
         if (record.completion_date) {
-          document.getElementById('training-completion-date').value = record.completion_date.split('T')[0];
+          document.getElementById('training-edit-completion').value = record.completion_date.split('T')[0];
         }
         if (record.expiry_date) {
-          document.getElementById('training-expiry-date').value = record.expiry_date.split('T')[0];
+          document.getElementById('training-edit-expiry').value = record.expiry_date.split('T')[0];
         }
         if (record.provider) {
-          document.getElementById('training-provider').value = record.provider;
+          document.getElementById('training-edit-provider').value = record.provider;
         }
         if (record.notes) {
-          document.getElementById('training-notes').value = record.notes;
-        }
-        
-        // Set the modal title to indicate editing
-        const modalTitle = document.querySelector('#training-modal .modal-header h3');
-        if (modalTitle) {
-          modalTitle.textContent = `Edit Training Record - ${staff.full_name} - ${type.name}`;
+          document.getElementById('training-edit-notes').value = record.notes;
         }
       }
     }, 100);
+  }
+  
+  // Open training modal
+  function openTrainingModal() {
+    const modal = document.getElementById('training-edit-modal');
+    if (modal) {
+      modal.style.display = 'flex';
+    }
+  }
+  
+  // Close training modal
+  function closeTrainingModal() {
+    const modal = document.getElementById('training-edit-modal');
+    if (modal) {
+      modal.style.display = 'none';
+      document.getElementById('training-edit-form').reset();
+      document.getElementById('training-edit-error').style.display = 'none';
+    }
+  }
+  
+  // Save training record
+  async function saveTrainingRecord(event) {
+    if (event) event.preventDefault();
+    
+    const errorDiv = document.getElementById('training-edit-error');
+    errorDiv.style.display = 'none';
+    
+    if (!window.currentTrainingEditData) {
+      errorDiv.textContent = 'No training record data available';
+      errorDiv.style.display = 'block';
+      return;
+    }
+    
+    const { staff, type, record } = window.currentTrainingEditData;
+    
+    try {
+      // Get form values
+      const completionDate = document.getElementById('training-edit-completion').value;
+      const expiryDate = document.getElementById('training-edit-expiry').value;
+      const provider = document.getElementById('training-edit-provider').value;
+      const notes = document.getElementById('training-edit-notes').value;
+      
+      // Prepare record data
+      const recordData = {
+        site_id: ctx.site_id,
+        staff_id: staff.id,
+        training_type_id: type.id,
+        completion_date: completionDate,
+        expiry_date: expiryDate || null,
+        provider: provider || null,
+        notes: notes || null
+      };
+
+      // Update or insert record
+      if (record && record.id) {
+        const { error } = await supabase
+          .from('training_records')
+          .update(recordData)
+          .eq('id', record.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('training_records')
+          .insert(recordData);
+        if (error) throw error;
+      }
+
+      // Close modal and reload
+      closeTrainingModal();
+      if (typeof loadTrainingMatrix === 'function') {
+        loadTrainingMatrix();
+      }
+      showToast('Training record updated successfully', 'success');
+    } catch (err) {
+      console.error('Failed to save training record:', err);
+      errorDiv.textContent = err.message || 'Failed to save training record';
+      errorDiv.style.display = 'block';
+    }
   }
 
   // Global function for downloading training certificates
