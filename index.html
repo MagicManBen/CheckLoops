@@ -3758,10 +3758,12 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
     }
 
     // Rebuild when the app toggles collapsed/expanded
-    const mo = new MutationObserver(() => {
-      if (app.classList.contains('collapsed')) buildRail();
-    });
-    mo.observe(app, { attributes: true, attributeFilter: ['class'] });
+    if (app) {
+      const mo = new MutationObserver(() => {
+        if (app.classList.contains('collapsed')) buildRail();
+      });
+      mo.observe(app, { attributes: true, attributeFilter: ['class'] });
+    }
 
     // Keep clone "active" states in sync after any nav interaction
     nav.addEventListener('click', () => setTimeout(syncActive, 0));
@@ -4339,49 +4341,47 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
           </div>
         </div>
         
-        <!-- Training Modal -->
-        <div id="training-modal" class="modal" style="display: none;">
+        <!-- Training Edit Modal -->
+        <div id="training-edit-modal" class="modal" style="display: none;">
           <div class="modal-content" style="max-width: 600px;">
             <div class="modal-header">
               <h3>Edit Training Record</h3>
               <button class="close-btn" onclick="closeTrainingModal()">&times;</button>
             </div>
             <div class="modal-body">
-              <form id="training-form">
+              <form id="training-edit-form" onsubmit="saveTrainingRecord(event); return false;">
                 <div class="form-group">
-                  <label for="training-staff">Staff Member</label>
-                  <input type="text" id="training-staff" readonly style="background: var(--panel-bg); color: var(--muted);">
+                  <label>Staff Member</label>
+                  <input type="text" id="training-edit-staff-name" readonly style="background: var(--panel-bg); color: var(--muted);">
+                  <input type="hidden" id="training-edit-staff-id">
                 </div>
                 <div class="form-group">
-                  <label for="training-type">Training Module</label>
-                  <input type="text" id="training-type" readonly style="background: var(--panel-bg); color: var(--muted);">
+                  <label>Training Module</label>
+                  <input type="text" id="training-edit-type-name" readonly style="background: var(--panel-bg); color: var(--muted);">
+                  <input type="hidden" id="training-edit-type-id">
                 </div>
                 <div class="form-group">
-                  <label for="training-completion">Completion Date</label>
-                  <input type="date" id="training-completion" required>
+                  <label>Completion Date</label>
+                  <input type="date" id="training-edit-completion" required>
                 </div>
                 <div class="form-group">
-                  <label for="training-expiry">Expiry Date</label>
-                  <input type="date" id="training-expiry">
+                  <label>Expiry Date</label>
+                  <input type="date" id="training-edit-expiry">
                 </div>
                 <div class="form-group">
-                  <label for="training-provider">Provider</label>
-                  <input type="text" id="training-provider" placeholder="Training provider name">
+                  <label>Provider</label>
+                  <input type="text" id="training-edit-provider" placeholder="Training provider name">
                 </div>
                 <div class="form-group">
-                  <label for="training-notes">Notes</label>
-                  <textarea id="training-notes" rows="3" placeholder="Additional notes"></textarea>
-                </div>
-                <div class="form-group">
-                  <label for="training-certificate">Certificate Upload</label>
-                  <input type="file" id="training-certificate" accept=".pdf,.jpg,.jpeg,.png">
+                  <label>Notes</label>
+                  <textarea id="training-edit-notes" rows="3" placeholder="Additional notes"></textarea>
                 </div>
               </form>
-              <div id="training-error" style="color: red; margin-top: 10px; display: none;"></div>
+              <div id="training-edit-error" style="color: red; margin-top: 10px; display: none;"></div>
             </div>
             <div class="modal-footer">
               <button class="btn secondary" onclick="closeTrainingModal()">Cancel</button>
-              <button class="btn primary" onclick="saveTrainingRecord()">Save Record</button>
+              <button class="btn primary" onclick="saveTrainingRecord(event)">Save Changes</button>
             </div>
           </div>
         </div>
@@ -4417,10 +4417,6 @@ window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
             <div style="margin-bottom: 16px;">
               <label style="font-weight: 600; color: var(--muted); font-size: 12px;">Expiry Date</label>
               <div id="drawer-expiry-date" style="font-size: 16px; margin-top: 4px;">-</div>
-            </div>
-            
-            <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-color);">
-              <button onclick="editTrainingRecord()" style="width: 100%; padding: 10px; background: var(--accent); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Edit Report</button>
             </div>
             
             <div style="margin-bottom: 16px;">
@@ -8462,22 +8458,41 @@ async function loadComplaintDetails(complaintId) {
   }
 }
 
-function editComplaint() {
+async function editComplaint() {
+  console.log('editComplaint called with ID:', window.currentComplaintId);
+  
   if (!window.currentComplaintId) {
     alert('No complaint selected for editing');
     return;
   }
   
-  // Don't close the details modal yet - wait for CRUD to open
-  setTimeout(() => {
-    // Open the CRUD modal in edit mode
-    openCRUD("complaints", "edit", window.currentComplaintId);
+  try {
+    // Fetch the full complaint data
+    console.log('Fetching complaint data...');
+    const { data: complaint, error } = await supabase
+      .from('complaints')
+      .select('*')
+      .eq('id', window.currentComplaintId)
+      .single();
     
-    // Close the complaint details modal after a brief delay
-    setTimeout(() => {
-      closeComplaintDetails();
-    }, 100);
-  }, 100);
+    if (error) {
+      console.error('Supabase error:', error);
+      throw error;
+    }
+    
+    console.log('Complaint data fetched:', complaint);
+    
+    // Close the complaint details modal
+    closeComplaintDetails();
+    
+    // Open the CRUD modal in edit mode with the full complaint object
+    console.log('Opening CRUD modal...');
+    openCRUD("complaints", "edit", complaint);
+    console.log('CRUD modal should be open now');
+  } catch (error) {
+    console.error('Error in editComplaint:', error);
+    alert('Failed to load complaint for editing: ' + error.message);
+  }
 }
 
 // Make functions globally accessible for onclick handlers
@@ -10733,93 +10748,19 @@ function applySchedulesFilters() {
     function downloadCSV(data, filename) {
         if (!data.length) return;
         
-        // Check if SheetJS is available
-        if (typeof XLSX === 'undefined') {
-            console.warn('SheetJS not loaded, falling back to CSV');
-            // Fallback to CSV
-            const headers = Object.keys(data[0]);
-            const csvContent = [
-                headers.join(','),
-                ...data.map(row => headers.map(h => JSON.stringify(row[h] || '')).join(','))
-            ].join('\n');
-            
-            const blob = new Blob([csvContent], { type: 'text/csv' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            a.click();
-            URL.revokeObjectURL(url);
-            return;
-        }
-        
         // Create Excel workbook
         const workbook = XLSX.utils.book_new();
         
         // Convert data to worksheet
         const worksheet = XLSX.utils.json_to_sheet(data);
         
-        // Get worksheet range
+        // Get the range of the worksheet
         const range = XLSX.utils.decode_range(worksheet['!ref']);
         
-        // Apply header styling
-        for (let C = range.s.c; C <= range.e.c; ++C) {
-            const cellAddress = XLSX.utils.encode_cell({r: 0, c: C});
-            if (!worksheet[cellAddress]) continue;
-            
-            // Add cell styling
-            if (!worksheet[cellAddress].s) worksheet[cellAddress].s = {};
-            worksheet[cellAddress].s = {
-                font: { 
-                    bold: true, 
-                    color: { rgb: "FFFFFF" },
-                    sz: 14
-                },
-                fill: { 
-                    patternType: "solid",
-                    fgColor: { rgb: "4F46E5" },
-                    bgColor: { rgb: "4F46E5" }
-                },
-                alignment: { 
-                    horizontal: "center",
-                    vertical: "center"
-                },
-                border: {
-                    top: { style: "thin", color: { rgb: "000000" } },
-                    bottom: { style: "thin", color: { rgb: "000000" } },
-                    left: { style: "thin", color: { rgb: "000000" } },
-                    right: { style: "thin", color: { rgb: "000000" } }
-                }
-            };
-        }
+        // Add autofilter to the header row
+        worksheet['!autofilter'] = { ref: worksheet['!ref'] };
         
-        // Apply zebra striping to data rows
-        for (let R = 1; R <= range.e.r; ++R) {
-            for (let C = range.s.c; C <= range.e.c; ++C) {
-                const cellAddress = XLSX.utils.encode_cell({r: R, c: C});
-                if (!worksheet[cellAddress]) continue;
-                
-                if (!worksheet[cellAddress].s) worksheet[cellAddress].s = {};
-                worksheet[cellAddress].s = {
-                    fill: {
-                        patternType: "solid",
-                        fgColor: { rgb: R % 2 === 0 ? "F3F4F6" : "FFFFFF" },
-                        bgColor: { rgb: R % 2 === 0 ? "F3F4F6" : "FFFFFF" }
-                    },
-                    border: {
-                        top: { style: "thin", color: { rgb: "E5E7EB" } },
-                        bottom: { style: "thin", color: { rgb: "E5E7EB" } },
-                        left: { style: "thin", color: { rgb: "E5E7EB" } },
-                        right: { style: "thin", color: { rgb: "E5E7EB" } }
-                    },
-                    alignment: {
-                        wrapText: true
-                    }
-                };
-            }
-        }
-        
-        // Auto-fit column widths
+        // Auto-fit column widths with better calculation
         const colWidths = [];
         const headers = Object.keys(data[0]);
         headers.forEach((header, i) => {
@@ -10827,32 +10768,53 @@ function applySchedulesFilters() {
             data.forEach(row => {
                 const cellValue = String(row[header] || '');
                 if (cellValue.length > maxWidth) {
-                    maxWidth = Math.min(cellValue.length, 50);
+                    maxWidth = Math.min(cellValue.length, 50); // Cap at 50 chars
                 }
             });
-            colWidths.push({ wch: Math.max(maxWidth + 2, 12) });
+            colWidths.push({ wch: Math.max(maxWidth + 2, 10) });
         });
         worksheet['!cols'] = colWidths;
         
-        // Add autofilter
-        worksheet['!autofilter'] = { ref: worksheet['!ref'] };
+        // Add alternating row colors and formatting using cell-level formatting
+        // Note: Basic SheetJS doesn't support styling, but we can add number formats
+        for (let R = range.s.r; R <= range.e.r; ++R) {
+            for (let C = range.s.c; C <= range.e.c; ++C) {
+                const cellAddress = XLSX.utils.encode_cell({r: R, c: C});
+                if (!worksheet[cellAddress]) continue;
+                
+                // Format dates properly
+                const cellValue = worksheet[cellAddress].v;
+                if (typeof cellValue === 'string' && cellValue.match(/^\d{4}-\d{2}-\d{2}/)) {
+                    worksheet[cellAddress].t = 'd';
+                    worksheet[cellAddress].z = 'dd/mm/yyyy';
+                }
+                
+                // Format numbers with thousand separators for large numbers
+                if (typeof cellValue === 'number' && cellValue > 999) {
+                    worksheet[cellAddress].z = '#,##0';
+                }
+            }
+        }
         
-        // Set row height for header
-        if (!worksheet['!rows']) worksheet['!rows'] = [];
-        worksheet['!rows'][0] = { hpt: 30 };
+        // Freeze the header row
+        worksheet['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: "A2", activePane: "bottomLeft" };
         
         // Add worksheet to workbook with appropriate name
         const sheetName = filename.includes('complaint') ? 'Complaints Export' : 
-                          filename.includes('training') ? 'Training Matrix' : 'Data Export';
+                          filename.includes('training') ? 'Training Matrix' : 
+                          filename.includes('PIR') ? 'PIR Documents' : 'Data Export';
         XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+        
+        // Set workbook properties
+        workbook.Props = {
+            Title: sheetName,
+            Author: "CheckLoop System",
+            CreatedDate: new Date()
+        };
         
         // Generate Excel file and download
         const excelFilename = filename.replace('.csv', '.xlsx');
-        XLSX.writeFile(workbook, excelFilename, {
-            bookType: 'xlsx',
-            bookSST: true,
-            type: 'binary'
-        });
+        XLSX.writeFile(workbook, excelFilename, { bookType: 'xlsx', type: 'binary' });
     }
 
     // Preview modal close handler
@@ -11319,6 +11281,7 @@ function applySchedulesFilters() {
   };
 
   async function openCRUD(entityKey, mode="add", row=null, context={}){
+    try {
     crudError.textContent = "";
     crudState = { entity:ENTITIES[entityKey], mode, row, pk:ENTITIES[entityKey].pk, context };
     
@@ -11329,12 +11292,12 @@ function applySchedulesFilters() {
       entityKey: entityKey,
       mode: mode 
     });
-    debugLog('CRUD Open', { 
-      entity: entityKey, 
-      mode: mode, 
-      user: ctx.user?.id,
-      site: ctx.site_id 
-    });
+    // debugLog('CRUD Open', { 
+    //   entity: entityKey, 
+    //   mode: mode, 
+    //   user: ctx.user?.id,
+    //   site: ctx.site_id 
+    // });
     
     if (entityKey === 'pir_documents') {
         crudTitle.textContent = `Manage: ${row.title}`;
@@ -11833,7 +11796,24 @@ for (const f of (crudState.entity.fields || [])) {
     }
 
     crudDeleteBtn.style.display = (mode === "edit" && entityKey !== 'pir_documents') ? "inline-block" : "none";
+    
+    console.log('Before adding show class:', {
+      crudModal: crudModal,
+      classList: crudModal.classList.toString(),
+      display: window.getComputedStyle(crudModal).display
+    });
+    
     crudModal.classList.add("show");
+    
+    console.log('After adding show class:', {
+      classList: crudModal.classList.toString(),
+      display: window.getComputedStyle(crudModal).display
+    });
+    } catch (error) {
+      console.error('Error in openCRUD:', error);
+      console.error('Stack trace:', error.stack);
+      alert('Failed to open edit modal: ' + error.message);
+    }
   }
 
   function closeCRUD(){ crudModal.classList.remove("show"); }
@@ -13064,12 +13044,6 @@ for (const f of (crudState.entity.fields || [])) {
     }
   }
 
-  function closeTrainingModal() {
-    document.getElementById('training-modal').classList.remove('show');
-    document.getElementById('training-error').style.display = 'none';
-    document.getElementById('training-form').reset();
-  }
-
   async function handleTrainingFileUpload() {
     const fileInput = document.getElementById('training-certificate');
     const file = fileInput.files[0];
@@ -13114,80 +13088,10 @@ for (const f of (crudState.entity.fields || [])) {
     expiryField.value = expiry.toISOString().split('T')[0];
   }
 
-  async function saveTrainingRecord(e) {
-    e.preventDefault();
-    
-    const errorDiv = document.getElementById('training-error');
-    errorDiv.style.display = 'none';
-
-    try {
-      const staffId = document.getElementById('training-staff-id').value;
-      const typeId = document.getElementById('training-type-id').value;
-      const completionDate = document.getElementById('training-completion-date').value;
-      const expiryDate = document.getElementById('training-expiry-date').value;
-      const notes = document.getElementById('training-notes').value;
-      const fileInput = document.getElementById('training-certificate');
-      
-      let certificateUrl = null;
-
-      // Upload certificate if provided
-      if (fileInput.files[0]) {
-        const file = fileInput.files[0];
-        const fileName = `training-${staffId}-${typeId}-${Date.now()}.${file.name.split('.').pop()}`;
-        
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('training-certificates')
-          .upload(fileName, file);
-
-        if (uploadError) throw uploadError;
-        
-        const { data: urlData } = supabase.storage
-          .from('training-certificates')
-          .getPublicUrl(fileName);
-          
-        certificateUrl = urlData.publicUrl;
-      }
-
-      // Save or update training record
-      const recordData = {
-        site_id: ctx.site_id,
-        staff_id: parseInt(staffId),
-        training_type_id: parseInt(typeId),
-        completion_date: completionDate,
-        expiry_date: expiryDate || null,
-        notes: notes || null,
-        certificate_url: certificateUrl
-      };
-
-      const existingRecord = trainingData.records.find(r => 
-        r.staff_id == staffId && r.training_type_id == typeId
-      );
-
-      if (existingRecord) {
-        const { error } = await supabase
-          .from('training_records')
-          .update(recordData)
-          .eq('id', existingRecord.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('training_records')
-          .insert(recordData);
-        if (error) throw error;
-      }
-
-      closeTrainingModal();
-      loadTrainingMatrix();
-    } catch (err) {
-      console.error('Failed to save training record:', err);
-      errorDiv.textContent = err.message || 'Failed to save training record';
-      errorDiv.style.display = 'block';
-    }
-  }
+  // Removed duplicate saveTrainingRecord - using the one defined later
   
   // Edit training record function
   function editTrainingRecord() {
-    // Get data from the drawer or use stored data
     if (!window.currentTrainingEdit) {
       alert('No training record selected for editing');
       return;
@@ -13202,7 +13106,7 @@ for (const f of (crudState.entity.fields || [])) {
       return;
     }
     
-    // Store current edit data
+    // Store data for saving
     window.currentTrainingEditData = { staff, type, record };
     
     // Close the drawer
@@ -13212,28 +13116,32 @@ for (const f of (crudState.entity.fields || [])) {
     openTrainingModal();
     
     // Pre-populate the form with existing data
-    document.getElementById('training-staff').value = staff.full_name;
-    document.getElementById('training-type').value = type.name;
-    
-    if (record) {
-      if (record.completion_date) {
-        document.getElementById('training-completion').value = record.completion_date.split('T')[0];
+    setTimeout(() => {
+      document.getElementById('training-edit-staff-name').value = staff.full_name;
+      document.getElementById('training-edit-staff-id').value = staffId;
+      document.getElementById('training-edit-type-name').value = type.name;
+      document.getElementById('training-edit-type-id').value = typeId;
+      
+      if (record) {
+        if (record.completion_date) {
+          document.getElementById('training-edit-completion').value = record.completion_date.split('T')[0];
+        }
+        if (record.expiry_date) {
+          document.getElementById('training-edit-expiry').value = record.expiry_date.split('T')[0];
+        }
+        if (record.provider) {
+          document.getElementById('training-edit-provider').value = record.provider;
+        }
+        if (record.notes) {
+          document.getElementById('training-edit-notes').value = record.notes;
+        }
       }
-      if (record.expiry_date) {
-        document.getElementById('training-expiry').value = record.expiry_date.split('T')[0];
-      }
-      if (record.provider) {
-        document.getElementById('training-provider').value = record.provider;
-      }
-      if (record.notes) {
-        document.getElementById('training-notes').value = record.notes;
-      }
-    }
+    }, 100);
   }
   
   // Open training modal
   function openTrainingModal() {
-    const modal = document.getElementById('training-modal');
+    const modal = document.getElementById('training-edit-modal');
     if (modal) {
       modal.style.display = 'flex';
     }
@@ -13241,18 +13149,19 @@ for (const f of (crudState.entity.fields || [])) {
   
   // Close training modal
   function closeTrainingModal() {
-    const modal = document.getElementById('training-modal');
+    const modal = document.getElementById('training-edit-modal');
     if (modal) {
       modal.style.display = 'none';
-      // Clear form
-      document.getElementById('training-form').reset();
-      window.currentTrainingEditData = null;
+      document.getElementById('training-edit-form').reset();
+      document.getElementById('training-edit-error').style.display = 'none';
     }
   }
   
   // Save training record
-  async function saveTrainingRecord() {
-    const errorDiv = document.getElementById('training-error');
+  async function saveTrainingRecord(event) {
+    if (event) event.preventDefault();
+    
+    const errorDiv = document.getElementById('training-edit-error');
     errorDiv.style.display = 'none';
     
     if (!window.currentTrainingEditData) {
@@ -13265,31 +13174,11 @@ for (const f of (crudState.entity.fields || [])) {
     
     try {
       // Get form values
-      const completionDate = document.getElementById('training-completion').value;
-      const expiryDate = document.getElementById('training-expiry').value;
-      const provider = document.getElementById('training-provider').value;
-      const notes = document.getElementById('training-notes').value;
-      const certificateFile = document.getElementById('training-certificate').files[0];
+      const completionDate = document.getElementById('training-edit-completion').value;
+      const expiryDate = document.getElementById('training-edit-expiry').value;
+      const provider = document.getElementById('training-edit-provider').value;
+      const notes = document.getElementById('training-edit-notes').value;
       
-      let certificateUrl = record?.certificate_url || null;
-      
-      // Upload certificate if provided
-      if (certificateFile) {
-        const fileName = `training-${staff.id}-${type.id}-${Date.now()}.${certificateFile.name.split('.').pop()}`;
-        
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('training-certificates')
-          .upload(fileName, certificateFile);
-
-        if (uploadError) throw uploadError;
-        
-        const { data: urlData } = supabase.storage
-          .from('training-certificates')
-          .getPublicUrl(fileName);
-          
-        certificateUrl = urlData.publicUrl;
-      }
-
       // Prepare record data
       const recordData = {
         site_id: ctx.site_id,
@@ -13298,12 +13187,11 @@ for (const f of (crudState.entity.fields || [])) {
         completion_date: completionDate,
         expiry_date: expiryDate || null,
         provider: provider || null,
-        notes: notes || null,
-        certificate_url: certificateUrl
+        notes: notes || null
       };
 
       // Update or insert record
-      if (record) {
+      if (record && record.id) {
         const { error } = await supabase
           .from('training_records')
           .update(recordData)
@@ -13316,23 +13204,18 @@ for (const f of (crudState.entity.fields || [])) {
         if (error) throw error;
       }
 
-      // Close modal and reload training matrix
+      // Close modal and reload
       closeTrainingModal();
       if (typeof loadTrainingMatrix === 'function') {
         loadTrainingMatrix();
       }
+      showToast('Training record updated successfully', 'success');
     } catch (err) {
       console.error('Failed to save training record:', err);
       errorDiv.textContent = err.message || 'Failed to save training record';
       errorDiv.style.display = 'block';
     }
   }
-  
-  // Make functions globally accessible
-  window.editTrainingRecord = editTrainingRecord;
-  window.openTrainingModal = openTrainingModal;
-  window.closeTrainingModal = closeTrainingModal;
-  window.saveTrainingRecord = saveTrainingRecord;
 
   // Global function for downloading training certificates
   window.downloadTrainingCertificate = function() {
@@ -13892,7 +13775,7 @@ for (const f of (crudState.entity.fields || [])) {
 
     // Initialize all PIR enhancements when document loads
     document.addEventListener('DOMContentLoaded', () => {
-        initializeDraftTextSupport();
+        // initializeDraftTextSupport(); // Already called in initPIRemlGenerator
         
         // Initialize bulk operations toggle
         const bulkToggle = document.getElementById('bulk-select-toggle');
@@ -13984,7 +13867,7 @@ for (const f of (crudState.entity.fields || [])) {
 
     // Initialize if DOM is already ready
     if (document.readyState !== 'loading') {
-      initializeDraftTextSupport();
+      // initializeDraftTextSupport(); // Already called in initPIRemlGenerator
     }
 
   </script>
