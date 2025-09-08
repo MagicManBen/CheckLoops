@@ -24,8 +24,18 @@ if (!API_KEY) {
 }
 
 const CATEGORIES_ALL = ['eyes', 'mouth', 'eyebrows', 'glasses', 'earrings', 'hair'];
-const args = process.argv.slice(2).filter(Boolean);
-const CATEGORIES = args.length ? args : ['eyes', 'mouth', 'eyebrows'];
+const rawArgs = process.argv.slice(2).filter(Boolean);
+
+// Model selection: default via env OPENAI_MODEL or hardcoded fallback
+let MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const parsedCats = [];
+for (let i = 0; i < rawArgs.length; i++) {
+  const a = rawArgs[i];
+  if (a === '--model' || a === '-m') { MODEL = rawArgs[i + 1]; i++; continue; }
+  if (a.startsWith('--model=')) { MODEL = a.split('=')[1]; continue; }
+  parsedCats.push(a);
+}
+const CATEGORIES = parsedCats.length ? parsedCats : ['eyes', 'mouth', 'eyebrows'];
 
 function range(n) { return Array.from({ length: n }, (_, i) => i + 1); }
 function v2(n) { return String(n).padStart(2, '0'); }
@@ -110,7 +120,7 @@ The image shows a single change for the given category (type). Name the style su
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: MODEL,
       temperature: 0.2,
       messages: [sys, user],
       response_format: { type: 'json_object' }
@@ -139,6 +149,7 @@ async function main() {
     }
   }
 
+  console.log(`Model: ${MODEL}`);
   console.log(`Labeling ${list.length} variants across: ${CATEGORIES.join(', ')}`);
 
   const out = [];
@@ -174,4 +185,3 @@ async function main() {
 }
 
 main().catch(err => { console.error(err); process.exit(1); });
-
