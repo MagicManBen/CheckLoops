@@ -63,11 +63,8 @@
     navActivate('quiz');
     attachLogout(supabase);
 
-    // Example question bank. You can later fetch from Supabase table 'quiz_questions'.
-  async function fetchQuestions(){
-      // Try to fetch from Supabase if table exists; otherwise fallback to local
-      try{
-        // Fetch a reasonable pool (50) and map multiple possible column names
+    async function fetchQuestions() {
+      try {
         const { data, error } = await supabase.from('quiz_questions').select('*').limit(50);
         if (!error && data?.length){
           return data.map(q => {
@@ -76,20 +73,12 @@
             const choices = q.options || q.choices || q.options_list || [];
             const answer = (typeof q.correct_index !== 'undefined' && q.correct_index !== null) ? q.correct_index : (typeof q.answer !== 'undefined' ? q.answer : null);
             return { id:q.id, question, choices, answer };
-          }).filter(q=>q.question && q.choices && q.choices.length);
+          });
         }
-      } catch(_) {}
-      // Fallback local set
-      return [
-        { question:'What should you check first in a safety inspection?', choices:['PPE availability','Kitchen menu','Visitor log','Weather forecast'], answer:0 },
-        { question:'Hand hygiene should last at least how many seconds?', choices:['5s','10s','20s','40s'], answer:2 },
-        { question:'Which waste goes into a sharps bin?', choices:['Used needles','Food scraps','Paper towels','Plastics'], answer:0 },
-        { question:'When should you report a near-miss?', choices:['End of the week','Immediately','During monthly review','Never'], answer:1 },
-        { question:'Which is NOT a fire class?', choices:['A','B','D','H'], answer:3 },
-        { question:'What’s the correct method to lift a box?', choices:['Back bent, legs straight','Back straight, bend knees','Twist the spine','Hold with fingertips'], answer:1 },
-        { question:'Spill kit is used to handle?', choices:['Electrical faults','Chemical spills','Printer jams','Lost property'], answer:1 },
-        { question:'PAT testing refers to?', choices:['Patient testing','Portable Appliance Testing','Public Area Testing','Pressure and Temperature'], answer:1 },
-      ];
+      } catch (err) {
+        console.error('Error fetching questions:', err);
+      }
+      return [];
     }
 
     function pickRandom(arr, n){
@@ -144,13 +133,13 @@
         const now = new Date();
         let nextDue = null;
         
-        // First check profiles.next_quiz_due
+        // First check profiles.next_quiz_due (prioritize server-side value)
         if (profileRow?.next_quiz_due) {
           nextDue = new Date(profileRow.next_quiz_due);
         } else {
           // Fallback: compute from last quiz attempt
           try{
-            const { data: last, error } = await supabase.from('quiz_attempts').select('completed_at,created_at').eq('user_id', user.id).order('completed_at', { ascending:false }).limit(1).maybeSingle();
+            const { data: last, error } = await supabase.from('quiz_attempts').select('completed_at,created_at').eq('user_id', user.id).eq('is_practice', false).order('completed_at', { ascending:false }).limit(1).maybeSingle();
             if (!error && last){ 
               const lastCompleted = last.completed_at || last.created_at || null;
               if (lastCompleted){ 
@@ -230,7 +219,7 @@
           practiceBtn.style.display='inline-block';
         }
 
-        document.getElementById('submit-quiz').onclick = async () => {
+        submitBtn.onclick = async () => {
           if (!picked || picked.length===0) return;
           let score = 0, total = picked.length;
           const answers = [];
@@ -259,25 +248,36 @@
                 started_at: new Date().toISOString(),
                 completed_at: new Date().toISOString(),
                 score_percent,
-                correct_answers: score,
+                score: score,
                 total_questions: total,
-                // answers JSON may not have a dedicated column — include in JSONB column if present
+                is_practice: false,
                 answers: answers
               });
-            } catch(err){ console.warn('Failed to store quiz attempt (table may have different schema):', err); }
+            } catch(err){ console.warn('Failed to store quiz attempt:', err); }
 
-            // Optionally update profiles.next_quiz_due if you have such a column — attempt update, ignore errors
+            // Update profiles.next_quiz_due to 7 days from now
             try{
-              const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + 7);
-              await supabase.from('profiles').update({ next_quiz_due: dueDate.toISOString() }).eq('user_id', user.id);
-            } catch(_){ /* no-op if column/table doesn't exist or permission denied */ }
+              const dueDate = new Date(); 
+              dueDate.setDate(dueDate.getDate() + 7);
+              await supabase.from('profiles').update({ next_quiz_due: dueDate.toISOString() }).eq('id', user.id);
+            } catch(err){ console.warn('Failed to update next quiz due date:', err); }
           }
 
-          document.getElementById('retry-quiz').style.display='inline-block';
+          retryBtn.style.display='inline-block';
         };
 
-        document.getElementById('retry-quiz').onclick = () => window.location.reload();
+        retryBtn.onclick = () => window.location.reload();
       } catch(e){
+        if (String(e.message).includes('NO_SESSION')) { window.location.replace('Home.html'); return; }
+        if (String(e.message).includes('NOT_STAFF')) { window.location.replace('index.html'); return; }
+        console.error(e);
+      }
+    }
+
+    main();
+  </script>
+</body>
+</html>
         if (String(e.message).includes('NO_SESSION')) { window.location.replace('Home.html'); return; }
         if (String(e.message).includes('NOT_STAFF')) { window.location.replace('index.html'); return; }
         console.error(e);
