@@ -653,7 +653,7 @@
           // No manual save prompt for AI-applied results; we will auto-save elsewhere.
         }
 
-        function initAvatarBuilder(fullName){
+        async function initAvatarBuilder(fullName){
           // Fill dropdowns
           const seedEl = document.getElementById('opt-seed');
           const nickVal = String(document.getElementById('nickname')?.value || '').trim();
@@ -754,6 +754,28 @@
             }
           }
 
+          // Fetch optional DB labels so you can manage names without code changes
+          async function fetchLabelMap(){
+            try {
+              const { data, error } = await supabase
+                .from('avatar_option_labels')
+                .select('option_id,value_key,label');
+              if (error || !Array.isArray(data)) return {};
+              const map = {};
+              for (const r of data) {
+                if (!map[r.option_id]) map[r.option_id] = {};
+                map[r.option_id][r.value_key] = r.label;
+              }
+              return map;
+            } catch(_) { return {}; }
+          }
+
+          const dbLabels = await fetchLabelMap();
+          const labelFor = (optId, value, fallback) => {
+            const lab = dbLabels?.[optId]?.[String(value)];
+            return lab || fallback;
+          };
+
           fillOpts(document.getElementById('opt-backgroundRotation'), rangeArr(0,360,15), true);
           fillOpts(document.getElementById('opt-radius'), rangeArr(0,50,5), true);
           fillOpts(document.getElementById('opt-rotate'), rangeArr(0,360,15), true);
@@ -775,12 +797,12 @@
           const hairColors = ['ac6511','cb6820','ab2a18','e5d7a3','b9a05f','796a45','6a4e35','562306','9e5622','763900','0e0e0e','afafaf','3eac2c','85c2c6','dba3be','592454'];
           const skinColors = ['f2d3b1','ecad80','9e5622','763900'];
 
-          fillOptsLabeled(document.getElementById('opt-eyes'), eyes, v=>labelFromVariant('Eyes:', v, eyeLabels), true);
-          fillOptsLabeled(document.getElementById('opt-mouth'), mouths, v=>labelFromVariant('Mouth:', v, mouthLabels), true);
-          fillOptsLabeled(document.getElementById('opt-eyebrows'), brows, v=>labelFromVariant('Brows:', v, browLabels), true);
-          fillOptsLabeled(document.getElementById('opt-glasses'), ['','variant01','variant02','variant03','variant04','variant05'], v=>glassesLabels[v] || labelFromVariant('Glasses:', v, {}), false);
+          fillOptsLabeled(document.getElementById('opt-eyes'), eyes, v=>labelFor('opt-eyes', v, labelFromVariant('Eyes', v, eyeLabels)), true);
+          fillOptsLabeled(document.getElementById('opt-mouth'), mouths, v=>labelFor('opt-mouth', v, labelFromVariant('Mouth', v, mouthLabels)), true);
+          fillOptsLabeled(document.getElementById('opt-eyebrows'), brows, v=>labelFor('opt-eyebrows', v, labelFromVariant('Brows', v, browLabels)), true);
+          fillOptsLabeled(document.getElementById('opt-glasses'), ['','variant01','variant02','variant03','variant04','variant05'], v=>labelFor('opt-glasses', v, (glassesLabels[v] || labelFromVariant('Glasses', v, {}))), false);
           fillOpts(document.getElementById('opt-glassesProbability'), rangeArr(0,100,10), true);
-          fillOptsLabeled(document.getElementById('opt-earrings'), ['','variant01','variant02','variant03','variant04','variant05','variant06'], v=>earringsLabels[v] || labelFromVariant('Earrings:', v, {}), false);
+          fillOptsLabeled(document.getElementById('opt-earrings'), ['','variant01','variant02','variant03','variant04','variant05','variant06'], v=>labelFor('opt-earrings', v, (earringsLabels[v] || labelFromVariant('Earrings', v, {}))), false);
           fillOpts(document.getElementById('opt-earringsProbability'), rangeArr(0,100,10), true);
           // features (multi-select)
           const featuresEl = document.getElementById('opt-features');
@@ -789,10 +811,10 @@
             for (const v of features){ featuresEl.appendChild(new Option(v, v)); }
           }
           fillOpts(document.getElementById('opt-featuresProbability'), rangeArr(0,100,5), true);
-          fillOptsLabeled(document.getElementById('opt-hair'), [''].concat(hair), v=> v ? hairLabel(v) : 'Default', false);
-          fillOptsLabeled(document.getElementById('opt-hairColor'), [''].concat(hairColors), hex => hex ? ((hairColorNames[hex] ? `${hairColorNames[hex]} (${hex})` : hex)) : 'Default', false);
+          fillOptsLabeled(document.getElementById('opt-hair'), [''].concat(hair), v=> labelFor('opt-hair', v, (v ? hairLabel(v) : 'Default')), false);
+          fillOptsLabeled(document.getElementById('opt-hairColor'), [''].concat(hairColors), hex => labelFor('opt-hairColor', hex, (hex ? ((hairColorNames[hex] ? `${hairColorNames[hex]} (${hex})` : hex)) : 'Default')), false);
           fillOpts(document.getElementById('opt-hairProbability'), rangeArr(0,100,10), true);
-          fillOptsLabeled(document.getElementById('opt-skinColor'), [''].concat(skinColors), hex => hex ? ((skinColorNames[hex] ? `${skinColorNames[hex]} (${hex})` : hex)) : 'Default', false);
+          fillOptsLabeled(document.getElementById('opt-skinColor'), [''].concat(skinColors), hex => labelFor('opt-skinColor', hex, (hex ? ((skinColorNames[hex] ? `${skinColorNames[hex]} (${hex})` : hex)) : 'Default')), false);
 
           // Bind changes
           const ids = [
@@ -1290,7 +1312,7 @@
 
               document.getElementById('welcome-step2').style.display = 'none';
               document.getElementById('welcome-step3').style.display = '';
-              initAvatarBuilder(fullName);
+              await initAvatarBuilder(fullName);
 
               // If we have an existing saved avatar, apply it to preview and controls
               try {
