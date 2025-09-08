@@ -16,7 +16,12 @@ serve(async (req) => {
   try {
     // Verify auth (require a signed-in user)
     const authHeader = req.headers.get('Authorization')
-    if (!authHeader) return json({ error: 'Unauthorized' }, 401)
+    console.log('Auth header received:', authHeader ? `Bearer ${authHeader.substring(7, 20)}...` : 'none')
+    
+    if (!authHeader) {
+      console.log('No authorization header found')
+      return json({ error: 'Unauthorized: No authorization header' }, 401)
+    }
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -25,8 +30,22 @@ serve(async (req) => {
     )
 
     const token = authHeader.replace('Bearer ', '')
+    console.log('Attempting to verify token:', token.substring(0, 20) + '...')
+    
     const { data: { user }, error: userErr } = await supabase.auth.getUser(token)
-    if (userErr || !user) return json({ error: 'Unauthorized' }, 401)
+    console.log('User verification result:', { user: user ? `${user.email} (${user.id})` : null, error: userErr })
+    
+    if (userErr) {
+      console.log('User verification failed:', userErr)
+      return json({ error: `Unauthorized: ${userErr.message}` }, 401)
+    }
+    
+    if (!user) {
+      console.log('No user found from token')
+      return json({ error: 'Unauthorized: Invalid token' }, 401)
+    }
+
+    console.log(`Authorized user: ${user.email}`)
 
     // Read body
     const { description, options, seedHint } = await req.json()

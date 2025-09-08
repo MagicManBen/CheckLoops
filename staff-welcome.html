@@ -505,6 +505,14 @@
           console.log('Using Supabase Edge Function for AI generation');
           console.log('Generating avatar for description:', prompt);
           
+          // Debug: Check if user is logged in
+          const { data: { session } } = await globalSupabase.auth.getSession();
+          console.log('Current session:', session ? `User: ${session.user.email}` : 'No session');
+          
+          if (!session || !session.user) {
+            throw new Error('You must be logged in to generate avatars. Please refresh and log in again.');
+          }
+          
           try {
             const { data, error } = await globalSupabase.functions.invoke('generate-avatar', { 
               body: { 
@@ -517,11 +525,18 @@
             console.log('Supabase Edge Function response:', { data, error });
             
             if (error) {
+              console.error('Edge Function error details:', error);
+              
               // Handle different types of errors
               if (error.message && error.message.includes('FunctionsHttpError')) {
                 throw new Error('Authentication required. Please refresh and log in again.');
+              } else if (error.message && error.message.includes('Unauthorized')) {
+                throw new Error('Authentication failed. Please refresh and log in again.');
+              } else if (error.context && error.context.status === 401) {
+                throw new Error('Authentication failed. Please refresh and log in again.');
               }
-              throw new Error(`AI generation failed: ${error.message || 'Unknown error'}`);
+              
+              throw new Error(`AI generation failed: ${error.message || JSON.stringify(error)}`);
             }
             
             if (!data || Object.keys(data).length === 0) {
