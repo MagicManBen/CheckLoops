@@ -39,6 +39,9 @@
     .confetti{ position:fixed; inset:0; pointer-events:none; overflow:hidden; }
     .confetti .bit{ position:absolute; width:10px; height:10px; border-radius:2px; opacity:.95; will-change: transform, opacity; animation: fall 900ms ease-out forwards; }
     @keyframes fall{ 0%{ transform: translateY(-10px) rotate(0deg); opacity:1; } 100%{ transform: translateY(120vh) rotate(540deg); opacity:0; } }
+    
+    /* Avatar save pulse animation */
+    @keyframes pulse{ 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
   </style>
 </head>
 <body>
@@ -145,6 +148,11 @@
                 <button class="btn btn-secondary" id="avatar-reset">Reset</button>
                 <button class="btn btn-secondary" id="avatar-copy-url" title="Copy avatar URL to clipboard">Copy URL</button>
               </div>
+              <div style="display:flex; gap:8px; margin-top:8px;">
+                <button class="btn" id="avatar-save" style="background:#22c55e;">Save This Avatar</button>
+                <button class="btn btn-secondary" id="avatar-choose" style="display:none;">Choose This Avatar</button>
+              </div>
+              <div class="meta-note" id="avatar-save-msg" style="margin-top:6px; text-align:center;"></div>
               <div class="meta-note" id="avatar-url-note" style="margin-top:8px; word-break:break-all; max-width:260px; font-size:10px; opacity:0.7;"></div>
             </div>
           </div>
@@ -444,6 +452,18 @@
           if (img) img.src = url;
           const note = document.getElementById('avatar-url-note');
           if (note) note.textContent = url;
+          
+          // Show save reminder if avatar changed and not saved
+          if (window.currentSavedAvatarUrl !== url) {
+            const saveBtn = document.getElementById('avatar-save');
+            const saveMsg = document.getElementById('avatar-save-msg');
+            if (saveBtn && !saveBtn.textContent.includes('Saving')) {
+              saveBtn.style.background = '#3b82f6';
+              if (saveMsg && !saveMsg.textContent.includes('✅') && !saveMsg.textContent.includes('❌')) {
+                saveMsg.innerHTML = '💡 Save your changes';
+              }
+            }
+          }
         }
 
         function getAiEndpoint(){
@@ -635,6 +655,15 @@
             feedbackText += ' You can fine-tune with the dropdowns below.';
             msg.textContent = feedbackText;
           }
+          
+          // Show save reminder
+          const saveBtn = document.getElementById('avatar-save');
+          const saveMsg = document.getElementById('avatar-save-msg');
+          if (saveBtn && saveMsg) {
+            saveBtn.style.background = '#3b82f6'; // Blue to indicate action needed
+            saveBtn.style.animation = 'pulse 2s infinite';
+            saveMsg.innerHTML = '💡 <strong>Remember to save</strong> your avatar when you\'re happy with it!';
+          }
         }
 
         function initAvatarBuilder(fullName){
@@ -789,6 +818,95 @@
             }
           }); copyBtn.dataset.bound='1'; }
 
+          // Save Avatar button
+          const saveAvatarBtn = document.getElementById('avatar-save');
+          if (saveAvatarBtn && !saveAvatarBtn.dataset.bound){ saveAvatarBtn.addEventListener('click', async ()=>{
+            const saveMsg = document.getElementById('avatar-save-msg');
+            saveMsg.textContent = '';
+            
+            try {
+              const avatarUrl = window.currentAvatarUrl || buildAvatarUrlFromControls();
+              const nickVal = String(document.getElementById('nickname')?.value || '').trim() || null;
+              
+              saveAvatarBtn.disabled = true;
+              saveAvatarBtn.textContent = 'Saving...';
+              saveMsg.textContent = 'Saving avatar...';
+              
+              // Save to staff_app_welcome table (UPDATE existing row)
+              if (siteId) {
+                try {
+                  const payload = {
+                    user_id: user.id,
+                    site_id: siteId,
+                    full_name: fullName,
+                    nickname: nickVal,
+                    avatar_url: avatarUrl,
+                    // Keep existing role and team data
+                    role_detail: window.selectedRole || profileRow?.role_detail || user?.raw_user_meta_data?.role_detail || null,
+                    team_id: window.selectedTeamId || profileRow?.team_id || null,
+                    team_name: window.selectedTeamName || profileRow?.team_name || null
+                  };
+                  
+                  const { error: sawErr } = await supabase
+                    .from('staff_app_welcome')
+                    .upsert(payload, { onConflict: 'user_id,site_id' });
+                    
+                  if (sawErr) {
+                    console.error('staff_app_welcome save error:', sawErr);
+                    throw new Error(`Database save failed: ${sawErr.message || sawErr.code}`);
+                  }
+                  
+                  console.log('Successfully saved avatar to staff_app_welcome');
+                } catch (dbError) {
+                  console.warn('staff_app_welcome save failed, trying profiles fallback:', dbError);
+                  
+                  // Fallback to profiles table
+                  try {
+                    let qp = supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('user_id', user.id);
+                    if (siteId) qp = qp.eq('site_id', siteId);
+                    const { error: profileErr } = await qp;
+                    if (profileErr) {
+                      throw new Error(`Profiles update failed: ${profileErr.message}`);
+                    }
+                    console.log('Saved avatar to profiles table as fallback');
+                  } catch (profileError) {
+                    throw new Error(`Both database saves failed: ${profileError.message}`);
+                  }
+                }
+              }
+              
+              // Also update user metadata
+              try {
+                await supabase.auth.updateUser({ data: { avatar_url: avatarUrl } });
+                console.log('Updated user metadata with avatar');
+              } catch (metaErr) {
+                console.warn('User metadata update failed:', metaErr);
+              }
+              
+              // Store globally for finish button
+              window.currentSavedAvatarUrl = avatarUrl;
+              
+              saveMsg.innerHTML = '✅ Avatar saved successfully!';
+              saveAvatarBtn.style.background = '#22c55e';
+              
+            } catch (error) {
+              console.error('Save avatar error:', error);
+              saveMsg.innerHTML = `❌ Save failed: ${error.message}`;
+              saveAvatarBtn.style.background = '#ef4444';
+            } finally {
+              saveAvatarBtn.disabled = false;
+              saveAvatarBtn.textContent = 'Save This Avatar';
+              
+              // Reset button color after 3 seconds
+              setTimeout(() => {
+                saveAvatarBtn.style.background = '#22c55e';
+                if (saveMsg.textContent.includes('✅')) {
+                  saveMsg.textContent = '';
+                }
+              }, 3000);
+            }
+          }); saveAvatarBtn.dataset.bound='1'; }
+
           // Back button
           const back = document.getElementById('back-to-step2');
           if (back && !back.dataset.bound){ back.addEventListener('click', ()=>{
@@ -857,15 +975,23 @@
           if (finish && !finish.dataset.bound){ finish.addEventListener('click', async ()=>{
             const fm = document.getElementById('finish-avatar-msg');
             fm.textContent = '';
+            
+            // Check if user has saved an avatar
+            const avatar = window.currentSavedAvatarUrl || window.currentAvatarUrl || buildAvatarUrlFromControls();
+            if (!window.currentSavedAvatarUrl) {
+              fm.innerHTML = '⚠️ Please save your avatar first by clicking "Save This Avatar" above.';
+              return;
+            }
+            
             try{
               const teamIdNum = (window.selectedTeamId ?? null);
               const role = (window.selectedRole || null);
-              const avatar = (window.currentAvatarUrl || buildAvatarUrlFromControls());
 
-              // Sync Staff_App_Welcome first (including avatar)
+              // The avatar is already saved, just ensure other data is current
               try { await persistRoleTeam(role, teamIdNum, (window.selectedTeamName || null), avatar); }
               catch(e){ console.warn('staff_app_welcome sync failed', e); }
 
+              // Update profiles as backup/sync
               try {
                 let qp = supabase.from('profiles').update({
                   role_detail: role,
@@ -1036,7 +1162,7 @@
                 };
                 const { error: sawErr } = await supabase
                   .from('staff_app_welcome')
-                  .upsert(payload, { onConflict: 'user_id' });
+                  .upsert(payload, { onConflict: 'user_id,site_id' });
                 if (sawErr) {
                   if (msgEl) msgEl.textContent = `Could not save to Staff_App_Welcome (${sawErr.code||''}). Falling back…`;
                   throw sawErr;
