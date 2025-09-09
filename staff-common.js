@@ -111,7 +111,8 @@ export function renderStaffNavigation(activePage = 'home') {
     { page: 'training', href: 'staff-training.html', label: 'My Training' },
     { page: 'achievements', href: 'achievements.html', label: 'Achievements' },
     { page: 'quiz', href: 'staff-quiz.html', label: 'Quiz' },
-    { page: 'admin', href: 'admin-login.html?from=staff', label: 'Admin Site', adminOnly: true }
+    { page: 'holidays', href: 'staff-holidays.html', label: 'My Holidays' },
+    { page: 'admin', href: 'index.html', label: 'Admin Site', adminOnly: true }
   ];
   
   navContainer.innerHTML = navItems.map(item => {
@@ -137,6 +138,7 @@ export function renderMobileStaffNavigation(activePage = 'home') {
     { page: 'training', href: 'staff-training.mobile.html', label: '📚 My Training' },
     { page: 'achievements', href: 'achievements.mobile.html', label: '🏆 Achievements' },
     { page: 'quiz', href: 'staff-quiz.mobile.html', label: '🧠 Quiz' },
+    { page: 'holidays', href: 'staff-holidays.mobile.html', label: '🏖️ My Holidays' },
     { page: 'admin', href: 'index.html', label: '🔧 Admin', adminOnly: true }
   ];
   

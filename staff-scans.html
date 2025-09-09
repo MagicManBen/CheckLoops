@@ -6,10 +6,13 @@
   <title>CheckLoop — My Scans</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://img.icons8.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="config.js"></script>
+  <script src="admin-nav.js"></script>
   <link rel="stylesheet" href="staff.css">
-  <!-- Mobile redirect: if a sibling .mobile.html exists and device is phone/small, redirect -->
+  
+  <!-- Mobile redirect -->
   <script>
     (function(){
       try{
@@ -21,16 +24,337 @@
         const small = (window.innerWidth || screen.width || 0) <= 480;
         if (!isMobileUA && !small) return;
         const mobilePath = url.pathname.replace(/\.html$/, '.mobile.html');
-        // check existence to avoid 404s (same-origin)
         fetch(mobilePath, { method: 'HEAD', cache: 'no-store' })
           .then(res => { if (res.ok) location.replace(mobilePath + url.search); })
-          .catch(()=>{ /* ignore - don't redirect if check fails */ });
+          .catch(()=>{ /* ignore */ });
       }catch(e){ /* noop */ }
     })();
   </script>
+  
   <style>
-    #search { width:320px; max-width:100%; padding:8px 10px; border-radius:6px; border:1px solid #ddd; }
-    .small-note { color:var(--muted); font-size:0.9rem; }
+    /* Scan-specific styles */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    
+    .stat-card {
+      background: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: var(--accent-gradient);
+    }
+    
+    .stat-number {
+      font-size: 2.5rem;
+      font-weight: 800;
+      margin-bottom: 8px;
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    
+    .stat-label {
+      font-size: 0.9rem;
+      color: #64748b;
+      font-weight: 600;
+    }
+    
+    .filters-panel {
+      background: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    
+    .filter-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      align-items: end;
+    }
+    
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    
+    .filter-label {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #374151;
+    }
+    
+    .filter-input {
+      padding: 10px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      font-size: 14px;
+      background: white;
+      transition: border-color 0.2s ease;
+    }
+    
+    .filter-input:focus {
+      outline: none;
+      border-color: #4f89ff;
+      box-shadow: 0 0 0 3px rgba(79, 137, 255, 0.1);
+    }
+    
+    .filter-buttons {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+      flex-wrap: wrap;
+    }
+    
+    .filter-btn {
+      padding: 8px 16px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      background: white;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    
+    .filter-btn:hover {
+      background: #f8fafc;
+    }
+    
+    .filter-btn.active {
+      background: #4f89ff;
+      color: white;
+      border-color: #4f89ff;
+    }
+    
+    .scans-table {
+      background: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    
+    .table-header {
+      background: #f8fafc;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .table-title {
+      font-weight: 700;
+      color: #1f2937;
+    }
+    
+    .table-actions {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    
+    .data-table th {
+      text-align: left;
+      padding: 12px 16px;
+      background: #f8fafc;
+      font-weight: 600;
+      color: #374151;
+      border-bottom: 1px solid var(--border-color);
+      cursor: pointer;
+      user-select: none;
+    }
+    
+    .data-table th:hover {
+      background: #f1f5f9;
+    }
+    
+    .data-table th.sortable::after {
+      content: '↕';
+      margin-left: 8px;
+      opacity: 0.5;
+    }
+    
+    .data-table th.sort-asc::after {
+      content: '↑';
+      opacity: 1;
+    }
+    
+    .data-table th.sort-desc::after {
+      content: '↓';
+      opacity: 1;
+    }
+    
+    .data-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    
+    .data-table tr:hover {
+      background: #f8fafc;
+    }
+    
+    .status-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    
+    .status-valid {
+      background: #dcfce7;
+      color: #16a34a;
+    }
+    
+    .status-invalid {
+      background: #fee2e2;
+      color: #dc2626;
+    }
+    
+    .status-pending {
+      background: #fef3c7;
+      color: #d97706;
+    }
+    
+    .chart-container {
+      background: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    
+    .chart-title {
+      font-weight: 700;
+      margin-bottom: 16px;
+      color: #1f2937;
+    }
+    
+    .chart {
+      height: 200px;
+      position: relative;
+      display: flex;
+      align-items: end;
+      gap: 8px;
+      padding: 0 8px;
+    }
+    
+    .chart-bar {
+      flex: 1;
+      background: linear-gradient(135deg, #4f89ff, #7db1ff);
+      border-radius: 4px 4px 0 0;
+      position: relative;
+      min-height: 4px;
+      transition: all 0.3s ease;
+    }
+    
+    .chart-bar:hover {
+      transform: scale(1.05);
+      box-shadow: 0 4px 8px rgba(79, 137, 255, 0.3);
+    }
+    
+    .chart-label {
+      position: absolute;
+      bottom: -24px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.75rem;
+      color: #64748b;
+      white-space: nowrap;
+    }
+    
+    .chart-value {
+      position: absolute;
+      top: -20px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #374151;
+    }
+    
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #64748b;
+    }
+    
+    .empty-icon {
+      font-size: 3rem;
+      margin-bottom: 16px;
+      opacity: 0.5;
+    }
+    
+    .pagination {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      padding: 20px;
+    }
+    
+    .pagination-btn {
+      padding: 8px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      background: white;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    
+    .pagination-btn:hover:not(:disabled) {
+      background: #f8fafc;
+    }
+    
+    .pagination-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .pagination-btn.active {
+      background: #4f89ff;
+      color: white;
+      border-color: #4f89ff;
+    }
+    
+    .loading-spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 2px solid #f3f3f3;
+      border-top: 2px solid #4f89ff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
@@ -48,98 +372,641 @@
       <button class="btn" id="logout-btn">Sign Out</button>
     </div>
 
-    <div class="panel">
-      <div style="display:flex;align-items:center;gap:12px;">
-        <div class="illus-circle" aria-hidden="true"><img src="https://api.iconify.design/fluent-emoji-flat:memo.svg" alt="My Scans"></div>
-        <h2 style="margin:0">My Scans</h2>
-        <div class="small-note">Recent items you've scanned or submitted</div>
-        <div style="flex:1"></div>
-        <input id="search" placeholder="Filter results..." />
+    <section class="panel g-12" style="margin:0; position:relative; overflow:hidden;">
+      <div class="halo"></div>
+      
+      <div class="hero" style="margin-bottom: 20px;">
+        <div>
+          <div class="h1" style="font-size:28px;">My Scans</div>
+          <div class="subtitle">View and analyze your submission history</div>
+        </div>
+        <div class="spacer"></div>
+        <div class="bubble-actions">
+          <button class="bubble" id="export-btn">
+            <div class="i c-green"><img data-i8="download" data-i8-size="48" alt="Export"/></div>
+            <div class="t">Export</div>
+          </button>
+          <button class="bubble" id="refresh-btn">
+            <div class="i c-blue"><img data-i8="synchronize" data-i8-size="48" alt="Refresh"/></div>
+            <div class="t">Refresh</div>
+          </button>
+        </div>
       </div>
 
-      <div id="scan-loading" style="padding:30px;text-align:center">Loading...</div>
-      <div id="scan-empty" style="display:none;padding:20px;text-align:center">No scans found.</div>
-
-      <div id="scan-wrap" style="display:none;margin-top:12px">
-        <table id="scan-table" class="table" style="width:100%">
-          <thead><tr><th>Date</th><th>Item</th><th>Room</th><th>Type</th><th>Value</th></tr></thead>
-          <tbody></tbody>
-        </table>
+      <!-- Statistics Cards -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-number" id="total-scans">0</div>
+          <div class="stat-label">Total Scans</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="valid-scans">0</div>
+          <div class="stat-label">Valid Scans</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="completion-rate">0%</div>
+          <div class="stat-label">Completion Rate</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="this-week">0</div>
+          <div class="stat-label">This Week</div>
+        </div>
       </div>
-    </div>
+
+      <!-- Chart -->
+      <div class="chart-container">
+        <div class="chart-title">Scans Over Time (Last 7 Days)</div>
+        <div class="chart" id="scans-chart">
+          <!-- Chart bars will be generated by JavaScript -->
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="filters-panel">
+        <div class="filter-row">
+          <div class="filter-group">
+            <label class="filter-label" for="search-input">Search</label>
+            <input type="text" id="search-input" class="filter-input" placeholder="Search items, rooms, or comments...">
+          </div>
+          <div class="filter-group">
+            <label class="filter-label" for="date-from">From Date</label>
+            <input type="date" id="date-from" class="filter-input">
+          </div>
+          <div class="filter-group">
+            <label class="filter-label" for="date-to">To Date</label>
+            <input type="date" id="date-to" class="filter-input">
+          </div>
+          <div class="filter-group">
+            <label class="filter-label" for="room-filter">Room</label>
+            <select id="room-filter" class="filter-input">
+              <option value="">All Rooms</option>
+            </select>
+          </div>
+        </div>
+        <div class="filter-buttons">
+          <button class="filter-btn active" data-status="all">All Status</button>
+          <button class="filter-btn" data-status="valid">Valid Only</button>
+          <button class="filter-btn" data-status="invalid">Issues Only</button>
+          <button class="filter-btn" id="clear-filters">Clear Filters</button>
+        </div>
+      </div>
+
+      <!-- Table -->
+      <div class="scans-table">
+        <div class="table-header">
+          <div class="table-title">Scan History</div>
+          <div class="table-actions">
+            <span id="results-count" class="muted">Loading...</span>
+          </div>
+        </div>
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th class="sortable" data-sort="submitted_at">Date</th>
+                <th class="sortable" data-sort="item_name">Item</th>
+                <th class="sortable" data-sort="room">Room</th>
+                <th class="sortable" data-sort="check_type">Check Type</th>
+                <th class="sortable" data-sort="check_value">Result</th>
+                <th>Comment</th>
+              </tr>
+            </thead>
+            <tbody id="scans-tbody">
+              <tr>
+                <td colspan="6" style="text-align: center; padding: 40px;">
+                  <div class="loading-spinner"></div>
+                  <div style="margin-top: 10px;">Loading scans...</div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pagination" id="pagination" style="display: none;">
+          <!-- Pagination will be generated by JavaScript -->
+        </div>
+      </div>
+    </section>
+
+    <div class="muted" style="text-align:center; font-size:12px; padding:10px 0;">© CheckLoop • Staff</div>
   </main>
 
   <script type="module">
-  import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, revealAdminNav, attachLogout } from './staff-common.js';
-    (async function(){
-      try{
-        console.debug('[staff-scans] start');
-        const fmtDate = (d) => new Date(d).toLocaleString(undefined, { year:'numeric', month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+    import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, fmtDate, clearAuthData } from './staff-common.js';
+    
+    const supabase = await initSupabase();
+    handleAuthState(supabase);
+    navActivate('scans');
 
-        const supabase = await initSupabase();
-        console.debug('[staff-scans] supabase inited');
-        handleAuthState(supabase);
-        navActivate('scans');
-        attachLogout(supabase);
+    let currentUser = null;
+    let currentProfile = null;
+    let allScans = [];
+    let filteredScans = [];
+    let currentPage = 1;
+    let itemsPerPage = 20;
+    let currentSort = { field: 'submitted_at', direction: 'desc' };
 
-        try{
-          const { session, profileRow } = await requireStaffSession(supabase);
-          console.debug('[staff-scans] requireStaffSession OK', session?.user?.id, profileRow);
-          const user = session.user;
-          const displayName = profileRow?.full_name || user?.raw_user_meta_data?.full_name || (user?.email?.split('@')[0]);
-          const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
-          setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: (user?.raw_user_meta_data?.role_detail || 'Staff') });
-          revealAdminNav(profileRow?.role || user?.raw_user_meta_data?.role);
+    // Logout handling
+    let isLoggingOut = false;
+    function cleanupAndRedirect() {
+      try { clearAuthData(true); } catch(_) {}
+      try { sessionStorage.clear(); } catch(_) {}
+      try { document.cookie.split(';').forEach(c => document.cookie = c.replace(/^ +/, '').replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`)); } catch(_) {}
+      window.location.replace('Home.html?_=' + Date.now());
+    }
+    async function forceLogout() {
+      if (isLoggingOut) return;
+      isLoggingOut = true;
+      try { const { data } = await supabase.auth.getSession(); if (data?.session) await supabase.auth.signOut(); } catch (e) { console.error('Supabase signOut failed:', e); }
+      cleanupAndRedirect();
+    }
+    document.getElementById('logout-btn').addEventListener('click', async (e) => { e.preventDefault(); e.stopPropagation(); await forceLogout(); });
 
-          let rows = [];
-          if (siteId){
-            const v = await supabase
-              .from('v_submission_detail')
-              .select('submitted_at,item_name,room,check_type,check_value,staff_name,site_id')
-              .eq('site_id', siteId)
-              .eq('staff_name', displayName)
-              .order('submitted_at', { ascending:false })
-              .limit(50);
-            if (!v.error && v.data) rows = v.data;
-          }
-          if (!rows?.length){
-            const s = await supabase
-              .from('submissions')
-              .select('submitted_at, staff_name, comment')
-              .eq('staff_name', displayName)
-              .order('submitted_at', { ascending:false })
-              .limit(50);
-            if (!s.error && s.data){ rows = s.data.map(r => ({ submitted_at:r.submitted_at, item_name:'\u2014', room:'\u2014', check_type:'\u2014', check_value:r.comment||'Done' })); }
-          }
+    // Initialize the dashboard
+    requireStaffSession(supabase).then(async ({ session, profileRow }) => {
+      currentUser = session.user;
+      currentProfile = profileRow;
+      await loadDashboard();
+    }).catch(e => {
+      if (String(e.message).includes('NO_SESSION')) { window.location.replace('Home.html'); return; }
+      if (String(e.message).includes('NOT_STAFF')) { window.location.replace('index.html'); return; }
+      console.error(e);
+    });
 
-          document.getElementById('scan-loading').style.display='none';
-          if (!rows?.length){ document.getElementById('scan-empty').style.display='block'; }
-          else {
-            document.getElementById('scan-wrap').style.display='';
-            const tbody = document.querySelector('#scan-table tbody');
-            const render = (rs) => tbody.innerHTML = rs.map(r => `<tr><td>${fmtDate(r.submitted_at)}</td><td>${r.item_name||'\u2014'}</td><td>${r.room||'\u2014'}</td><td>${r.check_type||'\u2014'}</td><td>${r.check_value||'\u2014'}</td></tr>`).join('');
-            render(rows);
-            const input = document.getElementById('search');
-            input.addEventListener('input', () => {
-              const q = input.value.toLowerCase();
-              const filtered = rows.filter(r => [r.item_name, r.room, r.check_type, r.check_value].join(' ').toLowerCase().includes(q));
-              render(filtered);
-            });
-          }
-        } catch(e){
-          if (String(e.message).includes('NO_SESSION')) { window.location.replace('Home.html'); return; }
-          if (String(e.message).includes('NOT_STAFF')) { window.location.replace('index.html'); return; }
-          console.error('[staff-scans] inner error', e);
-          document.getElementById('scan-loading').style.display='none';
-          document.getElementById('scan-empty').style.display='block';
+    async function loadDashboard() {
+      const displayName = currentProfile?.full_name || currentUser?.raw_user_meta_data?.full_name || (currentUser?.email?.split('@')[0]);
+      const siteId = currentProfile?.site_id || currentUser?.raw_user_meta_data?.site_id || null;
+      const role = currentProfile?.role || currentUser?.raw_user_meta_data?.role || 'Staff';
+      
+      // Set topbar
+      setTopbar({ 
+        siteText: await getSiteText(supabase, siteId), 
+        email: currentUser.email, 
+        role: role.charAt(0).toUpperCase() + role.slice(1) 
+      });
+
+      // Load scan data
+      await loadScans(displayName, siteId);
+      
+      // Setup event listeners
+      setupEventListeners();
+    }
+
+    async function loadScans(displayName, siteId) {
+      try {
+        let rows = [];
+        
+        // Try to get detailed view first
+        if (siteId) {
+          const { data, error } = await supabase
+            .from('v_submission_detail')
+            .select('submitted_at,item_name,room,check_type,check_value,staff_name,site_id,comment')
+            .eq('site_id', siteId)
+            .eq('staff_name', displayName)
+            .order('submitted_at', { ascending: false })
+            .limit(200);
+          
+          if (!error && data) rows = data;
         }
-      } catch(e){
-        console.error('[staff-scans] startup error', e);
-        document.getElementById('scan-loading').style.display='none';
-        document.getElementById('scan-empty').style.display='block';
+        
+        // Fallback to submissions table
+        if (!rows?.length) {
+          const { data, error } = await supabase
+            .from('submissions')
+            .select('submitted_at, staff_name, comment')
+            .eq('staff_name', displayName)
+            .order('submitted_at', { ascending: false })
+            .limit(200);
+          
+          if (!error && data) {
+            rows = data.map(r => ({
+              submitted_at: r.submitted_at,
+              item_name: '—',
+              room: '—',
+              check_type: '—',
+              check_value: r.comment || 'Done',
+              comment: r.comment
+            }));
+          }
+        }
+
+        allScans = rows;
+        filteredScans = [...allScans];
+        
+        // Update statistics
+        updateStatistics();
+        
+        // Generate chart
+        generateChart();
+        
+        // Populate room filter
+        populateRoomFilter();
+        
+        // Render table
+        renderTable();
+        
+      } catch (error) {
+        console.error('Error loading scans:', error);
+        document.getElementById('results-count').textContent = 'Error loading data';
       }
+    }
+
+    function updateStatistics() {
+      const total = allScans.length;
+      const valid = allScans.filter(scan => !isInvalidScan(scan)).length;
+      const completionRate = total > 0 ? Math.round((valid / total) * 100) : 0;
+      
+      // Calculate this week's scans
+      const oneWeekAgo = new Date();
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+      const thisWeek = allScans.filter(scan => new Date(scan.submitted_at) >= oneWeekAgo).length;
+      
+      document.getElementById('total-scans').textContent = total;
+      document.getElementById('valid-scans').textContent = valid;
+      document.getElementById('completion-rate').textContent = `${completionRate}%`;
+      document.getElementById('this-week').textContent = thisWeek;
+    }
+
+    function isInvalidScan(scan) {
+      const value = (scan.check_value || '').toLowerCase();
+      return value.includes('fail') || value.includes('error') || value.includes('invalid') || value.includes('missing');
+    }
+
+    function generateChart() {
+      const chartContainer = document.getElementById('scans-chart');
+      chartContainer.innerHTML = '';
+      
+      // Create data for last 7 days
+      const days = [];
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        days.push(date);
+      }
+      
+      const chartData = days.map(day => {
+        const dayStart = new Date(day);
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(day);
+        dayEnd.setHours(23, 59, 59, 999);
+        
+        const count = allScans.filter(scan => {
+          const scanDate = new Date(scan.submitted_at);
+          return scanDate >= dayStart && scanDate <= dayEnd;
+        }).length;
+        
+        return {
+          date: day,
+          count: count,
+          label: day.toLocaleDateString('en-US', { weekday: 'short' })
+        };
+      });
+      
+      const maxCount = Math.max(...chartData.map(d => d.count), 1);
+      
+      chartData.forEach(data => {
+        const bar = document.createElement('div');
+        bar.className = 'chart-bar';
+        const height = (data.count / maxCount) * 100;
+        bar.style.height = `${height}%`;
+        
+        const label = document.createElement('div');
+        label.className = 'chart-label';
+        label.textContent = data.label;
+        
+        const value = document.createElement('div');
+        value.className = 'chart-value';
+        value.textContent = data.count;
+        
+        bar.appendChild(label);
+        bar.appendChild(value);
+        chartContainer.appendChild(bar);
+      });
+    }
+
+    function populateRoomFilter() {
+      const roomFilter = document.getElementById('room-filter');
+      const rooms = [...new Set(allScans.map(scan => scan.room).filter(room => room && room !== '—'))].sort();
+      
+      roomFilter.innerHTML = '<option value="">All Rooms</option>';
+      rooms.forEach(room => {
+        const option = document.createElement('option');
+        option.value = room;
+        option.textContent = room;
+        roomFilter.appendChild(option);
+      });
+    }
+
+    function applyFilters() {
+      const searchTerm = document.getElementById('search-input').value.toLowerCase();
+      const dateFrom = document.getElementById('date-from').value;
+      const dateTo = document.getElementById('date-to').value;
+      const roomFilter = document.getElementById('room-filter').value;
+      const statusFilter = document.querySelector('.filter-btn.active')?.dataset.status || 'all';
+      
+      filteredScans = allScans.filter(scan => {
+        // Search filter
+        if (searchTerm) {
+          const searchableText = [
+            scan.item_name,
+            scan.room,
+            scan.check_type,
+            scan.check_value,
+            scan.comment
+          ].join(' ').toLowerCase();
+          
+          if (!searchableText.includes(searchTerm)) return false;
+        }
+        
+        // Date filters
+        if (dateFrom) {
+          const scanDate = new Date(scan.submitted_at);
+          const fromDate = new Date(dateFrom);
+          if (scanDate < fromDate) return false;
+        }
+        
+        if (dateTo) {
+          const scanDate = new Date(scan.submitted_at);
+          const toDate = new Date(dateTo);
+          toDate.setHours(23, 59, 59, 999);
+          if (scanDate > toDate) return false;
+        }
+        
+        // Room filter
+        if (roomFilter && scan.room !== roomFilter) return false;
+        
+        // Status filter
+        if (statusFilter === 'valid' && isInvalidScan(scan)) return false;
+        if (statusFilter === 'invalid' && !isInvalidScan(scan)) return false;
+        
+        return true;
+      });
+      
+      currentPage = 1;
+      renderTable();
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById('scans-tbody');
+      const resultsCount = document.getElementById('results-count');
+      
+      if (filteredScans.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="empty-state">
+              <div class="empty-icon">📋</div>
+              <div>No scans found</div>
+              <div style="font-size: 0.875rem; margin-top: 8px;">Try adjusting your filters</div>
+            </td>
+          </tr>`;
+        resultsCount.textContent = 'No results';
+        document.getElementById('pagination').style.display = 'none';
+        return;
+      }
+      
+      // Sort data
+      const sortedScans = [...filteredScans].sort((a, b) => {
+        const aVal = a[currentSort.field] || '';
+        const bVal = b[currentSort.field] || '';
+        
+        if (currentSort.field === 'submitted_at') {
+          const aDate = new Date(aVal);
+          const bDate = new Date(bVal);
+          return currentSort.direction === 'asc' ? aDate - bDate : bDate - aDate;
+        }
+        
+        const comparison = aVal.toString().localeCompare(bVal.toString());
+        return currentSort.direction === 'asc' ? comparison : -comparison;
+      });
+      
+      // Pagination
+      const totalPages = Math.ceil(sortedScans.length / itemsPerPage);
+      const startIndex = (currentPage - 1) * itemsPerPage;
+      const endIndex = startIndex + itemsPerPage;
+      const pageData = sortedScans.slice(startIndex, endIndex);
+      
+      // Render rows
+      tbody.innerHTML = pageData.map(scan => {
+        const isInvalid = isInvalidScan(scan);
+        const statusClass = isInvalid ? 'status-invalid' : 'status-valid';
+        const statusText = isInvalid ? 'Issue' : 'Valid';
+        
+        return `
+          <tr>
+            <td>${fmtDate(scan.submitted_at)}</td>
+            <td>${scan.item_name || '—'}</td>
+            <td>${scan.room || '—'}</td>
+            <td>${scan.check_type || '—'}</td>
+            <td>
+              <span class="status-badge ${statusClass}">${statusText}</span>
+              <div style="margin-top: 4px; font-size: 0.875rem;">${scan.check_value || '—'}</div>
+            </td>
+            <td>${scan.comment || '—'}</td>
+          </tr>
+        `;
+      }).join('');
+      
+      // Update results count
+      resultsCount.textContent = `${filteredScans.length} result${filteredScans.length !== 1 ? 's' : ''}`;
+      
+      // Render pagination
+      renderPagination(totalPages);
+    }
+
+    function renderPagination(totalPages) {
+      const pagination = document.getElementById('pagination');
+      
+      if (totalPages <= 1) {
+        pagination.style.display = 'none';
+        return;
+      }
+      
+      pagination.style.display = 'flex';
+      pagination.innerHTML = '';
+      
+      // Previous button
+      const prevBtn = document.createElement('button');
+      prevBtn.className = 'pagination-btn';
+      prevBtn.textContent = '←';
+      prevBtn.disabled = currentPage === 1;
+      prevBtn.onclick = () => { currentPage--; renderTable(); };
+      pagination.appendChild(prevBtn);
+      
+      // Page numbers
+      for (let i = 1; i <= totalPages; i++) {
+        if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+          const pageBtn = document.createElement('button');
+          pageBtn.className = `pagination-btn ${i === currentPage ? 'active' : ''}`;
+          pageBtn.textContent = i;
+          pageBtn.onclick = () => { currentPage = i; renderTable(); };
+          pagination.appendChild(pageBtn);
+        } else if (i === currentPage - 3 || i === currentPage + 3) {
+          const ellipsis = document.createElement('span');
+          ellipsis.textContent = '...';
+          ellipsis.style.padding = '8px';
+          pagination.appendChild(ellipsis);
+        }
+      }
+      
+      // Next button
+      const nextBtn = document.createElement('button');
+      nextBtn.className = 'pagination-btn';
+      nextBtn.textContent = '→';
+      nextBtn.disabled = currentPage === totalPages;
+      nextBtn.onclick = () => { currentPage++; renderTable(); };
+      pagination.appendChild(nextBtn);
+    }
+
+    function setupEventListeners() {
+      // Search input
+      document.getElementById('search-input').addEventListener('input', debounce(applyFilters, 300));
+      
+      // Date filters
+      document.getElementById('date-from').addEventListener('change', applyFilters);
+      document.getElementById('date-to').addEventListener('change', applyFilters);
+      
+      // Room filter
+      document.getElementById('room-filter').addEventListener('change', applyFilters);
+      
+      // Status filter buttons
+      document.querySelectorAll('.filter-btn[data-status]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.filter-btn[data-status]').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          applyFilters();
+        });
+      });
+      
+      // Clear filters
+      document.getElementById('clear-filters').addEventListener('click', () => {
+        document.getElementById('search-input').value = '';
+        document.getElementById('date-from').value = '';
+        document.getElementById('date-to').value = '';
+        document.getElementById('room-filter').value = '';
+        document.querySelectorAll('.filter-btn[data-status]').forEach(b => b.classList.remove('active'));
+        document.querySelector('.filter-btn[data-status="all"]').classList.add('active');
+        applyFilters();
+      });
+      
+      // Table sorting
+      document.querySelectorAll('.sortable').forEach(th => {
+        th.addEventListener('click', () => {
+          const field = th.dataset.sort;
+          if (currentSort.field === field) {
+            currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+          } else {
+            currentSort.field = field;
+            currentSort.direction = 'desc';
+          }
+          
+          // Update sort indicators
+          document.querySelectorAll('.sortable').forEach(header => {
+            header.classList.remove('sort-asc', 'sort-desc');
+          });
+          th.classList.add(currentSort.direction === 'asc' ? 'sort-asc' : 'sort-desc');
+          
+          renderTable();
+        });
+      });
+      
+      // Export button
+      document.getElementById('export-btn').addEventListener('click', exportData);
+      
+      // Refresh button
+      document.getElementById('refresh-btn').addEventListener('click', () => {
+        location.reload();
+      });
+    }
+
+    function exportData() {
+      if (filteredScans.length === 0) {
+        alert('No data to export');
+        return;
+      }
+      
+      const headers = ['Date', 'Item', 'Room', 'Check Type', 'Result', 'Comment'];
+      const csvContent = [
+        headers.join(','),
+        ...filteredScans.map(scan => [
+          fmtDate(scan.submitted_at),
+          `"${(scan.item_name || '').replace(/"/g, '""')}"`,
+          `"${(scan.room || '').replace(/"/g, '""')}"`,
+          `"${(scan.check_type || '').replace(/"/g, '""')}"`,
+          `"${(scan.check_value || '').replace(/"/g, '""')}"`,
+          `"${(scan.comment || '').replace(/"/g, '""')}"`
+        ].join(','))
+      ].join('\n');
+      
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `my-scans-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function debounce(func, wait) {
+      let timeout;
+      return function executedFunction(...args) {
+        const later = () => {
+          clearTimeout(timeout);
+          func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+      };
+    }
+  </script>
+
+  <script>
+    // Icon helper function using Icons8 cute-color style
+    (function(){
+      function i8(name, opts = {}) {
+        var base  = 'https://img.icons8.com';
+        var style = opts.style || 'cute-color';
+        var size  = opts.size  || 48;
+        // Icons8 OMG-IMG pattern is style/size/name.png
+        var path  = [style, String(size), encodeURIComponent(name) + '.png'].join('/');
+        return base + '/' + path;
+      }
+      
+      function setIcon(el){
+        var name  = el.getAttribute('data-i8');
+        var size  = el.getAttribute('data-i8-size');
+        var style = el.getAttribute('data-i8-style') || 'fluency';
+        var fallback = (el.getAttribute('data-i8-fallback') || '').toLowerCase();
+        
+        if (fallback === 'auto') {
+          var stylesToTry = [style, 'fluency', 'color'];
+          var idx = 0;
+          function tryNext(){
+            if (idx >= stylesToTry.length) { el.onerror = null; return; }
+            var url = i8(name, {style: stylesToTry[idx++], size: size ? parseInt(size,10) : undefined});
+            if (el.src !== url) el.src = url; else tryNext();
+          }
+          el.onerror = tryNext;
+          tryNext();
+        } else {
+          el.src = i8(name, {style: style, size: size ? parseInt(size,10) : undefined});
+        }
+      }
+      
+      function wireIcons(){
+        document.querySelectorAll('img[data-i8]').forEach(setIcon);
+      }
+      
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', wireIcons);
+      } else {
+        wireIcons();
+      }
+      
+      window.i8 = i8;
+      window.setIcon = setIcon;
+      window.wireIcons = wireIcons;
     })();
   </script>
 </body>
 </html>
-</body>

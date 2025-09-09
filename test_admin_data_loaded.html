@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clear Quiz Data</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    button {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 15px 30px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 10px 5px;
+    }
+    button:hover {
+      background: #5a6fd8;
+    }
+    #output {
+      background: #1a1a1a;
+      color: #00ff00;
+      padding: 20px;
+      border-radius: 5px;
+      font-family: monospace;
+      font-size: 14px;
+      white-space: pre-wrap;
+      max-height: 400px;
+      overflow-y: auto;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🗄️ Quiz Database Admin Tool</h1>
+    <p>This tool allows you to check and clear quiz data from Supabase.</p>
+    
+    <button onclick="clearQuizData()">Clear All Quiz Data</button>
+    <button onclick="checkQuizData()">Check Current Data</button>
+    
+    <div id="output"></div>
+  </div>
+
+  <script type="module">
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+    // Use the same config as the app
+    const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME';
+    
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    let currentUser = null;
+
+    function log(message) {
+      const output = document.getElementById('output');
+      output.textContent += message + '\n';
+      output.scrollTop = output.scrollHeight;
+    }
+
+    async function authenticate() {
+      if (currentUser) return currentUser;
+      
+      log('🔑 Authenticating as test user...');
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: 'ben.howard@stoke.nhs.uk',
+        password: 'Hello1!'
+      });
+      
+      if (authError) {
+        log('❌ Authentication failed: ' + authError.message);
+        return null;
+      }
+      
+      currentUser = authData.user;
+      log('✅ Authentication successful');
+      log('👤 User ID: ' + currentUser.id);
+      return currentUser;
+    }
+
+    window.checkQuizData = async function() {
+      document.getElementById('output').textContent = '';
+      log('🔍 Connecting to remote Supabase database...');
+      
+      const user = await authenticate();
+      if (!user) return;
+      
+      // Check current quiz_attempts data
+      log('\n📊 Checking current quiz_attempts data...');
+      const { data: attempts, error: attemptsError } = await supabase
+        .from('quiz_attempts')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('completed_at', { ascending: false });
+      
+      if (attemptsError) {
+        log('❌ Error fetching quiz_attempts: ' + attemptsError.message);
+      } else {
+        log(`📝 Found ${attempts?.length || 0} quiz attempts for this user in QUIZ_ATTEMPTS table`);
+        if (attempts && attempts.length > 0) {
+          attempts.forEach((attempt, index) => {
+            log(`  ${index + 1}. ID: ${attempt.id}, Completed: ${attempt.completed_at}, Score: ${attempt.correct_answers}/${attempt.total_questions}, Practice: ${attempt.is_practice}`);
+          });
+        }
+      }
+      
+      // Check current quiz_practices data
+      log('\n🎯 Checking current quiz_practices data...');
+      const { data: practices, error: practicesError } = await supabase
+        .from('quiz_practices')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('completed_at', { ascending: false });
+      
+      if (practicesError) {
+        log('❌ Error fetching quiz_practices: ' + practicesError.message);
+      } else {
+        log(`🎯 Found ${practices?.length || 0} quiz practices for this user in QUIZ_PRACTICES table`);
+        if (practices && practices.length > 0) {
+          practices.forEach((practice, index) => {
+            log(`  ${index + 1}. ID: ${practice.id}, Completed: ${practice.completed_at}, Score: ${practice.score}/${practice.total_questions}`);
+          });
+        }
+      }
+    };
+
+    window.clearQuizData = async function() {
+      document.getElementById('output').textContent = '';
+      log('🔍 Connecting to remote Supabase database...');
+      
+      const user = await authenticate();
+      if (!user) return;
+      
+      // First show current data
+      await window.checkQuizData();
+      
+      // Clear all quiz attempts for this user
+      log('\n🗑️ Clearing all quiz attempts...');
+      const { error: deleteAttemptsError } = await supabase
+        .from('quiz_attempts')
+        .delete()
+        .eq('user_id', user.id);
+      
+      if (deleteAttemptsError) {
+        log('❌ Error deleting quiz_attempts: ' + deleteAttemptsError.message);
+      } else {
+        log('✅ Quiz attempts cleared successfully');
+      }
+      
+      // Clear all quiz practices for this user
+      log('🗑️ Clearing all quiz practices...');
+      const { error: deletePracticesError } = await supabase
+        .from('quiz_practices')
+        .delete()
+        .eq('user_id', user.id);
+      
+      if (deletePracticesError) {
+        log('❌ Error deleting quiz_practices: ' + deletePracticesError.message);
+      } else {
+        log('✅ Quiz practices cleared successfully');
+      }
+      
+      // Verify data is cleared
+      log('\n🔍 Verifying data is cleared...');
+      
+      const { data: verifyAttempts } = await supabase
+        .from('quiz_attempts')
+        .select('*')
+        .eq('user_id', user.id);
+      
+      const { data: verifyPractices } = await supabase
+        .from('quiz_practices')
+        .select('*')
+        .eq('user_id', user.id);
+      
+      log(`📝 Remaining quiz attempts: ${verifyAttempts?.length || 0}`);
+      log(`🎯 Remaining quiz practices: ${verifyPractices?.length || 0}`);
+      
+      log('\n✅ Database clearing completed!');
+      log('\n📋 Next steps:');
+      log('1. Run the quiz test to submit a required quiz');
+      log('2. Check the database again to see where it was saved');
+    };
+  </script>
+</body>
+</html>
