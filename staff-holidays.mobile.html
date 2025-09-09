@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CheckLoop — My Holidays</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <script src="config.js"></script>
+  <link rel="stylesheet" href="staff.mobile.css">
+  <style>
+    /* Mobile-specific holiday styles */
+    .holiday-summary {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin: 16px 0;
+    }
+    
+    .holiday-stat {
+      background: var(--glass);
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+      border: 1px solid var(--border-color);
+    }
+    
+    .holiday-stat-value {
+      font-size: 1.8em;
+      font-weight: 900;
+      color: var(--accent);
+      display: block;
+    }
+    
+    .holiday-stat-label {
+      font-size: 0.8em;
+      color: var(--muted);
+      margin-top: 4px;
+      font-weight: 600;
+    }
+    
+    .holiday-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin: 16px 0;
+    }
+    
+    .holiday-btn {
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 14px 20px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.2s ease;
+      width: 100%;
+    }
+    
+    .holiday-btn:hover {
+      transform: translateY(-1px);
+    }
+    
+    .holiday-btn.secondary {
+      background: var(--glass);
+      border: 1px solid var(--border-color);
+    }
+    
+    .holiday-item {
+      background: var(--glass);
+      border-radius: 12px;
+      padding: 16px;
+      border: 1px solid var(--border-color);
+      margin-bottom: 12px;
+    }
+    
+    .holiday-item.pending {
+      border-left: 4px solid var(--warning);
+    }
+    
+    .holiday-item.approved {
+      border-left: 4px solid var(--success);
+    }
+    
+    .holiday-item.declined {
+      border-left: 4px solid var(--danger);
+    }
+    
+    .holiday-info h4 {
+      margin: 0 0 8px 0;
+      color: var(--white);
+      font-weight: 700;
+      font-size: 1.1em;
+    }
+    
+    .holiday-info p {
+      margin: 0 0 4px 0;
+      color: var(--muted);
+      font-size: 0.9em;
+    }
+    
+    .holiday-status {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.7em;
+      text-transform: uppercase;
+      margin-top: 8px;
+    }
+    
+    .holiday-status.pending {
+      background: var(--warning);
+      color: white;
+    }
+    
+    .holiday-status.approved {
+      background: var(--success);
+      color: white;
+    }
+    
+    .holiday-status.declined {
+      background: var(--danger);
+      color: white;
+    }
+    
+    .countdown-section {
+      background: linear-gradient(135deg, #ff6b6b, #ffa726);
+      border-radius: 12px;
+      padding: 20px;
+      margin: 16px 0;
+      color: white;
+      text-align: center;
+    }
+    
+    .countdown-timer {
+      font-size: 2em;
+      font-weight: 900;
+      margin: 12px 0;
+    }
+    
+    .countdown-destination {
+      font-size: 1.1em;
+      font-weight: 600;
+      opacity: 0.9;
+    }
+    
+    .team-member {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      background: var(--glass);
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+    
+    .team-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 700;
+      font-size: 0.8em;
+    }
+    
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+    }
+    
+    .modal-content {
+      background: var(--panel-bg);
+      margin: 10% auto;
+      padding: 20px;
+      border-radius: 12px;
+      width: 90%;
+      max-width: 400px;
+      border: 1px solid var(--border-color);
+    }
+    
+    .modal h3 {
+      margin: 0 0 20px 0;
+      color: var(--white);
+      font-size: 1.3em;
+    }
+    
+    .form-group {
+      margin-bottom: 16px;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--white);
+      font-weight: 600;
+      font-size: 0.9em;
+    }
+    
+    .form-group input, 
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--white);
+      font-family: inherit;
+      font-size: 16px; /* Prevent zoom on iOS */
+    }
+    
+    .form-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 24px;
+    }
+    
+    .close {
+      color: var(--muted);
+      float: right;
+      font-size: 24px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: -4px;
+    }
+    
+    .admin-comments {
+      background: rgba(255, 107, 107, 0.1);
+      border: 1px solid rgba(255, 107, 107, 0.3);
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 8px;
+      color: var(--white);
+      font-size: 0.9em;
+    }
+    
+    .cancel-btn {
+      background: transparent;
+      border: 1px solid var(--danger);
+      color: var(--danger);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 0.8em;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="bg">
+    <div class="wave"></div>
+    <div class="wave wave2"></div>
+  </div>
+
+  <div class="mobile-header">
+    <div class="mobile-nav">
+      <h1>🏖️ My Holidays</h1>
+      <button class="btn logout-btn" id="logout-btn">Sign Out</button>
+    </div>
+  </div>
+
+  <div class="main mobile-main">
+    <div class="mobile-container">
+      
+      <!-- User info pill -->
+      <div class="mobile-user-info">
+        <div class="pills">
+          <div class="pill" id="site-pill">Loading...</div>
+          <div class="pill" id="email-pill">Loading...</div>
+          <div class="pill" id="role-pill">Loading...</div>
+        </div>
+      </div>
+
+      <!-- Navigation -->
+      <nav class="nav" role="navigation"></nav>
+
+      <!-- Holiday Summary -->
+      <div class="section">
+        <h3>Holiday Entitlements</h3>
+        <div class="holiday-summary" id="holiday-summary">
+          <div class="holiday-stat">
+            <span class="holiday-stat-value" id="total-entitlement">0</span>
+            <div class="holiday-stat-label">Total</div>
+          </div>
+          <div class="holiday-stat">
+            <span class="holiday-stat-value" id="used-holidays">0</span>
+            <div class="holiday-stat-label">Used</div>
+          </div>
+          <div class="holiday-stat">
+            <span class="holiday-stat-value" id="remaining-holidays">0</span>
+            <div class="holiday-stat-label">Remaining</div>
+          </div>
+          <div class="holiday-stat">
+            <span class="holiday-stat-value" id="pending-holidays">0</span>
+            <div class="holiday-stat-label">Pending</div>
+          </div>
+        </div>
+
+        <div class="holiday-actions">
+          <button class="holiday-btn" onclick="openRequestModal()">Request Holiday</button>
+          <button class="holiday-btn secondary" onclick="refreshHolidayData()">Refresh</button>
+        </div>
+      </div>
+
+      <!-- Upcoming Holiday Countdown -->
+      <div id="countdown-section" class="countdown-section" style="display: none;">
+        <div class="countdown-destination" id="countdown-destination">🏖️ Holiday to Spain</div>
+        <div class="countdown-timer" id="countdown-timer">15 days to go!</div>
+        <div id="holiday-avatar-image" style="margin: 12px 0;"></div>
+      </div>
+
+      <!-- My Holiday Requests -->
+      <div class="section">
+        <h3>My Holiday Requests</h3>
+        <div id="my-holidays">
+          <div style="text-align: center; color: var(--muted); padding: 30px;">
+            Loading your holiday requests...
+          </div>
+        </div>
+      </div>
+
+      <!-- Team Holidays -->
+      <div class="section">
+        <h3>Team Holidays</h3>
+        <p style="color: var(--muted); margin-bottom: 16px; font-size: 0.9em;">
+          See when your team members are on holiday.
+        </p>
+        <div id="team-holidays">
+          <div style="text-align: center; color: var(--muted); padding: 30px;">
+            Loading team holidays...
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Request Holiday Modal -->
+  <div id="request-modal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeRequestModal()">&times;</span>
+      <h3>Request Holiday</h3>
+      <form id="holiday-request-form">
+        <div class="form-group">
+          <label for="start-date">Start Date</label>
+          <input type="date" id="start-date" name="start-date" required>
+        </div>
+        <div class="form-group">
+          <label for="end-date">End Date</label>
+          <input type="date" id="end-date" name="end-date" required>
+        </div>
+        <div class="form-group">
+          <label for="request-type">Request Type</label>
+          <select id="request-type" name="request-type" required>
+            <option value="holiday">Holiday</option>
+            <option value="time_in_lieu">Time in Lieu</option>
+            <option value="education" id="education-option" style="display: none;">Education (GP Only)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="destination">Holiday Destination (Optional)</label>
+          <input type="text" id="destination" name="destination" placeholder="e.g., Spain, Paris, Dubai">
+          <small style="color: var(--muted); font-size: 0.8em;">Add for holiday countdown feature</small>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="holiday-btn">Submit Request</button>
+          <button type="button" class="holiday-btn secondary" onclick="closeRequestModal()">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initSupabase, requireStaffSession, getSiteText, setTopbar, renderMobileStaffNavigation, attachLogout, handleAuthState } from './staff-common.js';
+
+    let supabase, currentUser, profileRow, isGP = false;
+
+    async function initializePage() {
+      supabase = await initSupabase();
+      handleAuthState(supabase);
+      attachLogout(supabase);
+
+      try {
+        const result = await requireStaffSession(supabase);
+        currentUser = result.session.user;
+        profileRow = result.profileRow;
+        
+        // Check if user is a GP
+        const role = (profileRow?.role || currentUser?.raw_user_meta_data?.role || '').toLowerCase();
+        isGP = role === 'gp';
+        
+        if (isGP) {
+          document.getElementById('education-option').style.display = 'block';
+        }
+
+        // Set up navigation
+        renderMobileStaffNavigation('holidays');
+
+        // Set topbar
+        const siteText = await getSiteText(supabase, profileRow?.site_id);
+        setTopbar({
+          siteText: siteText,
+          email: currentUser.email,
+          role: (profileRow?.role || 'Staff').charAt(0).toUpperCase() + (profileRow?.role || 'Staff').slice(1)
+        });
+
+        // Load holiday data
+        await loadHolidayData();
+        await loadTeamHolidays();
+        await checkUpcomingHolidays();
+
+      } catch (error) {
+        console.error('Initialization error:', error);
+        if (String(error.message).includes('NO_SESSION') || String(error.message).includes('NOT_STAFF')) {
+          window.location.replace('Home.html');
+        }
+      }
+    }
+
+    async function loadHolidayData() {
+      try {
+        const currentYear = new Date().getFullYear();
+        const siteId = profileRow?.site_id;
+
+        // Load entitlements
+        const { data: entitlements } = await supabase
+          .from('holiday_entitlements')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .eq('site_id', siteId)
+          .eq('year', currentYear)
+          .single();
+
+        // Load working pattern
+        const { data: workingPattern } = await supabase
+          .from('working_patterns')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .eq('site_id', siteId)
+          .single();
+
+        // Load holiday requests
+        const { data: requests } = await supabase
+          .from('holiday_requests')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .eq('site_id', siteId)
+          .order('created_at', { ascending: false });
+
+        // Calculate totals
+        let totalEntitlement, usedAmount, pendingAmount;
+        
+        if (isGP) {
+          totalEntitlement = (entitlements?.annual_sessions || 0) + (entitlements?.carried_over_sessions || 0);
+          usedAmount = requests?.filter(r => r.status === 'approved')?.reduce((sum, r) => sum + (r.total_sessions || 0), 0) || 0;
+          pendingAmount = requests?.filter(r => r.status === 'pending')?.reduce((sum, r) => sum + (r.total_sessions || 0), 0) || 0;
+          
+          document.getElementById('total-entitlement').textContent = `${totalEntitlement}`;
+          document.getElementById('used-holidays').textContent = `${usedAmount}`;
+          document.getElementById('remaining-holidays').textContent = `${totalEntitlement - usedAmount - pendingAmount}`;
+          document.getElementById('pending-holidays').textContent = `${pendingAmount}`;
+        } else {
+          totalEntitlement = (entitlements?.annual_hours || 0) + (entitlements?.carried_over_hours || 0);
+          usedAmount = requests?.filter(r => r.status === 'approved')?.reduce((sum, r) => sum + (r.total_hours || 0), 0) || 0;
+          pendingAmount = requests?.filter(r => r.status === 'pending')?.reduce((sum, r) => sum + (r.total_hours || 0), 0) || 0;
+          
+          document.getElementById('total-entitlement').textContent = `${totalEntitlement}h`;
+          document.getElementById('used-holidays').textContent = `${usedAmount}h`;
+          document.getElementById('remaining-holidays').textContent = `${totalEntitlement - usedAmount - pendingAmount}h`;
+          document.getElementById('pending-holidays').textContent = `${pendingAmount}h`;
+        }
+
+        // Display holiday requests
+        displayHolidayRequests(requests || []);
+
+      } catch (error) {
+        console.error('Error loading holiday data:', error);
+      }
+    }
+
+    function displayHolidayRequests(requests) {
+      const container = document.getElementById('my-holidays');
+      
+      if (!requests || requests.length === 0) {
+        container.innerHTML = `
+          <div style="text-align: center; color: var(--muted); padding: 30px;">
+            <p>No holiday requests found.</p>
+            <p style="font-size: 0.9em;">Tap "Request Holiday" to make your first request.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = requests.map(request => {
+        const startDate = new Date(request.start_date).toLocaleDateString();
+        const endDate = new Date(request.end_date).toLocaleDateString();
+        const duration = isGP ? 
+          `${request.total_sessions || 0} sessions` : 
+          `${request.total_hours || 0} hours`;
+        
+        const adminComments = request.admin_comments ? 
+          `<div class="admin-comments">
+            <strong>Admin Comments:</strong> ${request.admin_comments}
+          </div>` : '';
+
+        return `
+          <div class="holiday-item ${request.status}">
+            <div class="holiday-info">
+              <h4>${startDate} - ${endDate}</h4>
+              <p>${request.request_type.replace('_', ' ').toUpperCase()} • ${duration}</p>
+              ${request.destination ? `<p>🏖️ ${request.destination}</p>` : ''}
+              <span class="holiday-status ${request.status}">${request.status}</span>
+              ${request.status === 'pending' ? 
+                `<button class="cancel-btn" onclick="cancelRequest('${request.id}')">Cancel</button>` : 
+                ''
+              }
+              ${adminComments}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function loadTeamHolidays() {
+      try {
+        const siteId = profileRow?.site_id;
+        
+        // Get current user's team
+        const { data: userTeam } = await supabase
+          .from('staff_app_welcome')
+          .select('team_id, team_name')
+          .eq('user_id', currentUser.id)
+          .eq('site_id', siteId)
+          .single();
+
+        if (!userTeam?.team_id) {
+          document.getElementById('team-holidays').innerHTML = 
+            '<p style="color: var(--muted); font-size: 0.9em;">No team information available.</p>';
+          return;
+        }
+
+        // Get team members and their approved holidays
+        const { data: teamHolidays } = await supabase
+          .from('holiday_requests')
+          .select(`
+            *,
+            staff_app_welcome!inner(full_name, nickname, avatar_url, team_id)
+          `)
+          .eq('status', 'approved')
+          .eq('staff_app_welcome.team_id', userTeam.team_id)
+          .eq('site_id', siteId)
+          .gte('end_date', new Date().toISOString().split('T')[0])
+          .order('start_date')
+          .limit(10); // Limit for mobile
+
+        displayTeamHolidays(teamHolidays || []);
+
+      } catch (error) {
+        console.error('Error loading team holidays:', error);
+        document.getElementById('team-holidays').innerHTML = 
+          '<p style="color: var(--muted); font-size: 0.9em;">Error loading team holidays.</p>';
+      }
+    }
+
+    function displayTeamHolidays(holidays) {
+      const container = document.getElementById('team-holidays');
+      
+      if (!holidays || holidays.length === 0) {
+        container.innerHTML = '<p style="color: var(--muted); font-size: 0.9em;">No upcoming team holidays.</p>';
+        return;
+      }
+
+      const grouped = holidays.reduce((acc, holiday) => {
+        const name = holiday.staff_app_welcome?.nickname || holiday.staff_app_welcome?.full_name || 'Unknown';
+        if (!acc[name]) acc[name] = [];
+        acc[name].push(holiday);
+        return acc;
+      }, {});
+
+      container.innerHTML = Object.entries(grouped).map(([name, userHolidays]) => {
+        const avatar = userHolidays[0].staff_app_welcome?.avatar_url;
+        const initials = name.split(' ').map(n => n[0]).join('').toUpperCase();
+        
+        return `
+          <div class="team-member">
+            <div class="team-avatar" style="${avatar ? `background-image: url(${avatar}); background-size: cover;` : ''}">
+              ${avatar ? '' : initials}
+            </div>
+            <div>
+              <strong style="font-size: 0.9em;">${name}</strong>
+              <div style="color: var(--muted); font-size: 0.8em;">
+                ${userHolidays.slice(0, 2).map(h => 
+                  `${new Date(h.start_date).toLocaleDateString()} - ${new Date(h.end_date).toLocaleDateString()}`
+                ).join(', ')}
+                ${userHolidays.length > 2 ? `... +${userHolidays.length - 2} more` : ''}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function checkUpcomingHolidays() {
+      try {
+        const siteId = profileRow?.site_id;
+        const today = new Date();
+        const nextMonth = new Date(today.getTime() + (30 * 24 * 60 * 60 * 1000));
+
+        const { data: upcomingHoliday } = await supabase
+          .from('holiday_requests')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .eq('site_id', siteId)
+          .eq('status', 'approved')
+          .gte('start_date', today.toISOString().split('T')[0])
+          .lte('start_date', nextMonth.toISOString().split('T')[0])
+          .order('start_date')
+          .limit(1)
+          .single();
+
+        if (upcomingHoliday?.destination) {
+          await displayHolidayCountdown(upcomingHoliday);
+        }
+
+      } catch (error) {
+        // No upcoming holiday with destination, hide countdown
+        document.getElementById('countdown-section').style.display = 'none';
+      }
+    }
+
+    async function displayHolidayCountdown(holiday) {
+      const countdownSection = document.getElementById('countdown-section');
+      const destinationEl = document.getElementById('countdown-destination');
+      const timerEl = document.getElementById('countdown-timer');
+      const avatarEl = document.getElementById('holiday-avatar-image');
+
+      const startDate = new Date(holiday.start_date);
+      const today = new Date();
+      const daysUntil = Math.ceil((startDate - today) / (1000 * 60 * 60 * 24));
+
+      destinationEl.textContent = `🏖️ Holiday to ${holiday.destination}`;
+      timerEl.textContent = `${daysUntil} days to go!`;
+
+      countdownSection.style.display = 'block';
+    }
+
+    // Global functions
+    window.openRequestModal = function() {
+      document.getElementById('request-modal').style.display = 'block';
+      
+      // Set minimum date to tomorrow
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      document.getElementById('start-date').min = tomorrow.toISOString().split('T')[0];
+      document.getElementById('end-date').min = tomorrow.toISOString().split('T')[0];
+    };
+
+    window.closeRequestModal = function() {
+      document.getElementById('request-modal').style.display = 'none';
+      document.getElementById('holiday-request-form').reset();
+    };
+
+    window.refreshHolidayData = async function() {
+      await loadHolidayData();
+      await loadTeamHolidays();
+      await checkUpcomingHolidays();
+    };
+
+    window.cancelRequest = async function(requestId) {
+      if (!confirm('Are you sure you want to cancel this holiday request?')) return;
+
+      try {
+        const { error } = await supabase
+          .from('holiday_requests')
+          .update({ status: 'cancelled' })
+          .eq('id', requestId);
+
+        if (error) throw error;
+
+        alert('Holiday request cancelled successfully.');
+        await loadHolidayData();
+      } catch (error) {
+        console.error('Error cancelling request:', error);
+        alert('Error cancelling request. Please try again.');
+      }
+    };
+
+    // Form submission
+    document.getElementById('holiday-request-form').addEventListener('submit', async function(e) {
+      e.preventDefault();
+
+      const formData = new FormData(e.target);
+      const startDate = new Date(formData.get('start-date'));
+      const endDate = new Date(formData.get('end-date'));
+      const requestType = formData.get('request-type');
+      const destination = formData.get('destination');
+
+      if (startDate > endDate) {
+        alert('End date must be after start date.');
+        return;
+      }
+
+      try {
+        // Calculate hours/sessions based on working pattern
+        let totalHours = 0, totalSessions = 0;
+        
+        if (isGP) {
+          // For GPs, calculate sessions (simplified: assume 2 sessions per full day)
+          const days = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+          totalSessions = days * 2;
+        } else {
+          // For regular staff, calculate hours based on working pattern
+          const { data: workingPattern } = await supabase
+            .from('working_patterns')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .eq('site_id', profileRow?.site_id)
+            .single();
+
+          // Calculate total hours for the date range
+          for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+            const dayOfWeek = d.getDay();
+            const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+            const dayHours = workingPattern?.[`${dayNames[dayOfWeek]}_hours`] || 0;
+            totalHours += dayHours;
+          }
+        }
+
+        // Create holiday request
+        const { error } = await supabase
+          .from('holiday_requests')
+          .insert({
+            user_id: currentUser.id,
+            site_id: profileRow?.site_id,
+            start_date: startDate.toISOString().split('T')[0],
+            end_date: endDate.toISOString().split('T')[0],
+            request_type: requestType,
+            total_hours: totalHours,
+            total_sessions: totalSessions,
+            destination: destination || null,
+            status: 'pending'
+          });
+
+        if (error) throw error;
+
+        alert('Holiday request submitted successfully!');
+        closeRequestModal();
+        await loadHolidayData();
+
+      } catch (error) {
+        console.error('Error submitting request:', error);
+        alert('Error submitting request. Please try again.');
+      }
+    });
+
+    // Update end date minimum when start date changes
+    document.getElementById('start-date').addEventListener('change', function() {
+      document.getElementById('end-date').min = this.value;
+    });
+
+    // Close modal when clicking outside
+    window.onclick = function(event) {
+      const modal = document.getElementById('request-modal');
+      if (event.target === modal) {
+        closeRequestModal();
+      }
+    };
+
+    // Initialize page
+    initializePage();
+  </script>
+</body>
+</html>
