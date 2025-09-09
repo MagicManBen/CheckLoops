@@ -11,6 +11,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="config.js"></script>
+<script type="module" src="admin-direct-auth.js"></script>
 <script>
   // Configure PDF.js worker
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -5648,9 +5649,10 @@ window.PIR_DEFINITIONS_DATA = [
   // Authentication functions
   function showAuth(show = true) {
     const appShell = document.getElementById('app');
-    // Always use the blue login at Home.html
+    // When the Admin UI needs to show auth, direct to Home.html for the login screen
     if (show) {
-      window.location.href = 'Home.html';
+      // Add a query parameter to indicate this was an admin page
+      window.location.href = 'Home.html?redirect=admin';
       return;
     }
     if (appShell) appShell.style.display = 'grid';
@@ -5712,13 +5714,73 @@ window.PIR_DEFINITIONS_DATA = [
     }
 
     // Check for existing session
-    supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        showAuth(false);
-        bootstrap();
-      } else if (event === 'SIGNED_OUT') {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        console.error('Failed to get session:', error);
         showAuth(true);
+        return;
       }
+      
+      if (!session) {
+        console.log('No active session found, showing login form');
+        showAuth(true);
+        return;
+      }
+      
+      // Check if the user has admin/owner role
+      const checkAdminRole = async () => {
+        try {
+          // First check if user has a profile with admin role
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('user_id', session.user.id)
+            .maybeSingle();
+            
+          if (profile && ['admin', 'owner'].includes(profile.role?.toLowerCase())) {
+            console.log('✅ Admin role confirmed from profile');
+            showAuth(false);
+            bootstrap();
+            return;
+          }
+          
+          // Next check site_invites table
+          const { data: invite, error: inviteError } = await supabase
+            .from('site_invites')
+            .select('role')
+            .eq('email', session.user.email)
+            .in('role', ['admin', 'owner'])
+            .maybeSingle();
+            
+          if (invite) {
+            console.log('✅ Admin role confirmed from invitation');
+            showAuth(false);
+            bootstrap();
+            return;
+          }
+          
+          // Finally check user metadata
+          const rawRole = session.user?.user_metadata?.role || session.user?.raw_user_meta_data?.role;
+          if (rawRole && ['admin', 'owner'].includes(String(rawRole).toLowerCase())) {
+            console.log('✅ Admin role confirmed from user metadata');
+            showAuth(false);
+            bootstrap();
+            return;
+          }
+          
+          // No admin role found, show staff view instead
+          console.log('⚠️ User authenticated but not admin/owner role');
+          document.getElementById('admin-section').style.display = 'none';
+          document.getElementById('staff-view').style.display = 'block';
+          document.getElementById('no-access').style.display = 'block';
+          
+        } catch (err) {
+          console.error('Error checking admin role:', err);
+          showAuth(true);
+        }
+      };
+      
+      checkAdminRole();
     });
   }
 
@@ -7185,6 +7247,19 @@ window.PIR_DEFINITIONS_DATA = [
         // instead of forcing logout (to avoid logout loops)
         if (adminJustVisited) {
           console.log('No valid session but just came from staff - redirecting to staff.html');
+          
+          // Check stored role to determine if user should have admin access
+          const storedRole = sessionStorage.getItem('userRole');
+          const storedEmail = sessionStorage.getItem('userEmail');
+          
+          if (storedRole && ['Admin', 'Owner'].includes(storedRole)) {
+            console.log('Stored role indicates admin access:', storedRole);
+            console.log('Email:', storedEmail);
+            console.log('Auth issue detected - redirecting to Home.html to refresh login');
+            window.location.replace('Home.html?adminRetry=true');
+            return;
+          }
+          
           window.location.replace('staff.html');
           return;
         }
@@ -7202,7 +7277,18 @@ window.PIR_DEFINITIONS_DATA = [
         
         supabase.auth.onAuthStateChange((event, sess) => {
           console.log('Auth state changed on admin page:', event, sess ? 'has session' : 'no session');
-          if (event === 'SIGNED_OUT' || !sess || !sess.user) {
+          
+          if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+            console.log('✅ User signed in or token refreshed');
+            // If we just came from staff pages and are signed in again, refresh the page
+            // to ensure everything is loaded properly
+            const cameFromStaffAt = sessionStorage.getItem('cameFromStaffAt');
+            const recentNavigation = cameFromStaffAt && (Date.now() - Number(cameFromStaffAt)) < 10000;
+            if (recentNavigation && sess && sess.user) {
+              console.log('Refreshing page after navigation from staff...');
+              window.location.reload();
+            }
+          } else if (event === 'SIGNED_OUT' || !sess || !sess.user) {
             if (!isLoggingOut) {
               isLoggingOut = true;
               // Already signed out; just cleanup
@@ -7223,6 +7309,13 @@ window.PIR_DEFINITIONS_DATA = [
         const userRole = user?.raw_user_meta_data?.role?.toLowerCase();
         if (userRole === 'admin' || userRole === 'owner') {
           console.log('✅ User allowed on admin site - role from metadata:', userRole);
+          
+          // Store that this user is verified as admin for future reference
+          try {
+            sessionStorage.setItem('adminVerified', 'true');
+            sessionStorage.setItem('adminEmail', user.email);
+          } catch(_) {}
+          
           return;
         }
 
@@ -7235,6 +7328,13 @@ window.PIR_DEFINITIONS_DATA = [
         
         if (profile?.role && ['admin', 'owner'].includes(profile.role.toLowerCase())) {
           console.log(`✅ User allowed on admin site - role from profile: ${profile.role}`);
+          
+          // Store that this user is verified as admin for future reference
+          try {
+            sessionStorage.setItem('adminVerified', 'true');
+            sessionStorage.setItem('adminEmail', user.email);
+          } catch(_) {}
+          
           return;
         }
         
@@ -7248,6 +7348,27 @@ window.PIR_DEFINITIONS_DATA = [
 
         if (invite?.role && ['admin', 'owner'].includes(invite.role.toLowerCase())) {
           console.log(`✅ User allowed on admin site - role from invite: ${invite.role}`);
+          
+          // Store that this user is verified as admin for future reference
+          try {
+            sessionStorage.setItem('adminVerified', 'true');
+            sessionStorage.setItem('adminEmail', user.email);
+          } catch(_) {}
+          
+          return;
+        }
+        
+        // Check if we came from staff and had admin role stored
+        const storedRole = sessionStorage.getItem('userRole');
+        const storedEmail = sessionStorage.getItem('userEmail');
+        const cameFromStaffAt = sessionStorage.getItem('cameFromStaffAt');
+        const recentNavigation = cameFromStaffAt && (Date.now() - Number(cameFromStaffAt)) < 10000;
+        
+        if (recentNavigation && storedRole && ['Admin', 'Owner'].includes(storedRole) && storedEmail === user.email) {
+          console.log(`✅ User allowed on admin site - verified from staff navigation: ${storedRole}`);
+          try {
+            sessionStorage.setItem('adminVerified', 'true');
+          } catch(_) {}
           return;
         }
 
@@ -7259,6 +7380,26 @@ window.PIR_DEFINITIONS_DATA = [
       } catch (e) {
         console.warn('Role guard check failed, but allowing access:', e);
         // If we can't determine role, allow access (better to be permissive than block legitimate admins)
+      }
+
+      // Check if we need to apply a forced auth refresh
+      const forceAuthRefresh = sessionStorage.getItem('forceAuthRefresh') === 'true';
+      if (forceAuthRefresh) {
+        console.log('🔄 Forced auth refresh requested from staff navigation');
+        sessionStorage.removeItem('forceAuthRefresh');
+        
+        try {
+          console.log('Refreshing auth session...');
+          const { data, error } = await supabase.auth.refreshSession();
+          
+          if (error) {
+            console.error('❌ Failed to refresh auth session:', error);
+          } else if (data?.session) {
+            console.log('✅ Auth session refreshed successfully');
+          }
+        } catch (err) {
+          console.error('❌ Error during auth refresh:', err);
+        }
       }
 
       // Initialize the context with the session
@@ -7282,6 +7423,16 @@ window.PIR_DEFINITIONS_DATA = [
     }
   })();
 
+  // Check if we just navigated from staff pages
+  const cameFromStaffAt = sessionStorage.getItem('cameFromStaffAt');
+  const recentNavigation = cameFromStaffAt && (Date.now() - Number(cameFromStaffAt)) < 10000;
+  
+  // If we just came from staff pages, set a flag to refresh the session
+  if (recentNavigation) {
+    console.log('Recent navigation from staff detected, will ensure session is refreshed');
+    sessionStorage.setItem('needSessionRefresh', 'true');
+  }
+  
   // Guard on bfcache restore or quick back/forward: re-check auth and role
   window.addEventListener('pageshow', async (e) => {
     if (!e.persisted) return; // only handle bfcache restores
@@ -7394,13 +7545,75 @@ window.PIR_DEFINITIONS_DATA = [
     console.log('📍 loadContext starting...');
     
     try {
+      // Check if we need to apply a forced auth refresh
+      const forceAuthRefresh = sessionStorage.getItem('forceAuthRefresh') === 'true';
+      if (forceAuthRefresh) {
+        console.log('🔄 Forced auth refresh requested from staff navigation');
+        sessionStorage.removeItem('forceAuthRefresh');
+        
+        try {
+          console.log('Refreshing auth session...');
+          const { data, error } = await supabase.auth.refreshSession();
+          
+          if (error) {
+            console.error('❌ Failed to refresh auth session:', error);
+          } else if (data?.session) {
+            console.log('✅ Auth session refreshed successfully');
+          }
+        } catch (err) {
+          console.error('❌ Error during auth refresh:', err);
+        }
+      }
+      
+      // Check if we already verified admin access in the current session
+      const adminVerified = sessionStorage.getItem('adminVerified') === 'true';
+      const adminEmail = sessionStorage.getItem('adminEmail');
+      
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if(userError || !user) {
         console.error('❌ No authenticated user found:', userError);
+        
+        // If we have a verified admin from sessionStorage but no active session,
+        // this could be a session refresh issue
+        if (adminVerified && adminEmail) {
+          console.log('⚠️ Session lost but admin was verified - attempting to repair');
+          
+          // Try to refresh the session
+          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+          
+          if (refreshError || !refreshData.session) {
+            console.error('❌ Failed to refresh session:', refreshError);
+            throw new Error("Failed to refresh session");
+          }
+          
+          console.log('✅ Session refreshed successfully');
+          return await loadContext(); // Retry context loading with refreshed session
+        }
+        
         throw new Error("No authenticated user");
       }
       
       console.log('✅ User authenticated:', user.email);
+      
+      // Check if we need to refresh the session (coming from staff pages)
+      const needSessionRefresh = sessionStorage.getItem('needSessionRefresh') === 'true';
+      if (needSessionRefresh) {
+        console.log('📌 Session refresh requested after navigation from staff pages');
+        sessionStorage.removeItem('needSessionRefresh');
+        
+        // Force a session refresh to ensure we have all the right tokens
+        try {
+          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+          if (!refreshError && refreshData.session) {
+            console.log('✅ Session refreshed successfully');
+          } else {
+            console.warn('⚠️ Session refresh failed:', refreshError);
+          }
+        } catch (e) {
+          console.warn('⚠️ Error refreshing session:', e);
+        }
+      }
+      
       ctx.user = user;
       
       // Load user profile to get site_id and role
