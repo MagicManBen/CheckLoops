@@ -111,7 +111,7 @@ export function renderStaffNavigation(activePage = 'home') {
     { page: 'training', href: 'staff-training.html', label: 'My Training' },
     { page: 'achievements', href: 'achievements.html', label: 'Achievements' },
     { page: 'quiz', href: 'staff-quiz.html', label: 'Quiz' },
-    { page: 'admin', href: 'index.html', label: 'Admin Site', adminOnly: true }
+    { page: 'admin', href: 'admin-login.html?from=staff', label: 'Admin Site', adminOnly: true }
   ];
   
   navContainer.innerHTML = navItems.map(item => {
@@ -123,16 +123,6 @@ export function renderStaffNavigation(activePage = 'home') {
     
     return `<a href="${item.href}" data-page="${item.page}"${className}>${item.label}</a>`;
   }).join('');
-  
-  // Add event listener for admin navigation tracking
-  const adminLinks = navContainer.querySelectorAll('.admin-only');
-  adminLinks.forEach(link => {
-    link.addEventListener('click', () => {
-      try { 
-        sessionStorage.setItem('cameFromStaffAt', String(Date.now())); 
-      } catch(_) {}
-    }, { once: false });
-  });
 }
 
 // Create and render mobile staff navigation  
@@ -157,16 +147,6 @@ export function renderMobileStaffNavigation(activePage = 'home') {
     
     return `<a class="${className}" href="${item.href}" data-page="${item.page}"${adminStyle}>${item.label}</a>`;
   }).join('');
-  
-  // Add event listener for admin navigation tracking
-  const adminLinks = navContainer.querySelectorAll('.admin-only');
-  adminLinks.forEach(link => {
-    link.addEventListener('click', () => {
-      try { 
-        sessionStorage.setItem('cameFromStaffAt', String(Date.now())); 
-      } catch(_) {}
-    }, { once: false });
-  });
 }
 
 export function navActivate(page){
