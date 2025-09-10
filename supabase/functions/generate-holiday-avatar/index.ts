@@ -15,9 +15,10 @@ serve(async (req) => {
     const { destination, avatarUrl } = await req.json()
 
     // Get the OpenAI API key from environment variables
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
+    // Try HolidayAvatar secret first, then fallback to OPENAI_API_KEY
+    const openaiApiKey = Deno.env.get('HolidayAvatar') || Deno.env.get('OPENAI_API_KEY')
     if (!openaiApiKey) {
-      throw new Error('OpenAI API key not configured')
+      throw new Error('OpenAI API key not configured (checked HolidayAvatar and OPENAI_API_KEY)')
     }
 
     // Create a prompt for DALL-E to generate a holiday avatar

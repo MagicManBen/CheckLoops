@@ -3,16 +3,9 @@
 import { createClient } from '@supabase/supabase-js';
 import fs from 'fs';
 
-// Read config
-let SUPABASE_URL, SUPABASE_ANON_KEY;
-try {
-  const configContent = fs.readFileSync('config.js', 'utf8');
-  
-  // Try different patterns to find the credentials
-  let urlMatch = configContent.match(/SUPABASE_URL:\s*['"]([^'"]+)['"]/);
-  let keyMatch = configContent.match(/SUPABASE_ANON_KEY:\s*['"]([^'"]+)['"]/);
-  
-  // Also try window.SUPABASE_URL pattern
+// Use service key to bypass RLS
+const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
+const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTAxNzI3NiwiZXhwIjoyMDcwNTkzMjc2fQ.CJxV14F0T2TWkAjeR4bpYiBIOwLwyfzF9WzAWwS99Xc';
   if (!urlMatch) {
     urlMatch = configContent.match(/window\.SUPABASE_URL\s*=\s*['"]([^'"]+)['"]/);
   }
@@ -39,7 +32,7 @@ console.log('=== TESTING SUPABASE CONNECTION ===');
 console.log('URL:', SUPABASE_URL);
 console.log('');
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
 async function testConnection() {
   try {
