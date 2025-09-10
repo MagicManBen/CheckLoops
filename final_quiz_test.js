@@ -8,7 +8,6 @@ const TEST_CONFIG = {
     email: 'benhowardmagic@hotmail.com',
     password: 'Hello1!',
     staffQuizUrl: 'https://magicmanben.github.io/CheckLoops/staff-quiz.html',
-    mobileQuizUrl: 'https://magicmanben.github.io/CheckLoops/staff-quiz.mobile.html',
     dashboardUrl: 'https://magicmanben.github.io/CheckLoops/staff.html'
 };
 

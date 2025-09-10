@@ -77,9 +77,8 @@ Enhanced CheckLoop staff portal quiz system with comprehensive functionality inc
 
 ### Enhanced Files:
 1. **staff-quiz.html** - Complete quiz interface overhaul
-2. **staff-quiz.mobile.html** - Mobile-optimized quiz experience  
-3. **staff.html** - Dashboard with quiz due notifications
-4. **quiz_enhancements.sql** - Database migration script
+2. **staff.html** - Dashboard with quiz due notifications
+3. **quiz_enhancements.sql** - Database migration script
 
 ### New Files:
 1. **final_quiz_test.js** - Comprehensive testing script

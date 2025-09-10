@@ -126,38 +126,9 @@ export function renderStaffNavigation(activePage = 'home') {
   }).join('');
 }
 
-// Create and render mobile staff navigation  
-export function renderMobileStaffNavigation(activePage = 'home') {
-  const navContainer = document.querySelector('.nav[role="navigation"]');
-  if (!navContainer) return;
-  
-  const navItems = [
-    { page: 'home', href: 'staff.mobile.html', label: '🏠 Home' },
-    { page: 'welcome', href: 'staff-welcome.mobile.html', label: '👋 Welcome' },
-    { page: 'scans', href: 'staff-scans.mobile.html', label: '📝 My Scans' },
-    { page: 'training', href: 'staff-training.mobile.html', label: '📚 My Training' },
-    { page: 'achievements', href: 'achievements.mobile.html', label: '🏆 Achievements' },
-    { page: 'quiz', href: 'staff-quiz.mobile.html', label: '🧠 Quiz' },
-    { page: 'holidays', href: 'staff-holidays.mobile.html', label: '🏖️ My Holidays' },
-    { page: 'admin', href: 'admin-dashboard.html', label: '🔧 Admin', adminOnly: true }
-  ];
-  
-  navContainer.innerHTML = navItems.map(item => {
-    const activeClass = item.page === activePage ? ' active' : '';
-    const adminStyle = item.adminOnly ? ' style="display:none;"' : '';
-    const className = item.adminOnly ? `nav-link admin-only${activeClass}` : `nav-link${activeClass}`;
-    
-    return `<a class="${className}" href="${item.href}" data-page="${item.page}"${adminStyle}>${item.label}</a>`;
-  }).join('');
-}
 
 export function navActivate(page){
-  // Check if this is a mobile page or desktop page
-  if (document.querySelector('.nav[role="navigation"]')) {
-    renderMobileStaffNavigation(page);
-  } else {
-    renderStaffNavigation(page);
-  }
+  renderStaffNavigation(page);
 }
 
 // Reveal admin-only navigation links if user has admin/owner role
