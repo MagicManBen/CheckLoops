@@ -4,17 +4,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   let welcomeMessageEl = document.getElementById('user-welcome-message');
   
   if (!welcomeMessageEl) {
-    // Create the element and insert it before the dashboard panel
-    const dashboardSection = document.getElementById('view-dashboard');
-    const dashboardPanel = dashboardSection.querySelector('.panel');
-    
-    welcomeMessageEl = document.createElement('div');
-    welcomeMessageEl.id = 'user-welcome-message';
-    welcomeMessageEl.style = 'background: linear-gradient(135deg, rgba(118, 167, 255, 0.2), rgba(118, 167, 255, 0.1)); border: 1px solid rgba(118, 167, 255, 0.3); border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 700; color: var(--white);';
-    welcomeMessageEl.textContent = 'Loading user information...';
-    
-    // Insert before the panel
-    dashboardSection.insertBefore(welcomeMessageEl, dashboardPanel);
+  // Create the element but do not insert it into the DOM so the welcome banner is hidden by default
+  // (Removing automatic banner display at dashboard drop-in)
+  // const dashboardSection = document.getElementById('view-dashboard');
+  // const dashboardPanel = dashboardSection.querySelector('.panel');
+
+  welcomeMessageEl = document.createElement('div');
+  welcomeMessageEl.id = 'user-welcome-message';
+  welcomeMessageEl.style = 'background: linear-gradient(135deg, rgba(118, 167, 255, 0.2), rgba(118, 167, 255, 0.1)); border: 1px solid rgba(118, 167, 255, 0.3); border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 20px; font-size: 28px; font-weight: 700; color: var(--white);';
+  welcomeMessageEl.textContent = 'Loading user information...';
+
+  // Intentionally not inserted into the DOM to remove the welcome banner on initial load
   }
   
   try {
