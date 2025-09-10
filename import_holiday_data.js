@@ -167,7 +167,7 @@ async function insertHolidayRequests() {
       const request = {
         user_id: userId,
         site_id: 2,
-        request_type: 'annual_leave',
+        request_type: 'holiday',
         status: 'approved',
         start_date: holidays[0].date,
         end_date: holidays[holidays.length - 1].date,
@@ -188,12 +188,26 @@ async function insertHolidayRequests() {
       requestCount++;
       
       // Insert individual holiday days
-      const days = holidays.map(h => ({
-        holiday_request_id: requestData.id,
-        date: h.date,
-        hours_requested: h.value.includes(':') ? h.value : '00:00:00',
-        sessions_requested: h.value.includes(':') ? 0 : parseInt(h.value)
-      }));
+      const days = holidays.map(h => {
+        let hours_requested = 0;
+        let sessions_requested = 0;
+        
+        if (h.value.includes(':')) {
+          // Convert HH:MM:SS to decimal hours
+          const [hrs, min, sec] = h.value.split(':').map(n => parseInt(n) || 0);
+          hours_requested = hrs + (min / 60) + (sec / 3600);
+        } else {
+          // It's sessions
+          sessions_requested = parseInt(h.value) || 0;
+        }
+        
+        return {
+          holiday_request_id: requestData.id,
+          holiday_date: h.date,
+          hours_requested: hours_requested,
+          sessions_requested: sessions_requested
+        };
+      });
       
       const { error: daysError } = await supabase
         .from('holiday_request_days')
@@ -253,8 +267,7 @@ async function verifyImport() {
     userRequests.forEach(r => {
       r.holiday_request_days?.forEach(d => {
         if (d.hours_requested) {
-          const [h, m, s] = d.hours_requested.split(':').map(n => parseInt(n) || 0);
-          totalHours += h + (m / 60) + (s / 3600);
+          totalHours += parseFloat(d.hours_requested) || 0;
         }
       });
     });
