@@ -1,0 +1,1303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CheckLoop — My Holidays</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://img.icons8.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <script src="config.js"></script>
+  <script src="admin-nav.js"></script>
+  <link rel="stylesheet" href="staff.css">
+  
+  <!-- Mobile redirect -->
+  <script>
+    (function(){
+      try{
+        const url = new URL(location.href);
+        if (url.searchParams.get('view') === 'desktop') return;
+        if (url.pathname.includes('.mobile.')) return;
+        const ua = navigator.userAgent || '';
+        const isMobileUA = /Mobi|Android|iPhone|iPad|iPod|Windows Phone|Opera Mini|IEMobile/i.test(ua);
+        const small = (window.innerWidth || screen.width || 0) <= 480;
+        if (!isMobileUA && !small) return;
+        const mobilePath = url.pathname.replace(/\.html$/, '.mobile.html');
+        fetch(mobilePath, { method: 'HEAD', cache: 'no-store' })
+          .then(res => { if (res.ok) location.replace(mobilePath + url.search); })
+          .catch(()=>{ /* ignore */ });
+      }catch(e){ /* noop */ }
+    })();
+  </script>
+  
+  <style>
+    /* Modern design matching staff.html */
+    .holidays-hero {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 20px;
+      padding: 32px;
+      margin-bottom: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .holidays-hero::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+      animation: float 20s ease-in-out infinite;
+    }
+    
+    @keyframes float {
+      0%, 100% { transform: translate(0, 0) rotate(0deg); }
+      33% { transform: translate(-10%, 10%) rotate(120deg); }
+      66% { transform: translate(10%, -10%) rotate(240deg); }
+    }
+    
+    .holidays-hero-content {
+      position: relative;
+      z-index: 1;
+    }
+    
+    .holidays-hero h1 {
+      color: white;
+      font-size: 2.5em;
+      font-weight: 900;
+      margin: 0 0 8px 0;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .holidays-hero .subtitle {
+      color: rgba(255,255,255,0.9);
+      font-size: 1.1em;
+      margin: 0;
+    }
+    
+    /* Stats Cards */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    
+    .stat-card {
+      background: var(--panel-bg);
+      border-radius: 16px;
+      padding: 20px;
+      border: 1px solid var(--border-color);
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    
+    .stat-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    }
+    
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    }
+    
+    .stat-card.used::before { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+    .stat-card.remaining::before { background: linear-gradient(90deg, #10b981, #34d399); }
+    .stat-card.pending::before { background: linear-gradient(90deg, #8b5cf6, #a78bfa); }
+    
+    .stat-value {
+      font-size: 2.5em;
+      font-weight: 900;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      display: block;
+      margin-bottom: 4px;
+    }
+    
+    .stat-label {
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.9em;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+    .stat-unit {
+      font-size: 0.5em;
+      opacity: 0.7;
+    }
+    
+    /* Action Buttons */
+    .action-buttons {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 32px;
+    }
+    
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 14px 24px;
+      font-weight: 700;
+      font-size: 1em;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .btn-primary::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 0;
+      height: 0;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.2);
+      transform: translate(-50%, -50%);
+      transition: width 0.6s, height 0.6s;
+    }
+    
+    .btn-primary:hover::before {
+      width: 300px;
+      height: 300px;
+    }
+    
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(102,126,234,0.4);
+    }
+    
+    .btn-secondary {
+      background: var(--glass);
+      color: var(--ink);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 14px 24px;
+      font-weight: 700;
+      font-size: 1em;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    
+    .btn-secondary:hover {
+      background: rgba(255,255,255,0.1);
+      transform: translateY(-2px);
+    }
+    
+    /* Holiday Countdown Banner */
+    .countdown-banner {
+      background: linear-gradient(135deg, #f97316 0%, #fb923c 100%);
+      border-radius: 20px;
+      padding: 24px;
+      margin-bottom: 24px;
+      color: white;
+      position: relative;
+      overflow: hidden;
+      display: none;
+    }
+    
+    .countdown-banner.active {
+      display: block;
+      animation: slideInDown 0.6s ease-out;
+    }
+    
+    .countdown-content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+      z-index: 1;
+    }
+    
+    .countdown-info {
+      flex: 1;
+    }
+    
+    .countdown-destination {
+      font-size: 1.2em;
+      font-weight: 600;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .countdown-timer {
+      font-size: 2.5em;
+      font-weight: 900;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .countdown-avatar {
+      width: 120px;
+      height: 120px;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+      background: rgba(255,255,255,0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .countdown-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    
+    /* Holiday Request Cards */
+    .requests-section {
+      background: var(--panel-bg);
+      border-radius: 20px;
+      padding: 24px;
+      margin-bottom: 24px;
+      border: 1px solid var(--border-color);
+    }
+    
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    
+    .section-title {
+      font-size: 1.4em;
+      font-weight: 800;
+      color: var(--ink);
+      margin: 0;
+    }
+    
+    .request-card {
+      background: rgba(255,255,255,0.03);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 16px;
+      border: 1px solid var(--border-color);
+      position: relative;
+      transition: all 0.3s ease;
+    }
+    
+    .request-card:hover {
+      background: rgba(255,255,255,0.05);
+      transform: translateX(4px);
+    }
+    
+    .request-card.approved {
+      border-left: 4px solid #10b981;
+    }
+    
+    .request-card.pending {
+      border-left: 4px solid #f59e0b;
+    }
+    
+    .request-card.declined {
+      border-left: 4px solid #ef4444;
+    }
+    
+    .request-card.cancelled {
+      border-left: 4px solid #6b7280;
+      opacity: 0.7;
+    }
+    
+    .request-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+    
+    .request-dates {
+      font-weight: 700;
+      font-size: 1.1em;
+      color: var(--ink);
+    }
+    
+    .request-status {
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 0.8em;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+    .request-status.approved {
+      background: #10b981;
+      color: white;
+    }
+    
+    .request-status.pending {
+      background: #f59e0b;
+      color: white;
+    }
+    
+    .request-status.declined {
+      background: #ef4444;
+      color: white;
+    }
+    
+    .request-status.cancelled {
+      background: #6b7280;
+      color: white;
+    }
+    
+    .request-details {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+      color: var(--muted);
+      font-size: 0.95em;
+    }
+    
+    .request-detail {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    
+    .request-destination {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border-color);
+    }
+    
+    .destination-text {
+      flex: 1;
+      font-weight: 600;
+      color: var(--ink);
+    }
+    
+    .destination-image {
+      width: 100px;
+      height: 60px;
+      border-radius: 8px;
+      overflow: hidden;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .destination-image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    
+    .request-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    
+    .btn-cancel {
+      padding: 8px 16px;
+      border-radius: 8px;
+      background: rgba(239,68,68,0.1);
+      color: #ef4444;
+      border: 1px solid #ef4444;
+      font-weight: 600;
+      font-size: 0.9em;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    
+    .btn-cancel:hover {
+      background: #ef4444;
+      color: white;
+    }
+    
+    /* Team Calendar View */
+    .team-section {
+      background: var(--panel-bg);
+      border-radius: 20px;
+      padding: 24px;
+      border: 1px solid var(--border-color);
+    }
+    
+    .team-member-card {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 16px;
+      background: rgba(255,255,255,0.02);
+      border-radius: 12px;
+      margin-bottom: 12px;
+      transition: all 0.3s ease;
+    }
+    
+    .team-member-card:hover {
+      background: rgba(255,255,255,0.05);
+    }
+    
+    .team-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 700;
+      font-size: 1.2em;
+    }
+    
+    .team-member-info {
+      flex: 1;
+    }
+    
+    .team-member-name {
+      font-weight: 700;
+      color: var(--ink);
+      margin-bottom: 4px;
+    }
+    
+    .team-member-holiday {
+      font-size: 0.9em;
+      color: var(--muted);
+    }
+    
+    .team-member-status {
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 0.8em;
+      font-weight: 600;
+      background: #10b981;
+      color: white;
+    }
+    
+    /* Modal Styles */
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(4px);
+      animation: fadeIn 0.3s ease;
+    }
+    
+    .modal.active {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .modal-content {
+      background: var(--panel-bg);
+      border-radius: 20px;
+      padding: 32px;
+      max-width: 500px;
+      width: 90%;
+      max-height: 90vh;
+      overflow-y: auto;
+      border: 1px solid var(--border-color);
+      animation: slideInUp 0.3s ease;
+    }
+    
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+    
+    .modal-title {
+      font-size: 1.5em;
+      font-weight: 800;
+      color: var(--ink);
+      margin: 0;
+    }
+    
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 1.5em;
+      cursor: pointer;
+      padding: 0;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      transition: all 0.3s ease;
+    }
+    
+    .modal-close:hover {
+      background: rgba(255,255,255,0.1);
+      color: var(--ink);
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    .form-label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: var(--ink);
+      font-size: 0.95em;
+    }
+    
+    .form-input,
+    .form-select {
+      width: 100%;
+      padding: 12px 16px;
+      border-radius: 10px;
+      border: 1px solid var(--border-color);
+      background: rgba(255,255,255,0.05);
+      color: var(--ink);
+      font-size: 1em;
+      transition: all 0.3s ease;
+    }
+    
+    .form-input:focus,
+    .form-select:focus {
+      outline: none;
+      border-color: var(--accent);
+      background: rgba(255,255,255,0.08);
+    }
+    
+    .form-hint {
+      font-size: 0.85em;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    
+    .form-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      margin-top: 24px;
+    }
+    
+    /* Animations */
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    
+    @keyframes slideInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    @keyframes slideInDown {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--muted);
+    }
+    
+    .empty-icon {
+      font-size: 3em;
+      margin-bottom: 16px;
+      opacity: 0.5;
+    }
+    
+    .empty-title {
+      font-size: 1.2em;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    
+    .empty-text {
+      font-size: 0.95em;
+    }
+    
+    /* Loading State */
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      color: var(--muted);
+    }
+    
+    .loading-spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid var(--border-color);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 12px;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <!-- User Info Popup -->
+  <div id="user-info-popup" class="user-popup">
+    <div class="user-popup-content">
+      <div class="user-popup-header" id="user-popup-header">
+        <!-- Populated by JS -->
+      </div>
+      <div class="user-popup-body">
+        <a href="admin-dashboard.html" id="admin-link" style="display:none;">Admin</a>
+        <a href="#" onclick="signOut()">Sign Out</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="container">
+      <!-- Navigation -->
+      <nav class="nav seg-nav" role="navigation"></nav>
+
+      <!-- Hero Section -->
+      <div class="holidays-hero">
+        <div class="holidays-hero-content">
+          <h1>My Holidays</h1>
+          <p class="subtitle">Manage your time off, track entitlements, and plan holidays with your team</p>
+        </div>
+      </div>
+
+      <!-- Holiday Stats -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <span class="stat-value" id="total-entitlement">0<span class="stat-unit">h</span></span>
+          <div class="stat-label">Total Entitlement</div>
+        </div>
+        <div class="stat-card used">
+          <span class="stat-value" id="used-holidays">0<span class="stat-unit">h</span></span>
+          <div class="stat-label">Used</div>
+        </div>
+        <div class="stat-card remaining">
+          <span class="stat-value" id="remaining-holidays">0<span class="stat-unit">h</span></span>
+          <div class="stat-label">Remaining</div>
+        </div>
+        <div class="stat-card pending">
+          <span class="stat-value" id="pending-holidays">0<span class="stat-unit">h</span></span>
+          <div class="stat-label">Pending Approval</div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="action-buttons">
+        <button class="btn-primary" onclick="openRequestModal()">
+          <span style="margin-right: 8px;">✈️</span> Request Holiday
+        </button>
+        <button class="btn-secondary" onclick="refreshHolidayData()">
+          <span style="margin-right: 8px;">🔄</span> Refresh
+        </button>
+      </div>
+
+      <!-- Upcoming Holiday Countdown -->
+      <div id="countdown-section" class="countdown-banner">
+        <div class="countdown-content">
+          <div class="countdown-info">
+            <div class="countdown-destination" id="countdown-destination">
+              <span>✈️</span>
+              <span>Holiday to <strong id="destination-name">Spain</strong></span>
+            </div>
+            <div class="countdown-timer" id="countdown-timer">15 days to go!</div>
+          </div>
+          <div class="countdown-avatar" id="holiday-avatar-container">
+            <span style="font-size: 2em;">🏝️</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- My Holiday Requests -->
+      <div class="requests-section">
+        <div class="section-header">
+          <h3 class="section-title">My Holiday Requests</h3>
+        </div>
+        <div id="my-holidays">
+          <div class="loading">
+            <div class="loading-spinner"></div>
+            Loading your holiday requests...
+          </div>
+        </div>
+      </div>
+
+      <!-- Team Holidays -->
+      <div class="team-section">
+        <div class="section-header">
+          <h3 class="section-title">Team Holidays</h3>
+        </div>
+        <p style="color: var(--muted); margin-bottom: 20px;">
+          See when your team members are on holiday to help plan your requests
+        </p>
+        <div id="team-holidays">
+          <div class="loading">
+            <div class="loading-spinner"></div>
+            Loading team holidays...
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Request Holiday Modal -->
+  <div id="request-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">Request Holiday</h3>
+        <button class="modal-close" onclick="closeRequestModal()">×</button>
+      </div>
+      
+      <form id="holiday-request-form">
+        <div class="form-group">
+          <label class="form-label" for="start-date">Start Date</label>
+          <input type="date" id="start-date" name="start-date" class="form-input" required>
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label" for="end-date">End Date</label>
+          <input type="date" id="end-date" name="end-date" class="form-input" required>
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label" for="request-type">Request Type</label>
+          <select id="request-type" name="request-type" class="form-select" required>
+            <option value="holiday">Holiday</option>
+            <option value="time_in_lieu">Time in Lieu</option>
+            <option value="education" id="education-option" style="display: none;">Education (GP Only)</option>
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label" for="destination">Holiday Destination (Optional)</label>
+          <input type="text" id="destination" name="destination" class="form-input" 
+                 placeholder="e.g., Spain, Paris, Dubai">
+          <div class="form-hint">
+            Add a destination to see your avatar on holiday! 🏖️
+          </div>
+        </div>
+        
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" onclick="closeRequestModal()">Cancel</button>
+          <button type="submit" class="btn-primary">Submit Request</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+    
+    let supabase;
+    let currentUser = null;
+    let profileRow = null;
+
+    async function init() {
+      supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        window.location.href = 'Home.html';
+        return;
+      }
+      
+      currentUser = session.user;
+      await loadUserProfile();
+      await initAdminNav();
+      await loadHolidayData();
+      await loadTeamHolidays();
+      await checkUpcomingHolidays();
+      
+      // Check if user is GP for education option
+      if (profileRow?.role_detail === 'GP') {
+        document.getElementById('education-option').style.display = 'block';
+      }
+    }
+
+    async function loadUserProfile() {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .single();
+      
+      if (data) {
+        profileRow = data;
+        document.getElementById('welcome').textContent = `Welcome back, ${data.nickname || data.full_name || 'there'}!`;
+      }
+    }
+
+    async function initAdminNav() {
+      if (typeof window.initAdminNav === 'function') {
+        await window.initAdminNav({
+          supabase,
+          user: currentUser,
+          profile: profileRow,
+          currentPage: 'holidays'
+        });
+      }
+    }
+
+    async function loadHolidayData() {
+      try {
+        // Load user's holiday requests
+        const { data: requests, error } = await supabase
+          .from('holiday_requests')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        // Load entitlements
+        const { data: entitlement } = await supabase
+          .from('holiday_entitlements')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .single();
+
+        // Calculate statistics
+        const approvedRequests = requests?.filter(r => r.status === 'approved') || [];
+        const pendingRequests = requests?.filter(r => r.status === 'pending') || [];
+        
+        const usedHours = approvedRequests.reduce((sum, r) => sum + (r.total_hours || 0), 0);
+        const pendingHours = pendingRequests.reduce((sum, r) => sum + (r.total_hours || 0), 0);
+        const totalEntitlement = entitlement?.total_hours || 0;
+        const remainingHours = Math.max(0, totalEntitlement - usedHours);
+
+        // Update stats display
+        document.getElementById('total-entitlement').innerHTML = `${totalEntitlement}<span class="stat-unit">h</span>`;
+        document.getElementById('used-holidays').innerHTML = `${usedHours}<span class="stat-unit">h</span>`;
+        document.getElementById('remaining-holidays').innerHTML = `${remainingHours}<span class="stat-unit">h</span>`;
+        document.getElementById('pending-holidays').innerHTML = `${pendingHours}<span class="stat-unit">h</span>`;
+
+        // Display requests
+        displayHolidayRequests(requests || []);
+        
+      } catch (error) {
+        console.error('Error loading holiday data:', error);
+      }
+    }
+
+    async function displayHolidayRequests(requests) {
+      const container = document.getElementById('my-holidays');
+      
+      if (!requests || requests.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">🏖️</div>
+            <div class="empty-title">No holiday requests yet</div>
+            <div class="empty-text">Click "Request Holiday" to submit your first request</div>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = requests.map(request => {
+        const startDate = new Date(request.start_date).toLocaleDateString('en-GB', { 
+          day: 'numeric', month: 'short', year: 'numeric' 
+        });
+        const endDate = new Date(request.end_date).toLocaleDateString('en-GB', { 
+          day: 'numeric', month: 'short', year: 'numeric' 
+        });
+        
+        const duration = request.total_hours ? `${request.total_hours}h` : 
+                        request.total_sessions ? `${request.total_sessions} sessions` : '0h';
+
+        return `
+          <div class="request-card ${request.status}">
+            <div class="request-header">
+              <div class="request-dates">${startDate} - ${endDate}</div>
+              <span class="request-status ${request.status}">${request.status}</span>
+            </div>
+            <div class="request-details">
+              <div class="request-detail">
+                <span>📅</span> ${request.request_type.replace('_', ' ').toUpperCase()}
+              </div>
+              <div class="request-detail">
+                <span>⏱️</span> ${duration}
+              </div>
+            </div>
+            ${request.destination ? `
+              <div class="request-destination">
+                <div class="destination-text">
+                  <span>✈️</span> ${request.destination}
+                </div>
+                <div class="destination-image" id="dest-img-${request.id}">
+                  <span style="font-size: 1.5em;">🏝️</span>
+                </div>
+              </div>
+            ` : ''}
+            ${request.status === 'pending' ? `
+              <div class="request-actions">
+                <button class="btn-cancel" onclick="cancelRequest('${request.id}')">
+                  Cancel Request
+                </button>
+              </div>
+            ` : ''}
+            ${request.admin_comments ? `
+              <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color);">
+                <small style="color: var(--muted);">Admin note: ${request.admin_comments}</small>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
+
+      // Generate AI holiday avatars for destinations
+      requests.forEach(async (request) => {
+        if (request.destination && request.status === 'approved') {
+          await generateHolidayAvatar(request.destination, request.id, request.destination_image_url);
+        }
+      });
+    }
+
+    async function generateHolidayAvatar(destination, requestId, existingUrl) {
+      const container = document.getElementById(`dest-img-${requestId}`);
+      if (!container) return;
+
+      // If we already have a generated image URL, use it
+      if (existingUrl) {
+        container.innerHTML = `
+          <img src="${existingUrl}" alt="Holiday at ${destination}" />
+        `;
+        return;
+      }
+
+      try {
+        // Call Supabase Edge Function to generate holiday avatar
+        const { data, error } = await supabase.functions.invoke('generate-holiday-avatar', {
+          body: {
+            destination: destination,
+            avatarUrl: profileRow?.avatar_url,
+            requestId: requestId
+          }
+        });
+
+        if (error) throw error;
+
+        if (data?.imageUrl) {
+          container.innerHTML = `
+            <img src="${data.imageUrl}" alt="Holiday at ${destination}" />
+          `;
+          
+          // Save the generated URL to the database for future use
+          await supabase
+            .from('holiday_requests')
+            .update({ destination_image_url: data.imageUrl })
+            .eq('id', requestId);
+        }
+      } catch (error) {
+        console.error('Error generating holiday avatar:', error);
+        // Keep the default emoji on error
+      }
+    }
+
+    async function loadTeamHolidays() {
+      try {
+        const container = document.getElementById('team-holidays');
+        
+        // Get current user's team
+        const userTeamId = profileRow?.team_id;
+        
+        if (!userTeamId) {
+          container.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-icon">👥</div>
+              <div class="empty-title">No team assigned</div>
+              <div class="empty-text">You're not currently assigned to a team</div>
+            </div>
+          `;
+          return;
+        }
+
+        // Load team members' approved holidays
+        const today = new Date().toISOString().split('T')[0];
+        const { data: teamHolidays, error } = await supabase
+          .from('holiday_requests')
+          .select(`
+            *,
+            profiles:user_id(nickname, full_name)
+          `)
+          .eq('status', 'approved')
+          .gte('end_date', today)
+          .neq('user_id', currentUser.id)
+          .order('start_date');
+
+        if (error) throw error;
+
+        if (!teamHolidays || teamHolidays.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-icon">✅</div>
+              <div class="empty-title">No team holidays scheduled</div>
+              <div class="empty-text">Your team members have no upcoming holidays</div>
+            </div>
+          `;
+          return;
+        }
+
+        // Group holidays by team member
+        const memberHolidays = {};
+        teamHolidays.forEach(holiday => {
+          const userId = holiday.user_id;
+          if (!memberHolidays[userId]) {
+            memberHolidays[userId] = {
+              name: holiday.profiles?.nickname || holiday.profiles?.full_name || 'Team Member',
+              holidays: []
+            };
+          }
+          memberHolidays[userId].holidays.push(holiday);
+        });
+
+        container.innerHTML = Object.entries(memberHolidays).map(([userId, member]) => {
+          const nextHoliday = member.holidays[0];
+          const startDate = new Date(nextHoliday.start_date).toLocaleDateString('en-GB', {
+            day: 'numeric', month: 'short'
+          });
+          const endDate = new Date(nextHoliday.end_date).toLocaleDateString('en-GB', {
+            day: 'numeric', month: 'short'
+          });
+
+          return `
+            <div class="team-member-card">
+              <div class="team-avatar">
+                ${member.name.charAt(0).toUpperCase()}
+              </div>
+              <div class="team-member-info">
+                <div class="team-member-name">${member.name}</div>
+                <div class="team-member-holiday">
+                  ${startDate} - ${endDate}
+                  ${nextHoliday.destination ? ` • ${nextHoliday.destination}` : ''}
+                </div>
+              </div>
+              <div class="team-member-status">On Holiday</div>
+            </div>
+          `;
+        }).join('');
+
+      } catch (error) {
+        console.error('Error loading team holidays:', error);
+        document.getElementById('team-holidays').innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">⚠️</div>
+            <div class="empty-title">Error loading team holidays</div>
+            <div class="empty-text">Please try refreshing the page</div>
+          </div>
+        `;
+      }
+    }
+
+    async function checkUpcomingHolidays() {
+      try {
+        const { data: upcomingHolidays } = await supabase
+          .from('holiday_requests')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .eq('status', 'approved')
+          .gte('start_date', new Date().toISOString().split('T')[0])
+          .order('start_date')
+          .limit(1);
+
+        if (upcomingHolidays && upcomingHolidays.length > 0) {
+          const holiday = upcomingHolidays[0];
+          await displayHolidayCountdown(holiday);
+        }
+      } catch (error) {
+        console.error('Error checking upcoming holidays:', error);
+      }
+    }
+
+    async function displayHolidayCountdown(holiday) {
+      const countdownSection = document.getElementById('countdown-section');
+      const destinationEl = document.getElementById('destination-name');
+      const timerEl = document.getElementById('countdown-timer');
+      const avatarContainer = document.getElementById('holiday-avatar-container');
+      
+      if (holiday.destination) {
+        destinationEl.textContent = holiday.destination;
+        
+        // Generate AI avatar for countdown
+        if (holiday.destination_image_url) {
+          avatarContainer.innerHTML = `
+            <img src="${holiday.destination_image_url}" alt="Holiday at ${holiday.destination}" />
+          `;
+        } else {
+          try {
+            const { data, error } = await supabase.functions.invoke('generate-holiday-avatar', {
+              body: {
+                destination: holiday.destination,
+                avatarUrl: profileRow?.avatar_url,
+                requestId: holiday.id
+              }
+            });
+
+            if (data?.imageUrl) {
+              avatarContainer.innerHTML = `
+                <img src="${data.imageUrl}" alt="Holiday at ${holiday.destination}" />
+              `;
+              
+              // Save for future use
+              await supabase
+                .from('holiday_requests')
+                .update({ destination_image_url: data.imageUrl })
+                .eq('id', holiday.id);
+            }
+          } catch (error) {
+            console.error('Error generating countdown avatar:', error);
+          }
+        }
+      } else {
+        destinationEl.textContent = 'your holiday';
+      }
+
+      // Calculate days until holiday
+      const startDate = new Date(holiday.start_date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const daysUntil = Math.ceil((startDate - today) / (1000 * 60 * 60 * 24));
+
+      if (daysUntil > 0 && daysUntil <= 30) {
+        timerEl.textContent = `${daysUntil} day${daysUntil === 1 ? '' : 's'} to go!`;
+        countdownSection.classList.add('active');
+      }
+    }
+
+    // Modal functions
+    window.openRequestModal = function() {
+      const modal = document.getElementById('request-modal');
+      modal.classList.add('active');
+      
+      // Set minimum date to tomorrow
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      document.getElementById('start-date').min = tomorrow.toISOString().split('T')[0];
+      document.getElementById('end-date').min = tomorrow.toISOString().split('T')[0];
+    };
+
+    window.closeRequestModal = function() {
+      const modal = document.getElementById('request-modal');
+      modal.classList.remove('active');
+      document.getElementById('holiday-request-form').reset();
+    };
+
+    window.refreshHolidayData = async function() {
+      await loadHolidayData();
+      await loadTeamHolidays();
+      await checkUpcomingHolidays();
+    };
+
+    window.cancelRequest = async function(requestId) {
+      if (!confirm('Are you sure you want to cancel this holiday request?')) return;
+      
+      try {
+        const { error } = await supabase
+          .from('holiday_requests')
+          .update({ status: 'cancelled' })
+          .eq('id', requestId);
+
+        if (error) throw error;
+
+        await refreshHolidayData();
+      } catch (error) {
+        console.error('Error cancelling request:', error);
+        alert('Failed to cancel request. Please try again.');
+      }
+    };
+
+    // Form submission
+    document.getElementById('holiday-request-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const startDate = document.getElementById('start-date').value;
+      const endDate = document.getElementById('end-date').value;
+      const requestType = document.getElementById('request-type').value;
+      const destination = document.getElementById('destination').value;
+      
+      // Calculate working days
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      let workingDays = 0;
+      
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const day = d.getDay();
+        if (day !== 0 && day !== 6) workingDays++;
+      }
+      
+      const totalHours = workingDays * 8;
+      
+      try {
+        const { error } = await supabase
+          .from('holiday_requests')
+          .insert({
+            user_id: currentUser.id,
+            site_id: profileRow?.site_id,
+            start_date: startDate,
+            end_date: endDate,
+            request_type: requestType,
+            destination: destination || null,
+            total_hours: totalHours,
+            status: 'pending'
+          });
+
+        if (error) throw error;
+
+        closeRequestModal();
+        await refreshHolidayData();
+      } catch (error) {
+        console.error('Error submitting request:', error);
+        alert('Failed to submit request. Please try again.');
+      }
+    });
+
+    window.signOut = async function() {
+      await supabase.auth.signOut();
+      window.location.href = 'Home.html';
+    };
+
+    // Initialize
+    init();
+  </script>
+</body>
+</html>
