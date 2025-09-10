@@ -534,24 +534,40 @@
         // Calculate totals
         let totalEntitlement, usedAmount, pendingAmount;
         
+        // Ensure we have valid data
+        const safeEntitlements = entitlements || {};
+        const safeRequests = requests || [];
+        
         if (isGP) {
-          totalEntitlement = (entitlements?.annual_sessions || 0) + (entitlements?.carried_over_sessions || 0);
-          usedAmount = requests?.filter(r => r.status === 'approved')?.reduce((sum, r) => sum + (r.total_sessions || 0), 0) || 0;
-          pendingAmount = requests?.filter(r => r.status === 'pending')?.reduce((sum, r) => sum + (r.total_sessions || 0), 0) || 0;
+          totalEntitlement = Math.max(0, (safeEntitlements.annual_sessions || 0) + (safeEntitlements.carried_over_sessions || 0));
+          usedAmount = safeRequests.filter(r => r.status === 'approved').reduce((sum, r) => sum + (r.total_sessions || 0), 0);
+          pendingAmount = safeRequests.filter(r => r.status === 'pending').reduce((sum, r) => sum + (r.total_sessions || 0), 0);
           
-          document.getElementById('total-entitlement').textContent = `${totalEntitlement} sessions`;
-          document.getElementById('used-holidays').textContent = `${usedAmount} sessions`;
-          document.getElementById('remaining-holidays').textContent = `${totalEntitlement - usedAmount - pendingAmount} sessions`;
-          document.getElementById('pending-holidays').textContent = `${pendingAmount} sessions`;
+          // Set safe text content with fallbacks
+          const totalEl = document.getElementById('total-entitlement');
+          const usedEl = document.getElementById('used-holidays');
+          const remainingEl = document.getElementById('remaining-holidays');
+          const pendingEl = document.getElementById('pending-holidays');
+          
+          if (totalEl) totalEl.textContent = `${totalEntitlement || 0} sessions`;
+          if (usedEl) usedEl.textContent = `${usedAmount || 0} sessions`;
+          if (remainingEl) remainingEl.textContent = `${Math.max(0, (totalEntitlement || 0) - (usedAmount || 0) - (pendingAmount || 0))} sessions`;
+          if (pendingEl) pendingEl.textContent = `${pendingAmount || 0} sessions`;
         } else {
-          totalEntitlement = (entitlements?.annual_hours || 0) + (entitlements?.carried_over_hours || 0);
-          usedAmount = requests?.filter(r => r.status === 'approved')?.reduce((sum, r) => sum + (r.total_hours || 0), 0) || 0;
-          pendingAmount = requests?.filter(r => r.status === 'pending')?.reduce((sum, r) => sum + (r.total_hours || 0), 0) || 0;
+          totalEntitlement = Math.max(0, (safeEntitlements.annual_hours || 0) + (safeEntitlements.carried_over_hours || 0));
+          usedAmount = safeRequests.filter(r => r.status === 'approved').reduce((sum, r) => sum + (r.total_hours || 0), 0);
+          pendingAmount = safeRequests.filter(r => r.status === 'pending').reduce((sum, r) => sum + (r.total_hours || 0), 0);
           
-          document.getElementById('total-entitlement').textContent = `${totalEntitlement}h`;
-          document.getElementById('used-holidays').textContent = `${usedAmount}h`;
-          document.getElementById('remaining-holidays').textContent = `${totalEntitlement - usedAmount - pendingAmount}h`;
-          document.getElementById('pending-holidays').textContent = `${pendingAmount}h`;
+          // Set safe text content with fallbacks
+          const totalEl = document.getElementById('total-entitlement');
+          const usedEl = document.getElementById('used-holidays');
+          const remainingEl = document.getElementById('remaining-holidays');
+          const pendingEl = document.getElementById('pending-holidays');
+          
+          if (totalEl) totalEl.textContent = `${totalEntitlement || 0}h`;
+          if (usedEl) usedEl.textContent = `${usedAmount || 0}h`;
+          if (remainingEl) remainingEl.textContent = `${Math.max(0, (totalEntitlement || 0) - (usedAmount || 0) - (pendingAmount || 0))}h`;
+          if (pendingEl) pendingEl.textContent = `${pendingAmount || 0}h`;
         }
 
         // Display holiday requests
@@ -559,6 +575,19 @@
 
       } catch (error) {
         console.error('Error loading holiday data:', error);
+        // Set default values if there's an error
+        const totalEl = document.getElementById('total-entitlement');
+        const usedEl = document.getElementById('used-holidays');
+        const remainingEl = document.getElementById('remaining-holidays');
+        const pendingEl = document.getElementById('pending-holidays');
+        
+        if (totalEl) totalEl.textContent = '0h';
+        if (usedEl) usedEl.textContent = '0h';
+        if (remainingEl) remainingEl.textContent = '0h';
+        if (pendingEl) pendingEl.textContent = '0h';
+        
+        // Show empty state
+        displayHolidayRequests([]);
       }
     }
 
@@ -592,7 +621,10 @@
             <div class="holiday-info">
               <h4>${startDate} - ${endDate}</h4>
               <p>${request.request_type.replace('_', ' ').toUpperCase()} • ${duration}</p>
-              ${request.destination ? `<p>🏖️ ${request.destination}</p>` : ''}
+              ${request.destination ? `
+                <p>🏖️ ${request.destination}</p>
+                <div class="holiday-destination-image" id="avatar-${request.id}"></div>
+              ` : ''}
               ${adminComments}
             </div>
             <div class="holiday-actions">
@@ -605,6 +637,50 @@
           </div>
         `;
       }).join('');
+      
+      // Generate avatar images for holidays with destinations
+      requests.forEach(async (request) => {
+        if (request.destination && request.id) {
+          const avatarContainer = document.getElementById(`avatar-${request.id}`);
+          if (avatarContainer) {
+            // Check if image URL already exists
+            if (request.destination_image_url) {
+              avatarContainer.innerHTML = `
+                <img src="${request.destination_image_url}" alt="Holiday at ${request.destination}" 
+                     style="max-width: 120px; height: 80px; object-fit: cover; border-radius: 8px; margin-top: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+              `;
+            } else {
+              // Show placeholder immediately, then try to generate avatar
+              avatarContainer.innerHTML = `
+                <div style="width: 120px; height: 80px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; margin-top: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px;">
+                  🏝️
+                </div>
+              `;
+              
+              // Try to generate avatar image (this may fail if Edge Function isn't deployed)
+              try {
+                const tempContainer = document.createElement('div');
+                await generateHolidayAvatar(request.destination, tempContainer);
+                
+                // If successful, replace placeholder with generated image
+                const img = tempContainer.querySelector('img');
+                if (img) {
+                  img.style.maxWidth = '120px';
+                  img.style.height = '80px';
+                  img.style.objectFit = 'cover';
+                  img.style.borderRadius = '8px';
+                  img.style.marginTop = '8px';
+                  img.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+                  avatarContainer.innerHTML = img.outerHTML;
+                }
+              } catch (error) {
+                console.error('Avatar generation failed for', request.destination, '- using placeholder');
+                // Placeholder is already shown, no need to change anything
+              }
+            }
+          }
+        }
+      });
     }
 
     async function loadTeamHolidays() {

@@ -1,105 +1,73 @@
 import { chromium } from 'playwright';
 
 async function testLiveSite() {
-  console.log('Testing live site functionality...');
   const browser = await chromium.launch({ headless: false });
-  const page = await browser.newPage();
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  
+  console.log('\n=== Testing Live Site Issues ===\n');
   
   try {
-    // Test the GitHub Pages live site
-    console.log('\n1. Testing GitHub Pages site...');
-    await page.goto('https://magicmanben.github.io/CheckLoops/');
+    // Test admin login and navigation
+    console.log('1. Testing admin login on live site...');
+    await page.goto('https://magicmanben.github.io/CheckLoops/Home.html');
+    await page.waitForTimeout(3000);
+    
+    await page.locator('#email').fill('benhowardmagic@hotmail.com');
+    await page.locator('#password').fill('Hello1!');
+    await page.click('button:has-text("Sign In")');
+    await page.waitForTimeout(5000);
+    
+    console.log('  - After login, URL:', page.url());
+    
+    // Check if admin panel is visible
+    const adminPanel = page.locator('#admin-access-panel');
+    const isAdminPanelVisible = await adminPanel.isVisible();
+    console.log('  - Admin access panel visible?', isAdminPanelVisible);
+    
+    if (isAdminPanelVisible) {
+      await page.locator('a[href="admin-dashboard.html"]').click();
+      await page.waitForTimeout(3000);
+      console.log('  - After clicking admin link, URL:', page.url());
+    }
+    
+    // Test staff holidays page styling
+    console.log('\n2. Testing staff holidays page...');
+    await page.goto('https://magicmanben.github.io/CheckLoops/Home.html');
     await page.waitForTimeout(2000);
     
-    // Login
-    console.log('Logging in...');
     await page.locator('#email').fill('ben.howard@stoke.nhs.uk');
     await page.locator('#password').fill('Hello1!');
     await page.click('button:has-text("Sign In")');
+    await page.waitForTimeout(5000);
+    
+    // Navigate to holidays page
+    await page.goto('https://magicmanben.github.io/CheckLoops/staff-holidays.html');
     await page.waitForTimeout(3000);
     
-    // Test 1: Training Matrix Edit
-    console.log('\n2. Testing Training Matrix...');
-    await page.click('button[data-section="training"]');
-    await page.waitForTimeout(2000);
+    // Take screenshot of the styling issues
+    await page.screenshot({ path: 'live_site_holidays_issues.png', fullPage: true });
+    console.log('  - Screenshot saved: live_site_holidays_issues.png');
     
-    // Click on a training cell to open drawer
-    const trainingCells = await page.locator('.training-cell').all();
-    if (trainingCells.length > 0) {
-      console.log(`Found ${trainingCells.length} training cells`);
-      await trainingCells[0].click();
-      await page.waitForTimeout(1000);
-      
-      // Check if drawer opened
-      const drawerVisible = await page.locator('#cell-drawer').isVisible();
-      console.log(`Training drawer visible: ${drawerVisible}`);
-      
-      // Look for edit button
-      const editButton = page.locator('button:has-text("Edit Report")');
-      const editButtonExists = await editButton.count() > 0;
-      console.log(`Edit button exists: ${editButtonExists}`);
-      
-      if (editButtonExists) {
-        await editButton.click();
-        await page.waitForTimeout(1000);
-        
-        // Check if modal opened
-        const modalVisible = await page.locator('#training-modal').isVisible();
-        console.log(`Training modal opened: ${modalVisible}`);
-      }
+    // Check button styles
+    const requestButton = page.locator('button:has-text("Request Holiday")');
+    if (await requestButton.isVisible()) {
+      const buttonStyles = await requestButton.evaluate(el => {
+        const styles = window.getComputedStyle(el);
+        return {
+          backgroundColor: styles.backgroundColor,
+          color: styles.color,
+          background: styles.background
+        };
+      });
+      console.log('  - Request Holiday button styles:', buttonStyles);
     }
-    
-    // Test 2: Complaints Edit
-    console.log('\n3. Testing Complaints...');
-    await page.click('button[data-section="complaints"]');
-    await page.waitForTimeout(2000);
-    
-    // Click on a complaint row
-    const complaintRows = await page.locator('#complaints-tbody tr').all();
-    if (complaintRows.length > 0) {
-      console.log(`Found ${complaintRows.length} complaint rows`);
-      await complaintRows[0].click();
-      await page.waitForTimeout(1000);
-      
-      // Check if complaint details modal opened
-      const complaintModalVisible = await page.locator('#complaint-details-modal').isVisible();
-      console.log(`Complaint modal visible: ${complaintModalVisible}`);
-      
-      if (complaintModalVisible) {
-        const editComplaintBtn = page.locator('button:has-text("Edit Complaint")');
-        const editComplaintExists = await editComplaintBtn.count() > 0;
-        console.log(`Edit complaint button exists: ${editComplaintExists}`);
-        
-        if (editComplaintExists) {
-          await editComplaintBtn.click();
-          await page.waitForTimeout(1000);
-          
-          // Check if CRUD modal opened
-          const crudModalVisible = await page.locator('#crud-modal').isVisible();
-          console.log(`CRUD modal opened: ${crudModalVisible}`);
-        }
-      }
-    }
-    
-    // Test 3: Excel Export
-    console.log('\n4. Testing Excel Export...');
-    const exportButton = page.locator('button:has-text("Export")').first();
-    const exportExists = await exportButton.count() > 0;
-    console.log(`Export button exists: ${exportExists}`);
-    
-    // Check if SheetJS is loaded
-    const hasXLSX = await page.evaluate(() => typeof XLSX !== 'undefined');
-    console.log(`SheetJS library loaded: ${hasXLSX}`);
-    
-    // Take screenshot
-    await page.screenshot({ path: 'live_site_test.png', fullPage: true });
-    console.log('\nScreenshot saved as live_site_test.png');
     
   } catch (error) {
-    console.error('Error during testing:', error);
+    console.error('Error testing live site:', error);
   } finally {
     await browser.close();
   }
 }
 
-testLiveSite();
+testLiveSite().catch(console.error);
