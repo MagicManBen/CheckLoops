@@ -6236,6 +6236,15 @@ window.PIR_DEFINITIONS_DATA = [
           console.log('loadTrainingMatrix not yet defined, will be called by shim');
         }
         break;
+      case 'holidays-management':
+        loadHolidayRequests();
+        break;
+      case 'holidays-calendar':
+        loadHolidayCalendar();
+        break;
+      case 'holidays-settings':
+        loadHolidaySettings();
+        break;
     }
     
     // persist
@@ -16310,16 +16319,33 @@ async function loadHolidayRequests() {
     // Load holiday requests
     const { data: requests, error } = await supabase
       .from('holiday_requests')
-      .select(`
-        *,
-        staff_app_welcome!inner(full_name, nickname, avatar_url, team_name, team_id)
-      `)
-      .eq('site_id', ctx?.siteId)
+      .select('*')
+      .eq('site_id', ctx.site_id)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
 
-    holidayData.requests = requests || [];
+    // Load user profiles for the holiday requests
+    if (requests && requests.length > 0) {
+      const userIds = [...new Set(requests.map(r => r.user_id))];
+      const { data: profiles, error: profileError } = await supabase
+        .from('profiles')
+        .select('user_id, nickname, full_name')
+        .in('user_id', userIds);
+
+      if (profileError) {
+        console.warn('Could not load user profiles:', profileError);
+        holidayData.requests = requests;
+      } else {
+        // Merge holiday data with profile data
+        holidayData.requests = requests.map(request => ({
+          ...request,
+          profiles: profiles.find(p => p.user_id === request.user_id)
+        }));
+      }
+    } else {
+      holidayData.requests = requests || [];
+    }
     
     // Update statistics
     updateHolidayStats();
@@ -16380,8 +16406,8 @@ function populateHolidayRequestsTable() {
   }
 
   tbody.innerHTML = holidayData.requests.map(request => {
-    const staffName = request.staff_app_welcome?.nickname || request.staff_app_welcome?.full_name || 'Unknown';
-    const teamName = request.staff_app_welcome?.team_name || 'No Team';
+    const staffName = request.profiles?.nickname || request.profiles?.full_name || 'Unknown';
+    const teamName = 'No Team'; // Note: team info not available in current query
     const startDate = new Date(request.start_date).toLocaleDateString();
     const endDate = new Date(request.end_date).toLocaleDateString();
     const duration = request.total_sessions ? 
@@ -16520,6 +16546,181 @@ async function declineHolidayRequest(requestId, comments) {
   } catch (error) {
     console.error('Error declining holiday request:', error);
     showToast('Error declining holiday request', 'error');
+  }
+}
+
+// Load holiday calendar data and render calendar view
+async function loadHolidayCalendar() {
+  try {
+    const calendarContainer = document.getElementById('holidays-calendar-container');
+    if (!calendarContainer) return;
+
+    // Clear loading message
+    calendarContainer.innerHTML = `<div style="padding: 40px; text-align: center; color: var(--muted);">Loading calendar data...</div>`;
+
+    // Load approved holiday requests for the current month/view
+    const currentDate = new Date();
+    const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+    const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+
+    // First get holiday requests
+    const { data: holidayRequests, error: holidayError } = await supabase
+      .from('holiday_requests')
+      .select('*')
+      .eq('site_id', ctx.site_id)
+      .eq('status', 'approved')
+      .gte('start_date', startOfMonth.toISOString().split('T')[0])
+      .lte('end_date', endOfMonth.toISOString().split('T')[0])
+      .order('start_date');
+
+    if (holidayError) throw holidayError;
+
+    // Then get user profiles for the users with holidays
+    let holidays = [];
+    if (holidayRequests && holidayRequests.length > 0) {
+      const userIds = [...new Set(holidayRequests.map(h => h.user_id))];
+      const { data: profiles, error: profileError } = await supabase
+        .from('profiles')
+        .select('user_id, nickname, full_name')
+        .in('user_id', userIds);
+
+      if (profileError) {
+        console.warn('Could not load user profiles:', profileError);
+        // Continue without profile data
+        holidays = holidayRequests;
+      } else {
+        // Merge holiday data with profile data
+        holidays = holidayRequests.map(holiday => ({
+          ...holiday,
+          profiles: profiles.find(p => p.user_id === holiday.user_id)
+        }));
+      }
+    }
+
+    // Render calendar with holidays
+    renderHolidayCalendar(holidays || [], currentDate);
+
+    console.log('Holiday calendar loaded successfully');
+  } catch (error) {
+    console.error('Error loading holiday calendar:', error);
+    const calendarContainer = document.getElementById('holidays-calendar-container');
+    if (calendarContainer) {
+      calendarContainer.innerHTML = `<div style="padding: 40px; text-align: center; color: var(--danger);">Error loading calendar: ${error.message}</div>`;
+    }
+  }
+}
+
+// Render the holiday calendar
+function renderHolidayCalendar(holidays, currentDate) {
+  const calendarContainer = document.getElementById('holidays-calendar-container');
+  if (!calendarContainer) return;
+
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const daysInMonth = lastDay.getDate();
+  const startDayOfWeek = firstDay.getDay();
+
+  let calendarHTML = `
+    <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: var(--border-color);">
+      <div style="background: var(--glass); padding: 8px; text-align: center; font-weight: 600;">Sun</div>
+      <div style="background: var(--glass); padding: 8px; text-align: center; font-weight: 600;">Mon</div>
+      <div style="background: var(--glass); padding: 8px; text-align: center; font-weight: 600;">Tue</div>
+      <div style="background: var(--glass); padding: 8px; text-align: center; font-weight: 600;">Wed</div>
+      <div style="background: var(--glass); padding: 8px; text-align: center; font-weight: 600;">Thu</div>
+      <div style="background: var(--glass); padding: 8px; text-align: center; font-weight: 600;">Fri</div>
+      <div style="background: var(--glass); padding: 8px; text-align: center; font-weight: 600;">Sat</div>`;
+
+  // Add empty cells for days before the first day of the month
+  for (let i = 0; i < startDayOfWeek; i++) {
+    calendarHTML += `<div style="background: var(--glass-2); min-height: 100px; opacity: 0.5;"></div>`;
+  }
+
+  // Add days of the month
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dayDate = new Date(year, month, day);
+    const dayString = dayDate.toISOString().split('T')[0];
+    
+    // Find holidays for this day
+    const dayHolidays = holidays.filter(holiday => {
+      const startDate = new Date(holiday.start_date);
+      const endDate = new Date(holiday.end_date);
+      return dayDate >= startDate && dayDate <= endDate;
+    });
+
+    const isToday = new Date().toDateString() === dayDate.toDateString();
+    
+    let cellClass = 'background: var(--glass); min-height: 100px; padding: 8px; position: relative;';
+    if (isToday) {
+      cellClass = 'background: var(--glass-2); min-height: 100px; padding: 8px; position: relative; border: 2px solid var(--accent);';
+    }
+
+    calendarHTML += `
+      <div style="${cellClass}">
+        <div style="font-weight: 600; margin-bottom: 4px; ${isToday ? 'color: var(--accent);' : ''}">${day}</div>`;
+
+    if (dayHolidays.length > 0) {
+      dayHolidays.slice(0, 3).forEach(holiday => {
+        const staffName = holiday.profiles?.nickname || holiday.profiles?.full_name || 'Unknown';
+        const type = holiday.request_type || 'Holiday';
+        calendarHTML += `
+          <div style="background: var(--success); color: white; font-size: 10px; padding: 2px 4px; margin: 1px 0; border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${staffName} - ${type}">
+            ${staffName}
+          </div>`;
+      });
+      
+      if (dayHolidays.length > 3) {
+        calendarHTML += `<div style="font-size: 9px; color: var(--muted); margin-top: 2px;">+${dayHolidays.length - 3} more</div>`;
+      }
+    }
+
+    calendarHTML += `</div>`;
+  }
+
+  calendarHTML += `</div>`;
+  calendarContainer.innerHTML = calendarHTML;
+}
+
+// Load holiday settings and populate the settings interface
+async function loadHolidaySettings() {
+  try {
+    console.log('Loading holiday settings...');
+    
+    // For now, just remove any loading messages and show the settings form
+    // The settings interface is already built in the HTML, we just need to initialize it
+    
+    // Load teams for the team limits settings
+    const { data: teams, error: teamsError } = await supabase
+      .from('teams')
+      .select('id, name')
+      .eq('site_id', ctx.site_id)
+      .order('name');
+
+    if (teamsError) throw teamsError;
+
+    // Populate team limits section
+    const teamLimitsContainer = document.querySelector('#view-holidays-settings .card:first-child .field-group');
+    if (teamLimitsContainer && teams) {
+      teams.forEach(team => {
+        const existingField = teamLimitsContainer.querySelector(`[data-team-id="${team.id}"]`);
+        if (!existingField) {
+          const field = document.createElement('div');
+          field.className = 'field';
+          field.setAttribute('data-team-id', team.id);
+          field.innerHTML = `
+            <label for="team-limit-${team.id}">${team.name} Team</label>
+            <input type="number" id="team-limit-${team.id}" min="1" max="10" value="2" style="background:var(--glass); border:1px solid var(--border-color); padding:8px 12px; border-radius:8px; color:var(--white);">
+          `;
+          teamLimitsContainer.appendChild(field);
+        }
+      });
+    }
+
+    console.log('Holiday settings loaded successfully');
+  } catch (error) {
+    console.error('Error loading holiday settings:', error);
+    showToast('Error loading holiday settings', 'error');
   }
 }
 
