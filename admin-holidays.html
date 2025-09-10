@@ -621,20 +621,20 @@
     }
 
     async function loadAllData() {
-      // Load registered users
+      // Load staff profiles from new table
       const { data: profiles } = await supabase
-        .from('profiles')
+        .from('1_staff_holiday_profiles')
         .select('*');
 
-      // Load entitlements
+      // Load entitlements from new table
       const { data: entitlements } = await supabase
-        .from('holiday_entitlements')
+        .from('2_staff_entitlements')
         .select('*');
 
-      // Load requests
+      // Load holiday bookings from new table
       const { data: requests } = await supabase
-        .from('holiday_requests')
-        .select('*, holiday_request_days(*)');
+        .from('4_holiday_bookings')
+        .select('*');
 
       allEntitlements = entitlements || [];
       allRequests = requests || [];
@@ -869,18 +869,18 @@
 
         // Check if entitlement already exists
         const { data: existing } = await supabase
-          .from('holiday_entitlements')
+          .from('2_staff_entitlements')
           .select('*')
-          .eq('user_id', userId)
+          .eq('staff_profile_id', userId)
           .eq('year', 2025)
           .single();
 
         if (!existing) {
           // Insert entitlement
           const { error: entError } = await supabase
-            .from('holiday_entitlements')
+            .from('2_staff_entitlements')
             .insert({
-              user_id: userId,
+              staff_profile_id: userId,
               site_id: 2,
               year: 2025,
               annual_hours: annual_hours,
@@ -912,11 +912,11 @@
           for (const [month, monthHolidays] of Object.entries(groupedHolidays)) {
             const dates = monthHolidays.map(h => h.date).sort();
             
-            // Create holiday request
+            // Create holiday booking in new table
             const { data: request, error: reqError } = await supabase
-              .from('holiday_requests')
+              .from('4_holiday_bookings')
               .insert({
-                user_id: userId,
+                staff_profile_id: userId,
                 site_id: 2,
                 status: 'approved',
                 start_date: dates[0],

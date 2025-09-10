@@ -592,29 +592,53 @@
         const currentYear = new Date().getFullYear();
         const siteId = profileRow?.site_id;
 
-        // Load entitlements
-        const { data: entitlements } = await supabase
-          .from('holiday_entitlements')
-          .select('*')
+        // First get the staff profile ID from the linking table
+        const { data: staffLink } = await supabase
+          .from('5_staff_profile_user_links')
+          .select('staff_profile_id')
           .eq('user_id', currentUser.id)
           .eq('site_id', siteId)
+          .single();
+
+        if (!staffLink) {
+          console.error('No staff profile linked to this user');
+          // Set default values
+          const totalEl = document.getElementById('total-entitlement');
+          const usedEl = document.getElementById('used-holidays');
+          const remainingEl = document.getElementById('remaining-holidays');
+          const pendingEl = document.getElementById('pending-holidays');
+          
+          if (totalEl) totalEl.textContent = '0h';
+          if (usedEl) usedEl.textContent = '0h';
+          if (remainingEl) remainingEl.textContent = '0h';
+          if (pendingEl) pendingEl.textContent = '0h';
+          
+          displayHolidayRequests([]);
+          return;
+        }
+
+        const staffProfileId = staffLink.staff_profile_id;
+
+        // Load entitlements from new table
+        const { data: entitlements } = await supabase
+          .from('2_staff_entitlements')
+          .select('*')
+          .eq('staff_profile_id', staffProfileId)
           .eq('year', currentYear)
           .single();
 
-        // Load working pattern
+        // Load working pattern from new table
         const { data: workingPattern } = await supabase
-          .from('working_patterns')
+          .from('3_staff_working_patterns')
           .select('*')
-          .eq('user_id', currentUser.id)
-          .eq('site_id', siteId)
+          .eq('staff_profile_id', staffProfileId)
           .single();
 
-        // Load holiday requests
+        // Load holiday bookings from new table
         const { data: requests } = await supabase
-          .from('holiday_requests')
+          .from('4_holiday_bookings')
           .select('*')
-          .eq('user_id', currentUser.id)
-          .eq('site_id', siteId)
+          .eq('staff_profile_id', staffProfileId)
           .order('created_at', { ascending: false });
 
         // Calculate totals
@@ -625,9 +649,9 @@
         const safeRequests = requests || [];
         
         if (isGP) {
-          totalEntitlement = Math.max(0, (safeEntitlements.annual_sessions || 0) + (safeEntitlements.carried_over_sessions || 0));
-          usedAmount = safeRequests.filter(r => r.status === 'approved').reduce((sum, r) => sum + (r.total_sessions || 0), 0);
-          pendingAmount = safeRequests.filter(r => r.status === 'pending').reduce((sum, r) => sum + (r.total_sessions || 0), 0);
+          totalEntitlement = Math.max(0, (safeEntitlements.total_sessions || 0));
+          usedAmount = safeRequests.filter(r => r.status === 'approved').reduce((sum, r) => sum + (r.sessions_requested || 0), 0);
+          pendingAmount = safeRequests.filter(r => r.status === 'pending').reduce((sum, r) => sum + (r.sessions_requested || 0), 0);
           
           // Set safe text content with fallbacks
           const totalEl = document.getElementById('total-entitlement');
@@ -640,9 +664,9 @@
           if (remainingEl) remainingEl.textContent = `${Math.max(0, (totalEntitlement || 0) - (usedAmount || 0) - (pendingAmount || 0))} sessions`;
           if (pendingEl) pendingEl.textContent = `${pendingAmount || 0} sessions`;
         } else {
-          totalEntitlement = Math.max(0, (safeEntitlements.annual_hours || 0) + (safeEntitlements.carried_over_hours || 0));
-          usedAmount = safeRequests.filter(r => r.status === 'approved').reduce((sum, r) => sum + (r.total_hours || 0), 0);
-          pendingAmount = safeRequests.filter(r => r.status === 'pending').reduce((sum, r) => sum + (r.total_hours || 0), 0);
+          totalEntitlement = Math.max(0, (safeEntitlements.total_hours || 0));
+          usedAmount = safeRequests.filter(r => r.status === 'approved').reduce((sum, r) => sum + (r.hours_requested || 0), 0);
+          pendingAmount = safeRequests.filter(r => r.status === 'pending').reduce((sum, r) => sum + (r.hours_requested || 0), 0);
           
           // Set safe text content with fallbacks
           const totalEl = document.getElementById('total-entitlement');
@@ -695,8 +719,8 @@
         const startDate = new Date(request.start_date).toLocaleDateString();
         const endDate = new Date(request.end_date).toLocaleDateString();
         const duration = isGP ? 
-          `${request.total_sessions || 0} sessions` : 
-          `${request.total_hours || 0} hours`;
+          `${request.sessions_requested || 0} sessions` : 
+          `${request.hours_requested || 0} hours`;
         
         const adminComments = request.admin_comments ? 
           `<div class="admin-comments">
@@ -707,7 +731,7 @@
           <div class="holiday-item ${request.status}">
             <div class="holiday-info">
               <h4>${startDate} - ${endDate}</h4>
-              <p>${request.request_type.replace('_', ' ').toUpperCase()} • ${duration}</p>
+              <p>${request.type.replace('_', ' ').toUpperCase()} • ${duration}</p>
               ${request.destination ? `
                 <p>🏖️ ${request.destination}</p>
                 <div class="holiday-destination-image" id="avatar-${request.id}"></div>
@@ -774,56 +798,29 @@
       try {
         const siteId = profileRow?.site_id;
         
-        // Get ALL approved holidays for the site - show everyone's holidays
-        // This allows seeing holidays for both registered and non-registered staff
+        // Get ALL approved holidays for the site from new table
         const { data: allHolidays } = await supabase
-          .from('holiday_requests')
+          .from('4_holiday_bookings')
           .select(`
             *,
-            staff_app_welcome(full_name, nickname, avatar_url)
+            1_staff_holiday_profiles!staff_profile_id(full_name, role, team_name)
           `)
           .eq('status', 'approved')
-          .eq('site_id', siteId)
           .gte('end_date', new Date().toISOString().split('T')[0])
           .order('start_date');
 
-        // Also fetch holidays with staff names stored directly (for non-registered users)
-        const { data: directHolidays } = await supabase
-          .from('holiday_requests')
-          .select('*')
-          .eq('status', 'approved')
-          .eq('site_id', siteId)
-          .gte('end_date', new Date().toISOString().split('T')[0])
-          .not('staff_name', 'is', null)
-          .order('start_date');
+        // Filter for same site if needed (may need to join through staff profiles)
+        const siteHolidays = allHolidays || [];
 
-        // Combine both sources
-        const combinedHolidays = [];
-        
-        if (allHolidays) {
-          allHolidays.forEach(h => {
-            combinedHolidays.push({
-              ...h,
-              displayName: h.staff_app_welcome?.nickname || h.staff_app_welcome?.full_name || h.staff_name || 'Unknown',
-              avatar: h.staff_app_welcome?.avatar_url
-            });
-          });
-        }
-        
-        if (directHolidays) {
-          directHolidays.forEach(h => {
-            // Only add if not already included
-            if (!combinedHolidays.find(ch => ch.id === h.id)) {
-              combinedHolidays.push({
-                ...h,
-                displayName: h.staff_name || 'Unknown',
-                avatar: null
-              });
-            }
-          });
-        }
+        // Format holidays with staff names
+        const formattedHolidays = siteHolidays.map(h => ({
+          ...h,
+          displayName: h['1_staff_holiday_profiles']?.full_name || 'Unknown',
+          team: h['1_staff_holiday_profiles']?.team_name || 'Unknown',
+          avatar: null // Avatar handling can be added later
+        }));
 
-        displayTeamHolidays(combinedHolidays);
+        displayTeamHolidays(formattedHolidays);
 
       } catch (error) {
         console.error('Error loading team holidays:', error);
@@ -875,11 +872,20 @@
         const today = new Date();
         const nextMonth = new Date(today.getTime() + (30 * 24 * 60 * 60 * 1000));
 
-        const { data: upcomingHoliday } = await supabase
-          .from('holiday_requests')
-          .select('*')
+        // Get staff profile ID
+        const { data: staffLink } = await supabase
+          .from('5_staff_profile_user_links')
+          .select('staff_profile_id')
           .eq('user_id', currentUser.id)
           .eq('site_id', siteId)
+          .single();
+
+        if (!staffLink) return;
+
+        const { data: upcomingHoliday } = await supabase
+          .from('4_holiday_bookings')
+          .select('*')
+          .eq('staff_profile_id', staffLink.staff_profile_id)
           .eq('status', 'approved')
           .gte('start_date', today.toISOString().split('T')[0])
           .lte('start_date', nextMonth.toISOString().split('T')[0])
@@ -999,7 +1005,7 @@
 
       try {
         const { error } = await supabase
-          .from('holiday_requests')
+          .from('4_holiday_bookings')
           .update({ status: 'cancelled' })
           .eq('id', requestId);
 
@@ -1029,6 +1035,22 @@
       }
 
       try {
+        // Get staff profile ID
+        const siteId = profileRow?.site_id;
+        const { data: staffLink } = await supabase
+          .from('5_staff_profile_user_links')
+          .select('staff_profile_id')
+          .eq('user_id', currentUser.id)
+          .eq('site_id', siteId)
+          .single();
+
+        if (!staffLink) {
+          alert('Your staff profile is not linked. Please contact an administrator.');
+          return;
+        }
+
+        const staffProfileId = staffLink.staff_profile_id;
+
         // Calculate hours/sessions based on working pattern
         let totalHours = 0, totalSessions = 0;
         
@@ -1039,10 +1061,9 @@
         } else {
           // For regular staff, calculate hours based on working pattern
           const { data: workingPattern } = await supabase
-            .from('working_patterns')
+            .from('3_staff_working_patterns')
             .select('*')
-            .eq('user_id', currentUser.id)
-            .eq('site_id', profileRow?.site_id)
+            .eq('staff_profile_id', staffProfileId)
             .single();
 
           // Calculate total hours for the date range
@@ -1054,19 +1075,20 @@
           }
         }
 
-        // Create holiday request
+        // Create holiday booking in new table
         const { error } = await supabase
-          .from('holiday_requests')
+          .from('4_holiday_bookings')
           .insert({
-            user_id: currentUser.id,
-            site_id: profileRow?.site_id,
+            staff_profile_id: staffProfileId,
             start_date: startDate.toISOString().split('T')[0],
             end_date: endDate.toISOString().split('T')[0],
-            request_type: requestType,
-            total_hours: totalHours,
-            total_sessions: totalSessions,
+            type: requestType,
+            hours_requested: totalHours,
+            sessions_requested: totalSessions,
             destination: destination || null,
-            status: 'pending'
+            status: 'pending',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
           });
 
         if (error) throw error;

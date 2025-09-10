@@ -3900,12 +3900,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         <button class="nav-group-toggle" id="toggle-holidays" type="button" aria-expanded="false" aria-controls="group-holidays">Holidays <span class="caret" aria-hidden="true"></span></button>
         <div class="nav-group collapsed" id="group-holidays">
-          <button onclick="window.location.href='admin-holidays.html'" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+          <button onclick="window.location.href='holiday-upload.html'" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-              <polyline points="9 22 9 12 15 12 15 22"></polyline>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
             </svg>
-            <span class="menu-item-label">🏖️ Holiday Data Manager</span>
+            <span class="menu-item-label">📊 Holiday Data Upload</span>
             <span class="nav-badge" style="background: #10b981;">NEW</span>
           </button>
           <button data-section="holidays-management"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 4h-1V2a1 1 0 0 0-2 0v2H8V2a1 1 0 0 0-2 0v2H5a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3zM5 6h1v1a1 1 0 0 0 2 0V6h8v1a1 1 0 0 0 2 0V6h1a1 1 0 0 1 1 1v2H4V7a1 1 0 0 1 1-1zm14 14H5a1 1 0 0 1-1-1V11h16v8a1 1 0 0 1-1 1z"/><circle cx="8" cy="15" r="1"/><circle cx="12" cy="15" r="1"/><circle cx="16" cy="15" r="1"/></svg><span class="menu-item-label">Holiday Requests</span><span class="nav-badge" id="badge-holidays"></span></button>
@@ -16324,35 +16325,36 @@ async function loadHolidayRequests() {
     const firstDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
     const lastDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
 
-    // Load holiday requests
+    // Load holiday bookings from new table with staff profiles
     const { data: requests, error } = await supabase
-      .from('holiday_requests')
-      .select('*')
-      .eq('site_id', ctx.site_id)
+      .from('4_holiday_bookings')
+      .select(`
+        *,
+        1_staff_holiday_profiles!staff_profile_id(full_name, role, team_name)
+      `)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
 
-    // Load user profiles for the holiday requests
+    // Format the data to match existing structure
     if (requests && requests.length > 0) {
-      const userIds = [...new Set(requests.map(r => r.user_id))];
-      const { data: profiles, error: profileError } = await supabase
-        .from('profiles')
-        .select('user_id, nickname, full_name')
-        .in('user_id', userIds);
-
-      if (profileError) {
-        console.warn('Could not load user profiles:', profileError);
-        holidayData.requests = requests;
-      } else {
-        // Merge holiday data with profile data
-        holidayData.requests = requests.map(request => ({
-          ...request,
-          profiles: profiles.find(p => p.user_id === request.user_id)
-        }));
-      }
+      holidayData.requests = requests.map(request => ({
+        ...request,
+        profiles: request['1_staff_holiday_profiles'] ? {
+          full_name: request['1_staff_holiday_profiles'].full_name,
+          nickname: request['1_staff_holiday_profiles'].full_name,
+          role: request['1_staff_holiday_profiles'].role
+        } : null,
+        // Map new field names to old ones for compatibility
+        user_id: request.staff_profile_id,
+        request_type: request.type,
+        total_hours: request.hours_requested,
+        total_sessions: request.sessions_requested,
+        admin_comments: request.admin_notes,
+        site_id: ctx.site_id // Add site_id for compatibility
+      }));
     } else {
-      holidayData.requests = requests || [];
+      holidayData.requests = [];
     }
     
     // Update statistics
@@ -16484,11 +16486,11 @@ async function approveHolidayRequest(requestId) {
 
   try {
     const { error } = await supabase
-      .from('holiday_requests')
+      .from('4_holiday_bookings')
       .update({
         status: 'approved',
-        approved_by: ctx?.userId,
-        approved_at: new Date().toISOString()
+        admin_notes: 'Approved by admin',
+        updated_at: new Date().toISOString()
       })
       .eq('id', requestId);
 
@@ -16536,12 +16538,11 @@ async function declineHolidayRequest(requestId, comments) {
 
   try {
     const { error } = await supabase
-      .from('holiday_requests')
+      .from('4_holiday_bookings')
       .update({
         status: 'declined',
-        admin_comments: comments,
-        approved_by: ctx?.userId,
-        approved_at: new Date().toISOString()
+        admin_notes: comments,
+        updated_at: new Date().toISOString()
       })
       .eq('id', requestId);
 
@@ -16571,11 +16572,13 @@ async function loadHolidayCalendar() {
     const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
     const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
 
-    // First get holiday requests
+    // Get holiday bookings from new table with staff profiles
     const { data: holidayRequests, error: holidayError } = await supabase
-      .from('holiday_requests')
-      .select('*')
-      .eq('site_id', ctx.site_id)
+      .from('4_holiday_bookings')
+      .select(`
+        *,
+        1_staff_holiday_profiles!staff_profile_id(full_name, role, team_name)
+      `)
       .eq('status', 'approved')
       .gte('start_date', startOfMonth.toISOString().split('T')[0])
       .lte('end_date', endOfMonth.toISOString().split('T')[0])
@@ -16583,26 +16586,22 @@ async function loadHolidayCalendar() {
 
     if (holidayError) throw holidayError;
 
-    // Then get user profiles for the users with holidays
+    // Format holidays with staff profiles
     let holidays = [];
     if (holidayRequests && holidayRequests.length > 0) {
-      const userIds = [...new Set(holidayRequests.map(h => h.user_id))];
-      const { data: profiles, error: profileError } = await supabase
-        .from('profiles')
-        .select('user_id, nickname, full_name')
-        .in('user_id', userIds);
-
-      if (profileError) {
-        console.warn('Could not load user profiles:', profileError);
-        // Continue without profile data
-        holidays = holidayRequests;
-      } else {
-        // Merge holiday data with profile data
-        holidays = holidayRequests.map(holiday => ({
-          ...holiday,
-          profiles: profiles.find(p => p.user_id === holiday.user_id)
-        }));
-      }
+      holidays = holidayRequests.map(holiday => ({
+        ...holiday,
+        profiles: holiday['1_staff_holiday_profiles'] ? {
+          full_name: holiday['1_staff_holiday_profiles'].full_name,
+          nickname: holiday['1_staff_holiday_profiles'].full_name,
+          role: holiday['1_staff_holiday_profiles'].role
+        } : null,
+        // Map new field names for compatibility
+        user_id: holiday.staff_profile_id,
+        request_type: holiday.type,
+        total_hours: holiday.hours_requested,
+        total_sessions: holiday.sessions_requested
+      }));
     }
 
     // Render calendar with holidays
