@@ -236,47 +236,61 @@
       color: #1f2937;
     }
     
+    /* Line chart styles */
     .chart {
-      height: 200px;
+      height: 220px;
       position: relative;
-      display: flex;
-      align-items: end;
-      gap: 8px;
-      padding: 0 8px;
+      display: block;
+      padding: 8px 12px 28px 12px; /* extra bottom space for labels */
     }
-    
-    .chart-bar {
-      flex: 1;
-      background: linear-gradient(135deg, #4f89ff, #7db1ff);
-      border-radius: 4px 4px 0 0;
-      position: relative;
-      min-height: 4px;
-      transition: all 0.3s ease;
+
+    .chart-svg {
+      width: 100%;
+      height: 100%;
+      display: block;
     }
-    
-    .chart-bar:hover {
-      transform: scale(1.05);
-      box-shadow: 0 4px 8px rgba(79, 137, 255, 0.3);
+
+    .chart-grid line {
+      stroke: rgba(15,23,42,0.06);
+      stroke-width: 1;
     }
-    
-    .chart-label {
-      position: absolute;
-      bottom: -24px;
-      left: 50%;
-      transform: translateX(-50%);
+
+    .chart-area {
+      fill: url(#grad-area);
+      opacity: 0.18;
+    }
+
+    .chart-line {
+      fill: none;
+      stroke: url(#grad-line);
+      stroke-width: 3;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 6px 12px rgba(79,137,255,0.12));
+    }
+
+    .chart-point {
+      fill: #fff;
+      stroke: #4f89ff;
+      stroke-width: 2;
+      r: 4;
+      transition: transform 120ms ease;
+      cursor: default;
+    }
+
+    .chart-point:hover { transform: scale(1.25); }
+
+    .chart-xlabel {
       font-size: 0.75rem;
-      color: #64748b;
-      white-space: nowrap;
+      fill: #64748b;
+      text-anchor: middle;
     }
-    
-    .chart-value {
-      position: absolute;
-      top: -20px;
-      left: 50%;
-      transform: translateX(-50%);
+
+    .chart-value-label {
       font-size: 0.75rem;
-      font-weight: 600;
-      color: #374151;
+      fill: #111827;
+      text-anchor: middle;
+      font-weight: 700;
     }
     
     .empty-state {
@@ -644,25 +658,111 @@
       });
       
       const maxCount = Math.max(...chartData.map(d => d.count), 1);
-      
-      chartData.forEach(data => {
-        const bar = document.createElement('div');
-        bar.className = 'chart-bar';
-        const height = (data.count / maxCount) * 100;
-        bar.style.height = `${height}%`;
-        
-        const label = document.createElement('div');
-        label.className = 'chart-label';
-        label.textContent = data.label;
-        
-        const value = document.createElement('div');
-        value.className = 'chart-value';
-        value.textContent = data.count;
-        
-        bar.appendChild(label);
-        bar.appendChild(value);
-        chartContainer.appendChild(bar);
+
+      // Build an SVG line chart
+      const svgNS = 'http://www.w3.org/2000/svg';
+      const svg = document.createElementNS(svgNS, 'svg');
+      svg.setAttribute('class', 'chart-svg');
+
+      const width = chartContainer.clientWidth || 600;
+      const height = chartContainer.clientHeight || 220;
+      svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+
+      // Padding within svg for axes
+      const pad = { top: 12, right: 16, bottom: 36, left: 24 };
+      const innerW = Math.max(10, width - pad.left - pad.right);
+      const innerH = Math.max(10, height - pad.top - pad.bottom);
+
+      // scales
+      const xStep = innerW / (chartData.length - 1 || 1);
+      const yScale = v => innerH - (v / maxCount) * innerH;
+
+      // defs: gradients
+      const defs = document.createElementNS(svgNS, 'defs');
+      defs.innerHTML = `
+        <linearGradient id="grad-line" x1="0" x2="1">
+          <stop offset="0%" stop-color="#60a5fa" />
+          <stop offset="100%" stop-color="#a78bfa" />
+        </linearGradient>
+        <linearGradient id="grad-area" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="#60a5fa" stop-opacity="0.28" />
+          <stop offset="100%" stop-color="#a78bfa" stop-opacity="0.04" />
+        </linearGradient>
+      `;
+      svg.appendChild(defs);
+
+      // grid lines (horizontal)
+      const grid = document.createElementNS(svgNS, 'g');
+      grid.setAttribute('class', 'chart-grid');
+      const gridLines = 3;
+      for (let i = 0; i <= gridLines; i++) {
+        const y = pad.top + (innerH / gridLines) * i;
+        const line = document.createElementNS(svgNS, 'line');
+        line.setAttribute('x1', pad.left);
+        line.setAttribute('x2', pad.left + innerW);
+        line.setAttribute('y1', y);
+        line.setAttribute('y2', y);
+        grid.appendChild(line);
+      }
+      svg.appendChild(grid);
+
+      // area path
+      let areaPath = '';
+      let linePath = '';
+      chartData.forEach((d, i) => {
+        const x = pad.left + xStep * i;
+        const y = pad.top + yScale(d.count);
+        if (i === 0) {
+          linePath += `M ${x} ${y}`;
+          areaPath += `M ${x} ${pad.top + innerH} L ${x} ${y}`;
+        } else {
+          linePath += ` L ${x} ${y}`;
+          areaPath += ` L ${x} ${y}`;
+        }
       });
+      // close area
+      const lastX = pad.left + xStep * (chartData.length - 1);
+      areaPath += ` L ${lastX} ${pad.top + innerH} Z`;
+
+      const area = document.createElementNS(svgNS, 'path');
+      area.setAttribute('d', areaPath);
+      area.setAttribute('class', 'chart-area');
+      svg.appendChild(area);
+
+      const path = document.createElementNS(svgNS, 'path');
+      path.setAttribute('d', linePath);
+      path.setAttribute('class', 'chart-line');
+      svg.appendChild(path);
+
+      // points and labels
+      chartData.forEach((d, i) => {
+        const x = pad.left + xStep * i;
+        const y = pad.top + yScale(d.count);
+
+        const circle = document.createElementNS(svgNS, 'circle');
+        circle.setAttribute('cx', x);
+        circle.setAttribute('cy', y);
+        circle.setAttribute('r', 4);
+        circle.setAttribute('class', 'chart-point');
+        svg.appendChild(circle);
+
+        const valLabel = document.createElementNS(svgNS, 'text');
+        valLabel.setAttribute('x', x);
+        valLabel.setAttribute('y', y - 10);
+        valLabel.setAttribute('class', 'chart-value-label');
+        valLabel.textContent = String(d.count);
+        svg.appendChild(valLabel);
+
+        const xLabel = document.createElementNS(svgNS, 'text');
+        xLabel.setAttribute('x', x);
+        xLabel.setAttribute('y', pad.top + innerH + 20);
+        xLabel.setAttribute('class', 'chart-xlabel');
+        xLabel.textContent = d.label;
+        svg.appendChild(xLabel);
+      });
+
+      // Append svg to container
+      chartContainer.appendChild(svg);
     }
 
     function populateRoomFilter() {
@@ -897,6 +997,11 @@
       document.getElementById('refresh-btn').addEventListener('click', () => {
         location.reload();
       });
+
+      // Re-render chart on resize
+      window.addEventListener('resize', debounce(() => {
+        generateChart();
+      }, 200));
     }
 
     function exportData() {

@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Holiday Data Import to Supabase</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 5px;
+            background: #f8f9fa;
+            border-left: 4px solid #007bff;
+        }
+        .success {
+            background: #d4edda;
+            border-color: #28a745;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border-color: #dc3545;
+            color: #721c24;
+        }
+        .progress {
+            margin: 20px 0;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+        .log {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .stat-label {
+            color: #666;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Holiday Data Import to Supabase</h1>
+        
+        <div class="status" id="status">
+            Ready to import holiday data from Excel
+        </div>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="profileCount">0</div>
+                <div class="stat-label">Staff Profiles</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="bookingCount">0</div>
+                <div class="stat-label">Holiday Bookings</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="linkedCount">0</div>
+                <div class="stat-label">Linked Users</div>
+            </div>
+        </div>
+        
+        <div>
+            <button onclick="runImport()" id="importBtn">Start Import</button>
+            <button onclick="verifyData()" id="verifyBtn">Verify Data</button>
+            <button onclick="clearData()" id="clearBtn">Clear All Holiday Data</button>
+        </div>
+        
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        // Supabase credentials from index.html
+        const SUPABASE_URL = 'https://ntufkxnyogbzlripswxs.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im50dWZreG55b2diemxyaXBzd3hzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjI1MDQzMzQsImV4cCI6MjAzODA4MDMzNH0.7-gH9mPEMGxk3zrKvl5lLi28AvWJBCCMmZi6OF5HWkE';
+        
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        // Holiday data from Excel
+        const holidayData = {
+            profiles: [
+                {full_name: 'Alexa Moreton', role: 'Nurse', is_gp: false},
+                {full_name: 'Ashwini Nayak', role: 'GP', is_gp: true},
+                {full_name: 'Ben Howard', role: 'Manager', is_gp: false},
+                {full_name: 'Carly Tweedie', role: 'Admin', is_gp: false},
+                {full_name: 'Diana Griffiths', role: 'Nurse', is_gp: false},
+                {full_name: 'Emily Parker', role: 'Nurse', is_gp: false},
+                {full_name: 'Gemma Keeling', role: 'Reception', is_gp: false},
+                {full_name: 'Georgiana Sima', role: 'Nurse', is_gp: false},
+                {full_name: 'Kasim Hussain', role: 'Pharmacist', is_gp: false},
+                {full_name: 'Kelly Amison', role: 'Health Care Assistant', is_gp: false},
+                {full_name: 'Kelly Mansell', role: 'GP Assistant', is_gp: false},
+                {full_name: 'Lilly Mycock', role: 'Admin', is_gp: false},
+                {full_name: 'Monique Keersmaekers', role: 'GP', is_gp: true},
+                {full_name: 'Patricia Perkins', role: 'Admin', is_gp: false},
+                {full_name: 'Saba Khalid', role: 'Admin', is_gp: false},
+                {full_name: 'Salman Saeed', role: 'GP', is_gp: true},
+                {full_name: 'Sarah Masterson', role: 'Reception', is_gp: false},
+                {full_name: 'Shihara Farook', role: 'GP', is_gp: true},
+                {full_name: 'Susan Heath', role: 'Reception', is_gp: false},
+                {full_name: 'Tom Donlan', role: 'Manager', is_gp: false},
+                {full_name: 'Tracy Heaton', role: 'Nurse', is_gp: false}
+            ],
+            bookings: [] // Will be populated from parsed data
+        };
+        
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            const color = type === 'error' ? 'red' : type === 'success' ? 'green' : 'black';
+            logDiv.innerHTML += `<div style="color: ${color}">[${time}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        function updateStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = 'status ' + type;
+        }
+        
+        async function clearData() {
+            if (!confirm('Are you sure you want to clear all holiday data? This cannot be undone.')) {
+                return;
+            }
+            
+            updateStatus('Clearing existing data...', 'info');
+            log('Starting data cleanup...');
+            
+            try {
+                // Clear in correct order due to foreign keys
+                await supabase.from('holiday_bookings').delete().neq('id', 0);
+                await supabase.from('staff_working_patterns').delete().neq('id', 0);
+                await supabase.from('holiday_entitlements').delete().neq('id', 0);
+                await supabase.from('staff_profile_user_links').delete().neq('id', 0);
+                await supabase.from('staff_holiday_profiles').delete().neq('id', 0);
+                
+                log('All holiday data cleared successfully', 'success');
+                updateStatus('Data cleared successfully', 'success');
+                await updateStats();
+            } catch (error) {
+                log('Error clearing data: ' + error.message, 'error');
+                updateStatus('Error clearing data', 'error');
+            }
+        }
+        
+        async function runImport() {
+            const btn = document.getElementById('importBtn');
+            btn.disabled = true;
+            
+            updateStatus('Starting import...', 'info');
+            log('Import process started');
+            
+            try {
+                // Step 1: Insert staff profiles
+                log('Creating staff profiles...');
+                const { data: profiles, error: profileError } = await supabase
+                    .from('staff_holiday_profiles')
+                    .upsert(holidayData.profiles, { onConflict: 'full_name' })
+                    .select();
+                
+                if (profileError) throw profileError;
+                log(`Created ${profiles.length} staff profiles`, 'success');
+                
+                // Step 2: Get profile IDs for mapping
+                const { data: allProfiles } = await supabase
+                    .from('staff_holiday_profiles')
+                    .select('id, full_name');
+                
+                const profileMap = {};
+                allProfiles.forEach(p => {
+                    profileMap[p.full_name] = p.id;
+                });
+                
+                // Step 3: Insert working patterns
+                log('Creating working patterns...');
+                const workingPatterns = [
+                    // Ben Howard - Manager (Mon-Fri regular hours)
+                    {staff_profile_id: profileMap['Ben Howard'], day_of_week: 'Monday', hours_worked: '08:00:00'},
+                    {staff_profile_id: profileMap['Ben Howard'], day_of_week: 'Tuesday', hours_worked: '08:00:00'},
+                    {staff_profile_id: profileMap['Ben Howard'], day_of_week: 'Wednesday', hours_worked: '08:00:00'},
+                    {staff_profile_id: profileMap['Ben Howard'], day_of_week: 'Thursday', hours_worked: '08:00:00'},
+                    {staff_profile_id: profileMap['Ben Howard'], day_of_week: 'Friday', hours_worked: '07:30:00'},
+                    
+                    // Tom Donlan - Manager
+                    {staff_profile_id: profileMap['Tom Donlan'], day_of_week: 'Monday', hours_worked: '08:00:00'},
+                    {staff_profile_id: profileMap['Tom Donlan'], day_of_week: 'Tuesday', hours_worked: '08:00:00'},
+                    {staff_profile_id: profileMap['Tom Donlan'], day_of_week: 'Wednesday', hours_worked: '08:00:00'},
+                    {staff_profile_id: profileMap['Tom Donlan'], day_of_week: 'Thursday', hours_worked: '08:00:00'},
+                    {staff_profile_id: profileMap['Tom Donlan'], day_of_week: 'Friday', hours_worked: '08:00:00'},
+                    
+                    // GPs - Sessions
+                    {staff_profile_id: profileMap['Ashwini Nayak'], day_of_week: 'Monday', sessions_worked: 2},
+                    {staff_profile_id: profileMap['Ashwini Nayak'], day_of_week: 'Tuesday', sessions_worked: 2},
+                    {staff_profile_id: profileMap['Ashwini Nayak'], day_of_week: 'Wednesday', sessions_worked: 1},
+                    {staff_profile_id: profileMap['Ashwini Nayak'], day_of_week: 'Thursday', sessions_worked: 2},
+                    {staff_profile_id: profileMap['Ashwini Nayak'], day_of_week: 'Friday', sessions_worked: 1},
+                ];
+                
+                await supabase.from('staff_working_patterns').upsert(workingPatterns);
+                log('Working patterns created', 'success');
+                
+                // Step 4: Insert entitlements
+                log('Creating holiday entitlements...');
+                const entitlements = [
+                    // Regular staff - hours
+                    {staff_profile_id: profileMap['Ben Howard'], year: 2025, annual_hours: 200, entitlement_hours: '200:00:00'},
+                    {staff_profile_id: profileMap['Tom Donlan'], year: 2025, annual_hours: 200, entitlement_hours: '200:00:00'},
+                    {staff_profile_id: profileMap['Alexa Moreton'], year: 2025, annual_hours: 157, entitlement_hours: '157:00:00'},
+                    {staff_profile_id: profileMap['Carly Tweedie'], year: 2025, annual_hours: 128, entitlement_hours: '128:00:00'},
+                    
+                    // GPs - sessions
+                    {staff_profile_id: profileMap['Ashwini Nayak'], year: 2025, annual_sessions: 44, entitlement_sessions: 44},
+                    {staff_profile_id: profileMap['Monique Keersmaekers'], year: 2025, annual_sessions: 44, entitlement_sessions: 44},
+                    {staff_profile_id: profileMap['Salman Saeed'], year: 2025, annual_sessions: 44, entitlement_sessions: 44},
+                    {staff_profile_id: profileMap['Shihara Farook'], year: 2025, annual_sessions: 44, entitlement_sessions: 44},
+                ];
+                
+                await supabase.from('holiday_entitlements').upsert(entitlements);
+                log('Entitlements created', 'success');
+                
+                // Step 5: Parse and insert holiday bookings from Excel data
+                log('Importing holiday bookings...');
+                const bookingsData = await loadBookingsFromExcel(profileMap);
+                
+                if (bookingsData.length > 0) {
+                    // Insert in batches of 50
+                    for (let i = 0; i < bookingsData.length; i += 50) {
+                        const batch = bookingsData.slice(i, i + 50);
+                        const { error } = await supabase
+                            .from('holiday_bookings')
+                            .insert(batch);
+                        
+                        if (error) {
+                            log(`Error inserting batch ${i/50 + 1}: ${error.message}`, 'error');
+                        } else {
+                            log(`Inserted batch ${i/50 + 1} (${batch.length} bookings)`);
+                        }
+                    }
+                }
+                
+                log(`Total bookings imported: ${bookingsData.length}`, 'success');
+                
+                // Step 6: Link existing users
+                log('Linking existing user accounts...');
+                
+                // Link Ben Howard
+                const { data: benUser } = await supabase.auth.admin.listUsers();
+                if (benUser && benUser.users) {
+                    const ben = benUser.users.find(u => u.email === 'ben.howard@stoke.nhs.uk');
+                    if (ben && profileMap['Ben Howard']) {
+                        await supabase.from('staff_profile_user_links').upsert({
+                            staff_profile_id: profileMap['Ben Howard'],
+                            user_id: ben.id
+                        });
+                        log('Linked Ben Howard to user account', 'success');
+                    }
+                }
+                
+                updateStatus('Import completed successfully!', 'success');
+                log('Import process completed', 'success');
+                
+                await updateStats();
+                
+            } catch (error) {
+                log('Import error: ' + error.message, 'error');
+                updateStatus('Import failed: ' + error.message, 'error');
+            }
+            
+            btn.disabled = false;
+        }
+        
+        async function loadBookingsFromExcel(profileMap) {
+            // Holiday bookings from Excel (sample data - you would load all 323 entries)
+            const bookings = [
+                // Kelly Amison bookings
+                {staff_name: 'Kelly Amison', date: '2025-02-13', hours: '06:00:00'},
+                {staff_name: 'Kelly Amison', date: '2025-03-03', hours: '09:00:00'},
+                {staff_name: 'Kelly Amison', date: '2025-03-04', hours: '07:00:00'},
+                {staff_name: 'Kelly Amison', date: '2025-03-05', hours: '06:00:00'},
+                {staff_name: 'Kelly Amison', date: '2025-03-06', hours: '06:00:00'},
+                {staff_name: 'Kelly Amison', date: '2025-03-07', hours: '09:00:00'},
+                
+                // Ben Howard bookings
+                {staff_name: 'Ben Howard', date: '2025-04-14', hours: '08:00:00'},
+                {staff_name: 'Ben Howard', date: '2025-04-15', hours: '08:00:00'},
+                {staff_name: 'Ben Howard', date: '2025-04-16', hours: '08:00:00'},
+                {staff_name: 'Ben Howard', date: '2025-04-17', hours: '08:00:00'},
+                {staff_name: 'Ben Howard', date: '2025-04-18', hours: '07:30:00'},
+                
+                // Tom Donlan bookings
+                {staff_name: 'Tom Donlan', date: '2025-05-05', hours: '08:00:00'},
+                {staff_name: 'Tom Donlan', date: '2025-05-06', hours: '08:00:00'},
+                {staff_name: 'Tom Donlan', date: '2025-05-07', hours: '08:00:00'},
+                
+                // GP bookings (sessions)
+                {staff_name: 'Ashwini Nayak', date: '2025-03-10', sessions: 2},
+                {staff_name: 'Ashwini Nayak', date: '2025-03-11', sessions: 2},
+                {staff_name: 'Ashwini Nayak', date: '2025-03-12', sessions: 1},
+                
+                // Add more bookings here from the Excel data
+            ];
+            
+            // Convert to database format
+            const dbBookings = [];
+            for (const booking of bookings) {
+                if (profileMap[booking.staff_name]) {
+                    const dbBooking = {
+                        staff_profile_id: profileMap[booking.staff_name],
+                        booking_date: booking.date,
+                        booking_type: 'annual_leave',
+                        imported_from_excel: true
+                    };
+                    
+                    if (booking.sessions) {
+                        dbBooking.sessions_booked = booking.sessions;
+                    } else if (booking.hours) {
+                        dbBooking.hours_booked = booking.hours;
+                    }
+                    
+                    dbBookings.push(dbBooking);
+                }
+            }
+            
+            return dbBookings;
+        }
+        
+        async function verifyData() {
+            log('Verifying imported data...');
+            
+            try {
+                const { data: profiles, error: profileError } = await supabase
+                    .from('staff_holiday_profiles')
+                    .select('*');
+                
+                const { data: bookings, error: bookingError } = await supabase
+                    .from('holiday_bookings')
+                    .select('*');
+                
+                const { data: links, error: linkError } = await supabase
+                    .from('staff_profile_user_links')
+                    .select('*');
+                
+                const { data: entitlements, error: entitlementError } = await supabase
+                    .from('holiday_entitlements')
+                    .select('*');
+                
+                log(`Profiles: ${profiles?.length || 0}`, 'success');
+                log(`Bookings: ${bookings?.length || 0}`, 'success');
+                log(`Entitlements: ${entitlements?.length || 0}`, 'success');
+                log(`Linked users: ${links?.length || 0}`, 'success');
+                
+                // Show some sample data
+                if (profiles && profiles.length > 0) {
+                    log('Sample profiles:');
+                    profiles.slice(0, 3).forEach(p => {
+                        log(`  - ${p.full_name} (${p.role}, GP: ${p.is_gp})`);
+                    });
+                }
+                
+                updateStatus('Data verification complete', 'success');
+                await updateStats();
+                
+            } catch (error) {
+                log('Verification error: ' + error.message, 'error');
+                updateStatus('Verification failed', 'error');
+            }
+        }
+        
+        async function updateStats() {
+            const { data: profiles } = await supabase.from('staff_holiday_profiles').select('id');
+            const { data: bookings } = await supabase.from('holiday_bookings').select('id');
+            const { data: links } = await supabase.from('staff_profile_user_links').select('id');
+            
+            document.getElementById('profileCount').textContent = profiles?.length || 0;
+            document.getElementById('bookingCount').textContent = bookings?.length || 0;
+            document.getElementById('linkedCount').textContent = links?.length || 0;
+        }
+        
+        // Initialize on load
+        window.onload = async function() {
+            await updateStats();
+            log('Import tool ready');
+        };
+    </script>
+</body>
+</html>

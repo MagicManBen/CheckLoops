@@ -1,98 +1,72 @@
 import { chromium } from 'playwright';
 
 async function testHolidaySystem() {
-  console.log('🏖️ Testing Holiday Management System...');
-  
   const browser = await chromium.launch({ headless: false });
   const page = await browser.newPage();
   
+  console.log('Testing Holiday System...');
+  
   try {
-    // Navigate to admin dashboard
-    console.log('📱 Navigating to admin dashboard...');
-    await page.goto('http://127.0.0.1:58156/admin-dashboard.html');
-    
-    // Wait for the page to load
+    // Login flow
+    console.log('1. Logging in...');
+    await page.goto('http://127.0.0.1:65046/Home.html');
+    await page.waitForLoadState('networkidle');
+    await page.locator('#email').fill('benhowardmagic@hotmail.com');
+    await page.locator('#password').fill('Hello1!');
+    await page.click('button:has-text("Sign In")');
     await page.waitForTimeout(3000);
     
-    // Check if holiday navigation exists
-    const holidayNavButton = await page.locator('button[data-section="holidays-management"]').first();
-    if (await holidayNavButton.count() > 0) {
-      console.log('✅ Holiday management navigation found');
+    console.log('2. Taking login screenshot...');
+    await page.screenshot({ path: 'login_success.png' });
+    
+    // Click on Holiday tab to see staff view
+    console.log('3. Clicking Holiday tab...');
+    await page.click('text=Holiday');
+    await page.waitForTimeout(2000);
+    
+    console.log('4. Taking staff holiday view screenshot...');
+    await page.screenshot({ path: 'staff_holiday_view.png' });
+    
+    // Check for existing requests in staff view
+    console.log('5. Checking for existing holiday requests in staff view...');
+    const existingRequests = await page.locator('[class*="holiday-item"]').count();
+    console.log(`Found ${existingRequests} existing holiday requests`);
+    
+    // Click Admin Page button
+    console.log('6. Clicking Admin Page button...');
+    await page.click('text=Admin Page');
+    await page.waitForTimeout(2000);
+    
+    console.log('7. Taking admin page screenshot...');
+    await page.screenshot({ path: 'admin_page.png' });
+    
+    // Look for holiday dropdown in menu
+    console.log('8. Looking for holiday dropdown in admin menu...');
+    const holidayDropdown = await page.locator('text=Holiday').first();
+    if (await holidayDropdown.isVisible()) {
+      console.log('✓ Holiday dropdown found in admin menu');
+      await holidayDropdown.click();
+      await page.waitForTimeout(1000);
       
-      // Click on holiday management
-      await holidayNavButton.click();
-      await page.waitForTimeout(2000);
+      console.log('9. Taking holiday dropdown screenshot...');
+      await page.screenshot({ path: 'holiday_dropdown.png' });
       
-      // Take screenshot of holiday management interface
-      await page.screenshot({ path: 'test_holiday_admin.png', fullPage: true });
-      console.log('📸 Screenshot saved: test_holiday_admin.png');
-      
-      // Check if holiday settings exists
-      const settingsButton = await page.locator('button[data-section="holidays-settings"]').first();
-      if (await settingsButton.count() > 0) {
-        await settingsButton.click();
-        await page.waitForTimeout(2000);
-        
-        await page.screenshot({ path: 'test_holiday_settings.png', fullPage: true });
-        console.log('📸 Screenshot saved: test_holiday_settings.png');
-      }
-      
-      // Check holiday calendar
-      const calendarButton = await page.locator('button[data-section="holidays-calendar"]').first();
-      if (await calendarButton.count() > 0) {
-        await calendarButton.click();
-        await page.waitForTimeout(2000);
-        
-        await page.screenshot({ path: 'test_holiday_calendar.png', fullPage: true });
-        console.log('📸 Screenshot saved: test_holiday_calendar.png');
-      }
+      // Check for different holiday management pages
+      const holidayOptions = await page.locator('[data-section*="holiday"]').count();
+      console.log(`Found ${holidayOptions} holiday management options`);
       
     } else {
-      console.log('❌ Holiday management navigation not found');
+      console.log('✗ Holiday dropdown not found in admin menu');
     }
     
-    // Now test staff holiday interface
-    console.log('👤 Testing staff holiday interface...');
-    await page.goto('http://127.0.0.1:58156/staff-holidays.html');
-    await page.waitForTimeout(3000);
-    
-    // Check if staff holiday page loads
-    const staffHolidayTitle = await page.locator('h1').first();
-    if (await staffHolidayTitle.count() > 0) {
-      const titleText = await staffHolidayTitle.textContent();
-      if (titleText?.includes('Holiday') || titleText?.includes('My Holidays')) {
-        console.log('✅ Staff holiday page loaded successfully');
-        await page.screenshot({ path: 'test_staff_holidays.png', fullPage: true });
-        console.log('📸 Screenshot saved: test_staff_holidays.png');
-        
-        // Test holiday request modal
-        const requestButton = await page.locator('text=Request Holiday').first();
-        if (await requestButton.count() > 0) {
-          await requestButton.click();
-          await page.waitForTimeout(1000);
-          
-          // Check if modal opened
-          const modal = await page.locator('.modal').first();
-          if (await modal.isVisible()) {
-            console.log('✅ Holiday request modal opened');
-            await page.screenshot({ path: 'test_holiday_request_modal.png' });
-            console.log('📸 Screenshot saved: test_holiday_request_modal.png');
-          }
-        }
-      }
-    } else {
-      console.log('❌ Staff holiday page not found or not loading');
-    }
-    
-    console.log('🎉 Holiday system testing completed!');
+    console.log('Test completed successfully!');
     
   } catch (error) {
-    console.error('❌ Error during testing:', error);
-    await page.screenshot({ path: 'test_holiday_error.png', fullPage: true });
+    console.error('Test failed:', error);
+    await page.screenshot({ path: 'test_error.png' });
   } finally {
     await browser.close();
   }
 }
 
-// Run the test
-testHolidaySystem().catch(console.error);
+testHolidaySystem();
