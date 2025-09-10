@@ -774,34 +774,56 @@
       try {
         const siteId = profileRow?.site_id;
         
-        // Get current user's team
-        const { data: userTeam } = await supabase
-          .from('staff_app_welcome')
-          .select('team_id, team_name')
-          .eq('user_id', currentUser.id)
-          .eq('site_id', siteId)
-          .single();
-
-        if (!userTeam?.team_id) {
-          document.getElementById('team-holidays').innerHTML = 
-            '<p style="color: var(--muted); text-align: center;">No team information available.</p>';
-          return;
-        }
-
-        // Get team members and their approved holidays
-        const { data: teamHolidays } = await supabase
+        // Get ALL approved holidays for the site - show everyone's holidays
+        // This allows seeing holidays for both registered and non-registered staff
+        const { data: allHolidays } = await supabase
           .from('holiday_requests')
           .select(`
             *,
-            staff_app_welcome!inner(full_name, nickname, avatar_url, team_id)
+            staff_app_welcome(full_name, nickname, avatar_url)
           `)
           .eq('status', 'approved')
-          .eq('staff_app_welcome.team_id', userTeam.team_id)
           .eq('site_id', siteId)
           .gte('end_date', new Date().toISOString().split('T')[0])
           .order('start_date');
 
-        displayTeamHolidays(teamHolidays || []);
+        // Also fetch holidays with staff names stored directly (for non-registered users)
+        const { data: directHolidays } = await supabase
+          .from('holiday_requests')
+          .select('*')
+          .eq('status', 'approved')
+          .eq('site_id', siteId)
+          .gte('end_date', new Date().toISOString().split('T')[0])
+          .not('staff_name', 'is', null)
+          .order('start_date');
+
+        // Combine both sources
+        const combinedHolidays = [];
+        
+        if (allHolidays) {
+          allHolidays.forEach(h => {
+            combinedHolidays.push({
+              ...h,
+              displayName: h.staff_app_welcome?.nickname || h.staff_app_welcome?.full_name || h.staff_name || 'Unknown',
+              avatar: h.staff_app_welcome?.avatar_url
+            });
+          });
+        }
+        
+        if (directHolidays) {
+          directHolidays.forEach(h => {
+            // Only add if not already included
+            if (!combinedHolidays.find(ch => ch.id === h.id)) {
+              combinedHolidays.push({
+                ...h,
+                displayName: h.staff_name || 'Unknown',
+                avatar: null
+              });
+            }
+          });
+        }
+
+        displayTeamHolidays(combinedHolidays);
 
       } catch (error) {
         console.error('Error loading team holidays:', error);
@@ -819,14 +841,14 @@
       }
 
       const grouped = holidays.reduce((acc, holiday) => {
-        const name = holiday.staff_app_welcome?.nickname || holiday.staff_app_welcome?.full_name || 'Unknown';
+        const name = holiday.displayName || 'Unknown';
         if (!acc[name]) acc[name] = [];
         acc[name].push(holiday);
         return acc;
       }, {});
 
       container.innerHTML = Object.entries(grouped).map(([name, userHolidays]) => {
-        const avatar = userHolidays[0].staff_app_welcome?.avatar_url;
+        const avatar = userHolidays[0].avatar;
         const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
         
         return `
