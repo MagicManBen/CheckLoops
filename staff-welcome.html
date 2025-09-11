@@ -779,20 +779,36 @@
           const payload = { description: prompt, options, seedHint };
 
           try {
+            console.log('Calling Edge Function with payload:', payload);
+            console.log('Using Supabase client:', globalSupabase);
+            console.log('Session token:', session.access_token ? 'Present' : 'Missing');
+            
             const { data, error } = await globalSupabase.functions.invoke('generate-avatar', { body: payload });
 
             console.log('Supabase Edge Function response:', { data, error });
 
             if (error) {
               console.error('Edge Function error details:', error);
-              if (error.message && error.message.includes('FunctionsHttpError')) {
-                throw new Error('Authentication required. Please refresh and log in again.');
-              } else if (error.message && error.message.includes('Unauthorized')) {
-                throw new Error('Authentication failed. Please refresh and log in again.');
+              console.error('Error type:', typeof error);
+              console.error('Error keys:', Object.keys(error));
+              console.error('Full error object:', JSON.stringify(error, null, 2));
+              
+              // Better error handling
+              if (error.message) {
+                if (error.message.includes('FunctionsHttpError') || error.message.includes('Failed to send')) {
+                  // This is likely a network or CORS issue
+                  throw new Error('Failed to connect to avatar generation service. Please check your connection and try again.');
+                } else if (error.message.includes('Unauthorized') || error.message.includes('authorization')) {
+                  throw new Error('Authentication failed. Please refresh and log in again.');
+                } else if (error.message.includes('CheckLoopsAI')) {
+                  throw new Error('AI service configuration error. Please contact support.');
+                } else {
+                  throw new Error(`Avatar generation error: ${error.message}`);
+                }
               } else if (error.context && error.context.status === 401) {
                 throw new Error('Authentication failed. Please refresh and log in again.');
               }
-              throw new Error(`AI generation failed: ${error.message || JSON.stringify(error)}`);
+              throw new Error(`AI generation failed: ${JSON.stringify(error)}`);
             }
 
             if (!data || Object.keys(data).length === 0) {
@@ -811,15 +827,32 @@
             return data;
           } catch (supabaseError) {
             // Log error for console only
-            console.error('Supabase Edge Function error:', supabaseError);
-            if (String(supabaseError).includes('Authentication') || String(supabaseError).includes('Unauthorized')) {
+            console.error('Caught error in Edge Function call:', supabaseError);
+            console.error('Error stack:', supabaseError.stack);
+            
+            // Check for specific error patterns
+            const errorStr = String(supabaseError);
+            const errorMsg = supabaseError.message || errorStr;
+            
+            if (errorMsg.includes('Failed to connect') || errorMsg.includes('Failed to send')) {
+              // Already handled above, just re-throw
+              throw supabaseError;
+            } else if (errorStr.includes('Authentication') || errorStr.includes('Unauthorized')) {
               throw new Error('Authentication failed. Please refresh the page and log in again.');
-            } else if (String(supabaseError).includes('fetch')) {
+            } else if (errorStr.includes('fetch') || errorStr.includes('NetworkError')) {
               throw new Error('Network error. Please check your connection and try again.');
-            } else if (String(supabaseError).includes('timeout')) {
+            } else if (errorStr.includes('timeout')) {
               throw new Error('Request timed out. Please try again with a shorter description.');
+            } else if (errorStr.includes('CORS')) {
+              throw new Error('Connection blocked. Please check if you are logged in properly.');
             }
-            throw new Error(`AI generation failed: ${supabaseError.message || 'Unknown error'}`);
+            
+            // If we get here, throw the original error message if it's clear enough
+            if (supabaseError.message && supabaseError.message.length < 200) {
+              throw supabaseError;
+            } else {
+              throw new Error('Avatar generation failed. Please try again or contact support.');
+            }
           }
         }
 

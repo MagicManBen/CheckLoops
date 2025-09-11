@@ -12,27 +12,27 @@ serve(async (req) => {
   }
 
   try {
-    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY')
+    const OPENAI_API_KEY = Deno.env.get('CheckLoopsAI')
     if (!OPENAI_API_KEY) {
-      throw new Error('OpenAI API key not configured')
+      throw new Error('CheckLoopsAI key not configured')
     }
 
-    const { audioUrl, meetingId, meetingTitle } = await req.json()
+    const { audio_base64, filename, meeting_id, file_type } = await req.json()
     
-    if (!audioUrl) {
+    if (!audio_base64 || !filename) {
       return new Response(
-        JSON.stringify({ error: 'Audio URL is required' }),
+        JSON.stringify({ error: 'Audio data and filename are required' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       )
     }
 
-    // Download audio from Supabase Storage
-    const audioResponse = await fetch(audioUrl)
-    const audioBlob = await audioResponse.blob()
+    // Convert base64 to blob
+    const audioBuffer = Uint8Array.from(atob(audio_base64), c => c.charCodeAt(0))
+    const audioBlob = new Blob([audioBuffer], { type: file_type || 'audio/webm' })
     
     // Create form data for OpenAI Whisper API
     const formData = new FormData()
-    formData.append('file', audioBlob, 'recording.webm')
+    formData.append('file', audioBlob, filename || 'recording.webm')
     formData.append('model', 'whisper-1')
     formData.append('response_format', 'text')
     formData.append('language', 'en')
@@ -77,7 +77,7 @@ Format it professionally like the sample: "08-13_Meeting_ARTP_Spirometry_Appoint
           },
           {
             role: 'user',
-            content: `Meeting Title: ${meetingTitle || 'Team Meeting'}\nTranscript:\n${transcript}`
+            content: `Meeting ID: ${meeting_id}\nFilename: ${filename}\nTranscript:\n${transcript}`
           }
         ],
         max_tokens: 2000,

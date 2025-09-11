@@ -58,9 +58,9 @@ serve(async (req) => {
     }
 
     // Get OpenAI API key from environment
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
+    const openaiApiKey = Deno.env.get('CheckLoopsAI')
     if (!openaiApiKey) {
-      return json({ success: false, error: 'OpenAI API key not configured' }, 500)
+      return json({ success: false, error: 'CheckLoopsAI key not configured' }, 500)
     }
 
     console.log('🤖 Extracting complaint details from text length:', contentText.length)

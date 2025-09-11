@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Direct Avatar Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+</head>
+<body>
+    <h1>Direct Avatar Generation Test</h1>
+    <button onclick="testLocal()">Test Local (54321)</button>
+    <button onclick="testRemote()">Test Remote (Production)</button>
+    <pre id="output"></pre>
+
+    <script>
+        const { createClient } = supabase;
+        const output = document.getElementById('output');
+        
+        // Test with local Supabase
+        async function testLocal() {
+            output.textContent = 'Testing LOCAL Edge Function...\n';
+            
+            const localClient = createClient(
+                'http://127.0.0.1:54321',
+                'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0'
+            );
+            
+            const payload = {
+                description: "A doctor with glasses",
+                options: {
+                    "opt-eyes": ["variant01"],
+                    "opt-mouth": ["variant01"],
+                    "opt-hairColor": ["brown"],
+                    "opt-skinColor": ["light"]
+                },
+                seedHint: "TestLocal"
+            };
+            
+            try {
+                const { data, error } = await localClient.functions.invoke('generate-avatar', { 
+                    body: payload 
+                });
+                
+                if (error) {
+                    output.textContent += 'LOCAL ERROR: ' + JSON.stringify(error, null, 2) + '\n';
+                } else {
+                    output.textContent += 'LOCAL SUCCESS: ' + JSON.stringify(data, null, 2).substring(0, 200) + '...\n';
+                }
+            } catch (e) {
+                output.textContent += 'LOCAL EXCEPTION: ' + e.message + '\n';
+            }
+        }
+        
+        // Test with remote Supabase
+        async function testRemote() {
+            output.textContent = 'Testing REMOTE Edge Function...\n';
+            
+            const remoteClient = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+            
+            const payload = {
+                description: "A nurse with short hair",
+                options: {
+                    "opt-eyes": ["variant01"],
+                    "opt-mouth": ["variant01"],
+                    "opt-hairColor": ["black"],
+                    "opt-skinColor": ["medium"]
+                },
+                seedHint: "TestRemote"
+            };
+            
+            try {
+                const { data, error } = await remoteClient.functions.invoke('generate-avatar', { 
+                    body: payload 
+                });
+                
+                if (error) {
+                    output.textContent += 'REMOTE ERROR: ' + JSON.stringify(error, null, 2) + '\n';
+                } else {
+                    output.textContent += 'REMOTE SUCCESS: ' + JSON.stringify(data, null, 2).substring(0, 200) + '...\n';
+                }
+            } catch (e) {
+                output.textContent += 'REMOTE EXCEPTION: ' + e.message + '\n';
+            }
+        }
+    </script>
+</body>
+</html>

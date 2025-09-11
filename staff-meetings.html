@@ -244,6 +244,13 @@
     .meeting-status.completed { background: #dcfce7; color: #16a34a; }
     .meeting-status.scheduled { background: #dbeafe; color: #1d4ed8; }
     .meeting-status.cancelled { background: #fee2e2; color: #dc2626; }
+    
+    /* Recording animation */
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.5; }
+      100% { opacity: 1; }
+    }
   </style>
 </head>
 <body>
@@ -330,9 +337,47 @@
             <button class="btn-generate-pdf" onclick="generateMeetingPDF()">Generate PDF</button>
           </div>
           <div class="meeting-form-group" style="margin-top: 20px;">
-            <label>Upload Meeting Recording</label>
-            <input type="file" id="meeting-recording" accept="audio/*,video/*" onchange="handleRecordingUpload(event)" style="padding: 8px;">
-            <small style="color: #6b7280; display: block; margin-top: 4px;">Upload an audio or video recording for transcription</small>
+            <label>Record or Upload Meeting Audio</label>
+            
+            <!-- Live Recording Controls -->
+            <div id="recording-controls" style="display: flex; gap: 10px; margin-bottom: 15px; align-items: center;">
+              <button id="start-recording" class="btn" onclick="startRecording()" style="background: #ef4444; color: white; padding: 10px 20px; border-radius: 8px; display: flex; align-items: center; gap: 8px;">
+                <span style="width: 12px; height: 12px; background: white; border-radius: 50%;"></span>
+                Start Recording
+              </button>
+              <button id="stop-recording" class="btn" onclick="stopRecording()" style="background: #10b981; color: white; padding: 10px 20px; border-radius: 8px; display: none; align-items: center; gap: 8px;">
+                <span style="width: 12px; height: 12px; background: white;"></span>
+                Stop Recording
+              </button>
+              <button id="pause-recording" class="btn" onclick="pauseRecording()" style="background: #f59e0b; color: white; padding: 10px 20px; border-radius: 8px; display: none;">
+                Pause
+              </button>
+              <div id="recording-timer" style="display: none; font-weight: 600; color: #ef4444; padding: 10px; background: #fee2e2; border-radius: 6px;">
+                <span style="animation: pulse 1.5s infinite;">🔴</span> Recording: <span id="recording-time">00:00</span>
+              </div>
+            </div>
+            
+            <!-- Audio Visualizer -->
+            <canvas id="audio-visualizer" width="400" height="60" style="width: 100%; height: 60px; background: #f3f4f6; border-radius: 8px; margin-bottom: 10px; display: none;"></canvas>
+            
+            <!-- Recorded Audio Playback -->
+            <div id="recorded-audio-container" style="display: none; margin-bottom: 15px;">
+              <audio id="recorded-audio" controls style="width: 100%;"></audio>
+              <div style="display: flex; gap: 10px; margin-top: 10px;">
+                <button class="btn" onclick="saveRecording()" style="background: #3b82f6; color: white; padding: 8px 16px; border-radius: 6px;">
+                  Save & Transcribe
+                </button>
+                <button class="btn" onclick="discardRecording()" style="background: #6b7280; color: white; padding: 8px 16px; border-radius: 6px;">
+                  Discard
+                </button>
+              </div>
+            </div>
+            
+            <!-- File Upload (existing) -->
+            <div style="border-top: 1px solid #e5e7eb; padding-top: 15px;">
+              <small style="color: #6b7280; display: block; margin-bottom: 8px;">Or upload an existing recording:</small>
+              <input type="file" id="meeting-recording" accept="audio/*,video/*" onchange="handleRecordingUpload(event)" style="padding: 8px;">
+            </div>
           </div>
           <div id="pdf-status" style="margin-top: 15px; padding: 15px; background: #f0f9ff; border-radius: 8px; display: none;">
             <p style="margin: 0; color: #0369a1;">Processing...</p>
@@ -997,6 +1042,228 @@
     window.handleRecordingUpload = handleRecordingUpload;
     window.viewMeetingNotes = viewMeetingNotes;
     window.initializeMeetings = initializeMeetings;
+    
+    // Microphone Recording Functions
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let recordingStartTime = null;
+    let recordingTimer = null;
+    let audioContext = null;
+    let analyser = null;
+    let microphone = null;
+    let animationId = null;
+    
+    async function startRecording() {
+      try {
+        // Request microphone permission
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          } 
+        });
+        
+        // Create MediaRecorder
+        mediaRecorder = new MediaRecorder(stream, {
+          mimeType: 'audio/webm;codecs=opus'
+        });
+        
+        audioChunks = [];
+        
+        // Set up audio visualization
+        setupAudioVisualization(stream);
+        
+        // Handle data available
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunks.push(event.data);
+          }
+        };
+        
+        // Handle recording stop
+        mediaRecorder.onstop = () => {
+          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+          const audioUrl = URL.createObjectURL(audioBlob);
+          
+          // Show playback controls
+          const audioElement = document.getElementById('recorded-audio');
+          audioElement.src = audioUrl;
+          document.getElementById('recorded-audio-container').style.display = 'block';
+          
+          // Store blob for upload
+          window.currentRecordingBlob = audioBlob;
+          
+          // Stop visualization
+          if (animationId) {
+            cancelAnimationFrame(animationId);
+            animationId = null;
+          }
+          
+          // Clean up audio context
+          if (audioContext) {
+            audioContext.close();
+            audioContext = null;
+          }
+        };
+        
+        // Start recording
+        mediaRecorder.start(1000); // Collect data every second
+        recordingStartTime = Date.now();
+        
+        // Update UI
+        document.getElementById('start-recording').style.display = 'none';
+        document.getElementById('stop-recording').style.display = 'flex';
+        document.getElementById('pause-recording').style.display = 'block';
+        document.getElementById('recording-timer').style.display = 'block';
+        document.getElementById('audio-visualizer').style.display = 'block';
+        
+        // Start timer
+        updateRecordingTimer();
+        
+      } catch (error) {
+        console.error('Error starting recording:', error);
+        alert('Unable to access microphone. Please check your permissions.');
+      }
+    }
+    
+    function stopRecording() {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        
+        // Stop all tracks
+        mediaRecorder.stream.getTracks().forEach(track => track.stop());
+        
+        // Clear timer
+        if (recordingTimer) {
+          clearInterval(recordingTimer);
+          recordingTimer = null;
+        }
+        
+        // Reset UI
+        document.getElementById('start-recording').style.display = 'flex';
+        document.getElementById('stop-recording').style.display = 'none';
+        document.getElementById('pause-recording').style.display = 'none';
+        document.getElementById('recording-timer').style.display = 'none';
+        document.getElementById('audio-visualizer').style.display = 'none';
+      }
+    }
+    
+    function pauseRecording() {
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.pause();
+        document.getElementById('pause-recording').textContent = 'Resume';
+        document.getElementById('pause-recording').onclick = resumeRecording;
+      }
+    }
+    
+    function resumeRecording() {
+      if (mediaRecorder && mediaRecorder.state === 'paused') {
+        mediaRecorder.resume();
+        document.getElementById('pause-recording').textContent = 'Pause';
+        document.getElementById('pause-recording').onclick = pauseRecording;
+      }
+    }
+    
+    function updateRecordingTimer() {
+      recordingTimer = setInterval(() => {
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+          const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+          const minutes = Math.floor(elapsed / 60).toString().padStart(2, '0');
+          const seconds = (elapsed % 60).toString().padStart(2, '0');
+          document.getElementById('recording-time').textContent = `${minutes}:${seconds}`;
+        }
+      }, 1000);
+    }
+    
+    function setupAudioVisualization(stream) {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = audioContext.createAnalyser();
+      microphone = audioContext.createMediaStreamSource(stream);
+      
+      analyser.fftSize = 256;
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+      
+      microphone.connect(analyser);
+      
+      const canvas = document.getElementById('audio-visualizer');
+      const canvasCtx = canvas.getContext('2d');
+      
+      function draw() {
+        animationId = requestAnimationFrame(draw);
+        
+        analyser.getByteFrequencyData(dataArray);
+        
+        canvasCtx.fillStyle = '#f3f4f6';
+        canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        const barWidth = (canvas.width / bufferLength) * 2.5;
+        let barHeight;
+        let x = 0;
+        
+        for (let i = 0; i < bufferLength; i++) {
+          barHeight = (dataArray[i] / 255) * canvas.height;
+          
+          // Use gradient colors
+          const gradient = canvasCtx.createLinearGradient(0, canvas.height, 0, 0);
+          gradient.addColorStop(0, '#ef4444');
+          gradient.addColorStop(0.5, '#f59e0b');
+          gradient.addColorStop(1, '#10b981');
+          
+          canvasCtx.fillStyle = gradient;
+          canvasCtx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+          
+          x += barWidth + 1;
+        }
+      }
+      
+      draw();
+    }
+    
+    async function saveRecording() {
+      if (!window.currentRecordingBlob) {
+        alert('No recording to save');
+        return;
+      }
+      
+      const meetingId = document.getElementById('notes-meeting-select').value;
+      if (!meetingId) {
+        alert('Please select a meeting first');
+        return;
+      }
+      
+      // Create a File object from the blob
+      const file = new File([window.currentRecordingBlob], `recording_${Date.now()}.webm`, {
+        type: 'audio/webm'
+      });
+      
+      // Use existing upload handler
+      const event = {
+        target: {
+          files: [file]
+        }
+      };
+      
+      await handleRecordingUpload(event);
+      
+      // Clear the recording
+      discardRecording();
+    }
+    
+    function discardRecording() {
+      window.currentRecordingBlob = null;
+      document.getElementById('recorded-audio-container').style.display = 'none';
+      document.getElementById('recorded-audio').src = '';
+    }
+    
+    // Make recording functions globally available
+    window.startRecording = startRecording;
+    window.stopRecording = stopRecording;
+    window.pauseRecording = pauseRecording;
+    window.resumeRecording = resumeRecording;
+    window.saveRecording = saveRecording;
+    window.discardRecording = discardRecording;
   </script>
 
   <script>
