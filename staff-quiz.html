@@ -134,7 +134,8 @@
       margin: 10px 0;
     }
     
-    .btn {
+    /* Quiz-specific button styles are namespaced to avoid clashing with global staff `.btn` */
+    .quiz-btn {
       width: 100%;
       padding: 15px 30px;
       border: none;
@@ -146,28 +147,28 @@
       text-transform: uppercase;
       letter-spacing: 1px;
     }
-    
-    .btn-required {
+
+    .quiz-btn-required {
       background: linear-gradient(135deg, #ff6b6b, #ff8787);
       color: white;
     }
-    
-    .btn-required:hover:not(:disabled) {
+
+    .quiz-btn-required:hover:not(:disabled) {
       transform: scale(1.05);
       box-shadow: 0 5px 15px rgba(255, 107, 107, 0.4);
     }
-    
-    .btn-practice {
+
+    .quiz-btn-practice {
       background: linear-gradient(135deg, #4ecdc4, #44a39f);
       color: white;
     }
-    
-    .btn-practice:hover {
+
+    .quiz-btn-practice:hover {
       transform: scale(1.05);
       box-shadow: 0 5px 15px rgba(78, 205, 196, 0.4);
     }
-    
-    .btn:disabled {
+
+    .quiz-btn:disabled {
       opacity: 0.5;
       cursor: not-allowed;
     }
@@ -329,14 +330,14 @@
       margin-top: 30px;
     }
     
-    .btn-submit {
+    .quiz-btn-submit {
       background: linear-gradient(135deg, #667eea, #764ba2);
       color: white;
       padding: 15px 40px;
       font-size: 18px;
     }
-    
-    .btn-submit:hover:not(:disabled) {
+
+    .quiz-btn-submit:hover:not(:disabled) {
       transform: scale(1.05);
       box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
     }
@@ -371,7 +372,7 @@
       margin-bottom: 20px;
     }
     
-    .btn-home {
+    .quiz-btn-home {
       background: linear-gradient(135deg, #667eea, #764ba2);
       color: white;
       padding: 15px 40px;
@@ -452,8 +453,8 @@
       <div class="spacer"></div>
       <div class="pill" id="site-pill">Site: —</div>
       <div class="pill" id="email-pill">—</div>
-      <div class="pill" id="role-pill">—</div>
-      <button class="btn" id="logout-btn">Sign Out</button>
+  <div class="pill" id="role-pill">—</div>
+  <button class="btn" id="logout-btn">Sign Out</button>
     </div>
 
     <!-- Quiz Content Panel -->
@@ -483,7 +484,7 @@
               <!-- Status will be populated by JavaScript -->
             </div>
             
-            <button id="btn-required" class="btn btn-required">
+            <button id="btn-required" class="quiz-btn quiz-btn-required">
               Start Required Quiz
             </button>
           </div>
@@ -503,7 +504,7 @@
               </p>
             </div>
             
-            <button id="btn-practice" class="btn btn-practice">
+            <button id="btn-practice" class="quiz-btn quiz-btn-practice">
               Start Practice Quiz
             </button>
           </div>
@@ -529,7 +530,7 @@
         </div>
         
         <div class="quiz-actions">
-          <button id="btn-submit" class="btn btn-submit" disabled>
+          <button id="btn-submit" class="quiz-btn quiz-btn-submit" disabled>
             Submit Quiz
           </button>
         </div>
@@ -542,9 +543,9 @@
         <div class="score-display" id="score-display">0/10</div>
         <div class="score-message" id="score-message">Good effort!</div>
         <div id="result-mode-info" style="margin: 20px 0; color: #666;"></div>
-        <button id="btn-home" class="btn btn-home">
-          Back to Quiz Home
-        </button>
+        <button id="btn-home" class="quiz-btn quiz-btn-home">
+            Back to Quiz Home
+          </button>
       </div>
     </div>
 
@@ -566,18 +567,22 @@
     let userAnswers = {};
     let quizStartTime = null;
     
-    // Get start of current week (Sunday)
+    // Get start of current week (Sunday at 00:00:00)
     function getWeekStart(date = new Date()) {
       const d = new Date(date);
       const day = d.getDay();
       const diff = d.getDate() - day;
-      return new Date(d.setDate(diff));
+      const weekStart = new Date(d.setDate(diff));
+      weekStart.setHours(0, 0, 0, 0);
+      return weekStart;
     }
     
-    // Get end of current week (Saturday)
+    // Get end of current week (Saturday at 23:59:59)
     function getWeekEnd(date = new Date()) {
       const start = getWeekStart(date);
-      return new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
+      const weekEnd = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
+      weekEnd.setHours(23, 59, 59, 999);
+      return weekEnd;
     }
     
     // Get next week start (next Sunday)
@@ -608,37 +613,69 @@
       const weekStart = getWeekStart();
       const weekEnd = getWeekEnd();
       
-      console.log('📅 Week range:', weekStart, 'to', weekEnd);
+      console.log('📅 Week range:', weekStart.toISOString(), 'to', weekEnd.toISOString());
+      console.log('📅 Current user ID:', currentUser?.id);
+      
+      if (!currentUser?.id) {
+        console.error('📅 No current user ID available');
+        return { taken: false, lastAttempt: null, nextAvailable: new Date() };
+      }
+      
+      // First check localStorage for recent quiz attempts (fallback for RLS issues)
+      const localKey = `quiz_attempt_${currentUser.id}_${weekStart.toISOString().split('T')[0]}`;
+      const localAttempt = localStorage.getItem(localKey);
+      if (localAttempt) {
+        try {
+          const attemptData = JSON.parse(localAttempt);
+          console.log('📅 Found quiz attempt in localStorage:', attemptData);
+          return {
+            taken: true,
+            lastAttempt: new Date(attemptData.completed_at),
+            nextAvailable: getNextWeekStart()
+          };
+        } catch (e) {
+          console.error('📅 Error parsing localStorage quiz attempt:', e);
+        }
+      }
       
       try {
-        // Check if we have a quiz_attempts record for this week
+        // Simplified query - just check for any quiz attempts this week
         const { data, error } = await supabase
           .from('quiz_attempts')
-          .select('completed_at')
+          .select('*')
           .eq('user_id', currentUser.id)
           .eq('is_practice', false)
-          .gte('completed_at', weekStart.toISOString())
-          .lte('completed_at', weekEnd.toISOString())
-          .order('completed_at', { ascending: false });
+          .gte('created_at', weekStart.toISOString())
+          .lte('created_at', weekEnd.toISOString());
         
         console.log('📅 Query results:', data, error);
         
-        if (!error && data && data.length > 0) {
+        if (error) {
+          console.error('📅 Database query error:', error);
+          // If there's a database error, allow the quiz to proceed rather than blocking
+          return { taken: false, lastAttempt: null, nextAvailable: new Date() };
+        }
+        
+        if (data && data.length > 0) {
           // Quiz was taken this week
-          console.log('📅 Quiz already taken this week on:', data[0].completed_at);
+          const latestAttempt = data[0];
+          const attemptDate = latestAttempt.completed_at || latestAttempt.started_at || latestAttempt.created_at;
+          console.log('📅 Quiz already taken this week. Attempt:', latestAttempt);
           return {
             taken: true,
-            lastAttempt: new Date(data[0].completed_at),
+            lastAttempt: new Date(attemptDate),
             nextAvailable: getNextWeekStart()
           };
         } else {
-          console.log('📅 No quiz taken this week');
+          console.log('📅 No quiz taken this week - quiz available');
         }
       } catch (err) {
-        console.error('📅 Error checking quiz status:', err);
+        console.error('📅 Exception checking quiz status:', err);
+        // If there's an exception, allow the quiz to proceed rather than blocking
+        return { taken: false, lastAttempt: null, nextAvailable: new Date() };
       }
       
-      // Quiz not taken this week or error
+      // Quiz not taken this week
       return {
         taken: false,
         lastAttempt: null,
@@ -802,13 +839,19 @@
       // If this is a required quiz, check if already completed this week
       if (mode === 'required') {
         console.log('🎯 startQuiz: Checking weekly restriction for required quiz');
+        
+        // Double-check the weekly status to prevent bypassing
         const status = await checkWeeklyQuizStatus();
         console.log('🎯 startQuiz: Weekly status result:', status);
+        
         if (status.taken) {
           console.log('🎯 startQuiz: Required quiz already completed this week, blocking');
-          alert('You have already completed the required quiz this week. Please wait until next Sunday to take it again.');
+          const nextAvailable = status.nextAvailable;
+          const daysUntilNext = Math.ceil((nextAvailable.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          alert(`You have already completed the required quiz this week. Please wait until next Sunday (${daysUntilNext} days) to take it again.`);
           return;
         }
+        
         console.log('🎯 startQuiz: Weekly restriction check passed, proceeding with quiz');
       }
       
@@ -843,7 +886,11 @@
       }
       
       // Re-wire icons after setting innerHTML
-      wireIcons();
+      try {
+        wireIcons();
+      } catch (e) {
+        console.error('Error wiring icons:', e);
+      }
       
       // Render questions
       console.log('🎯 startQuiz: Rendering questions...');
@@ -897,9 +944,14 @@
         if (currentMode === 'required') {
           // Save to quiz_attempts
           console.log('💾 submitQuiz: Saving required quiz to quiz_attempts table');
+          
+          // Ensure we have a valid site_id (required field)
+          const siteId = currentProfile?.site_id || 1; // Default to 1 if no site_id
+          
           const insertData = {
             user_id: currentUser.id,
-            site_id: currentProfile?.site_id || null,
+            site_id: siteId,
+            participant_name: currentUser.email || 'Unknown User',
             started_at: quizStartTime.toISOString(),
             completed_at: new Date().toISOString(),
             total_questions: currentQuestions.length,
@@ -908,12 +960,36 @@
           };
           console.log('💾 submitQuiz: Insert data:', insertData);
           
-          const { data, error } = await supabase.from('quiz_attempts').insert(insertData);
+          const { data, error } = await supabase.from('quiz_attempts').insert(insertData).select();
           
           if (error) {
             console.error('💾 submitQuiz: Error saving required quiz:', error);
+            console.error('💾 submitQuiz: Using localStorage fallback');
+            
+            // Save to localStorage as fallback
+            const weekStart = getWeekStart();
+            const localKey = `quiz_attempt_${currentUser.id}_${weekStart.toISOString().split('T')[0]}`;
+            const localData = {
+              user_id: currentUser.id,
+              completed_at: new Date().toISOString(),
+              score: correctCount,
+              total: currentQuestions.length
+            };
+            localStorage.setItem(localKey, JSON.stringify(localData));
+            console.log('💾 submitQuiz: Saved to localStorage with key:', localKey);
           } else {
             console.log('💾 submitQuiz: Required quiz saved successfully:', data);
+            
+            // Also save to localStorage for immediate availability
+            const weekStart = getWeekStart();
+            const localKey = `quiz_attempt_${currentUser.id}_${weekStart.toISOString().split('T')[0]}`;
+            const localData = {
+              user_id: currentUser.id,
+              completed_at: new Date().toISOString(),
+              score: correctCount,
+              total: currentQuestions.length
+            };
+            localStorage.setItem(localKey, JSON.stringify(localData));
           }
         } else {
           // Save to quiz_practices if table exists
@@ -945,29 +1021,30 @@
         console.error('💾 submitQuiz: Error saving quiz attempt:', err);
       }
       
-      // Show results after delay
-      setTimeout(async () => {
-        showResults(correctCount, currentQuestions.length, scorePercent);
-        
-        // If this was a required quiz, refresh the status to update the button
-        if (currentMode === 'required') {
-          console.log('💾 submitQuiz: Required quiz completed, refreshing status immediately');
+      // Show results immediately and update status
+      showResults(correctCount, currentQuestions.length, scorePercent);
+      
+      // If this was a required quiz, refresh the status to update the button
+      if (currentMode === 'required') {
+        console.log('💾 submitQuiz: Required quiz completed, refreshing status');
+        // Wait a bit for database save to complete
+        setTimeout(async () => {
           await updateRequiredQuizStatus();
-          
-          // Update profiles.next_quiz_due to 7 days from now
-          try {
-            const nextDue = new Date();
-            nextDue.setDate(nextDue.getDate() + 7);
-            await supabase
-              .from('profiles')
-              .update({ next_quiz_due: nextDue.toISOString() })
-              .eq('id', currentUser.id);
-            console.log('💾 submitQuiz: Updated next_quiz_due to', nextDue);
-          } catch (err) {
-            console.error('💾 submitQuiz: Failed to update next_quiz_due:', err);
-          }
+        }, 500);
+        
+        // Update profiles.next_quiz_due to 7 days from now
+        try {
+          const nextDue = new Date();
+          nextDue.setDate(nextDue.getDate() + 7);
+          await supabase
+            .from('profiles')
+            .update({ next_quiz_due: nextDue.toISOString() })
+            .eq('user_id', currentUser.id);
+          console.log('💾 submitQuiz: Updated next_quiz_due to', nextDue);
+        } catch (err) {
+          console.error('💾 submitQuiz: Failed to update next_quiz_due:', err);
         }
-      }, 2000);
+      }
     }
     
     // Show results
@@ -1022,7 +1099,11 @@
       }
       
       // Re-wire icons after setting innerHTML
-      wireIcons();
+      try {
+        wireIcons();
+      } catch (e) {
+        console.error('Error wiring icons:', e);
+      }
     }
     
     // Initialize using requireStaffSession like other staff pages
@@ -1058,14 +1139,18 @@
       
       document.getElementById('btn-submit').addEventListener('click', submitQuiz);
       
-      document.getElementById('btn-home').addEventListener('click', () => {
+      document.getElementById('btn-home').addEventListener('click', async () => {
         // Reset to initial state and refresh status
         document.getElementById('quiz-home').classList.remove('hidden');
         document.getElementById('quiz-active').classList.add('hidden');
         document.getElementById('quiz-results').classList.add('hidden');
         
         // Force refresh the quiz status to ensure UI is up to date
-        updateRequiredQuizStatus();
+        // Add a small delay to ensure database write is complete
+        console.log('🔄 Returning to quiz home, refreshing status...');
+        setTimeout(async () => {
+          await updateRequiredQuizStatus();
+        }, 100);
         
         // Reset variables
         currentMode = null;
