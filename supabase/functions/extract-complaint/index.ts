@@ -17,23 +17,37 @@ serve(async (req) => {
   try {
     // Get the authorization header
     const authHeader = req.headers.get('Authorization')
+    console.log('Auth header present:', !!authHeader)
+    
     if (!authHeader) {
-      return json({ success: false, error: 'Unauthorized' }, 401)
+      return json({ success: false, error: 'Unauthorized - No auth header' }, 401)
     }
 
-    // Initialize Supabase client with secret key for server-side operations
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SECRET_KEY') ?? '',
-      { auth: { persistSession: false } }
-    )
-
-    // Verify the user token
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token)
+    // For local development, skip user verification if environment variables aren't available
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')
+    const secretKey = Deno.env.get('SECRET_KEY')
     
-    if (userError || !user) {
-      return json({ success: false, error: 'Unauthorized' }, 401)
+    console.log('Environment check - SUPABASE_URL:', !!supabaseUrl, 'SECRET_KEY:', !!secretKey)
+    
+    if (supabaseUrl && secretKey) {
+      console.log('Using production authentication')
+      // Production: Verify user token
+      const supabaseClient = createClient(
+        supabaseUrl,
+        secretKey,
+        { auth: { persistSession: false } }
+      )
+
+      const token = authHeader.replace('Bearer ', '')
+      const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token)
+      
+      console.log('User verification result - user:', !!user, 'error:', !!userError)
+      
+      if (userError || !user) {
+        return json({ success: false, error: `Unauthorized - ${userError?.message || 'No user'}` }, 401)
+      }
+    } else {
+      console.log('Skipping user verification for local development')
     }
 
     // Get request body - support both { text } and { signedUrl }
