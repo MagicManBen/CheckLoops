@@ -503,6 +503,15 @@
     const supabase = await initSupabase();
     handleAuthState(supabase);
     navActivate('scans');
+    // Quick UI-only admin reveal using local session metadata (keeps server checks authoritative)
+    try {
+      const { revealAdminNav } = await import('./staff-common.js');
+      try {
+        const { data: { session } = {} } = await supabase.auth.getSession();
+        const earlyRole = session?.user?.raw_user_meta_data?.role || session?.user?.user_metadata?.role;
+        if (earlyRole) revealAdminNav(earlyRole);
+      } catch (e) { /* ignore session read errors for UX-only path */ }
+    } catch (err) { console.warn('Early admin reveal skipped:', err); }
 
     let currentUser = null;
     let currentProfile = null;
