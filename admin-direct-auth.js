@@ -15,8 +15,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       localStorage.removeItem('adminLoggedIn');
     }
     
-    // Initialize supabase client with consistent settings
-    const supabase = await initAdminSupabase();
+  // Initialize supabase client with consistent settings
+  const supabase = await initAdminSupabase();
     
     // Debug output of current session before check
     try {
@@ -30,12 +30,30 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.error('Error checking session:', e);
     }
     
-    // Check admin access
-    const isAdmin = await checkAdminAccess(supabase);
+    // To avoid transient null sessions, attempt a short retry for session/materialized role
+    async function wait(ms){ return new Promise(r => setTimeout(r, ms)); }
+    async function ensureSession(retries = 2, delay = 200){
+      for (let i = 0; i <= retries; i++) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) return session;
+        if (i < retries) await wait(delay);
+      }
+      return null;
+    }
+
+    await ensureSession();
+
+    // Check admin access (with one optional retry)
+    let isAdmin = await checkAdminAccess(supabase);
+    if (!isAdmin) {
+      await wait(250);
+      isAdmin = await checkAdminAccess(supabase);
+    }
     
     if (!isAdmin) {
-      console.log('❌ Admin access check failed - redirecting to login');
-      window.location.replace('admin-login.html');
+      console.log('❌ Admin access check failed - redirecting to home page');
+      // Align with navigation rules: send non-admins to home.html
+      window.location.replace('home.html');
       return;
     }
     
@@ -44,6 +62,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     
   } catch (err) {
     console.error('Authentication check error:', err);
-    window.location.replace('admin-login.html');
+    window.location.replace('home.html');
   }
 });

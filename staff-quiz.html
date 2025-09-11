@@ -604,10 +604,14 @@
     
     // Check if quiz was taken this week
     async function checkWeeklyQuizStatus() {
+      console.log('📅 Checking weekly quiz status...');
       const weekStart = getWeekStart();
       const weekEnd = getWeekEnd();
       
+      console.log('📅 Week range:', weekStart, 'to', weekEnd);
+      
       try {
+        // Check if we have a quiz_attempts record for this week
         const { data, error } = await supabase
           .from('quiz_attempts')
           .select('completed_at')
@@ -615,19 +619,23 @@
           .eq('is_practice', false)
           .gte('completed_at', weekStart.toISOString())
           .lte('completed_at', weekEnd.toISOString())
-          .order('completed_at', { ascending: false })
-          .limit(1);
+          .order('completed_at', { ascending: false });
+        
+        console.log('📅 Query results:', data, error);
         
         if (!error && data && data.length > 0) {
           // Quiz was taken this week
+          console.log('📅 Quiz already taken this week on:', data[0].completed_at);
           return {
             taken: true,
             lastAttempt: new Date(data[0].completed_at),
             nextAvailable: getNextWeekStart()
           };
+        } else {
+          console.log('📅 No quiz taken this week');
         }
       } catch (err) {
-        console.error('Error checking quiz status:', err);
+        console.error('📅 Error checking quiz status:', err);
       }
       
       // Quiz not taken this week or error
@@ -795,11 +803,13 @@
       if (mode === 'required') {
         console.log('🎯 startQuiz: Checking weekly restriction for required quiz');
         const status = await checkWeeklyQuizStatus();
+        console.log('🎯 startQuiz: Weekly status result:', status);
         if (status.taken) {
           console.log('🎯 startQuiz: Required quiz already completed this week, blocking');
           alert('You have already completed the required quiz this week. Please wait until next Sunday to take it again.');
           return;
         }
+        console.log('🎯 startQuiz: Weekly restriction check passed, proceeding with quiz');
       }
       
       currentMode = mode;
@@ -941,11 +951,21 @@
         
         // If this was a required quiz, refresh the status to update the button
         if (currentMode === 'required') {
-          console.log('💾 submitQuiz: Required quiz completed, refreshing status');
-          // Wait a bit longer to ensure database is updated
-          setTimeout(async () => {
-            await updateRequiredQuizStatus();
-          }, 1000);
+          console.log('💾 submitQuiz: Required quiz completed, refreshing status immediately');
+          await updateRequiredQuizStatus();
+          
+          // Update profiles.next_quiz_due to 7 days from now
+          try {
+            const nextDue = new Date();
+            nextDue.setDate(nextDue.getDate() + 7);
+            await supabase
+              .from('profiles')
+              .update({ next_quiz_due: nextDue.toISOString() })
+              .eq('id', currentUser.id);
+            console.log('💾 submitQuiz: Updated next_quiz_due to', nextDue);
+          } catch (err) {
+            console.error('💾 submitQuiz: Failed to update next_quiz_due:', err);
+          }
         }
       }, 2000);
     }
@@ -1039,7 +1059,18 @@
       document.getElementById('btn-submit').addEventListener('click', submitQuiz);
       
       document.getElementById('btn-home').addEventListener('click', () => {
-        location.reload();
+        // Reset to initial state and refresh status
+        document.getElementById('quiz-home').classList.remove('hidden');
+        document.getElementById('quiz-active').classList.add('hidden');
+        document.getElementById('quiz-results').classList.add('hidden');
+        
+        // Force refresh the quiz status to ensure UI is up to date
+        updateRequiredQuizStatus();
+        
+        // Reset variables
+        currentMode = null;
+        userAnswers = {};
+        currentQuestions = [];
       });
       
     }).catch(e => {

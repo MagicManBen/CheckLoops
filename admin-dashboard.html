@@ -842,18 +842,18 @@ document.addEventListener('DOMContentLoaded', () => {
   .training-expired { background: var(--stat-4-bg); color: var(--stat-4-color); }
   .training-missing { background: var(--glass); color: var(--muted); opacity: 0.6; }
 
-  /* Make complaints reporting button more obvious */
-  .nav button[data-section="complaints-reporting"] {
+  /* Make complaints reporting button more obvious only when active */
+  .nav button[data-section="complaints-reporting"].active {
     background: linear-gradient(135deg, #ff6b6b22, #ff6b6b33) !important;
     border: 1px solid #ff6b6b44 !important;
     box-shadow: 0 2px 8px rgba(255, 107, 107, 0.2) !important;
   }
-  .nav button[data-section="complaints-reporting"]:hover {
+  .nav button[data-section="complaints-reporting"].active:hover {
     background: linear-gradient(135deg, #ff6b6b33, #ff6b6b44) !important;
     transform: translateY(-1px) !important;
     box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3) !important;
   }
-  .nav button[data-section="complaints-reporting"] .icon {
+  .nav button[data-section="complaints-reporting"].active .icon {
     color: #ff6b6b !important;
   }
 
@@ -3851,10 +3851,7 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="wave wave2"></div>
   </div>
 
-  <!-- Fallback persistent Staff View button (visible unless user is staff). Positioned top-left above content. -->
-  <div id="staff-fallback" style="position:fixed; left:18px; top:18px; z-index:1200; display:none;">
-  <a id="staff-fallback-link" href="staff.html" class="btn secondary" title="Staff View" style="display:inline-block; padding:8px 12px; border-radius:10px;">Staff View</a>
-  </div>
+  <!-- Staff View button removed per UX request -->
 
   <div class="app" id="app" aria-live="polite">
     <aside class="sidebar" id="sidebar">
@@ -7026,20 +7023,27 @@ window.PIR_DEFINITIONS_DATA = [
       ) : [];
 
       const allRows = [
-        // Active users from profiles (with emails from accepted invites)
-        ...(users || []).map(u => ({
-          name: u.full_name || 'Unknown',
-          email: emailMap[u.user_id] || 'Email not available',
-          role: u.role || 'User',
-          status: 'Active',
-          actions: `<button class="btn secondary" onclick="deactivateUser('${u.user_id}')">Deactivate</button>`
-        })),
+        // Users from profiles (both active and inactive, with emails from accepted invites)
+        ...(users || []).map(u => {
+          const isActive = u.active !== false; // Default to true if undefined (for backward compatibility)
+          return {
+            name: u.full_name || 'Unknown',
+            email: emailMap[u.user_id] || 'Email not available',
+            role: u.role || 'User',
+            status: isActive ? 'Active' : 'Deactivated',
+            statusClass: isActive ? 'success' : 'danger',
+            actions: isActive 
+              ? `<button class="btn secondary" onclick="deactivateUser('${u.user_id}')">Deactivate</button>`
+              : `<button class="btn primary" onclick="reactivateUser('${u.user_id}')">Reactivate</button>`
+          };
+        }),
         // Pending invites (not yet accepted)
         ...(pendingInvites.map(i => ({
           name: i.full_name,
           email: i.email,
           role: i.role,
           status: 'Invited',
+          statusClass: 'warning',
           actions: `<button class="btn secondary" onclick="cancelInvite('${i.id}')">Cancel Invite</button>`
         })))
       ];
@@ -7049,7 +7053,7 @@ window.PIR_DEFINITIONS_DATA = [
           <td>${esc(r.name)}</td>
           <td>${esc(r.email)}</td>
           <td>${esc(r.role)}</td>
-          <td><span class="chip ${r.status === 'Active' ? 'success' : 'warning'}">${esc(r.status)}</span></td>
+          <td><span class="chip ${r.statusClass || 'success'}">${esc(r.status)}</span></td>
           <td>${r.actions}</td>
         </tr>
       `).join('') : '<tr><td colspan="5" class="muted">No users yet</td></tr>';
@@ -7069,70 +7073,113 @@ window.PIR_DEFINITIONS_DATA = [
 
   // Global functions for user actions
   window.deactivateUser = async function(userId) {
-    if (!confirm('Are you sure you want to deactivate this user?')) return;
+    if (!confirm('Are you sure you want to deactivate this user? This will prevent them from logging in but preserve all their data.')) return;
 
     try {
-      const { error } = await supabase
+      // Update the profiles table to set active = false
+      const { data, error } = await supabase
         .from('profiles')
         .update({ active: false })
         .eq('user_id', userId)
-        .eq('site_id', ctx.site_id);
+        .eq('site_id', ctx.site_id)
+        .select('full_name')
+        .single();
 
       if (error) throw error;
+
+      console.log('Successfully deactivated user:', data);
+      
+      // Show success message
+      const alertDiv = document.createElement('div');
+      alertDiv.className = 'alert success';
+      alertDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 16px; background: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 8px; z-index: 10000;';
+      alertDiv.textContent = `User ${data.full_name || 'Unknown'} has been deactivated and can no longer log in.`;
+      document.body.appendChild(alertDiv);
+      
+      setTimeout(() => alertDiv.remove(), 5000);
+      
+      // Reload the user list to reflect changes
       loadPracticeUsers();
     } catch (err) {
       console.error('Failed to deactivate user:', err);
-      alert('Failed to deactivate user');
+      let errorMsg = 'Failed to deactivate user';
+      if (err.message) {
+        errorMsg += ': ' + err.message;
+      }
+      alert(errorMsg);
+    }
+  };
+
+  window.reactivateUser = async function(userId) {
+    if (!confirm('Are you sure you want to reactivate this user? This will allow them to log in again.')) return;
+
+    try {
+      // Update the profiles table to set active = true
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({ active: true })
+        .eq('user_id', userId)
+        .eq('site_id', ctx.site_id)
+        .select('full_name')
+        .single();
+
+      if (error) throw error;
+
+      console.log('Successfully reactivated user:', data);
+      
+      // Show success message
+      const alertDiv = document.createElement('div');
+      alertDiv.className = 'alert success';
+      alertDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 16px; background: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 8px; z-index: 10000;';
+      alertDiv.textContent = `User ${data.full_name || 'Unknown'} has been reactivated and can now log in.`;
+      document.body.appendChild(alertDiv);
+      
+      setTimeout(() => alertDiv.remove(), 5000);
+      
+      // Reload the user list to reflect changes
+      loadPracticeUsers();
+    } catch (err) {
+      console.error('Failed to reactivate user:', err);
+      let errorMsg = 'Failed to reactivate user';
+      if (err.message) {
+        errorMsg += ': ' + err.message;
+      }
+      alert(errorMsg);
     }
   };
 
   window.cancelInvite = async function(inviteId) {
-    if (!confirm('Are you sure you want to cancel this invitation?')) return;
+    if (!confirm('Are you sure you want to cancel this invitation? This will remove all traces of the invited user from the system.')) return;
 
     try {
-      console.log('Attempting to cancel invitation:', { inviteId, siteId: ctx.site_id });
+      console.log('Attempting to cancel invitation and remove all user traces:', { inviteId });
       
-      // First try using the stored procedure approach
-      const { data: functionResult, error: functionError } = await supabase
-        .rpc('cancel_site_invitation', { invite_id: inviteId });
+      // Use the new cancel-invite edge function that removes all traces
+      const { data, error } = await supabase.functions.invoke('cancel-invite', {
+        body: { invite_id: inviteId }
+      });
 
-      if (functionError) {
-        console.error('Function approach failed:', functionError);
-        
-        // Fallback to direct update approach
-        console.log('Trying direct update approach...');
-        const { data, error } = await supabase
-          .from('site_invites')
-          .update({ status: 'revoked' })
-          .eq('id', inviteId)
-          .eq('site_id', ctx.site_id)
-          .select();
-
-        if (error) {
-          console.error('Direct update also failed:', {
-            message: error.message,
-            details: error.details,
-            hint: error.hint,
-            code: error.code
-          });
-          throw error;
-        }
-
-        if (!data || data.length === 0) {
-          throw new Error('No invitation found to cancel. This may be due to permissions or the invitation may already be processed.');
-        }
-      } else {
-        // Check function result
-        console.log('Function result:', functionResult);
-        
-        if (!functionResult.success) {
-          throw new Error(functionResult.error || 'Unknown error from cancel function');
-        }
-        
-        console.log('Successfully cancelled invitation via function');
+      if (error) {
+        console.error('Failed to cancel invitation:', error);
+        throw error;
       }
 
-      console.log('Successfully cancelled invitation');
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to cancel invitation');
+      }
+
+      console.log('Successfully cancelled invitation and removed all traces:', data);
+      
+      // Show success message
+      const alertDiv = document.createElement('div');
+      alertDiv.className = 'alert success';
+      alertDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 16px; background: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 8px; z-index: 10000;';
+      alertDiv.textContent = `Invitation cancelled and all traces removed for ${data.details.name} (${data.details.email})`;
+      document.body.appendChild(alertDiv);
+      
+      setTimeout(() => alertDiv.remove(), 5000);
+      
+      // Reload the user list to reflect changes
       loadPracticeUsers();
     } catch (err) {
       console.error('Failed to cancel invitation:', err);
@@ -7633,11 +7680,15 @@ window.PIR_DEFINITIONS_DATA = [
         }
 
         // Then check profiles table
-        const { data: profile } = await supabase
+        const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('role, full_name')
           .eq('user_id', user.id)
-          .single();
+          .maybeSingle();
+        
+        if (profileError) {
+          console.error('Error fetching profile:', profileError);
+        }
         
         if (profile?.role && ['admin', 'owner'].includes(profile.role.toLowerCase())) {
           console.log(`✅ User allowed on admin site - role from profile: ${profile.role}`);
@@ -7652,12 +7703,16 @@ window.PIR_DEFINITIONS_DATA = [
         }
         
         // Finally check site_invites table as a fallback
-        const { data: invite } = await supabase
+        const { data: invite, error: inviteError } = await supabase
           .from('site_invites')
           .select('role, full_name')
           .eq('email', user.email)
           .eq('status', 'accepted')
-          .single();
+          .maybeSingle();
+        
+        if (inviteError) {
+          console.error('Error fetching invite:', inviteError);
+        }
 
         if (invite?.role && ['admin', 'owner'].includes(invite.role.toLowerCase())) {
           console.log(`✅ User allowed on admin site - role from invite: ${invite.role}`);
@@ -7677,7 +7732,7 @@ window.PIR_DEFINITIONS_DATA = [
         const cameFromStaffAt = sessionStorage.getItem('cameFromStaffAt');
         const recentNavigation = cameFromStaffAt && (Date.now() - Number(cameFromStaffAt)) < 10000;
         
-        if (recentNavigation && storedRole && ['Admin', 'Owner'].includes(storedRole) && storedEmail === user.email) {
+        if (recentNavigation && storedRole && ['admin', 'owner'].includes(storedRole.toLowerCase()) && storedEmail === user.email) {
           console.log(`✅ User allowed on admin site - verified from staff navigation: ${storedRole}`);
           try {
             sessionStorage.setItem('adminVerified', 'true');

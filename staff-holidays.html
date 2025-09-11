@@ -48,9 +48,10 @@
     
     .holiday-stat-label {
       font-size: 0.9em;
-      color: var(--muted);
+      color: #f5faff;
       margin-top: 4px;
-      font-weight: 600;
+      font-weight: 700;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.6);
     }
     
     .holiday-actions {
@@ -138,9 +139,11 @@
     
     .holiday-info p {
       margin: 4px 0;
-      color: var(--muted);
+      color: #f0f8ff;
       font-size: 14px;
       line-height: 1.5;
+      font-weight: 500;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.5);
     }
     
     .holiday-status {
@@ -355,18 +358,20 @@
     .empty-state {
       text-align: center;
       padding: 60px 20px;
-      color: var(--muted);
+      color: #f0f8ff;
     }
     
     .empty-state-icon {
       font-size: 48px;
       margin-bottom: 16px;
-      opacity: 0.5;
+      opacity: 0.7;
     }
     
     .empty-state p {
       margin: 8px 0;
       font-size: 14px;
+      font-weight: 500;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.5);
     }
     
     @media (max-width: 768px) {
@@ -401,7 +406,14 @@
   </style>
 </head>
 <body>
-  <div class="bg"><div class="wave"></div><div class="wave wave2"></div></div>
+  <div class="bg">
+    <div class="wave"></div>
+    <div class="wave wave2"></div>
+    <div class="particles" id="particles"></div>
+    <div class="orb orb1"></div>
+    <div class="orb orb2"></div>
+    <div class="orb orb3"></div>
+  </div>
   <main class="content">
     <!-- Top Navigation Bar -->
     <div class="topbar panel" style="position:relative;">
@@ -534,7 +546,7 @@
   </div>
 
   <script type="module">
-    import { initSupabase, requireStaffSession, getSiteText, setTopbar, renderStaffNavigation, attachLogout, handleAuthState, navActivate } from './staff-common.js';
+    import { initSupabase, requireStaffSession, getSiteText, setTopbar, renderStaffNavigation, attachLogout, handleAuthState, navActivate, revealAdminNav } from './staff-common.js';
 
     let supabase, currentUser, profileRow, isGP = false;
 
@@ -559,6 +571,11 @@
         // Set up navigation
         renderStaffNavigation('holidays');
         navActivate('holidays');
+        
+        // Reveal admin navigation if user is admin/owner
+        if (role === 'admin' || role === 'owner') {
+          revealAdminNav(role);
+        }
 
         // Set topbar
         const siteText = await getSiteText(supabase, profileRow?.site_id);
@@ -1075,6 +1092,13 @@
           }
         }
 
+        // Map form values to database values
+        const bookingTypeMap = {
+          'holiday': 'annual_leave',
+          'time_in_lieu': 'toil'
+        };
+        const bookingType = bookingTypeMap[requestType] || 'annual_leave';
+        
         // Create holiday booking in new table
         const { error } = await supabase
           .from('4_holiday_bookings')
@@ -1082,13 +1106,12 @@
             staff_profile_id: staffProfileId,
             start_date: startDate.toISOString().split('T')[0],
             end_date: endDate.toISOString().split('T')[0],
-            type: requestType,
+            booking_type: bookingType,
             hours_requested: totalHours,
             sessions_requested: totalSessions,
             destination: destination || null,
             status: 'pending',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            created_at: new Date().toISOString()
           });
 
         if (error) throw error;
@@ -1162,6 +1185,52 @@
       if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wireIcons);
       else wireIcons();
       window.i8 = i8; // optional helper for manual usage
+    })();
+  </script>
+  
+  <script>
+    // Create animated particles and interactive effects
+    (function() {
+      function createParticles() {
+        const particlesContainer = document.getElementById('particles');
+        if (!particlesContainer) return;
+        
+        const particleCount = 30;
+        for (let i = 0; i < particleCount; i++) {
+          const particle = document.createElement('div');
+          particle.className = 'particle';
+          particle.style.left = Math.random() * 100 + '%';
+          particle.style.animationDelay = Math.random() * 25 + 's';
+          particle.style.animationDuration = (15 + Math.random() * 15) + 's';
+          particlesContainer.appendChild(particle);
+        }
+      }
+      
+      // Add hover effects for holiday cards
+      document.addEventListener('mousemove', function(e) {
+        const cards = document.querySelectorAll('.holiday-stat, .holiday-item, .team-member');
+        cards.forEach(card => {
+          const rect = card.getBoundingClientRect();
+          const x = ((e.clientX - rect.left) / rect.width) * 100;
+          const y = ((e.clientY - rect.top) / rect.height) * 100;
+          card.style.setProperty('--mouse-x', x + '%');
+          card.style.setProperty('--mouse-y', y + '%');
+        });
+      });
+      
+      // Initialize particles when DOM is ready
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', createParticles);
+      } else {
+        createParticles();
+      }
+      
+      // Add floating animation to stat cards
+      document.querySelectorAll('.holiday-stat').forEach((card, i) => {
+        card.style.setProperty('--card-index', i);
+        card.style.animation = `cardFloat 8s ease-in-out infinite`;
+        card.style.animationDelay = `${i * 0.2}s`;
+      });
     })();
   </script>
 </body>

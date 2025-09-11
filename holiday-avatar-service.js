@@ -3,7 +3,7 @@
 
 class HolidayAvatarService {
     constructor() {
-        this.apiKey = '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';
+        // API key is now handled securely via Supabase Edge Functions
         this.cache = new Map(); // Cache generated images
     }
 

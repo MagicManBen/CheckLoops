@@ -180,9 +180,7 @@
 <script type="module">
   import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-  const SUPABASE_URL = "https://unveoqnlqnobufhublyw.supabase.co";
-  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME";
-  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
     auth: { 
       persistSession: true, 
       autoRefreshToken: true, 
@@ -193,100 +191,61 @@
 
   // Helper: Clear any stale auth data that might cause session confusion
   function clearStaleAuthData() {
-    console.log('Clearing any stale auth data...');
-    try {
-      // Clear remember me data if user manually logged out from another page
-      const entries = Object.keys(localStorage);
-      const authKeys = entries.filter(key => 
-        key.startsWith('sb-') || 
-        key.includes('supabase') || 
-        key === 'rememberMe' || 
-        key === 'rememberedEmail' || 
-        key === 'rememberedPassword'
-      );
-      
-      // Only clear if we detect inconsistent state
-      if (authKeys.some(key => key.startsWith('sb-')) && !localStorage.getItem('rememberMe')) {
-        authKeys.forEach(key => localStorage.removeItem(key));
-        console.log('Cleared stale auth data from localStorage');
-      }
-    } catch (error) {
-      console.error('Error clearing stale auth data:', error);
-    }
+    // Removed - this was too aggressive and clearing valid sessions
+    // Only clear auth data when explicitly logging out, not on page load
   }
 
-  // Helper: redirect the current user to the correct site based on their profile.role
-  // Placed here (inside the module) so it can use the module-scoped `supabase` client.
+  // Helper: redirect logged in users based on role and onboarding status
   async function redirectByRole(user) {
-    console.log('redirectByRole called with user:', user?.email || 'no user provided');
     try {
-      let theUser = user;
-      if (!theUser) {
-        console.log('No user provided, fetching from auth...');
-        const res = await supabase.auth.getUser();
-        theUser = res?.data?.user;
-      }
-      if (!theUser) {
-        console.log('Cannot determine user, falling back to admin index');
-        // If we can't determine user, fallback to admin index
-        window.location.href = 'index.html';
-        return;
-      }
-
-      console.log('Querying profile for user:', theUser.id);
-      const { data: profile, error } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('user_id', theUser.id)
-        .maybeSingle();
-
-      console.log('Profile query result:', { profile, error });
-
-      // If profile row missing or has no role, fall back to auth user metadata
-      let effectiveRole = (profile && profile.role) ? profile.role : null;
-      if (!effectiveRole) {
-        try {
-          const rawRole = theUser?.raw_user_meta_data?.role;
-          if (rawRole) effectiveRole = rawRole;
-          console.log('Using fallback role from metadata:', rawRole);
-        } catch (e) {
-          console.log('Failed to get fallback role:', e);
+      if (!user) {
+        // Get current session if user not provided
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          console.log('No session found for redirect');
+          return;
         }
+        user = session.user;
       }
 
-      console.log('Final effective role:', effectiveRole);
-
-      // Check if user has completed their profile setup
-      const { data: profileCheck } = await supabase
+      // Fetch user profile to check role and onboarding status
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('full_name, nickname')
-        .eq('user_id', theUser.id)
-        .single();
-
-      // If user has no profile or incomplete profile, send to welcome
-      if (!profileCheck || !profileCheck.full_name) {
-        console.log('User has incomplete profile, redirecting to staff-welcome.html');
-        window.location.href = 'staff-welcome.html';
+        .select('role, onboarding_complete')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      if (profileError) {
+        console.error('Error fetching profile for redirect:', profileError);
+        // Default to staff page if profile check fails
+        window.location.href = 'staff.html';
         return;
       }
 
-      // For existing users, redirect to staff.html regardless of role
-      // Admin/Owner users will see an admin button in the navigation
-      console.log('Redirecting to staff.html for all users');
-      
-      // Check if we have a pending redirect from sessionStorage
-      const redirectAfterLogin = sessionStorage.getItem('redirectAfterLogin');
-      if (redirectAfterLogin === 'admin') {
-        console.log('Redirecting to admin page per request');
-        window.location.href = 'index.html';
+      // Check onboarding status from multiple sources
+      const userMeta = user.user_metadata || user.raw_user_meta_data || {};
+      const needsOnboarding = 
+        profile?.onboarding_complete === false ||
+        userMeta.onboarding_required === true ||
+        userMeta.onboarding_required === '1' ||
+        (!userMeta.welcome_completed_at && !profile?.onboarding_complete);
+
+      if (needsOnboarding) {
+        console.log('User needs onboarding, redirecting to welcome');
+        sessionStorage.setItem('forceOnboarding', '1');
+        window.location.href = 'staff-welcome.html?force=1';
         return;
       }
-      
+
+      // All users go to staff.html after successful login
+      // The staff page handles showing/hiding admin navigation
+      console.log('Redirecting to staff dashboard');
       window.location.href = 'staff.html';
+      
     } catch (err) {
-      console.error('redirectByRole failed', err);
-      // Default to staff-welcome for safety
-      window.location.href = 'staff-welcome.html';
+      console.error('Error in redirectByRole:', err);
+      // Default to staff page on error
+      window.location.href = 'staff.html';
     }
   }
 
@@ -397,7 +356,7 @@
 
       if (invite.status === 'accepted') {
         showMessage(authSuccess, "This invitation has already been accepted. Redirecting...");
-        setTimeout(() => window.location.href = 'index.html', 2000);
+        setTimeout(() => window.location.href = 'staff.html', 2000);
         return;
       }
 
@@ -502,23 +461,28 @@
 
   // Initialize page
   supabase.auth.getSession().then(async ({ data: { session } }) => {
-    // Clear any stale auth data first
-    clearStaleAuthData();
-    
     // Check for URL parameters first to handle invitations properly
     const urlParams = new URLSearchParams(window.location.search);
     const inviteToken = urlParams.get('invite');
     
-    if (session && inviteToken) {
+    // Check if we're being redirected back from staff.html with an error
+    const fromRedirect = urlParams.get('_');
+    if (fromRedirect) {
+      console.log('Detected redirect back from staff page, likely authentication issue');
+      // Don't try to redirect again to prevent loop
+      if (session) {
+        console.log('Clearing problematic session');
+        await supabase.auth.signOut();
+      }
+    } else if (session && inviteToken) {
       // User is signed in from clicking invitation email link
       // Complete the invitation process automatically
       console.log('User signed in via invitation, completing registration...');
       await completeInvitationFlow(session.user, inviteToken);
       return;
-    }
-    
-    if (session) {
-      // Regular signed-in user, redirect based on role
+    } else if (session) {
+      // Regular signed-in user, redirect to staff page
+      console.log('User is logged in, redirecting to staff.html');
       await redirectByRole(session.user);
       return;
     }
@@ -729,7 +693,7 @@
 
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/Home.html`
+        redirectTo: `${window.location.origin}/home.html`
       });
 
       if (error) {

@@ -18,13 +18,14 @@
       radial-gradient(380px 260px at 85% 30%, #22c55e1a, transparent),
       radial-gradient(500px 320px at 50% 80%, #3b82f61a, transparent);
     }
-    .hero-card{ position:relative; background:#fff; border:1px solid var(--border-color); border-radius:20px; padding:22px; box-shadow:0 16px 40px rgba(2,6,23,.08); overflow:hidden; }
+  .hero-card{ position:relative; background:#fff; border:1px solid rgba(15,23,42,0.06); border-radius:20px; padding:22px; box-shadow: 0 18px 48px rgba(2,6,23,0.12), inset 0 1px 0 rgba(255,255,255,0.6); overflow:hidden; }
+  .hero-card::after{ content: ''; position: absolute; inset: 0; border-radius: 20px; pointer-events: none; box-shadow: 0 0 0 1px rgba(59,130,246,0.04) inset; }
     .hero-top{ display:flex; align-items:center; gap:16px; justify-content:center; margin-bottom:8px; }
     .avatar{ width:64px; height:64px; border-radius:16px; display:grid; place-items:center; background:linear-gradient(180deg,#f5f3ff,#eef2ff); box-shadow: inset 0 0 0 2px #e5e7eb; font-size:30px; }
     .title{ font-size:24px; font-weight:900; letter-spacing:.2px; color:var(--ink); }
     .subtitle{ color:#64748b; font-weight:600; }
     .big-input{ display:flex; gap:10px; align-items:center; justify-content:center; margin-top:14px; }
-    .big-input input{ flex:1; min-width:220px; max-width:360px; padding:14px 16px; border-radius:12px; border:1px solid var(--border-color); font-size:15px; }
+  .big-input input{ flex:1; min-width:220px; max-width:360px; padding:14px 16px; border-radius:12px; border:1px solid rgba(15,23,42,0.06); font-size:15px; background: #fbfdff; }
     .meta-note{ color:#6b7280; font-size:12px; margin-top:8px; }
 
     /* selection helpers for role + avatar grid */
@@ -182,6 +183,13 @@
     box-shadow:0 0 0 3px rgba(59,130,246,0.1);
   }
 
+  /* Option pills for role/team items */
+  .option-pill{ display:flex; gap:10px; align-items:center; border-radius:12px; padding:10px; cursor:pointer; background:transparent; border:1px solid rgba(148,163,184,0.08); transition: all .12s ease; }
+  .option-pill img{ width:32px; height:32px; object-fit:contain; }
+  .option-pill input{ margin:0 8px 0 0; }
+  .option-pill span{ font-weight:800; color: inherit; }
+  .white-pill{ background:#fff; color:#0f172a; border-color: rgba(15,23,42,0.06); box-shadow: 0 6px 18px rgba(2,6,23,0.04); }
+
   /* New: replace bland selects with larger icon/button grids for better UX */
   .option-buttons{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
   .option-btn{ display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:8px 10px; border-radius:10px; background:#fff; border:1px solid rgba(148,163,184,0.12); cursor:pointer; font-weight:700; color:#0f172a; min-width:56px; height:44px; box-shadow:0 6px 18px rgba(2,6,23,.04); transition:all .15s ease; }
@@ -225,7 +233,7 @@
     <section id="welcome-step1" class="panel g-12 welcome-wrap" style="margin:0; display:flex; align-items:center; justify-content:center; min-height: 62vh;">
       <div class="spark-bg"></div>
       <div style="max-width:760px; width:100%;">
-        <div class="hero-card">
+  <div class="hero-card panel light-panel">
           <div class="hero-top">
             <div class="avatar" aria-hidden="true"><img src="Icons/icons8-medical-mobile-app-100.png" alt="Welcome" style="width:42px;height:42px;object-fit:contain"></div>
             <div>
@@ -239,7 +247,7 @@
             <div class="meta-note">Pick a name, others will see this.</div>
             <div class="big-input">
               <input id="nickname" placeholder="e.g. Ben" />
-              <button class="btn" id="save-btn">Get started</button>
+              <button class="btn" id="save-btn" style="padding:12px 20px; border-radius:14px; background:linear-gradient(135deg,#6495ff,#7b6bff); box-shadow:0 10px 30px rgba(101,137,255,0.24);">Get started</button>
             </div>
             <div id="save-msg" class="meta-note"></div>
           </div>
@@ -248,6 +256,36 @@
       </div>
       <div class="confetti" id="confetti"></div>
     </section>
+
+    <!-- Auto-hide any panels/controls that contain the literal text 'Change' on the avatar page -->
+    <script>
+      document.addEventListener('DOMContentLoaded', function(){
+        // Scope to the avatar builder area when present
+        const scope = document.getElementById('welcome-step3') || document.getElementById('welcome-step1') || document;
+        if (!scope) return;
+        try {
+          // Search common clickable/label elements only inside the scope
+          const candidates = Array.from(scope.querySelectorAll('button, a, span, div, label'));
+          const changeEls = candidates.filter(el => {
+            const txt = (el.textContent || '').trim();
+            if (!txt) return false;
+            // quick check for the word change, case-insensitive
+            if (!/\bchange\b/i.test(txt)) return false;
+            // ensure element is visible (handles display:none, detached nodes, etc.)
+            const visible = (el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+            return !!visible;
+          });
+          changeEls.forEach(el => {
+            // prefer to hide a sensible container so UI spacing collapses nicely
+            const panel = el.closest('.avatar-control-group') || el.closest('.panel') || el.closest('section') || el.parentElement;
+            if (panel) panel.style.display = 'none';
+            else el.style.display = 'none';
+          });
+        } catch(e) {
+          console.warn('hide-change-panels error', e);
+        }
+      });
+    </script>
 
     <!-- Step 2 (details) -->
     <section id="welcome-step2" class="panel g-12" style="display:none; margin:0;">
@@ -288,22 +326,19 @@
     </section>
 
     <!-- Step 3 (avatar builder) -->
-    <section id="welcome-step3" class="panel g-12" style="display:none; margin:0;">
+      <section id="welcome-step3" class="panel g-12" style="display:none; margin:0;">
       <div class="panel-header" style="gap:10px; align-items:center;">
-        <div class="illus-circle" style="width:64px;height:64px;"><img src="Icons/icons8-profile-100.png" alt="Avatar"></div>
+        <div class="illus-circle" style="width:64px;height:64px;"><img src="Icons/icons8-avatar-100.png" alt="Avatar"></div>
         <div class="panel-title">Create your avatar</div>
       </div>
 
       <div class="grid" style="gap:16px; align-items:start;">
         <div class="g-4" style="position: sticky; top: 20px; align-self: start;">
           <div class="panel" style="padding:16px;">
-            <div style="font-weight:800; margin-bottom:16px; color:#1e293b; font-size:18px; display:flex; align-items:center; gap:8px;">
-              🖼️ Live Preview
-            </div>
+            <!-- Live preview header removed per user request -->
             <div style="display:grid; place-items:center;">
-              <div style="width:240px; height:240px; border-radius:20px; border:2px solid rgba(59,130,246,0.2); background:linear-gradient(45deg,#f1f5f9 25%, transparent 25%), linear-gradient(-45deg,#f1f5f9 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #f1f5f9 75%), linear-gradient(-45deg, transparent 75%, #f1f5f9 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0px; display:grid; place-items:center; overflow:hidden; box-shadow:0 8px 25px rgba(15,23,42,0.1); position:relative;">
-                <img id="avatarPreview" alt="Avatar preview" style="width:220px; height:220px; border-radius:16px; object-fit:contain; background:#fff; transition: all 0.3s ease;" />
-                <div style="position:absolute; top:8px; right:8px; background:rgba(255,255,255,0.9); border-radius:8px; padding:4px 8px; font-size:11px; font-weight:600; color:#64748b;">LIVE</div>
+              <div id="avatar-preview-frame" style="width:240px; height:240px; border-radius:16px; border:1px solid rgba(2,6,23,0.06); background:#ffffff; display:grid; place-items:center; overflow:hidden; box-shadow:0 6px 18px rgba(2,6,23,0.08); position:relative;">
+                <img id="avatarPreview" alt="Avatar preview" style="width:220px; height:220px; border-radius:12px; object-fit:contain; background:#fff; transition: all 0.3s ease;" />
               </div>
               <div style="display:flex; gap:12px; margin-top:20px;">
                 <button class="btn btn-secondary" id="avatar-randomize" style="padding:12px 20px; border-radius:12px; font-weight:600; background:linear-gradient(135deg, #8b5cf6, #7c3aed); color:white; border:none;">🎲 Randomize</button>
@@ -520,8 +555,13 @@
       const supabase = await initSupabase();
       globalSupabase = supabase; // Store in global variable
       handleAuthState(supabase);
-      navActivate('welcome');
-      attachLogout(supabase);
+      // Detect forced onboarding mode
+      let forceMode = false;
+      try {
+        const url = new URL(window.location.href);
+        forceMode = (sessionStorage.getItem('forceOnboarding') === '1') || url.searchParams.get('force') === '1';
+      } catch(_) { forceMode = (sessionStorage.getItem('forceOnboarding') === '1'); }
+      if (!forceMode) { navActivate('welcome'); attachLogout(supabase); }
 
       try{
         const { session, profileRow } = await requireStaffSession(supabase);
@@ -529,9 +569,61 @@
         const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
         const role = profileRow?.role || user?.raw_user_meta_data?.role || 'Staff';
         const roleDetail = role.charAt(0).toUpperCase() + role.slice(1);  // Capitalize first letter
-        setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: roleDetail });
-        // Show Admin nav if applicable
-        revealAdminNav(profileRow?.role || user?.raw_user_meta_data?.role);
+        // Re-check server state to force onboarding if incomplete, even if the flag wasn't set
+        try {
+          const siteIdForCheck = siteId;
+          let nickname = null, roleDetailCheck = null, teamId = null, teamName = null, avatarUrl = null;
+          if (siteIdForCheck) {
+            const { data: saw } = await supabase
+              .from('staff_app_welcome')
+              .select('nickname, role_detail, team_id, team_name, avatar_url')
+              .eq('user_id', user.id)
+              .eq('site_id', siteIdForCheck)
+              .order('updated_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (saw) { nickname = saw.nickname; roleDetailCheck = saw.role_detail; teamId = saw.team_id; teamName = saw.team_name; avatarUrl = saw.avatar_url; }
+          }
+          if (!nickname || !roleDetailCheck || (!teamId && !teamName) || !avatarUrl) {
+            try {
+              const { data: p } = await supabase
+                .from('profiles')
+                .select('nickname, role_detail, team_id, team_name, avatar_url')
+                .eq('user_id', user.id)
+                .maybeSingle();
+              if (p) {
+                nickname = nickname || p.nickname;
+                roleDetailCheck = roleDetailCheck || p.role_detail;
+                teamId = teamId || p.team_id;
+                teamName = teamName || p.team_name;
+                avatarUrl = avatarUrl || p.avatar_url;
+              }
+            } catch(_) { /* ignore */ }
+          }
+          const incomplete = (!nickname) || (!roleDetailCheck) || (!avatarUrl) || (!teamId && !teamName);
+          if (incomplete) {
+            forceMode = true;
+            try { sessionStorage.setItem('forceOnboarding', '1'); } catch(_) {}
+          }
+        } catch(_) { /* soft-fail */ }
+
+        if (!forceMode) {
+          setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: roleDetail });
+          // Show Admin nav if applicable
+          revealAdminNav(profileRow?.role || user?.raw_user_meta_data?.role);
+        } else {
+          // Hide pills and nav in force mode
+          try {
+            document.querySelector('.nav.seg-nav')?.remove();
+            document.getElementById('logout-btn')?.remove();
+            document.getElementById('site-pill')?.remove();
+            document.getElementById('email-pill')?.remove();
+            document.getElementById('role-pill')?.remove();
+            // Also remove top halo bar empty space
+            const tb = document.querySelector('.topbar.panel');
+            if (tb) tb.style.display = 'none';
+          } catch(_) {}
+        }
 
         const fullName = profileRow?.full_name || user?.raw_user_meta_data?.full_name || (user?.email?.split('@')[0]) || 'there';
         document.getElementById('welcome-title').textContent = `Welcome, ${fullName}`;
@@ -1440,8 +1532,34 @@
                 }
               } catch(kuErr){ console.info('kiosk_users upsert skipped/failed (policy likely).', kuErr?.message || kuErr); }
 
+              // New: stamp completion in auth metadata and clear onboarding_required
+              try {
+                const completedAt = new Date().toISOString();
+                const { data: { session: freshSession } } = await supabase.auth.getSession();
+                const current = freshSession?.user?.user_metadata || freshSession?.user?.raw_user_meta_data || {};
+                const newMeta = { ...current, welcome_completed_at: completedAt, onboarding_required: false };
+                const upd = await supabase.auth.updateUser({ data: newMeta });
+                if (upd.error) console.warn('Could not stamp completion metadata:', upd.error);
+              } catch (metaErr) { console.warn('metadata completion update failed', metaErr); }
+
+              // Also update the profiles table to mark onboarding as complete
+              try {
+                const { error: profileUpdateError } = await supabase
+                  .from('profiles')
+                  .update({ onboarding_complete: true })
+                  .eq('user_id', user.id);
+                
+                if (profileUpdateError) {
+                  console.warn('Could not update onboarding_complete in profiles:', profileUpdateError);
+                }
+              } catch (e) {
+                console.warn('Failed to update profile onboarding status:', e);
+              }
+
               if (fm) fm.textContent = 'All set! Redirecting…';
-              setTimeout(()=> window.location.href = 'staff.html', 600);
+                // Clear force flag now that onboarding is complete
+                try { sessionStorage.removeItem('forceOnboarding'); } catch(_) {}
+                setTimeout(()=> window.location.href = 'staff.html', 600);
             }catch(err){
               console.error('finish setup error', err);
               if (fm) fm.textContent = 'Could not save your details. Please try again.';
@@ -1571,11 +1689,7 @@
           };
           rg.innerHTML = roles.map((r,i)=>{
             const checked = existing && existing.role_detail ? (existing.role_detail === r) : (i===0);
-            return `<label style="display:flex; gap:10px; align-items:center; border:1px solid var(--border-color); border-radius:12px; padding:10px; cursor:pointer; background:#fff;">
-              <input type=\"radio\" name=\"role\" value=\"${r}\" ${checked?'checked':''} />
-              <img src=\"${ROLE_ICON(r)}\" alt=\"${r}\" style=\"width:32px;height:32px;object-fit:contain;\" onerror=\"window.__roleIconFallback(this,'${r}')\"/>
-              <span style=\"font-weight:800; color:var(--ink);\">${r}</span>
-            </label>`;
+            return `<label class=\"option-pill white-pill\">\n              <input type=\"radio\" name=\"role\" value=\"${r}\" ${checked?'checked':''} />\n              <img src=\"${ROLE_ICON(r)}\" alt=\"${r}\" style=\"width:32px;height:32px;object-fit:contain;\" onerror=\"window.__roleIconFallback(this,'${r}')\"/>\n              <span>${r}</span>\n            </label>`;
           }).join('');
 
           // Load teams by site (button grid like roles)
@@ -1597,7 +1711,7 @@
               }
               const html = teams.map((t) => {
                 const isExisting = existing && ((existing.team_id && String(existing.team_id) === String(t.id)) || (existing.team_name && existing.team_name === t.name));
-                return `<label style=\"display:flex; gap:10px; align-items:center; border:1px solid var(--border-color); border-radius:12px; padding:10px; cursor:pointer; background:#fff;\">\n                  <input type=\"radio\" name=\"team\" value=\"${String(t.id)}\" data-name=\"${t.name}\" ${isExisting ? 'checked' : ''} />\n                  <img src=\"Icons/icons8-people-100.png\" alt=\"${t.name}\" style=\"width:32px;height:32px;object-fit:contain;\"/>\n                  <span style=\"font-weight:800; color:var(--ink);\">${t.name}</span>\n                </label>`;
+                return `<label class=\"option-pill white-pill\">\n                  <input type=\"radio\" name=\"team\" value=\"${String(t.id)}\" data-name=\"${t.name}\" ${isExisting ? 'checked' : ''} />\n                  <img src=\"Icons/icons8-people-100.png\" alt=\"${t.name}\" style=\"width:32px;height:32px;object-fit:contain;\"/>\n                  <span>${t.name}</span>\n                </label>`;
               }).join('');
               tg.innerHTML = html || '<div style="opacity:.7; padding:8px 0;">No teams found for this site.</div>';
 
@@ -1779,7 +1893,7 @@
         }
       } catch(e){
         if (String(e.message).includes('NO_SESSION')) { window.location.replace('Home.html'); return; }
-        if (String(e.message).includes('NOT_STAFF')) { window.location.replace('index.html'); return; }
+        if (String(e.message).includes('NOT_STAFF')) { window.location.replace('home.html'); return; }
         console.error('[staff-welcome] error', e);
       }
     })();
