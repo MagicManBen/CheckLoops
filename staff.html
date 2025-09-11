@@ -630,56 +630,103 @@
       
       try {
         const now = new Date();
-        let nextDue = null;
-        
-        // Check profiles.next_quiz_due first
-        if (profileRow?.next_quiz_due) {
-          nextDue = new Date(profileRow.next_quiz_due);
-        } else {
-          // Fallback: compute from last quiz attempt
+        // Helpers for current week (Sunday-Saturday)
+        function getWeekStart(d=new Date()){ const c=new Date(d); const day=c.getDay(); c.setDate(c.getDate()-day); c.setHours(0,0,0,0); return c; }
+        function getWeekEnd(d=new Date()){ const s=getWeekStart(d); const e=new Date(s.getTime()+6*24*60*60*1000); e.setHours(23,59,59,999); return e; }
+        function getNextWeekStart(d=new Date()){ const e=getWeekEnd(d); return new Date(e.getTime()+24*60*60*1000); }
+
+        const weekStart = getWeekStart();
+        const localKey = `quiz_attempt_${user.id}_${weekStart.toISOString().split('T')[0]}`;
+
+        let quizTakenThisWeek = false;
+        // LocalStorage fallback (used by quiz page after save)
+        try {
+          const ls = localStorage.getItem(localKey);
+          if (ls) {
+            quizTakenThisWeek = true;
+          }
+        } catch(_) {}
+
+        let lastCompletedDate = null;
+
+        // DB check only if not already confirmed via localStorage
+        if (!quizTakenThisWeek) {
           try {
-            const { data: last, error } = await supabase
+            // Fetch any non‑practice attempt this week
+            const { data: weekly, error: weeklyErr } = await supabase
               .from('quiz_attempts')
               .select('completed_at,created_at')
               .eq('user_id', user.id)
               .eq('is_practice', false)
-              .order('completed_at', { ascending: false })
+              .gte('created_at', weekStart.toISOString())
+              .lte('created_at', getWeekEnd().toISOString())
+              .limit(1);
+            if (!weeklyErr && weekly && weekly.length) {
+              quizTakenThisWeek = true;
+              const attempt = weekly[0];
+              lastCompletedDate = attempt.completed_at || attempt.created_at;
+            }
+          } catch(_) {}
+        }
+
+        // If still not found, fetch the last attempt (any week) to compute next due date / upcoming window
+        if (!lastCompletedDate) {
+          try {
+            const { data: lastAny, error: lastErr } = await supabase
+              .from('quiz_attempts')
+              .select('completed_at,created_at')
+              .eq('user_id', user.id)
+              .eq('is_practice', false)
+              .order('completed_at', { ascending: false, nullsFirst: false })
+              .order('created_at', { ascending: false })
               .limit(1)
               .maybeSingle();
-            
-            if (!error && last) {
-              const lastCompleted = last.completed_at || last.created_at || null;
-              if (lastCompleted) {
-                nextDue = new Date(lastCompleted);
-                nextDue.setDate(nextDue.getDate() + 7);
-              }
+            if (!lastErr && lastAny) {
+              lastCompletedDate = lastAny.completed_at || lastAny.created_at || null;
             }
-          } catch(_) { /* ignore */ }
+          } catch(_) {}
         }
-        
-        // If quiz is due or overdue
+
+        // Derive nextDue
+        let nextDue = null;
+        if (quizTakenThisWeek) {
+          // Next due is start of next week
+            nextDue = getNextWeekStart();
+        } else if (profileRow?.next_quiz_due) {
+          nextDue = new Date(profileRow.next_quiz_due);
+        } else if (lastCompletedDate) {
+          nextDue = new Date(lastCompletedDate);
+          nextDue.setDate(nextDue.getDate() + 7);
+        }
+
+        // Logic to show/hide banner
+        if (quizTakenThisWeek) {
+          // Hide the alert entirely when completed
+          quizAlert.style.display = 'none';
+          quizBubble.classList.remove('due');
+          return; // Nothing else to do
+        }
+
+        // If no record at all (first time) OR overdue
         if (!nextDue || now >= nextDue) {
           quizAlert.style.display = 'block';
           quizBubble.classList.add('due');
-          
           if (!nextDue) {
             quizAlertMessage.textContent = 'Take your first weekly quiz now!';
           } else {
             const overdueDays = Math.floor((now - nextDue) / (1000 * 60 * 60 * 24));
-            if (overdueDays > 0) {
-              quizAlertMessage.textContent = `Quiz is ${overdueDays} day${overdueDays > 1 ? 's' : ''} overdue!`;
-            } else {
-              quizAlertMessage.textContent = 'Your weekly quiz is due today!';
-            }
+            quizAlertMessage.textContent = overdueDays > 0 ? `Quiz is ${overdueDays} day${overdueDays>1?'s':''} overdue!` : 'Your weekly quiz is due today!';
           }
         } else {
-          // Quiz not due yet, but show upcoming if within 24 hours
           const hoursUntilDue = (nextDue - now) / (1000 * 60 * 60);
-          if (hoursUntilDue <= 24) {
-            quizAlert.style.display = 'block';
-            quizAlert.style.background = 'linear-gradient(135deg, #3b82f6, #1d4ed8)';
-            quizAlertMessage.textContent = `Quiz due in ${Math.ceil(hoursUntilDue)} hour${Math.ceil(hoursUntilDue) > 1 ? 's' : ''}`;
-          }
+            if (hoursUntilDue <= 24) {
+              quizAlert.style.display = 'block';
+              quizAlert.style.background = 'linear-gradient(135deg, #3b82f6, #1d4ed8)';
+              quizAlertMessage.textContent = `Quiz due in ${Math.ceil(hoursUntilDue)} hour${Math.ceil(hoursUntilDue)>1?'s':''}`;
+            } else {
+              quizAlert.style.display = 'none';
+              quizBubble.classList.remove('due');
+            }
         }
       } catch (error) {
         console.error('Error checking quiz status:', error);
