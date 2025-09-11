@@ -2,15 +2,15 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// Use service key to bypass RLS for verification
+// Use secret key to bypass RLS for verification
 const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
-const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTAxNzI3NiwiZXhwIjoyMDcwNTkzMjc2fQ.CJxV14F0T2TWkAjeR4bpYiBIOwLwyfzF9WzAWwS99Xc';
+const SUPABASE_SECRET_KEY = 'sb_secret_j2J5SdPNTzbodsmfJi4IZw_Mg-Rlrxs';
 
-console.log('=== TESTING SUPABASE CONNECTION WITH SERVICE KEY ===');
+console.log('=== TESTING SUPABASE CONNECTION WITH SECRET KEY ===');
 console.log('URL:', SUPABASE_URL);
 console.log('');
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+const supabase = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY);
 
 // User IDs to check for
 const BEN_ID = '55f1b4e6-01f4-452d-8d6c-617fe7794873';

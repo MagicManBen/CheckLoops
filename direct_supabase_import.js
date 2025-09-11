@@ -1,9 +1,20 @@
 const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
 
-// Supabase credentials
-const SUPABASE_URL = 'https://ntufkxnyogbzlripswxs.supabase.co';
-const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im50dWZreG55b2diemxyaXBzd3hzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcyMjUwNDMzNCwiZXhwIjoyMDM4MDgwMzM0fQ.9RJFQhBlTXnqlnKhgT8SatuQT1SUCCPkNW_mYhPMEqg';
+// THIS FILE SHOULD NOT BE IN PRODUCTION
+// Service role keys must never be in client-side code
+// This should be run as a server-side script with proper environment variables
+
+// Get credentials from environment variables
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+  console.error('❌ Missing required environment variables:');
+  console.error('   SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set');
+  console.error('   Example: SUPABASE_URL=https://... SUPABASE_SERVICE_ROLE_KEY=... node direct_supabase_import.js');
+  process.exit(1);
+}
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 

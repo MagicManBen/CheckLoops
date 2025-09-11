@@ -1,124 +1,98 @@
 import { chromium } from 'playwright';
-import { createClient } from '@supabase/supabase-js';
 
-// Initialize Supabase client
-const supabase = createClient(
-  'https://unveoqnlqnobufhublyw.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME'
-);
+const BASE_URL = 'http://127.0.0.1:65046';
+const STAFF_EMAIL = 'benhowardmagic@hotmail.com';
+const PASSWORD = 'Hello1!';
 
-async function testHolidaySubmission() {
-  const browser = await chromium.launch({ headless: false });
-  const context = await browser.newContext();
-  const page = await context.newPage();
+async function testHolidaySubmit() {
+  const browser = await chromium.launch({ 
+    headless: false,
+    slowMo: 500
+  });
   
-  console.log('\n=== Testing Holiday Request Submission ===\n');
+  const page = await browser.newPage();
+  
+  // Listen for console errors
+  page.on('console', msg => {
+    if (msg.type() === 'error') {
+      console.log('❌ Browser Error:', msg.text());
+    }
+  });
   
   try {
-    // Login as staff
-    console.log('1. Logging in as staff...');
-    await page.goto('http://127.0.0.1:58156/Home.html');
-    await page.waitForTimeout(2000);
-    
-    await page.locator('#email').fill('ben.howard@stoke.nhs.uk');
-    await page.locator('#password').fill('Hello1!');
+    // Login
+    console.log('🔐 Logging in...');
+    await page.goto(`${BASE_URL}/home.html`);
+    await page.locator('#email').fill(STAFF_EMAIL);
+    await page.locator('#password').fill(PASSWORD);
     await page.click('button:has-text("Sign In")');
+    await page.waitForURL('**/staff.html', { timeout: 10000 });
+    
+    // Navigate to holidays
+    console.log('📍 Going to holidays page...');
+    await page.click('a[href="staff-holidays.html"]');
     await page.waitForTimeout(3000);
     
-    // Navigate to holidays page
-    await page.goto('http://127.0.0.1:58156/staff-holidays.html');
-    await page.waitForTimeout(3000);
-    
-    // Open request modal
-    console.log('2. Opening holiday request form...');
-    await page.locator('button:has-text("Request Holiday")').click();
+    // Open modal
+    console.log('📝 Opening request modal...');
+    await page.evaluate(() => {
+      if (typeof openRequestModal === 'function') {
+        openRequestModal();
+      }
+      const modal = document.getElementById('request-modal');
+      if (modal) modal.style.display = 'block';
+    });
     await page.waitForTimeout(1000);
     
-    // Fill in holiday request
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() + 30); // 30 days from now
-    const endDate = new Date();
-    endDate.setDate(endDate.getDate() + 37); // 37 days from now (7 day holiday)
+    // Fill form
+    console.log('📝 Filling form...');
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dayAfter = new Date();
+    dayAfter.setDate(dayAfter.getDate() + 2);
     
-    console.log('3. Filling holiday request form...');
-    await page.locator('#start-date').fill(startDate.toISOString().split('T')[0]);
-    await page.locator('#end-date').fill(endDate.toISOString().split('T')[0]);
-    await page.locator('#request-type').selectOption('holiday');
-    await page.locator('#destination').fill('Paris, France');
+    await page.fill('#start-date', tomorrow.toISOString().split('T')[0]);
+    await page.fill('#end-date', dayAfter.toISOString().split('T')[0]);
     
-    console.log('  - Start date:', startDate.toISOString().split('T')[0]);
-    console.log('  - End date:', endDate.toISOString().split('T')[0]);
-    console.log('  - Destination: Paris, France');
+    // Select holiday type (make sure it's 'holiday' which will map to 'annual_leave')
+    await page.selectOption('#request-type', 'holiday');
     
-    // Submit the request
-    console.log('4. Submitting holiday request...');
-    await page.locator('#holiday-request-form button:has-text("Submit Request")').click();
-    await page.waitForTimeout(3000);
+    // Fill destination
+    await page.fill('#destination', 'Tokyo, Japan');
     
-    // Check if request was submitted (modal should close)
-    const isModalStillVisible = await page.locator('#request-modal').isVisible();
-    console.log('  - Modal closed after submission?', !isModalStillVisible);
-    
-    // Refresh the page to see new request
-    await page.reload();
-    await page.waitForTimeout(3000);
-    
-    // Check if the request appears in the list
-    const holidayItems = await page.locator('.holiday-item').count();
-    console.log('  - Number of holiday requests visible:', holidayItems);
-    
-    // Check database directly
-    console.log('\n5. Verifying in Supabase database...');
-    
-    // Get the user's auth session from the page
-    const userEmail = await page.evaluate(() => {
-      const emailPill = document.getElementById('email-pill');
-      return emailPill ? emailPill.textContent : null;
-    });
-    
-    console.log('  - User email:', userEmail);
-    
-    // Query the database for recent holiday requests
-    const { data: requests, error } = await supabase
-      .from('holiday_requests')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(5);
-    
-    if (error) {
-      console.error('  - Error querying database:', error);
-    } else {
-      console.log('  - Recent holiday requests in database:', requests?.length || 0);
-      
-      // Find our test request
-      const testRequest = requests?.find(r => 
-        r.destination === 'Paris, France' &&
-        r.start_date === startDate.toISOString().split('T')[0]
-      );
-      
-      if (testRequest) {
-        console.log('  ✅ Holiday request found in database!');
-        console.log('    - ID:', testRequest.id);
-        console.log('    - Status:', testRequest.status);
-        console.log('    - Type:', testRequest.request_type);
-        console.log('    - Total hours:', testRequest.total_hours);
-        console.log('    - Total sessions:', testRequest.total_sessions);
-      } else {
-        console.log('  ⚠️ Test request not found in recent database entries');
-      }
+    // Fill reason
+    const reasonInput = await page.$('#reason, textarea');
+    if (reasonInput) {
+      await reasonInput.fill('Vacation to Tokyo');
     }
     
-    // Take final screenshot
-    await page.screenshot({ path: 'test_holiday_submitted.png', fullPage: true });
-    console.log('\n6. Screenshot saved: test_holiday_submitted.png');
+    // Submit
+    console.log('🚀 Submitting...');
+    await page.click('button:has-text("Submit Request")');
+    
+    // Wait for response
+    await page.waitForTimeout(5000);
+    
+    // Check for alerts
+    page.on('dialog', async dialog => {
+      console.log('📢 Alert:', dialog.message());
+      await dialog.accept();
+    });
+    
+    // Take screenshot
+    await page.screenshot({ path: 'holiday_submitted.png', fullPage: true });
+    console.log('📸 Screenshot saved');
+    
+    // Check for avatar
+    const avatarCount = await page.$$eval('img[alt*="Holiday"], .holiday-destination-image img', els => els.length);
+    console.log(`🖼️ Found ${avatarCount} avatar image(s)`);
     
   } catch (error) {
-    console.error('Error during testing:', error);
-    await page.screenshot({ path: 'test_submission_error.png', fullPage: true });
+    console.error('Test failed:', error.message);
   } finally {
+    await page.waitForTimeout(5000);
     await browser.close();
-    console.log('\n=== Test Complete ===\n');
   }
 }
 
-testHolidaySubmission().catch(console.error);
+testHolidaySubmit().catch(console.error);

@@ -21,7 +21,7 @@ This Express server provides a secure proxy for OpenAI API calls, preventing API
    
    Add this line to `.env`:
    ```
-   OPENAI_API_KEY=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
+   OPENAI_API_KEY=****************************************
    ```
 
 3. **Start the server:**

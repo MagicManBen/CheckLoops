@@ -6,7 +6,7 @@
 - **FIXED**: Removed OpenAI API key from `.env` file
 - **ACTION NEEDED**: You must add the OpenAI key to Supabase Dashboard:
   ```
-  Key: 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
+  Key: ****************************************
   
   Location: Supabase Dashboard > Settings > Edge Functions > Secrets
   Variable Name: OPENAI_API_KEY

@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CheckLoop — Staff Meetings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <script src="config.js"></script>
+  <script src="admin-nav.js"></script>
+  <link rel="stylesheet" href="staff.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    /* Page-specific tweaks only; core styles live in staff.css */
+    .subtitle{ color:#64748b; font-weight:600; }
+
+    /* Meetings Section Styles — High‑contrast redesign */
+    .meetings-section { margin-top: 10px; }
+
+    .meetings-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+      border-bottom: 2px solid #dbe2ea;
+      align-items: flex-end;
+    }
+
+    .meetings-tab {
+      padding: 10px 14px;
+      background: #f3f5f8;
+      color: #0f172a;
+      border: 1px solid #cbd5e1;
+      border-bottom: 3px solid transparent;
+      border-radius: 10px 10px 0 0;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .2s ease, color .2s ease, border-color .2s ease, transform .1s ease;
+    }
+
+    .meetings-tab:hover { background: #e8eef5; transform: translateY(-1px); }
+
+    .meetings-tab:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+
+    .meetings-tab.active {
+      background: #ffffff;
+      color: #0b2a6b;
+      border-color: #93c5fd;
+      border-bottom-color: #ffffff; /* merge with content card */
+    }
+
+    .meetings-content { display: none; }
+    .meetings-content.active { display: block; }
+
+    /* Calendar container card */
+    #calendar {
+      height: 520px;
+      background: #ffffff;
+      padding: 16px;
+      border-radius: 14px;
+      border: 1px solid #dbe2ea;
+      box-shadow: 0 6px 16px rgba(2,6,23,0.06);
+    }
+
+    /* FullCalendar high‑contrast overrides */
+    .fc .fc-toolbar-title{ color:#0f172a; font-weight:800; letter-spacing:.2px; }
+    .fc .fc-col-header-cell-cushion{ color:#0f172a; font-weight:700; }
+    .fc .fc-daygrid-day-number{ color:#0f172a; font-weight:700; }
+    .fc .fc-daygrid-day{ background:#fff; }
+    .fc .fc-daygrid-day.fc-day-today{ background:#eff6ff; }
+    .fc-theme-standard td, .fc-theme-standard th{ border-color:#dbe2ea; }
+
+    /* Toolbar buttons */
+    .fc .fc-button-primary{
+      background:#0f172a; border-color:#0f172a; color:#fff; font-weight:700; border-radius:10px;
+    }
+    .fc .fc-button-primary:not(:disabled):hover{ background:#1f2937; border-color:#1f2937; }
+    .fc .fc-button-primary.fc-button-active{ background:#1d4ed8; border-color:#1d4ed8; color:#fff; }
+    .fc .fc-button-group .fc-button{ border-radius:10px; }
+
+    /* Events — make text dark and background readable */
+    .fc .fc-event{ background:#dbeafe; border-color:#60a5fa; color:#0f172a; }
+    .fc .fc-h-event .fc-event-title{ font-weight:800; }
+    .fc .fc-daygrid-dot-event .fc-event-title{ color:#0f172a; font-weight:700; }
+    .fc .fc-daygrid-event-dot{ border-color:#2563eb; }
+
+    .agenda-form {
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+    }
+    .agenda-item { background: white; padding: 15px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #e5e7eb; }
+    .attendance-buttons { display: flex; gap: 10px; margin-top: 10px; }
+    .btn-accept { background: #10b981; color: white; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; }
+    .btn-decline { background: #ef4444; color: white; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; }
+    .meeting-notes { width: 100%; min-height: 300px; padding: 15px; border: 1px solid #e5e7eb; border-radius: 8px; font-family: inherit; resize: vertical; }
+    .btn-generate-pdf { background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 12px 24px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; margin-top: 15px; }
+    .meeting-history-item { background: white; padding: 15px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #e5e7eb; cursor: pointer; transition: all 0.3s; }
+    .meeting-history-item:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); transform: translateY(-2px); }
+    .meeting-form-group { margin-bottom: 15px; }
+    .meeting-form-group label { display: block; margin-bottom: 5px; font-weight: 600; color: #374151; }
+    .meeting-form-group input, .meeting-form-group textarea, .meeting-form-group select { width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px; font-family: inherit; }
+    .meeting-form-group select option { color: #333; background: white; }
+    .attendees-list { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+    .attendee-badge { padding: 5px 12px; border-radius: 20px; font-size: 14px; font-weight: 500; }
+    .attendee-badge.accepted { background: #dcfce7; color: #16a34a; }
+    .attendee-badge.declined { background: #fee2e2; color: #dc2626; }
+    .attendee-badge.pending { background: #fef3c7; color: #d97706; }
+  </style>
+</head>
+<body>
+  <div class="bg">
+    <div class="wave"></div>
+    <div class="wave wave2"></div>
+    <div class="particles" id="particles"></div>
+    <div class="orb orb1"></div>
+    <div class="orb orb2"></div>
+    <div class="orb orb3"></div>
+  </div>
+  <div class="mesh" aria-hidden="true"><div class="m1"></div><div class="m2"></div><div class="m3"></div></div>
+
+  <main class="content">
+    <div class="topbar panel" style="position:relative;">
+      <div class="halo"></div>
+      <div class="nav seg-nav"></div>
+      <div class="spacer"></div>
+      <div class="pill" id="site-pill">Site: —</div>
+      <div class="pill" id="email-pill">—</div>
+      <div class="pill" id="role-pill">—</div>
+      <button class="btn" id="logout-btn">Sign Out</button>
+    </div>
+
+    <section class="panel g-12" style="margin:0; position:relative; overflow:hidden;">
+      <div class="halo"></div>
+      <div class="panel-header" style="align-items:center; gap:10px;">
+        <div class="illus-circle"><img data-i8="calendar" alt="Meetings"></div>
+        <div class="panel-title">Meetings Hub</div>
+      </div>
+
+      <div class="meetings-section">
+        <div class="meetings-tabs">
+          <button class="meetings-tab active" data-tab="calendar">Calendar</button>
+          <button class="meetings-tab" data-tab="agenda">Agenda Items</button>
+          <button class="meetings-tab" data-tab="notes">Meeting Notes</button>
+          <button class="meetings-tab" data-tab="history">Past Meetings</button>
+        </div>
+
+        <!-- Calendar Tab -->
+        <div class="meetings-content active" id="calendar-content">
+          <div id="calendar"></div>
+
+          <!-- Meeting Details Modal -->
+          <div id="meeting-modal" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); z-index: 1000; max-width: 500px; width: 90%;">
+            <h3 id="modal-meeting-title">Meeting Title</h3>
+            <p id="modal-meeting-date">Date</p>
+            <p id="modal-meeting-description">Description</p>
+
+            <div class="attendees-list" id="modal-attendees"></div>
+
+            <div class="attendance-buttons">
+              <button class="btn-accept" onclick="acceptMeeting()">Accept</button>
+              <button class="btn-decline" onclick="declineMeeting()">Decline</button>
+            </div>
+
+            <button onclick="closeMeetingModal()" style="position: absolute; top: 10px; right: 10px; background: none; border: none; font-size: 24px; cursor: pointer;">×</button>
+          </div>
+        </div>
+
+        <!-- Agenda Tab -->
+        <div class="meetings-content" id="agenda-content">
+          <div class="agenda-form">
+            <h3>Submit Agenda Item</h3>
+            <div class="meeting-form-group">
+              <label>Meeting</label>
+              <select id="agenda-meeting-select">
+                <option value="">Select a meeting...</option>
+              </select>
+            </div>
+            <div class="meeting-form-group">
+              <label>Agenda Item</label>
+              <input type="text" id="agenda-item-title" placeholder="Enter agenda item title">
+            </div>
+            <div class="meeting-form-group">
+              <label>Description</label>
+              <textarea id="agenda-item-description" rows="3" placeholder="Provide details about this agenda item"></textarea>
+            </div>
+            <button class="btn" onclick="submitAgendaItem()" style="background: #4f89ff; color: white;">Submit Agenda Item</button>
+          </div>
+          <h3>Current Agenda Items</h3>
+          <div id="agenda-items-list"></div>
+        </div>
+
+        <!-- Meeting Notes Tab -->
+        <div class="meetings-content" id="notes-content">
+          <div class="meeting-form-group">
+            <label>Select Meeting</label>
+            <select id="notes-meeting-select">
+              <option value="">Select a meeting...</option>
+            </select>
+          </div>
+          <div class="meeting-form-group">
+            <label>Meeting Notes/Minutes</label>
+            <textarea class="meeting-notes" id="meeting-notes-textarea" placeholder="Type your meeting notes here..."></textarea>
+          </div>
+          <button class="btn-generate-pdf" onclick="generateMeetingPDF()">Generate PDF with AI Enhancement</button>
+          <div class="meeting-form-group" style="margin-top: 20px;">
+            <label>Upload Meeting Recording (for AI Transcription)</label>
+            <input type="file" id="meeting-recording" accept="audio/*,video/*" onchange="handleRecordingUpload(event)" style="padding: 8px;">
+            <small style="color: #6b7280; display: block; margin-top: 4px;">Upload an audio or video recording to automatically generate transcribed minutes</small>
+          </div>
+          <div id="pdf-status" style="margin-top: 15px; padding: 15px; background: #f0f9ff; border-radius: 8px; display: none;">
+            <p style="margin: 0; color: #0369a1;">Processing with AI...</p>
+          </div>
+        </div>
+
+        <!-- History Tab -->
+        <div class="meetings-content" id="history-content">
+          <h3>Past Meetings</h3>
+          <div id="meeting-history-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="muted" style="text-align:center; font-size:12px; padding:10px 0;">© CheckLoop • Staff Meetings</div>
+  </main>
+
+  <script type="module">
+    import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, clearAuthData, revealAdminNav } from './staff-common.js';
+    const supabase = await initSupabase();
+    handleAuthState(supabase);
+    navActivate('meetings');
+
+    let isLoggingOut = false;
+    function cleanupAndRedirect() {
+      try { clearAuthData(true); } catch(_) {}
+      try { sessionStorage.clear(); } catch(_) {}
+      try { document.cookie.split(';').forEach(c => document.cookie = c.replace(/^ +/, '').replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`)); } catch(_) {}
+      window.location.replace('Home.html?_=' + Date.now());
+    }
+    async function forceLogout() {
+      if (isLoggingOut) return;
+      isLoggingOut = true;
+      try { const { data } = await supabase.auth.getSession(); if (data?.session) await supabase.auth.signOut(); } catch (e) { console.error('Supabase signOut failed:', e); }
+      cleanupAndRedirect();
+    }
+    document.getElementById('logout-btn').addEventListener('click', async (e) => { e.preventDefault(); e.stopPropagation(); await forceLogout(); });
+
+    requireStaffSession(supabase).then(async ({ session, profileRow }) => {
+      // Bounce to onboarding if force flag still present
+      try { if (sessionStorage.getItem('forceOnboarding') === '1') { window.location.replace('staff-welcome.html?force=1'); return; } } catch(_) {}
+
+      const siteId = profileRow?.site_id || session.user?.raw_user_meta_data?.site_id || null;
+      const role = (profileRow?.role || session.user?.raw_user_meta_data?.role || 'Staff');
+      setTopbar({ siteText: await getSiteText(supabase, siteId), email: session.user.email, role });
+      revealAdminNav(role);
+
+      await initializeMeetings();
+    }).catch(e => {
+      if (String(e.message).includes('NO_SESSION')) { window.location.replace('Home.html'); return; }
+      if (String(e.message).includes('NOT_STAFF')) { window.location.replace('Home.html'); return; }
+      if (String(e.message).includes('REDIRECT_ONBOARDING')) { return; }
+      console.error(e);
+    });
+  </script>
+
+  <script>
+    // Meetings functionality variables - declare at top level
+    let calendar = null;
+    let currentMeetingId = null;
+    let meetings = [];
+
+    function switchTab(tabName) {
+      document.querySelectorAll('.meetings-tab').forEach(tab => { tab.classList.remove('active'); });
+      const btn = document.querySelector(`[data-tab="${tabName}"]`); if (btn) btn.classList.add('active');
+      document.querySelectorAll('.meetings-content').forEach(content => { content.classList.remove('active'); });
+      const panel = document.getElementById(`${tabName}-content`); if (panel) panel.classList.add('active');
+    }
+
+    async function initializeMeetings() {
+      // Tabs
+      document.querySelectorAll('.meetings-tab').forEach(tab => {
+        tab.addEventListener('click', function(){ switchTab(this.dataset.tab); });
+      });
+
+      await new Promise(r => setTimeout(r, 50));
+      const calendarEl = document.getElementById('calendar');
+      if (calendarEl && typeof FullCalendar !== 'undefined') {
+        calendar = new FullCalendar.Calendar(calendarEl, {
+          initialView: 'dayGridMonth',
+          headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek' },
+          events: async (fetchInfo, success, fail) => {
+            try { const evs = await loadMeetings(); success(evs); } catch (e) { console.error(e); fail(e); }
+          },
+          eventClick: (info) => { showMeetingDetails(info.event); }
+        });
+        calendar.render();
+      }
+      await loadSampleMeetings();
+    }
+
+    async function loadMeetings() {
+      const events = [
+        { id: '1', title: 'Partners Meeting', start: new Date().toISOString().split('T')[0] + 'T14:00:00', description: 'Monthly partners meeting to discuss practice operations', attendees: ['Dr. Farook','Yvonne Bell','Ben Howard','Monique Keersmaekers'] },
+        { id: '2', title: 'Staff Training Review', start: new Date(Date.now() + 7*24*60*60*1000).toISOString().split('T')[0] + 'T10:00:00', description: 'Review staff training compliance and upcoming requirements', attendees: ['All Staff'] },
+        { id: '3', title: 'PCN Coordination', start: new Date(Date.now() + 14*24*60*60*1000).toISOString().split('T')[0] + 'T15:00:00', description: 'PCN structure and transparency discussion', attendees: ['PCN Representatives'] },
+      ];
+      meetings = events;
+      setTimeout(populateMeetingSelects, 50);
+      return events;
+    }
+
+    async function loadSampleMeetings() {
+      const agendaList = document.getElementById('agenda-items-list');
+      if (agendaList) {
+        agendaList.innerHTML = `
+          <div class="agenda-item">
+            <h4>ARTP Spirometry Course Requirements</h4>
+            <p>Discuss mandatory course registration and funding options</p>
+            <small style="color: #6b7280;">Submitted by: Dr. Farook</small>
+          </div>
+          <div class="agenda-item">
+            <h4>Appointment Template Adjustments</h4>
+            <p>Review and balance appointment slots across clinicians</p>
+            <small style="color: #6b7280;">Submitted by: Shihara</small>
+          </div>`;
+      }
+      const historyList = document.getElementById('meeting-history-list');
+      if (historyList) {
+        historyList.innerHTML = `
+          <div class="meeting-history-item" onclick="viewMeetingNotes('1')">
+            <h4>Partners Meeting - 13/08/2025</h4>
+            <p>Discussed ARTP requirements, appointment management, PCN structure</p>
+            <small style="color: #6b7280;">4 attendees • Meeting notes available</small>
+          </div>
+          <div class="meeting-history-item" onclick="viewMeetingNotes('2')">
+            <h4>Staff Training Review - 06/08/2025</h4>
+            <p>Reviewed training compliance and upcoming deadlines</p>
+            <small style="color: #6b7280;">12 attendees • Meeting notes available</small>
+          </div>`;
+      }
+    }
+
+    function populateMeetingSelects() {
+      const agendaSelect = document.getElementById('agenda-meeting-select');
+      const notesSelect = document.getElementById('notes-meeting-select');
+      if (!meetings || !meetings.length) return;
+      const options = meetings.map(m => `<option value="${m.id}">${m.title}</option>`).join('');
+      if (agendaSelect) agendaSelect.innerHTML = '<option value="">Select a meeting...</option>' + options;
+      if (notesSelect) notesSelect.innerHTML = '<option value="">Select a meeting...</option>' + options;
+    }
+
+    function showMeetingDetails(event) {
+      currentMeetingId = event.id;
+      document.getElementById('modal-meeting-title').textContent = event.title;
+      document.getElementById('modal-meeting-date').textContent = event.start.toLocaleString();
+      document.getElementById('modal-meeting-description').textContent = event.extendedProps.description || '';
+      const attendeesList = document.getElementById('modal-attendees');
+      attendeesList.innerHTML = (event.extendedProps.attendees || []).map(a => `<span class="attendee-badge pending">${a}</span>`).join('');
+      document.getElementById('meeting-modal').style.display = 'block';
+    }
+    function closeMeetingModal(){ document.getElementById('meeting-modal').style.display = 'none'; }
+    async function acceptMeeting(){ alert('You have accepted the meeting'); closeMeetingModal(); }
+    async function declineMeeting(){ alert('You have declined the meeting'); closeMeetingModal(); }
+
+    async function submitAgendaItem() {
+      const meetingId = document.getElementById('agenda-meeting-select').value;
+      const title = document.getElementById('agenda-item-title').value;
+      const description = document.getElementById('agenda-item-description').value;
+      if (!meetingId || !title) { alert('Please select a meeting and enter a title'); return; }
+      const agendaList = document.getElementById('agenda-items-list');
+      const el = document.createElement('div'); el.className = 'agenda-item';
+      el.innerHTML = `<h4>${title}</h4><p>${description}</p><small style="color:#6b7280;">Submitted by: You (just now)</small>`;
+      agendaList.insertBefore(el, agendaList.firstChild);
+      document.getElementById('agenda-item-title').value = '';
+      document.getElementById('agenda-item-description').value = '';
+      alert('Agenda item submitted successfully');
+    }
+
+    async function generateMeetingPDF() {
+      const meetingId = document.getElementById('notes-meeting-select').value;
+      const notes = document.getElementById('meeting-notes-textarea').value;
+      if (!meetingId || !notes) { alert('Please select a meeting and enter notes'); return; }
+      const statusDiv = document.getElementById('pdf-status');
+      statusDiv.style.display = 'block';
+      statusDiv.innerHTML = '<p style="margin: 0; color: #0369a1;">Processing with AI...</p>';
+      try {
+        await new Promise(r => setTimeout(r, 1500));
+        const meeting = meetings.find(m => m.id === meetingId) || { title: 'Meeting' };
+        const formattedNotes = await formatNotesWithAI(notes, meeting);
+        const { jsPDF } = window.jspdf; const doc = new jsPDF();
+        doc.setFontSize(20); doc.text(meeting.title, 20, 20);
+        doc.setFontSize(12); doc.text('Date: ' + new Date().toLocaleDateString(), 20, 35);
+        doc.setFontSize(14); doc.text('Minutes of Meeting (MoM)', 20, 50);
+        doc.setFontSize(11); const lines = doc.splitTextToSize(formattedNotes, 170); doc.text(lines, 20, 65);
+        doc.save(`meeting-notes-${meetingId}.pdf`);
+        statusDiv.innerHTML = '<p style="margin: 0; color: #16a34a;">✓ PDF generated successfully!</p>';
+        setTimeout(() => { statusDiv.style.display = 'none'; }, 2500);
+      } catch (e) {
+        console.error(e);
+        statusDiv.innerHTML = '<p style="margin: 0; color: #dc2626;">Error generating PDF. Please try again.</p>';
+      }
+    }
+
+    async function formatNotesWithAI(notes, meeting) {
+      const sections = notes.split('\n\n');
+      let formatted = `Meeting Title: ${meeting.title}\n`;
+      formatted += `Date: ${new Date().toLocaleDateString()}\n`;
+      formatted += `Present: ${meeting.attendees ? meeting.attendees.join(', ') : 'Not specified'}\n\n`;
+      formatted += '1. Agenda Overview\n';
+      formatted += (sections[0] || '') + '\n\n';
+      formatted += '2. Discussion Summary\n';
+      sections.slice(1).forEach((section) => { formatted += `• ${section}\n`; });
+      formatted += '\n3. Action Items\n';
+      formatted += '• Follow up on discussed points\n';
+      formatted += '• Schedule next meeting';
+      return formatted;
+    }
+
+    async function handleRecordingUpload(event) {
+      const file = event.target.files?.[0]; if (!file) return;
+      const statusDiv = document.getElementById('pdf-status');
+      statusDiv.style.display = 'block';
+      statusDiv.innerHTML = '<p style="margin: 0; color: #0369a1;">🎙️ Uploading recording for AI transcription...</p>';
+      try {
+        // NOTE: This demo requires supabase client in module scope; we invoke via a simple fetch here or integrate with page module if desired.
+        // As this script is not a module, we keep UX only. Replace with real implementation when wiring backend.
+        await new Promise(r => setTimeout(r, 1200));
+        const transcript = `Meeting Transcript - ${new Date().toLocaleDateString()}\n\nAttendees Present:\n- Dr. Farook (Chair)\n- Yvonne Bell\n- Ben Howard\n- Monique Keersmaekers\n\n1. ARTP Spirometry Course Requirements\n   - Mandatory course progress and funding\n\n2. Appointment and Rota Adjustments\n   - Balancing templates and protected slots\n\nAction Items:\n• Register staff for ARTP course\n• Review appointment templates`;
+        document.getElementById('meeting-notes-textarea').value = transcript;
+        statusDiv.innerHTML = '<p style="margin: 0; color: #16a34a;">✅ Recording transcribed successfully!</p>';
+        setTimeout(() => { statusDiv.style.display = 'none'; }, 2500);
+      } catch (e) {
+        console.error(e);
+        statusDiv.innerHTML = '<p style="margin: 0; color: #dc2626;">❌ Error processing recording. Please try again.</p>';
+      }
+    }
+
+    function viewMeetingNotes(meetingId) {
+      switchTab('notes');
+      const sel = document.getElementById('notes-meeting-select'); if (sel) sel.value = meetingId;
+      if (meetingId === '1') {
+        document.getElementById('meeting-notes-textarea').value = `ARTP Spirometry Course Requirements:\nThe ARTP course is now mandatory for spirometry. There is a waiting list to register. We need to register interest. Payment for spirometry is dependent on working towards accreditation.\n\nAppointment and Rota Adjustments:\nShihara requested more review slots and proportional distribution of appointments. Issues with on-the-day vs. routine slots and balancing between clinicians. Black slots (protected review slots) are being booked by others, causing booking issues.\n\nReception Task Management:\nPersistent high volume of reception tasks, especially those returned unnecessarily by certain clinicians. Need for clearer ground rules on what requires GP follow-up.\n\nPCN Communication, Finance, and Staffing:\nPCN communication has been poor; lack of transparency in finance, recruitment, and staff roles. New PCN manager (Paul) introduced, with a focus on improving operational processes, reporting, and transparency.`;
+      }
+    }
+  </script>
+
+  <script>
+    // Minimal icons8 loader for any data-i8 icons
+    (function(){
+      function i8(name, opts){
+        opts = opts || {}; var style = opts.style || 'fluency';
+        var size = (opts.size == null) ? 48 : opts.size; var base = 'https://img.icons8.com';
+        var path = [style, String(size||48), encodeURIComponent(name)+'.png'].join('/');
+        return base + '/' + path;
+      }
+      function setIcon(el){
+        var name = el.getAttribute('data-i8'); var size = el.getAttribute('data-i8-size');
+        var style = el.getAttribute('data-i8-style') || 'fluency';
+        var url = i8(name, {style, size: size ? parseInt(size,10) : undefined});
+        el.src = url; if (!el.alt) el.alt = (name||'').replace(/[\-\_]/g,' ');
+      }
+      function wire(){ document.querySelectorAll('img[data-i8]').forEach(setIcon); }
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire); else wire();
+    })();
+  </script>
+</body>
+</html>

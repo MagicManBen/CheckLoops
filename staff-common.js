@@ -1,5 +1,6 @@
 // Shared helpers for Staff pages
 // Requires: config.js loaded before this file
+
 export async function initSupabase() {
   const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
   return createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
@@ -14,34 +15,74 @@ export function clearAuthData(preserveRememberMe = false) {
     const keys = Object.keys(localStorage || {});
     keys.forEach(k => {
       try {
-        // Keep any remembered fields when requested
         if (preserveKeys.includes(k)) return;
-        // Keep unrelated app persistence keys that don't look like auth tokens
         if (!k.startsWith('sb-') && !k.includes('supabase') && !k.startsWith('auth')) return;
         localStorage.removeItem(k);
-      } catch(_) { /* ignore individual removal errors */ }
+      } catch(_) {}
     });
-  } catch (e) {
-    // If localStorage isn't available or an error occurs, don't throw
-    try { /* noop */ } catch(_){}
-  }
+  } catch (_) {}
 }
 
 export async function requireStaffSession(supabase) {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session || !session.user) throw new Error('NO_SESSION');
-  const { data: profileRow } = await supabase
+
+  const { data: profileRow, error: profileError } = await supabase
     .from('profiles')
-    .select('role, full_name, site_id')
+    .select('role, full_name, site_id, onboarding_complete')
     .eq('user_id', session.user.id)
     .maybeSingle();
-  const role = profileRow?.role || session.user?.raw_user_meta_data?.role || null;
-  // treat admin/owner/manager as staff for access to staff pages
+
+  if (profileError) {
+    console.error('Error fetching profile:', profileError);
+  }
+
+  // Try to get role from profile first, then from user metadata
+  const meta = session.user?.user_metadata || session.user?.raw_user_meta_data || {};
+  const role = profileRow?.role || meta?.role || null;
   const allowed = ['staff', 'admin', 'owner', 'manager'];
-  // debug output to help trace session/profile resolution in the browser console
-  try{
-    console.debug('[requireStaffSession] userId=', session.user.id, 'email=', session.user.email, 'profileRole=', profileRow?.role, 'rawRole=', session.user?.raw_user_meta_data?.role);
-  } catch(e) { /* ignore */ }
+
+  try {
+    console.debug('[requireStaffSession]', {
+      userId: session.user.id,
+      email: session.user.email,
+      profileRow: profileRow,
+      profileRole: profileRow?.role,
+      userMetadata: meta,
+      metaRole: meta?.role,
+      finalRole: role,
+      onboarding_complete: profileRow?.onboarding_complete,
+      onboarding_required: meta?.onboarding_required,
+      welcome_completed_at: meta?.welcome_completed_at
+    });
+  } catch (_) {}
+
+  // Enforce onboarding with single source of truth (database first, then metadata)
+  try {
+    const locked = (sessionStorage.getItem('forceOnboarding') === '1');
+    const isWelcome = /staff-welcome\.html$/i.test(new URL(window.location.href).pathname);
+    
+    // Check onboarding status from database first, then metadata
+    const dbOnboardingComplete = profileRow?.onboarding_complete === true;
+    const metaOnboardingRequired = (String(meta.onboarding_required).toLowerCase() === 'true' || String(meta.onboarding_required) === '1');
+    const welcomeCompleted = !!meta.welcome_completed_at;
+
+    // Determine if onboarding is needed
+    const needsOnboarding = !dbOnboardingComplete && (locked || metaOnboardingRequired || !welcomeCompleted);
+
+    if (dbOnboardingComplete || welcomeCompleted) {
+      try { sessionStorage.removeItem('forceOnboarding'); } catch(_) {}
+    }
+
+    if (needsOnboarding && !isWelcome) {
+      try { sessionStorage.setItem('forceOnboarding', '1'); } catch(_) {}
+      window.location.replace('staff-welcome.html?force=1');
+      throw new Error('REDIRECT_ONBOARDING');
+    }
+  } catch (e) {
+    if (e.message === 'REDIRECT_ONBOARDING') throw e;
+  }
+
   if (!role || !allowed.includes(String(role).toLowerCase())) throw new Error('NOT_STAFF');
   return { session, profileRow };
 }
@@ -64,11 +105,27 @@ export function setTopbar({siteText, email, role}){
 export function handleAuthState(supabase){
   supabase.auth.onAuthStateChange((event, session) => {
     if (event === 'SIGNED_OUT' || !session) {
-  try { clearAuthData(true); } catch(_) {}
-  try { sessionStorage.clear(); } catch(_) {}
-  try { document.cookie.split(';').forEach(c => document.cookie = c.replace(/^ +/, '').replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`)); } catch(_) {}
-  window.location.replace('Home.html?_=' + Date.now());
+      try { clearAuthData(true); } catch(_) {}
+      try { sessionStorage.clear(); } catch(_) {}
+      try {
+        document.cookie.split(';').forEach(c => {
+          document.cookie = c.replace(/^ +/, '').replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`);
+        });
+      } catch(_) {}
+      window.location.replace('home.html?_=' + Date.now());
+      return;
     }
+
+    // If user signs in and metadata says onboarding_required, set the client lock
+    try {
+      const meta = session?.user?.user_metadata || session?.user?.raw_user_meta_data || {};
+      if (String(meta.onboarding_required).toLowerCase() === 'true' || String(meta.onboarding_required) === '1') {
+        sessionStorage.setItem('forceOnboarding', '1');
+      }
+      if (meta.welcome_completed_at) {
+        sessionStorage.removeItem('forceOnboarding');
+      }
+    } catch(_) {}
   });
 }
 
@@ -78,24 +135,19 @@ export function attachLogout(supabase){
   if (!btn) return;
   let loggingOut = false;
   const manualCleanupRedirect = () => {
-  try { clearAuthData(true); } catch(_) {}
-  try { sessionStorage.clear(); } catch(_) {}
-  try { document.cookie.split(';').forEach(c => document.cookie = c.replace(/^ +/, '').replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`)); } catch(_) {}
-  try { window.location.replace('Home.html?_=' + Date.now()); } catch(_) { window.location.href = 'Home.html'; }
+    try { clearAuthData(true); } catch(_) {}
+    try { sessionStorage.clear(); } catch(_) {}
+    try { document.cookie.split(';').forEach(c => document.cookie = c.replace(/^ +/, '').replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`)); } catch(_) {}
+    try { window.location.replace('home.html?_=' + Date.now()); } catch(_) { window.location.href = 'home.html'; }
   };
   btn.addEventListener('click', async (e) => {
     e?.preventDefault?.();
     e?.stopPropagation?.();
     if (loggingOut) return;
     loggingOut = true;
-    try {
-      await supabase.auth.signOut();
-    } catch(err){
-      console.error('Sign out failed:', err);
-    } finally {
-      // Fallback in case onAuthStateChange doesn't fire promptly
-      setTimeout(manualCleanupRedirect, 600);
-    }
+    try { await supabase.auth.signOut(); }
+    catch(err){ console.error('Sign out failed:', err); }
+    finally { setTimeout(manualCleanupRedirect, 600); }
   });
 }
 
@@ -103,29 +155,32 @@ export function attachLogout(supabase){
 export function renderStaffNavigation(activePage = 'home') {
   const navContainer = document.querySelector('.nav.seg-nav');
   if (!navContainer) return;
-  
+  // Suppress rendering navigation during forced onboarding (on all pages)
+  try {
+    const locked = (sessionStorage.getItem('forceOnboarding') === '1');
+    if (locked) { navContainer.innerHTML = ''; return; }
+  } catch(_) {}
+
   const navItems = [
     { page: 'home', href: 'staff.html', label: 'Home' },
     { page: 'welcome', href: 'staff-welcome.html', label: 'Welcome' },
+  { page: 'meetings', href: 'staff-meetings.html', label: 'Meetings' },
     { page: 'scans', href: 'staff-scans.html', label: 'My Scans' },
     { page: 'training', href: 'staff-training.html', label: 'My Training' },
     { page: 'achievements', href: 'achievements.html', label: 'Achievements' },
     { page: 'quiz', href: 'staff-quiz.html', label: 'Quiz' },
     { page: 'holidays', href: 'staff-holidays.html', label: 'My Holidays' },
-    { page: 'admin', href: 'admin-dashboard.html', label: 'Admin Site', adminOnly: true }
+  // Per navigation rules: Admin Site button must link to admin check page and keep the user logged in
+  { page: 'admin', href: 'admin-check.html?from=staff', label: 'Admin Site', adminOnly: true }
   ];
-  
+
   navContainer.innerHTML = navItems.map(item => {
-    const activeClass = item.page === activePage ? ' class="active"' : '';
-    const adminClass = item.adminOnly ? ' class="admin-only" style="display:none;"' : '';
-    const className = item.page === activePage && item.adminOnly ? ' class="admin-only active" style="display:none;"' : 
-                     item.page === activePage ? ' class="active"' : 
-                     item.adminOnly ? ' class="admin-only" style="display:none;"' : '';
-    
+    const className = item.page === activePage && item.adminOnly ? ' class="admin-only active" style="display:none;"' :
+                      item.page === activePage ? ' class="active"' :
+                      item.adminOnly ? ' class="admin-only" style="display:none;"' : '';
     return `<a href="${item.href}" data-page="${item.page}"${className}>${item.label}</a>`;
   }).join('');
 }
-
 
 export function navActivate(page){
   renderStaffNavigation(page);

@@ -21,10 +21,10 @@ serve(async (req) => {
       return json({ success: false, error: 'Unauthorized' }, 401)
     }
 
-    // Initialize Supabase client with service role key for server-side operations
+    // Initialize Supabase client with secret key for server-side operations
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      Deno.env.get('SECRET_KEY') ?? '',
       { auth: { persistSession: false } }
     )
 

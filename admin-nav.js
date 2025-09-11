@@ -9,8 +9,8 @@ document.addEventListener('DOMContentLoaded', () => {
       // Don't apply to non-anchor elements or elements without href
       if (link.tagName !== 'A' || !link.getAttribute('href')) return;
       
-      // Don't apply to links that don't point to index.html
-      if (!link.getAttribute('href').includes('index.html')) return;
+      // Don't apply to links that don't point to admin-check.html
+      if (!link.getAttribute('href').includes('admin-check.html')) return;
       
       // Don't interfere with other click handlers
       if (e.defaultPrevented) return;

@@ -34,7 +34,7 @@ supabase link --project-ref unveoqnlqnobufhublyw
 ### 4. Set the OpenAI API Key as a Secret
 
 ```bash
-supabase secrets set OPENAI_API_KEY=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
+supabase secrets set OPENAI_API_KEY=****************************************
 ```
 
 ### 5. Deploy the Enhanced Edge Function
