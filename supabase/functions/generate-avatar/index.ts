@@ -5,16 +5,19 @@ import OpenAI from "npm:openai@^4.57.0"
 // Configure CORS to only allow specific origins
 const getAllowedOrigin = (req: Request): string => {
   const origin = req.headers.get('origin') || ''
+  
+  // Allow any localhost or 127.0.0.1 port for development
+  if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+    return origin
+  }
+  
+  // Allow specific production origins
   const allowedOrigins = [
-    'http://127.0.0.1:58156',
-    'http://127.0.0.1:5500',
-    'http://localhost:5173',
-    'http://localhost:5500',
     'https://magicmanben.github.io'
   ]
   
-  // Return the origin if it's allowed, otherwise return the first allowed origin
-  return allowedOrigins.includes(origin) ? origin : allowedOrigins[0]
+  // Return the origin if it's allowed, otherwise return wildcard for development
+  return allowedOrigins.includes(origin) ? origin : '*'
 }
 
 const getCorsHeaders = (req: Request) => ({

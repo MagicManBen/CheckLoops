@@ -1,125 +1,89 @@
-// Test generate-avatar function directly
+// Test the generate-avatar edge function with proper auth
 async function testGenerateAvatar() {
-  console.log('🎨 Testing generate-avatar function...\n');
+  console.log('🎨 Testing generate-avatar edge function...\n');
   
   try {
-    // Prepare test data similar to what staff-welcome.html sends
-    const testPayload = {
-      description: "A friendly healthcare professional with short brown hair and glasses",
+    // Test payload similar to what staff-welcome.html sends
+    const payload = {
+      description: "A friendly doctor with glasses and short brown hair",
+      seedHint: "TestUser",
       options: {
-        "opt-eyes": ["variant01", "variant02", "variant03", "variant04", "variant05"],
-        "opt-mouth": ["variant01", "variant02", "variant03", "variant04", "variant05"],
-        "opt-hairColor": ["auburn", "black", "blonde", "brown", "gray", "red"],
-        "opt-skinColor": ["light", "medium", "dark"],
-        "opt-backgroundColor": ["b6e3f4", "c7d2fe", "ddd6fe", "f3e8ff", "fecaca"]
-      },
-      seedHint: "TestUser"
+        'opt-backgroundType': ['solid', 'gradientLinear'],
+        'opt-backgroundColor': ['ffffff', 'f0f0f0', 'e0e0e0'],
+        'opt-eyes': ['variant01', 'variant02', 'variant03'],
+        'opt-mouth': ['variant01', 'variant02', 'variant03'],
+        'opt-eyebrows': ['variant01', 'variant02', 'variant03'],
+        'opt-glasses': ['variant01', 'variant02', 'variant03'],
+        'opt-glassesProbability': [0, 50, 100],
+        'opt-hair': ['short01', 'short02', 'short03'],
+        'opt-hairColor': ['000000', '9e5622', '6b4226'],
+        'opt-skinColor': ['f2d3b1', 'ecad80', 'd78774']
+      }
     };
 
-    console.log('📡 Calling generate-avatar function...');
-    console.log('📦 Payload:', JSON.stringify(testPayload, null, 2));
+    console.log('📡 Calling local Supabase function: generate-avatar');
+    console.log('📦 Test description:', payload.description);
 
-    // Test without auth first to see the specific error
+    // Call the local Supabase function with proper auth
     const response = await fetch('http://127.0.0.1:54321/functions/v1/generate-avatar', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        // Note: No Authorization header to test the error
+        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0',
+        'Origin': 'http://127.0.0.1:50983' // Simulate the origin
       },
-      body: JSON.stringify(testPayload)
+      body: JSON.stringify(payload)
     });
 
-    console.log(`📊 Response status: ${response.status}`);
-    const result = await response.text();
+    console.log(`\n📊 Response status: ${response.status}`);
     
-    console.log('📋 Raw response:', result);
-    
-    try {
-      const jsonResult = JSON.parse(result);
-      console.log('📋 Parsed response:', jsonResult);
+    const result = await response.json();
+    console.log('📋 Response:', JSON.stringify(result, null, 2));
+
+    if (response.ok && !result.error) {
+      console.log('\n✅ SUCCESS: Avatar generation is working!');
+      console.log('Generated parameters:');
+      console.log('- Seed:', result.seed);
+      console.log('- Hair:', result.hair);
+      console.log('- Glasses:', result.glasses);
+      console.log('- Glasses Probability:', result.glassesProbability);
+      return true;
+    } else {
+      console.log('\n❌ FAILED: Avatar generation failed');
       
-      if (response.ok && jsonResult.seed) {
-        console.log('\n✅ SUCCESS: Avatar generation working');
-        console.log('🎯 Generated avatar parameters:', Object.keys(jsonResult));
-      } else {
-        console.log('\n❌ FAILED: Avatar generation failed');
-        if (jsonResult.error) {
-          console.log('🔍 Error:', jsonResult.error);
-          
-          if (jsonResult.error.includes('authorization')) {
-            console.log('💡 This is expected - function requires authentication');
-          } else if (jsonResult.error.includes('CheckLoopsAI')) {
-            console.log('🔧 CheckLoopsAI configuration issue detected');
-          }
+      if (result.error) {
+        if (result.error.includes('CheckLoopsAI')) {
+          console.log('🔐 Issue: CheckLoopsAI secret problem');
+        } else if (result.error.includes('authorization')) {
+          console.log('🔑 Issue: Authorization problem');
+        } else {
+          console.log('🤔 Error:', result.error);
         }
       }
-    } catch (parseError) {
-      console.log('📋 Non-JSON response:', result);
-      
-      if (result.includes('CheckLoopsAI key not configured')) {
-        console.log('❌ CheckLoopsAI secret not accessible');
-      } else if (result.includes('authorization')) {
-        console.log('🔒 Authentication required (expected)');
-      } else {
-        console.log('🤔 Unexpected response format');
-      }
+      return false;
     }
-
-    return { status: response.status, body: result };
 
   } catch (error) {
-    console.error('💥 Network error:', error.message);
+    console.error('💥 Network/connection error:', error.message);
     
-    if (error.message.includes('ECONNREFUSED')) {
-      console.log('\n💡 Make sure Supabase is running: supabase start');
+    if (error.message.includes('ECONNREFUSED') || error.message.includes('fetch')) {
+      console.log('\n💡 Tip: Make sure Supabase is running locally:');
+      console.log('   supabase start');
     }
-    
-    return null;
+    return false;
   }
 }
 
-// Test with mock auth header
-async function testGenerateAvatarWithAuth() {
-  console.log('\n🔐 Testing with auth header...\n');
-  
-  try {
-    const testPayload = {
-      description: "A professional doctor with a warm smile",
-      options: {
-        "opt-eyes": ["variant01", "variant02", "variant03"],
-        "opt-mouth": ["variant01", "variant02", "variant03"],
-        "opt-hairColor": ["brown", "black", "blonde"],
-        "opt-skinColor": ["light", "medium", "dark"]
-      },
-      seedHint: "Doctor"
-    };
-
-    const response = await fetch('http://127.0.0.1:54321/functions/v1/generate-avatar', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer mock-token-for-testing'
-      },
-      body: JSON.stringify(testPayload)
-    });
-
-    console.log(`📊 Response status: ${response.status}`);
-    const result = await response.text();
-    console.log('📋 Response:', result.substring(0, 200) + '...');
-    
-  } catch (error) {
-    console.error('💥 Auth test error:', error.message);
+// Run the test
+console.log('🚀 Starting avatar generation test...\n');
+testGenerateAvatar().then(success => {
+  if (success) {
+    console.log('\n🎉 Avatar generation is properly configured and working!');
+    console.log('\n✨ The AI avatar generation should now work on staff-welcome.html');
+  } else {
+    console.log('\n📝 Next steps to fix:');
+    console.log('   1. Check if CheckLoopsAI secret is set: supabase secrets list');
+    console.log('   2. Verify the function is deployed: supabase functions list');
+    console.log('   3. Check function logs: supabase functions logs generate-avatar');
   }
-}
-
-// Run tests
-console.log('🚀 Starting generate-avatar function tests...\n');
-testGenerateAvatar()
-  .then(() => testGenerateAvatarWithAuth())
-  .then(() => {
-    console.log('\n🏁 Tests completed!');
-    console.log('\n🔧 If issues found:');
-    console.log('   1. Check function logs: supabase start (look for logs in terminal)');
-    console.log('   2. Verify CheckLoopsAI secret: supabase secrets list');
-    console.log('   3. Test in browser with actual auth token');
-  });
+});
