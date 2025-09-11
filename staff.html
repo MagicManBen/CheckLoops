@@ -320,10 +320,6 @@
             <div class="i c-orange"><img data-i8="puzzle" data-i8-size="48" alt="Quiz"/></div>
             <div class="t">Quiz</div>
           </a>
-          <a class="bubble" href="staff-holidays.html">
-            <div class="i c-green"><img data-i8="beach" data-i8-size="48" alt="Holidays"/></div>
-            <div class="t">Holidays</div>
-          </a>
         </div>
       </div>
       <div class="progress-wrap" style="margin-top:10px; padding:0 8px;">
@@ -389,6 +385,20 @@
     const supabase = await initSupabase();
     handleAuthState(supabase);
     navActivate('home');
+
+    // Quick client-side reveal: use locally stored session metadata to
+    // show the Admin button immediately for admin/owner users while
+    // the authoritative profileRow is loaded. This avoids a visible
+    // 1-2s delay waiting for the DB-backed requireStaffSession call.
+    try {
+      supabase.auth.getSession().then(({ data }) => {
+        const user = data?.session?.user || {};
+        const earlyRole = user?.raw_user_meta_data?.role || user?.user_metadata?.role;
+        if (earlyRole) {
+          try { revealAdminNav(earlyRole); } catch(_) {}
+        }
+      }).catch(_=>{});
+    } catch(_){}
 
     let isLoggingOut = false;
     function cleanupAndRedirect() {
@@ -534,20 +544,50 @@
         if (lbl) lbl.textContent = `${ringPct}% Training`;
       } catch(_){}
 
-      // Get kiosk_user_id for achievements
+      // Get kiosk_user_id for achievements (table has no user_id column; map via site + full_name)
       let kioskUserId = null;
       try {
-        const { data: ku } = await supabase.from('kiosk_users').select('id').eq('user_id', user.id).maybeSingle();
-        if (ku) kioskUserId = ku.id;
-      } catch(e) { console.error('Failed to get kiosk_user_id', e); }
+        if (siteId && (profileRow?.full_name || displayName)) {
+          const nameCandidate = (profileRow?.full_name || displayName || '').trim();
+          // Exact match first
+          const { data: kuExact, error: kuErr } = await supabase
+            .from('kiosk_users')
+            .select('id, full_name, site_id')
+            .eq('site_id', siteId)
+            .eq('full_name', nameCandidate)
+            .maybeSingle();
+          if (!kuErr && kuExact) kioskUserId = kuExact.id;
+          // Case-insensitive fallback
+          if (!kioskUserId) {
+            const { data: kuList } = await supabase
+              .from('kiosk_users')
+              .select('id, full_name')
+              .eq('site_id', siteId);
+            if (kuList && kuList.length) {
+              const lowered = nameCandidate.toLowerCase();
+              const fuzzy = kuList.find(r => (r.full_name || '').trim().toLowerCase() === lowered);
+              if (fuzzy) kioskUserId = fuzzy.id;
+            }
+          }
+        }
+      } catch(e) { console.error('Failed to resolve kiosk_user_id', e); }
 
       // Achievements: compute heuristics and upsert to DB if unlocked
       try{
         const achEls = document.querySelectorAll('.ach');
         // index mapping: 0=first_login, 1=on_time_submission, 2=seven_day_streak, 3=training_complete, 4=quiz_complete, 5=quiz_perfect
 
-        // First Login: if profile has created_at
-        const firstLogin = Boolean(profileRow?.created_at);
+        // First Login: use auth user created_at (profileRow doesn't include created_at in current select)
+        // Supabase auth user object has created_at; consider unlocked if exists and account age < 30 days OR any login occurs.
+        let firstLogin = false;
+        try {
+          const createdAt = user?.created_at ? new Date(user.created_at) : null;
+          if (createdAt) {
+            const ageDays = (Date.now() - createdAt.getTime()) / 86400000;
+            // If user has an auth record (always true here) treat as first_login achievement unlock once.
+            firstLogin = true;
+          }
+        } catch(_) { firstLogin = true; }
         if (achEls[0]) achEls[0].classList.toggle('locked', !firstLogin);
         if (kioskUserId && firstLogin) {
           try { await upsertAchievement(supabase, kioskUserId, 'first_login', 'unlocked'); } catch(e) { console.error('Upsert first_login failed', e); }

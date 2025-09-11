@@ -178,7 +178,6 @@ export function renderStaffNavigation(activePage = 'home') {
     { page: 'training', href: 'staff-training.html', label: 'My Training' },
     { page: 'achievements', href: 'achievements.html', label: 'Achievements' },
     { page: 'quiz', href: 'staff-quiz.html', label: 'Quiz' },
-    { page: 'holidays', href: 'staff-holidays.html', label: 'My Holidays' },
     // Per navigation rules: Admin Site button must link to admin check page and keep the user logged in
     { page: 'admin', href: 'admin-check.html?from=staff', label: 'Admin Site', adminOnly: true }
   ];

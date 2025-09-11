@@ -164,6 +164,16 @@
     navActivate('achievements');
     attachLogout(supabase);
 
+    // Early reveal admin nav using local session metadata (fast UI path)
+    try {
+      const { revealAdminNav } = await import('./staff-common.js');
+      const { data: { session: _session } = {} } = await supabase.auth.getSession();
+      const earlyRole = _session?.user?.raw_user_meta_data?.role || _session?.user?.user_metadata?.role;
+      if (earlyRole) revealAdminNav(earlyRole);
+    } catch (err) {
+      console.warn('Early admin reveal skipped:', err);
+    }
+
     // Utils
     const iconMap = { star:'⭐', clock:'⏰', calendar:'📅', certificate:'🎓', trophy:'🏆' };
     const esc = (s)=> (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;');
@@ -199,7 +209,7 @@
       console.error(e);
     });
     if (!sessionCtx) throw new Error('No session context');
-    const { session, profileRow } = sessionCtx;
+  const { session, profileRow } = sessionCtx;
     const user = session.user;
     const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
     setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: profileRow?.role || user?.raw_user_meta_data?.role });
@@ -218,12 +228,33 @@
 
       loading.style.display='block'; listEl.style.display='none'; empty.style.display='none';
 
-      // resolve kiosk_user_id for user_achievements link
+      // Resolve kiosk_user_id (table has no user_id column; map via profile or metadata full_name + site_id)
       let kioskUserId = null;
-      try{
-        const { data: ku } = await supabase.from('kiosk_users').select('id').eq('user_id', user.id).maybeSingle();
-        if (ku) kioskUserId = ku.id;
-      }catch(e){ console.error('kiosk lookup failed', e); }
+      try {
+        const profileName = profileRow?.full_name || user?.raw_user_meta_data?.full_name || (user?.email?.split('@')[0]) || null;
+        const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
+        if (siteId && profileName) {
+          const nameCandidate = profileName.trim();
+            const { data: kuExact } = await supabase
+              .from('kiosk_users')
+              .select('id, full_name')
+              .eq('site_id', siteId)
+              .eq('full_name', nameCandidate)
+              .maybeSingle();
+            if (kuExact) kioskUserId = kuExact.id;
+            if (!kioskUserId) {
+              const { data: kuList } = await supabase
+                .from('kiosk_users')
+                .select('id, full_name')
+                .eq('site_id', siteId);
+              if (kuList && kuList.length) {
+                const lowered = nameCandidate.toLowerCase();
+                const fuzzy = kuList.find(r => (r.full_name || '').trim().toLowerCase() === lowered);
+                if (fuzzy) kioskUserId = fuzzy.id;
+              }
+            }
+        }
+      } catch(e) { console.error('kiosk lookup failed', e); }
 
       try{
         // Try a view/RPC if present, else fallback to simple queries
@@ -270,7 +301,8 @@
         kpiStreak.textContent = streak;
 
         // Render
-        listEl.innerHTML = rows.map(r => {
+  const isAdmin = ['admin','owner'].includes(String(profileRow?.role || user?.raw_user_meta_data?.role || '').toLowerCase());
+  listEl.innerHTML = rows.map(r => {
           const status = r.user?.status || r.status || 'locked';
           const pct = r.user?.progress_percent ?? r.progress_percent ?? (status==='unlocked'?100:0);
           const unlockedAt = r.user?.unlocked_at || r.unlocked_at || null;
@@ -289,12 +321,12 @@
             </div>
             <div class="ach-actions">
               <div class="pr" style="--p:${Math.max(0, Math.min(100, Math.round(pct)))}%"><div class="pr-inner"><span>${Math.round(pct)}%</span></div></div>
-              <button class="btn small primary unlock-btn" data-key="${esc(r.key)}" ${status==='unlocked'? 'disabled': ''}>${status==='unlocked' ? 'Unlocked' : 'Unlock'}</button>
+              ${isAdmin ? `<button class=\"btn small primary unlock-btn\" data-key=\"${esc(r.key)}\" ${status==='unlocked'? 'disabled': ''}>${status==='unlocked' ? 'Unlocked' : 'Unlock'}</button>` : ''}
             </div>
           </div>`;
         }).join('');
 
-        // Unlock handler
+        // Unlock handler (admin only)
         listEl.querySelectorAll('.unlock-btn').forEach(btn => {
           btn.addEventListener('click', async (ev) => {
             const key = btn.getAttribute('data-key');

@@ -563,6 +563,16 @@
       } catch(_) { forceMode = (sessionStorage.getItem('forceOnboarding') === '1'); }
       if (!forceMode) { navActivate('welcome'); attachLogout(supabase); }
 
+      // Early reveal admin nav using local session metadata (fast UI path)
+      try {
+        const { revealAdminNav } = await import('./staff-common.js');
+        const { data: { session: _session } = {} } = await supabase.auth.getSession();
+        const earlyRole = _session?.user?.raw_user_meta_data?.role || _session?.user?.user_metadata?.role;
+        if (earlyRole) revealAdminNav(earlyRole);
+      } catch (err) {
+        console.warn('Early admin reveal skipped:', err);
+      }
+
       try{
         const { session, profileRow } = await requireStaffSession(supabase);
         const user = session.user;
