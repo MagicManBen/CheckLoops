@@ -151,35 +151,100 @@ export function attachLogout(supabase){
   });
 }
 
-// Create and render consistent staff navigation
+// Create and render consistent staff navigation using the working pattern
 export function renderStaffNavigation(activePage = 'home') {
   const navContainer = document.querySelector('.nav.seg-nav');
   if (!navContainer) return;
+  
+  // Prevent multiple simultaneous renders
+  if (navContainer.dataset.rendering === 'true') return;
+  navContainer.dataset.rendering = 'true';
+  
   // Suppress rendering navigation during forced onboarding (on all pages)
   try {
     const locked = (sessionStorage.getItem('forceOnboarding') === '1');
-    if (locked) { navContainer.innerHTML = ''; return; }
+    if (locked) { 
+      navContainer.innerHTML = ''; 
+      navContainer.dataset.rendering = 'false';
+      return; 
+    }
   } catch(_) {}
 
   const navItems = [
     { page: 'home', href: 'staff.html', label: 'Home' },
     { page: 'welcome', href: 'staff-welcome.html', label: 'Welcome' },
-  { page: 'meetings', href: 'staff-meetings.html', label: 'Meetings' },
+    { page: 'meetings', href: 'staff-meetings.html', label: 'Meetings' },
     { page: 'scans', href: 'staff-scans.html', label: 'My Scans' },
     { page: 'training', href: 'staff-training.html', label: 'My Training' },
     { page: 'achievements', href: 'achievements.html', label: 'Achievements' },
     { page: 'quiz', href: 'staff-quiz.html', label: 'Quiz' },
     { page: 'holidays', href: 'staff-holidays.html', label: 'My Holidays' },
-  // Per navigation rules: Admin Site button must link to admin check page and keep the user logged in
-  { page: 'admin', href: 'admin-check.html?from=staff', label: 'Admin Site', adminOnly: true }
+    // Per navigation rules: Admin Site button must link to admin check page and keep the user logged in
+    { page: 'admin', href: 'admin-check.html?from=staff', label: 'Admin Site', adminOnly: true }
   ];
 
-  navContainer.innerHTML = navItems.map(item => {
-    const className = item.page === activePage && item.adminOnly ? ' class="admin-only active" style="display:none;"' :
-                      item.page === activePage ? ' class="active"' :
-                      item.adminOnly ? ' class="admin-only" style="display:none;"' : '';
-    return `<a href="${item.href}" data-page="${item.page}"${className}>${item.label}</a>`;
-  }).join('');
+  // Clear existing content and event listeners
+  navContainer.innerHTML = '';
+  
+  // Create navigation elements using working pattern (buttons with data-section)
+  navItems.forEach(item => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.section = item.page; // Use data-section like working version
+    button.dataset.href = item.href; // Store href for navigation
+    button.textContent = item.label;
+    
+    // Set classes and visibility
+    if (item.page === activePage && item.adminOnly) {
+      button.className = 'admin-only active';
+      button.style.display = 'none';
+    } else if (item.page === activePage) {
+      button.className = 'active';
+    } else if (item.adminOnly) {
+      button.className = 'admin-only';
+      button.style.display = 'none';
+    }
+    
+    navContainer.appendChild(button);
+  });
+  
+  // Add single click handler using event delegation (like working version)
+  if (!navContainer.dataset.hasClickHandler) {
+    navContainer.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-section]');
+      if (!btn) return;
+      
+      e.preventDefault();
+      e.stopPropagation();
+      
+      // Prevent double clicks
+      if (btn.dataset.clicking === 'true') return;
+      btn.dataset.clicking = 'true';
+      
+      const section = btn.getAttribute('data-section');
+      const href = btn.getAttribute('data-href');
+      
+      console.log('Staff navigation clicked:', section, href);
+      
+      // Update active states
+      navContainer.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      
+      // Navigate to page
+      if (href) {
+        window.location.href = href;
+      }
+      
+      // Reset click flag
+      setTimeout(() => {
+        btn.dataset.clicking = 'false';
+      }, 1000);
+    });
+    
+    navContainer.dataset.hasClickHandler = 'true';
+  }
+  
+  navContainer.dataset.rendering = 'false';
 }
 
 export function navActivate(page){

@@ -4,138 +4,113 @@ async function testQuizDirect() {
   const browser = await chromium.launch({ headless: false });
   const page = await browser.newPage();
   
+  // Listen to console logs
+  page.on('console', msg => {
+    const text = msg.text();
+    if (text.includes('📅') || text.includes('🎯') || text.includes('💾')) {
+      console.log('Browser:', text);
+    }
+  });
+  
   try {
-    // Go directly to staff-quiz.html
-    console.log('1. Navigating directly to staff-quiz.html...');
-    await page.goto('http://127.0.0.1:58156/staff-quiz.html');
+    console.log('🧪 Step 1: Navigate directly to staff-quiz.html as logged in user');
+    
+    // First login via home page
+    await page.goto('http://127.0.0.1:5500/home.html');
+    await page.locator('#email').fill('benhowardmagic@hotmail.com');
+    await page.locator('#password').fill('Hello1!');
+    await page.click('button:has-text("Sign In")');
     await page.waitForTimeout(3000);
     
-    // Take screenshot to see what's on the page
-    await page.screenshot({ path: 'test_quiz_direct_1.png' });
-    console.log('   Screenshot saved: test_quiz_direct_1.png');
+    // Now navigate directly to quiz page
+    console.log('🧪 Step 2: Navigate directly to quiz page');
+    await page.goto('http://127.0.0.1:5500/staff-quiz.html');
+    await page.waitForTimeout(2000);
     
-    // Check if we need to login
-    const emailField = await page.locator('#email');
-    if (await emailField.isVisible()) {
-      console.log('2. Login required. Logging in...');
-      await emailField.fill('benhowardmagic@hotmail.com');
-      await page.locator('#password').fill('Hello1!');
-      await page.click('button:has-text("Sign In")');
+    console.log('🧪 Step 3: Check Required Quiz button state');
+    const btnRequired = page.locator('#btn-required');
+    let isDisabled = await btnRequired.isDisabled();
+    let buttonText = await btnRequired.textContent();
+    console.log('🧪 Button disabled:', isDisabled);
+    console.log('🧪 Button text:', buttonText.trim());
+    
+    if (!isDisabled) {
+      console.log('🧪 Step 4: Click Required Quiz button');
+      await btnRequired.click();
+      
+      // Don't wait for navigation, just wait a bit
       await page.waitForTimeout(3000);
       
-      // Navigate back to quiz page after login
-      await page.goto('http://127.0.0.1:58156/staff-quiz.html');
-      await page.waitForTimeout(3000);
-    }
-    
-    // Take screenshot of quiz page
-    await page.screenshot({ path: 'test_quiz_direct_2.png' });
-    console.log('   Screenshot saved: test_quiz_direct_2.png');
-    
-    // Check what elements are visible
-    console.log('3. Checking page elements...');
-    
-    // Check for countdown
-    const countdownWrap = await page.locator('#countdown-wrap');
-    if (await countdownWrap.count() > 0) {
-      const isVisible = await countdownWrap.isVisible();
-      console.log('   - Countdown wrap exists and visible:', isVisible);
-      if (isVisible) {
-        const countdownText = await page.locator('#countdown').textContent();
-        console.log('   - Countdown text:', countdownText);
-      }
-    } else {
-      console.log('   - No countdown wrap found');
-    }
-    
-    // Check for practice button
-    const practiceBtn = await page.locator('#start-practice');
-    if (await practiceBtn.count() > 0) {
-      const isVisible = await practiceBtn.isVisible();
-      console.log('   - Practice button exists and visible:', isVisible);
-    } else {
-      console.log('   - No practice button found');
-    }
-    
-    // Check for required button
-    const requiredBtn = await page.locator('#start-required');
-    if (await requiredBtn.count() > 0) {
-      const isVisible = await requiredBtn.isVisible();
-      console.log('   - Required button exists and visible:', isVisible);
-    } else {
-      console.log('   - No required button found');
-    }
-    
-    // Check for quiz container
-    const quizContainer = await page.locator('#quiz-container');
-    if (await quizContainer.count() > 0) {
-      console.log('   - Quiz container exists');
-      const questions = await page.locator('.quiz-question').all();
-      console.log(`   - Questions in container: ${questions.length}`);
-    } else {
-      console.log('   - No quiz container found');
-    }
-    
-    // Check for any error messages
-    const errorMessages = await page.locator('.error, .alert').all();
-    if (errorMessages.length > 0) {
-      console.log('   - Error messages found:', errorMessages.length);
-      for (const msg of errorMessages) {
-        const text = await msg.textContent();
-        console.log('     -', text);
-      }
-    }
-    
-    // Try to start a practice quiz if button is visible
-    if (await practiceBtn.count() > 0 && await practiceBtn.isVisible()) {
-      console.log('4. Starting practice quiz...');
-      await practiceBtn.click();
-      await page.waitForTimeout(3000);
+      // Check what's visible now
+      const quizHome = await page.locator('#quiz-home').isVisible();
+      const quizActive = await page.locator('#quiz-active').isVisible();
+      const quizResults = await page.locator('#quiz-results').isVisible();
       
-      await page.screenshot({ path: 'test_quiz_practice.png' });
-      console.log('   Screenshot saved: test_quiz_practice.png');
+      console.log('🧪 Visibility - Home:', quizHome, 'Active:', quizActive, 'Results:', quizResults);
       
-      // Check if questions loaded
-      const questions = await page.locator('.quiz-question').all();
-      console.log(`   - Questions loaded: ${questions.length}`);
-      
-      if (questions.length > 0) {
-        // Answer first few questions
-        for (let i = 0; i < Math.min(3, questions.length); i++) {
-          const firstOption = await page.locator(`input[name="q_${i}"]`).first();
-          if (await firstOption.isVisible()) {
-            await firstOption.click();
-            console.log(`   - Answered question ${i + 1}`);
+      if (quizActive) {
+        console.log('🧪 ✅ Quiz panel is now active!');
+        
+        // Answer questions
+        console.log('🧪 Step 5: Answering questions');
+        for (let i = 0; i < 10; i++) {
+          try {
+            await page.locator(`input[name="q_${i}"][value="0"]`).click();
+          } catch (e) {
+            // Some questions might not exist
           }
         }
         
-        // Check progress
-        const progress = await page.locator('#prog');
-        if (await progress.count() > 0) {
-          const width = await progress.evaluate(el => el.style.width);
-          console.log('   - Progress bar:', width);
-        }
+        // Submit
+        console.log('🧪 Step 6: Submit quiz');
+        const submitBtn = page.locator('#btn-submit');
+        // Wait for button to be enabled (all questions answered)
+        await page.waitForTimeout(1000);
+        await submitBtn.click();
         
-        await page.screenshot({ path: 'test_quiz_progress.png' });
-        console.log('   Screenshot saved: test_quiz_progress.png');
+        // Wait for results
+        await page.waitForTimeout(3000);
+        
+        // Go back to home
+        console.log('🧪 Step 7: Back to quiz home');
+        await page.click('#btn-home');
+        await page.waitForTimeout(2000);
+        
+        // Check button state again
+        console.log('🧪 Step 8: Check if button is disabled now');
+        isDisabled = await btnRequired.isDisabled();
+        buttonText = await btnRequired.textContent();
+        console.log('🧪 After quiz - Button disabled:', isDisabled);
+        console.log('🧪 After quiz - Button text:', buttonText.trim());
+        
+        if (!isDisabled) {
+          console.log('🧪 ❌ BUG: Button still enabled!');
+          
+          // Try clicking again
+          await btnRequired.click();
+          await page.waitForTimeout(2000);
+          
+          // Check for alert or quiz start
+          const quizActiveAgain = await page.locator('#quiz-active').isVisible();
+          console.log('🧪 Quiz started again?', quizActiveAgain);
+        } else {
+          console.log('🧪 ✅ SUCCESS: Button is disabled!');
+        }
+      } else {
+        console.log('🧪 ❌ Quiz panel did not become active');
+        await page.screenshot({ path: 'quiz_not_active.png' });
       }
+    } else {
+      console.log('🧪 Button was already disabled');
     }
     
-    console.log('\n✅ Test completed!');
-    
   } catch (error) {
-    console.error('❌ Test failed:', error);
+    console.error('🧪 Test error:', error);
     await page.screenshot({ path: 'test_error.png' });
-    console.log('   Error screenshot saved: test_error.png');
-    
-    // Try to get console logs
-    page.on('console', msg => console.log('Browser console:', msg.text()));
-    
   } finally {
-    // Keep browser open for inspection
-    console.log('\nKeeping browser open for 10 seconds for inspection...');
-    await page.waitForTimeout(10000);
+    await page.waitForTimeout(5000);
     await browser.close();
+    console.log('🧪 Test complete');
   }
 }
 
