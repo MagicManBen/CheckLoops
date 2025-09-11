@@ -356,24 +356,95 @@ export class MeetingsManager {
         .getPublicUrl(fileName);
 
       // Update meeting notes with recording URL
-      const notes = await this.getMeetingNotes(meetingId) || {};
-      notes.recording_url = publicUrl;
-      await this.saveMeetingNotes(meetingId, notes.content || '');
+      const notes = await this.getMeetingNotes(meetingId);
+      const { data: updatedNotes, error: updateError } = await this.supabase
+        .from('meeting_notes')
+        .update({ recording_url: publicUrl })
+        .eq('meeting_id', meetingId)
+        .select()
+        .single();
+
+      if (updateError && !notes) {
+        // Create new notes entry with recording URL
+        await this.supabase
+          .from('meeting_notes')
+          .insert([{
+            meeting_id: meetingId,
+            recording_url: publicUrl,
+            created_by: this.currentUser.id
+          }]);
+      }
 
       return publicUrl;
     } catch (error) {
       console.error('Error uploading recording:', error);
-      // Fallback to local storage indication
-      return 'local://' + file.name;
+      throw error;
     }
   }
 
-  // AI TRANSCRIPTION (mock for now, can integrate with real AI service)
-  async transcribeRecording(file) {
-    // Simulate AI processing
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const transcript = `Meeting Transcript - ${new Date().toLocaleDateString()}
+  // AI TRANSCRIPTION using Edge Function
+  async transcribeRecording(file, meetingId) {
+    try {
+      // First upload the file
+      const recordingUrl = await this.uploadMeetingRecording(meetingId, file);
+      
+      // Convert file to base64 for Edge function
+      const reader = new FileReader();
+      const fileBase64 = await new Promise((resolve, reject) => {
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      // Call Edge function for transcription
+      const { data, error } = await this.supabase.functions.invoke('transcribe-meeting', {
+        body: {
+          audio_base64: fileBase64,
+          filename: file.name,
+          meeting_id: meetingId,
+          file_type: file.type
+        }
+      });
+
+      if (error) {
+        console.error('Transcription error:', error);
+        // Fallback to mock transcription
+        return this.mockTranscription(file);
+      }
+
+      // Save transcript to database
+      if (data && data.transcript) {
+        const notes = await this.getMeetingNotes(meetingId);
+        if (notes) {
+          await this.supabase
+            .from('meeting_notes')
+            .update({ 
+              transcript: data.transcript,
+              recording_url: recordingUrl
+            })
+            .eq('meeting_id', meetingId);
+        } else {
+          await this.supabase
+            .from('meeting_notes')
+            .insert([{
+              meeting_id: meetingId,
+              transcript: data.transcript,
+              recording_url: recordingUrl,
+              created_by: this.currentUser.id
+            }]);
+        }
+      }
+
+      return data?.transcript || this.mockTranscription(file);
+    } catch (error) {
+      console.error('Error in transcription process:', error);
+      return this.mockTranscription(file);
+    }
+  }
+
+  // Fallback mock transcription
+  mockTranscription(file) {
+    return `Meeting Transcript - ${new Date().toLocaleDateString()}
 
 Attendees Present:
 - ${this.userName}
@@ -388,11 +459,9 @@ Discussion Points:
    - Follow-up required
    - Next steps identified
 
-Meeting Duration: ${Math.floor(file.size / 1000000)} minutes (estimated)`;
-        
-        resolve(transcript);
-      }, 2000);
-    });
+Meeting Duration: ${Math.floor(file.size / 1000000)} minutes (estimated)
+
+[Note: This is a placeholder transcript. Real transcription requires Edge function setup]`;
   }
 
   // CALENDAR INTEGRATION
@@ -400,8 +469,8 @@ Meeting Duration: ${Math.floor(file.size / 1000000)} minutes (estimated)`;
     return meetings.map(meeting => ({
       id: meeting.id,
       title: meeting.title,
-      start: meeting.start,
-      end: meeting.end,
+      start: meeting.start_time,
+      end: meeting.end_time,
       extendedProps: {
         description: meeting.description,
         location: meeting.location,
@@ -414,41 +483,67 @@ Meeting Duration: ${Math.floor(file.size / 1000000)} minutes (estimated)`;
 
   // SEARCH AND FILTER
   async searchMeetings(query) {
-    const meetings = JSON.parse(localStorage.getItem('checkloop_meetings'));
-    const searchLower = query.toLowerCase();
-    
-    return meetings.filter(m => 
-      m.site_id === this.currentSite && (
-        m.title.toLowerCase().includes(searchLower) ||
-        m.description?.toLowerCase().includes(searchLower) ||
-        m.location?.toLowerCase().includes(searchLower)
-      )
-    );
+    const { data, error } = await this.supabase
+      .from('meetings')
+      .select('*')
+      .eq('site_id', this.currentSite)
+      .or(`title.ilike.%${query}%,description.ilike.%${query}%,location.ilike.%${query}%`)
+      .order('start_time', { ascending: false });
+
+    if (error) {
+      console.error('Error searching meetings:', error);
+      return [];
+    }
+
+    return data || [];
   }
 
   async getPastMeetings(limit = 10) {
-    const meetings = JSON.parse(localStorage.getItem('checkloop_meetings'));
-    const now = new Date();
+    const now = new Date().toISOString();
     
-    return meetings
-      .filter(m => m.site_id === this.currentSite && new Date(m.start) < now)
-      .sort((a, b) => new Date(b.start) - new Date(a.start))
-      .slice(0, limit);
+    const { data, error } = await this.supabase
+      .from('meetings')
+      .select('*')
+      .eq('site_id', this.currentSite)
+      .lt('start_time', now)
+      .order('start_time', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      console.error('Error fetching past meetings:', error);
+      return [];
+    }
+
+    return data || [];
   }
 
   async getUpcomingMeetings(limit = 10) {
-    const meetings = JSON.parse(localStorage.getItem('checkloop_meetings'));
-    const now = new Date();
+    const now = new Date().toISOString();
     
-    return meetings
-      .filter(m => m.site_id === this.currentSite && new Date(m.start) >= now)
-      .sort((a, b) => new Date(a.start) - new Date(b.start))
-      .slice(0, limit);
+    const { data, error } = await this.supabase
+      .from('meetings')
+      .select('*')
+      .eq('site_id', this.currentSite)
+      .gte('start_time', now)
+      .order('start_time', { ascending: true })
+      .limit(limit);
+
+    if (error) {
+      console.error('Error fetching upcoming meetings:', error);
+      return [];
+    }
+
+    return data || [];
   }
 
   // EXPORT FUNCTIONS
   async exportMeetingToPDF(meetingId) {
-    const meeting = (await this.getMeetings()).find(m => m.id === meetingId);
+    const { data: meeting } = await this.supabase
+      .from('meetings')
+      .select('*')
+      .eq('id', meetingId)
+      .single();
+
     if (!meeting) return null;
 
     const attendees = await this.getMeetingAttendees(meetingId);
@@ -458,30 +553,161 @@ Meeting Duration: ${Math.floor(file.size / 1000000)} minutes (estimated)`;
     // Format content for PDF
     const content = {
       title: meeting.title,
-      date: new Date(meeting.start).toLocaleString(),
+      date: new Date(meeting.start_time).toLocaleString(),
       location: meeting.location,
-      attendees: attendees.map(a => `${a.name} (${a.status})`),
-      agenda: agendaItems.map(a => `• ${a.title}: ${a.description}`),
+      attendees: attendees.map(a => `${a.name || a.email} (${a.status})`),
+      agenda: agendaItems.map(a => `• ${a.title}: ${a.description || 'No description'}`),
       notes: notes?.content || 'No notes recorded'
     };
 
     return content;
   }
 
+  // AI-ENHANCED PDF GENERATION
+  async generateEnhancedPDF(meetingId, notes) {
+    try {
+      // Get meeting details
+      const { data: meeting } = await this.supabase
+        .from('meetings')
+        .select('*')
+        .eq('id', meetingId)
+        .single();
+
+      if (!meeting) throw new Error('Meeting not found');
+
+      // Get attendees and agenda
+      const attendees = await this.getMeetingAttendees(meetingId);
+      const agendaItems = await this.getAgendaItems(meetingId);
+
+      // Call Edge function to enhance notes with AI
+      const { data, error } = await this.supabase.functions.invoke('enhance-meeting-notes', {
+        body: {
+          meeting_title: meeting.title,
+          meeting_date: meeting.start_time,
+          raw_notes: notes,
+          agenda_items: agendaItems.map(a => ({ title: a.title, description: a.description })),
+          attendees: attendees.map(a => a.name || a.email)
+        }
+      });
+
+      if (error) {
+        console.error('AI enhancement error:', error);
+        // Fallback to basic formatting
+        return this.basicFormatNotes(notes, meeting, attendees, agendaItems);
+      }
+
+      return data?.enhanced_notes || this.basicFormatNotes(notes, meeting, attendees, agendaItems);
+    } catch (error) {
+      console.error('Error generating enhanced PDF:', error);
+      return notes; // Return original notes as fallback
+    }
+  }
+
+  // Basic formatting fallback
+  basicFormatNotes(notes, meeting, attendees, agendaItems) {
+    let formatted = `Meeting Title: ${meeting.title}\n`;
+    formatted += `Date: ${new Date(meeting.start_time).toLocaleString()}\n`;
+    formatted += `Location: ${meeting.location || 'Not specified'}\n\n`;
+    
+    formatted += 'Attendees:\n';
+    attendees.forEach(a => {
+      formatted += `• ${a.name || a.email} (${a.status})\n`;
+    });
+    
+    formatted += '\nAgenda Items:\n';
+    agendaItems.forEach(a => {
+      formatted += `• ${a.title}: ${a.description || 'No description'}\n`;
+    });
+    
+    formatted += '\nMeeting Notes:\n';
+    formatted += notes;
+    
+    return formatted;
+  }
+
   // STATISTICS
   async getMeetingStats() {
-    const meetings = await this.getMeetings();
     const now = new Date();
-    
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
+
+    // Get all meetings for site
+    const { data: allMeetings } = await this.supabase
+      .from('meetings')
+      .select('id, start_time')
+      .eq('site_id', this.currentSite);
+
+    const meetings = allMeetings || [];
+    const nowISO = now.toISOString();
+
     return {
       total: meetings.length,
-      upcoming: meetings.filter(m => new Date(m.start) >= now).length,
-      past: meetings.filter(m => new Date(m.start) < now).length,
-      thisMonth: meetings.filter(m => {
-        const mDate = new Date(m.start);
-        return mDate.getMonth() === now.getMonth() && mDate.getFullYear() === now.getFullYear();
-      }).length
+      upcoming: meetings.filter(m => m.start_time >= nowISO).length,
+      past: meetings.filter(m => m.start_time < nowISO).length,
+      thisMonth: meetings.filter(m => 
+        m.start_time >= currentMonthStart && m.start_time <= currentMonthEnd
+      ).length
     };
+  }
+
+  // ACTION ITEMS
+  async createActionItem(actionData) {
+    const item = {
+      meeting_id: actionData.meeting_id,
+      description: actionData.description,
+      assigned_to: actionData.assigned_to,
+      assigned_to_name: actionData.assigned_to_name,
+      due_date: actionData.due_date,
+      status: 'pending'
+    };
+
+    const { data, error } = await this.supabase
+      .from('meeting_action_items')
+      .insert([item])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating action item:', error);
+      throw error;
+    }
+
+    return data;
+  }
+
+  async getActionItems(meetingId) {
+    const { data, error } = await this.supabase
+      .from('meeting_action_items')
+      .select('*')
+      .eq('meeting_id', meetingId)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching action items:', error);
+      return [];
+    }
+
+    return data || [];
+  }
+
+  async updateActionItem(itemId, updates) {
+    if (updates.status === 'completed') {
+      updates.completed_at = new Date().toISOString();
+    }
+
+    const { data, error } = await this.supabase
+      .from('meeting_action_items')
+      .update(updates)
+      .eq('id', itemId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating action item:', error);
+      throw error;
+    }
+
+    return data;
   }
 }
 
