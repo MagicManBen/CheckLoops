@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
   <script src="config.js"></script>
+  <script src="user-utils.js"></script>
   <link rel="stylesheet" href="staff.css">
   <style>
     /* Gamified welcome vibe */
@@ -34,7 +35,7 @@
     .avatar-grid-item:hover{ transform: translateY(-2px); box-shadow: 0 8px 18px rgba(2,6,23,.10); }
 
     .progress{ height:10px; border-radius:999px; background:#eef2ff; overflow:hidden; border:1px solid var(--border-color); }
-    .progress > .bar{ height:100%; width:25%; background:linear-gradient(90deg,#60a5fa,#a78bfa); }
+    .progress > .bar{ height:100%; width:25%; background:linear-gradient(90deg,#60a5fa,#a78bfa); transition: width 0.3s ease; }
 
     /* Confetti bits */
     .confetti{ position:fixed; inset:0; pointer-events:none; overflow:hidden; }
@@ -257,35 +258,7 @@
       <div class="confetti" id="confetti"></div>
     </section>
 
-    <!-- Auto-hide any panels/controls that contain the literal text 'Change' on the avatar page -->
-    <script>
-      document.addEventListener('DOMContentLoaded', function(){
-        // Scope to the avatar builder area when present
-        const scope = document.getElementById('welcome-step3') || document.getElementById('welcome-step1') || document;
-        if (!scope) return;
-        try {
-          // Search common clickable/label elements only inside the scope
-          const candidates = Array.from(scope.querySelectorAll('button, a, span, div, label'));
-          const changeEls = candidates.filter(el => {
-            const txt = (el.textContent || '').trim();
-            if (!txt) return false;
-            // quick check for the word change, case-insensitive
-            if (!/\bchange\b/i.test(txt)) return false;
-            // ensure element is visible (handles display:none, detached nodes, etc.)
-            const visible = (el.offsetWidth || el.offsetHeight || el.getClientRects().length);
-            return !!visible;
-          });
-          changeEls.forEach(el => {
-            // prefer to hide a sensible container so UI spacing collapses nicely
-            const panel = el.closest('.avatar-control-group') || el.closest('.panel') || el.closest('section') || el.parentElement;
-            if (panel) panel.style.display = 'none';
-            else el.style.display = 'none';
-          });
-        } catch(e) {
-          console.warn('hide-change-panels error', e);
-        }
-      });
-    </script>
+    <!-- Auto-hide scripts for 'Change'/'Chance' controls were removed per user request -->
 
     <!-- Step 2 (details) -->
     <section id="welcome-step2" class="panel g-12" style="display:none; margin:0;">
@@ -538,10 +511,41 @@
       <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:20px;">
         <button class="btn btn-secondary" id="back-to-step2" style="padding:12px 24px; border-radius:12px; background:linear-gradient(135deg, #f1f5f9, #e2e8f0); color:#475569; border:none; font-weight:600;">← Back</button>
         <div style="display:flex; align-items:center; gap:12px;">
-          <button class="btn" id="finish-avatar-btn" style="background:linear-gradient(135deg, #3b82f6, #1d4ed8); color:white; padding:12px 24px; border-radius:12px; font-weight:700; border:none; box-shadow:0 4px 12px rgba(59,130,246,0.3);">🎉 Finish Setup</button>
+          <button class="btn" id="to-working-pattern-btn" style="background:linear-gradient(135deg, #3b82f6, #1d4ed8); color:white; padding:12px 24px; border-radius:12px; font-weight:700; border:none; box-shadow:0 4px 12px rgba(59,130,246,0.3);">Continue — Set Working Hours</button>
         </div>
       </div>
       <div id="finish-avatar-msg" class="meta-note" style="text-align:center; margin-top:10px;"></div>
+    </section>
+
+    <!-- Step 4 (working pattern) -->
+    <section id="welcome-step4" class="panel g-12" style="display:none; margin:0;">
+      <div class="panel-header" style="gap:10px; align-items:center;">
+        <div class="illus-circle" style="width:64px;height:64px;"><img data-i8="clock" data-i8-size="56" alt="Working Hours"></div>
+        <div class="panel-title">Set your working pattern</div>
+      </div>
+
+      <div class="panel" style="padding:20px; max-width:600px; margin:0 auto;">
+        <div id="working-pattern-intro" style="text-align:center; margin-bottom:20px;">
+          <p style="color:#64748b; margin-bottom:8px;">Help us understand when you work so we can calculate your holidays correctly.</p>
+          <div id="role-specific-note" style="font-weight:600; color:#3b82f6;"></div>
+        </div>
+
+        <div id="working-pattern-form" style="background:#f8fafc; border-radius:12px; padding:20px; border:1px solid rgba(15,23,42,0.06);">
+          <div id="pattern-fields-container">
+            <!-- Dynamic fields will be inserted here based on role -->
+          </div>
+        </div>
+
+        <div id="working-pattern-msg" class="meta-note" style="text-align:center; margin-top:12px;"></div>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:20px;">
+        <button class="btn btn-secondary" id="back-to-step3" style="padding:12px 24px; border-radius:12px; background:linear-gradient(135deg, #f1f5f9, #e2e8f0); color:#475569; border:none; font-weight:600;">← Back</button>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <button class="btn" id="finish-setup-btn" style="background:linear-gradient(135deg, #22c55e, #16a34a); color:white; padding:12px 24px; border-radius:12px; font-weight:700; border:none; box-shadow:0 4px 12px rgba(34,197,94,0.3);">🎉 Complete Setup</button>
+        </div>
+      </div>
+      <div id="finish-setup-msg" class="meta-note" style="text-align:center; margin-top:10px;"></div>
     </section>
   </main>
 
@@ -550,6 +554,8 @@
     
     // Make supabase globally available for AI generation
     let globalSupabase;
+    let globalUser;
+    let globalSiteId;
     
     (async function(){
       const supabase = await initSupabase();
@@ -576,7 +582,14 @@
       try{
         const { session, profileRow } = await requireStaffSession(supabase);
         const user = session.user;
-        const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
+        // Get complete user profile
+        const userProfile = await getUserProfile(supabase, user);
+        const siteId = userProfile.site_id || profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
+        
+        // Store globally for access by saveWorkingPattern function
+        globalUser = user;
+        globalSiteId = siteId;
+        globalUserProfile = userProfile;
         const role = profileRow?.role || user?.raw_user_meta_data?.role || 'Staff';
         const roleDetail = role.charAt(0).toUpperCase() + role.slice(1);  // Capitalize first letter
         // Re-check server state to force onboarding if incomplete, even if the flag wasn't set
@@ -1456,6 +1469,7 @@
           if (back && !back.dataset.bound){ back.addEventListener('click', ()=>{
             document.getElementById('welcome-step3').style.display = 'none';
             document.getElementById('welcome-step2').style.display = '';
+            updateProgressBar(2);
           }); back.dataset.bound='1'; }
 
           // AI Generate button
@@ -1511,9 +1525,9 @@
             }
           }); aiBtn.dataset.bound='1'; }
 
-          // Finish button
-          const finish = document.getElementById('finish-avatar-btn');
-          if (finish && !finish.dataset.bound){ finish.addEventListener('click', async ()=>{
+          // Continue to working pattern button (renamed from finish button)
+          const toWorkingPattern = document.getElementById('to-working-pattern-btn');
+          if (toWorkingPattern && !toWorkingPattern.dataset.bound){ toWorkingPattern.addEventListener('click', async ()=>{
             const fm = document.getElementById('finish-avatar-msg');
             fm.textContent = '';
 
@@ -1599,18 +1613,257 @@
                 console.warn('Failed to update profile onboarding status:', e);
               }
 
-              if (fm) fm.textContent = 'All set! Redirecting…';
-                // Clear force flag now that onboarding is complete
-                try { sessionStorage.removeItem('forceOnboarding'); } catch(_) {}
-                setTimeout(()=> window.location.href = 'staff.html', 600);
+              if (fm) fm.textContent = 'Moving to working hours setup…';
+              // Go to step 4 (working pattern)
+              setTimeout(() => {
+                document.getElementById('welcome-step3').style.display = 'none';
+                document.getElementById('welcome-step4').style.display = '';
+                updateProgressBar(4);
+                setupWorkingPatternForm();
+              }, 300);
             }catch(err){
               console.error('finish setup error', err);
               if (fm) fm.textContent = 'Could not save your details. Please try again.';
             }
-          }); finish.dataset.bound='1'; }
+          }); toWorkingPattern.dataset.bound='1'; }
 
           // Initial render
           updateAvatarPreview();
+        }
+
+        // Step 4 - Working Pattern Setup
+        function setupWorkingPatternForm() {
+          const container = document.getElementById('pattern-fields-container');
+          const roleNote = document.getElementById('role-specific-note');
+          const selectedRole = window.selectedRole || '';
+          const isGP = selectedRole.toLowerCase().includes('gp');
+          
+          // Update the role-specific note
+          roleNote.textContent = isGP 
+            ? 'As a GP, set the number of sessions you work each day (1 or 2 sessions).'
+            : 'Set your working hours for each day (in HH:MM format, e.g., 08:00 for 8 hours).';
+          
+          const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+          const dayLabels = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+          
+          let fieldsHTML = '<div style="display:grid; gap:12px;">';
+          
+          days.forEach((day, index) => {
+            fieldsHTML += `
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 12px; background:white; border-radius:8px; border:1px solid rgba(15,23,42,0.06);">
+                <label style="font-weight:500; color:#374151; min-width:80px;">${dayLabels[index]}</label>
+                <div style="display:flex; align-items:center; gap:8px;">
+            `;
+            
+            if (isGP) {
+              // For GPs: dropdown with 0, 1, 2 sessions
+              const defaultGPSessions = (index >= 0 && index <= 4) ? '2' : '0'; // Monday-Friday default to 2 sessions
+              fieldsHTML += `
+                <select id="${day}-sessions" style="padding:6px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+                  <option value="0" ${defaultGPSessions === '0' ? 'selected' : ''}>0 sessions</option>
+                  <option value="1" ${defaultGPSessions === '1' ? 'selected' : ''}>1 session</option>
+                  <option value="2" ${defaultGPSessions === '2' ? 'selected' : ''}>2 sessions</option>
+                </select>
+              `;
+            } else {
+              // For staff: time input for hours with default 7.5 hours (07:30) Monday-Friday
+              const defaultStaffHours = (index >= 0 && index <= 4) ? '07:30' : ''; // Monday-Friday default to 7.5 hours
+              fieldsHTML += `
+                <input type="time" id="${day}-hours" value="${defaultStaffHours}" style="padding:6px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;" step="1800" max="12:00">
+                <span style="color:#6b7280; font-size:14px;">hours</span>
+              `;
+            }
+            
+            fieldsHTML += `
+                </div>
+              </div>
+            `;
+          });
+          
+          fieldsHTML += '</div>';
+          container.innerHTML = fieldsHTML;
+          
+          // Attach Complete Setup button event listener here since step 4 is now visible
+          setTimeout(() => {
+            const finishSetup = document.getElementById('finish-setup-btn');
+            if (finishSetup && !finishSetup.dataset.bound) {
+              finishSetup.addEventListener('click', async () => {
+                const msg = document.getElementById('finish-setup-msg');
+                msg.textContent = '';
+                
+                try {
+                  console.log('Complete Setup button clicked!');
+                  msg.textContent = 'Saving working pattern...';
+                  
+                  // Save working pattern to database
+                  const success = await saveWorkingPattern();
+                  if (!success) {
+                    msg.textContent = 'Could not save working pattern. Please try again.';
+                    return;
+                  }
+                  
+                  msg.textContent = 'Completing setup…';
+                  
+                  // Mark onboarding as complete (same logic as before but moved here)
+                  try {
+                    const completedAt = new Date().toISOString();
+                    await globalSupabase
+                      .from('profiles')
+                      .update({ onboarding_completed_at: completedAt })
+                      .eq('user_id', globalUser.id);
+                  } catch (e) {
+                    console.warn('Failed to update profile onboarding status:', e);
+                  }
+                  
+                  msg.textContent = 'All set! Redirecting…';
+                  // Clear force flag now that onboarding is complete
+                  try { sessionStorage.removeItem('forceOnboarding'); } catch(_) {}
+                  setTimeout(() => window.location.href = 'staff.html', 600);
+                  
+                } catch (error) {
+                  console.error('Error completing setup:', error);
+                  msg.textContent = 'Could not complete setup. Please try again.';
+                }
+              });
+              finishSetup.dataset.bound = '1';
+            }
+          }, 100);
+        }
+        
+        function updateProgressBar(step) {
+          const progressBar = document.querySelector('.progress > .bar');
+          if (progressBar) {
+            const percentage = (step / 4) * 100;
+            progressBar.style.width = `${percentage}%`;
+          }
+        }
+
+        // Step 4 Navigation Handlers
+        document.addEventListener('DOMContentLoaded', () => {
+          // Back to step 3
+          const backToStep3 = document.getElementById('back-to-step3');
+          if (backToStep3) {
+            backToStep3.addEventListener('click', () => {
+              document.getElementById('welcome-step4').style.display = 'none';
+              document.getElementById('welcome-step3').style.display = '';
+              updateProgressBar(3);
+            });
+          }
+
+          // Finish setup button  
+          const finishSetup = document.getElementById('finish-setup-btn');
+          if (finishSetup) {
+            finishSetup.addEventListener('click', async () => {
+              const msg = document.getElementById('finish-setup-msg');
+              msg.textContent = '';
+              
+              try {
+                // Save working pattern to database
+                const success = await saveWorkingPattern();
+                if (!success) {
+                  msg.textContent = 'Could not save working pattern. Please try again.';
+                  return;
+                }
+                
+                msg.textContent = 'Completing setup…';
+                
+                // Mark onboarding as complete (same logic as before but moved here)
+                try {
+                  const completedAt = new Date().toISOString();
+                  const { data: { session: freshSession } } = await supabase.auth.getSession();
+                  const current = freshSession?.user?.user_metadata || freshSession?.user?.raw_user_meta_data || {};
+                  const newMeta = { ...current, welcome_completed_at: completedAt, onboarding_required: false };
+                  const upd = await supabase.auth.updateUser({ data: newMeta });
+                  if (upd.error) console.warn('Could not stamp completion metadata:', upd.error);
+                } catch (metaErr) { console.warn('metadata completion update failed', metaErr); }
+
+                // Also update the profiles table to mark onboarding as complete
+                try {
+                  const { error: profileUpdateError } = await supabase
+                    .from('profiles')
+                    .update({ onboarding_complete: true })
+                    .eq('user_id', user.id);
+                  
+                  if (profileUpdateError) {
+                    console.warn('Could not update onboarding_complete in profiles:', profileUpdateError);
+                  }
+                } catch (e) {
+                  console.warn('Failed to update profile onboarding status:', e);
+                }
+                
+                msg.textContent = 'All set! Redirecting…';
+                // Clear force flag now that onboarding is complete
+                try { sessionStorage.removeItem('forceOnboarding'); } catch(_) {}
+                setTimeout(() => window.location.href = 'staff.html', 600);
+                
+              } catch (error) {
+                console.error('Error completing setup:', error);
+                msg.textContent = 'Could not complete setup. Please try again.';
+              }
+            });
+          }
+        });
+
+        async function saveWorkingPattern() {
+          const selectedRole = window.selectedRole || '';
+          const isGP = selectedRole.toLowerCase().includes('gp');
+          const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+          
+          const patternData = {
+            user_id: globalUser.id,
+            site_id: globalSiteId
+          };
+          
+          // Collect the working pattern data
+          let totalHours = 0;
+          let totalSessions = 0;
+          
+          days.forEach(day => {
+            if (isGP) {
+              const sessions = parseInt(document.getElementById(`${day}-sessions`)?.value || '0');
+              patternData[`${day}_sessions`] = sessions;
+              patternData[`${day}_hours`] = 0;
+              totalSessions += sessions;
+            } else {
+              const timeValue = document.getElementById(`${day}-hours`)?.value || '00:00';
+              const [hours, minutes] = timeValue.split(':').map(Number);
+              const decimalHours = hours + (minutes / 60);
+              patternData[`${day}_hours`] = decimalHours;
+              patternData[`${day}_sessions`] = 0;
+              totalHours += decimalHours;
+            }
+          });
+          
+          // Set default holiday entitlement based on role
+          if (isGP) {
+            patternData.total_holiday_entitlement = 20; // 20 sessions for GPs
+          } else {
+            patternData.total_holiday_entitlement = 25; // 25 days for staff
+          }
+          
+          patternData.approved_holidays_used = 0;
+          
+          try {
+            // Insert or update working pattern
+            const { error } = await globalSupabase
+              .from('3_staff_working_patterns')
+              .upsert(patternData, { 
+                onConflict: 'user_id',
+                ignoreDuplicates: false 
+              });
+            
+            if (error) {
+              console.error('Error saving working pattern:', error);
+              return false;
+            }
+            
+            console.log('Working pattern saved successfully');
+            return true;
+            
+          } catch (error) {
+            console.error('Exception saving working pattern:', error);
+            return false;
+          }
         }
 
         function burstConfetti(){
@@ -1655,6 +1908,7 @@
                 // Move to step 2
                 document.getElementById('welcome-step1').style.display = 'none';
                 document.getElementById('welcome-step2').style.display = '';
+                updateProgressBar(2);
                 await loadDetailsData(siteId, fullName);
                 return;
               }
@@ -1855,6 +2109,7 @@
 
               document.getElementById('welcome-step2').style.display = 'none';
               document.getElementById('welcome-step3').style.display = '';
+              updateProgressBar(3);
               await initAvatarBuilder(fullName);
 
               // Wire up group toggles (allow collapse/expand)

@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
   <script src="config.js"></script>
+  <script src="user-utils.js"></script>
   <link rel="stylesheet" href="staff.css">
   <style>
     :root{
@@ -81,6 +82,9 @@
     .btn.primary{ background:linear-gradient(135deg,var(--brand),var(--brand-2)); color:#fff; border:0; }
     .btn.primary:disabled{ filter:grayscale(.3); opacity:.7; }
 
+  /* Staff avatar (small) */
+  .staff-avatar{ width:64px; height:64px; border-radius:50%; background:#fff; background-size:cover; background-position:center; box-shadow:0 4px 10px rgba(2,6,23,.10); border:1px solid var(--border-color); display:none; }
+
     /* Skeletons */
     .skeleton-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; }
     .skeleton-card{ height:116px; border-radius:14px; background:linear-gradient(100deg, rgba(2,6,23,.08), rgba(2,6,23,.04) 40%, rgba(2,6,23,.08) 80%); background-size:200% 100%; animation:shimmer 1.2s infinite; }
@@ -110,12 +114,13 @@
       <div class="pill" id="site-pill">Site: —</div>
       <div class="pill" id="email-pill">—</div>
       <div class="pill" id="role-pill">—</div>
-      <button class="btn" id="logout-btn">Sign Out</button>
+  
+  <button class="btn" id="logout-btn">Sign Out</button>
     </div>
 
     <section class="panel g-12" style="margin:0;">
       <div class="panel-header" style="gap:10px; align-items:center;">
-        <div class="illus-circle"><img src="Icons/icons8-trophy-100.png" alt="Trophy"></div>
+        <div class="illus-circle"><img id="ach-header-avatar" src="Icons/icons8-trophy-100.png" alt="Avatar" style="width:100%; height:100%; object-fit:cover; border-radius:50%; display:block;"/></div>
         <div class="panel-title" style="font-size:20px;">My Achievements</div>
       </div>
 
@@ -215,6 +220,56 @@
     setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: profileRow?.role || user?.raw_user_meta_data?.role });
     revealAdminNav(profileRow?.role || user?.raw_user_meta_data?.role);
 
+    // Resolve avatar and render into any staff-avatar element (match staff.html behavior)
+    (async function(){
+      try{
+        let avatarUrl = user?.raw_user_meta_data?.avatar_url || null;
+        try {
+          if (siteId) {
+            const { data: saw } = await supabase
+              .from('staff_app_welcome')
+              .select('avatar_url, updated_at')
+              .eq('user_id', user.id)
+              .eq('site_id', siteId)
+              .order('updated_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (saw?.avatar_url) avatarUrl = saw.avatar_url;
+          }
+        } catch(_) {}
+        if (!avatarUrl) {
+          try {
+            const { data: p } = await supabase.from('profiles').select('avatar_url').eq('user_id', user.id).maybeSingle();
+            if (p?.avatar_url) avatarUrl = p.avatar_url;
+          } catch(_) {}
+        }
+  console.debug('[achievements] resolved avatarUrl ->', avatarUrl);
+        // Helper: create an initials SVG data URL fallback
+        function initialsDataUrl(name){
+          const n = (name || '').toString().trim();
+          const parts = n.split(/\s+/).filter(Boolean);
+          let initials = parts.length ? (parts[0][0] || '') : '';
+          if (parts.length > 1) initials += (parts[parts.length-1][0] || '');
+          initials = (initials || (user?.email||'')[0] || '?').toString().toUpperCase().slice(0,2);
+          const bg = '#6b7280'; const fg = '#ffffff';
+          const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='256' height='256'><rect width='100%' height='100%' fill='${bg}' rx='128' ry='128'/><text x='50%' y='50%' font-size='110' font-family='Inter, Arial, sans-serif' fill='${fg}' dominant-baseline='middle' text-anchor='middle'>${initials}</text></svg>`;
+          return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+        }
+
+        // Assign avatar to header image, prefer remote URL, otherwise show initials. If remote fails, fall back to initials.
+        try {
+          const headerImg = document.getElementById('ach-header-avatar');
+          if (headerImg) {
+            headerImg.onerror = function(e){
+              console.warn('[achievements] header avatar failed, falling back to initials', e, avatarUrl);
+              try { headerImg.src = initialsDataUrl(profileRow?.full_name || user?.raw_user_meta_data?.full_name || user?.email); } catch(_){ }
+            };
+            if (avatarUrl) headerImg.src = avatarUrl; else headerImg.src = initialsDataUrl(profileRow?.full_name || user?.raw_user_meta_data?.full_name || user?.email);
+          }
+        } catch(err){ console.error('Avatar assignment error', err); }
+      }catch(_){/* ignore avatar errors */}
+    })();
+
     // Load & render
     (async function loadAchievements(){
       const loading = $('#ach-loading');
@@ -228,33 +283,10 @@
 
       loading.style.display='block'; listEl.style.display='none'; empty.style.display='none';
 
-      // Resolve kiosk_user_id (table has no user_id column; map via profile or metadata full_name + site_id)
-      let kioskUserId = null;
-      try {
-        const profileName = profileRow?.full_name || user?.raw_user_meta_data?.full_name || (user?.email?.split('@')[0]) || null;
-        const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
-        if (siteId && profileName) {
-          const nameCandidate = profileName.trim();
-            const { data: kuExact } = await supabase
-              .from('kiosk_users')
-              .select('id, full_name')
-              .eq('site_id', siteId)
-              .eq('full_name', nameCandidate)
-              .maybeSingle();
-            if (kuExact) kioskUserId = kuExact.id;
-            if (!kioskUserId) {
-              const { data: kuList } = await supabase
-                .from('kiosk_users')
-                .select('id, full_name')
-                .eq('site_id', siteId);
-              if (kuList && kuList.length) {
-                const lowered = nameCandidate.toLowerCase();
-                const fuzzy = kuList.find(r => (r.full_name || '').trim().toLowerCase() === lowered);
-                if (fuzzy) kioskUserId = fuzzy.id;
-              }
-            }
-        }
-      } catch(e) { console.error('kiosk lookup failed', e); }
+      // Get complete user profile with kiosk_user_id
+      const userProfile = await getUserProfile(supabase, user);
+      const kioskUserId = userProfile.kiosk_user_id;
+      const siteId = userProfile.site_id;
 
       try{
         // Try a view/RPC if present, else fallback to simple queries

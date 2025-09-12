@@ -544,33 +544,8 @@
         if (lbl) lbl.textContent = `${ringPct}% Training`;
       } catch(_){}
 
-      // Get kiosk_user_id for achievements (table has no user_id column; map via site + full_name)
-      let kioskUserId = null;
-      try {
-        if (siteId && (profileRow?.full_name || displayName)) {
-          const nameCandidate = (profileRow?.full_name || displayName || '').trim();
-          // Exact match first
-          const { data: kuExact, error: kuErr } = await supabase
-            .from('kiosk_users')
-            .select('id, full_name, site_id')
-            .eq('site_id', siteId)
-            .eq('full_name', nameCandidate)
-            .maybeSingle();
-          if (!kuErr && kuExact) kioskUserId = kuExact.id;
-          // Case-insensitive fallback
-          if (!kioskUserId) {
-            const { data: kuList } = await supabase
-              .from('kiosk_users')
-              .select('id, full_name')
-              .eq('site_id', siteId);
-            if (kuList && kuList.length) {
-              const lowered = nameCandidate.toLowerCase();
-              const fuzzy = kuList.find(r => (r.full_name || '').trim().toLowerCase() === lowered);
-              if (fuzzy) kioskUserId = fuzzy.id;
-            }
-          }
-        }
-      } catch(e) { console.error('Failed to resolve kiosk_user_id', e); }
+      // Get kiosk_user_id from user profile
+      const kioskUserId = userProfile.kiosk_user_id;
 
       // Achievements: compute heuristics and upsert to DB if unlocked
       try{

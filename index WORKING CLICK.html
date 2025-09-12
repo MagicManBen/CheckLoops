@@ -11,6 +11,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="config.js"></script>
+<script src="user-utils.js"></script>
 <script src="menu-debug.js" defer></script>
 <script>
   // Configure PDF.js worker
@@ -9129,7 +9130,7 @@ function applySchedulesFilters() {
     // Fetch any submission rows on that exact date, including item and check names when available
     const { data: rows, error: rowsErr } = await supabase
       .from('submission_rows')
-      .select('item_pk, check_type_id, items(id,item_name), check_types(id,name), submissions!inner(submitted_at, staff_name)')
+      .select('item_pk, check_type_id, items(id,item_name), check_types(id,name), submissions!inner(submitted_at, staff_name, user_id)')
       .gte('submissions.submitted_at', start.toISOString())
       .lte('submissions.submitted_at', end.toISOString())
       .eq('site_id', ctx.site_id);
@@ -9140,6 +9141,7 @@ function applySchedulesFilters() {
         const k = `${r.item_pk}-${r.check_type_id}`;
         completedMap[k] = {
           staff: r.submissions?.staff_name || '—',
+          user_id: r.submissions?.user_id || null,
           time: r.submissions?.submitted_at || null,
           item_name: r.items?.item_name || null,
           check_name: r.check_types?.name || null
@@ -9228,7 +9230,7 @@ function applySchedulesFilters() {
     // Completed row (if any) on that date
     const { data: rows } = await supabase
       .from('submission_rows')
-      .select('submissions!inner(staff_name,submitted_at), items(item_name), check_types(name)')
+      .select('submissions!inner(staff_name,submitted_at,user_id), items(item_name), check_types(name)')
       .eq('site_id', ctx.site_id)
       .eq('item_pk', itemId)
       .eq('check_type_id', ctId)
@@ -9247,6 +9249,8 @@ function applySchedulesFilters() {
     if(done){
       statusChip = '<span class="chip success">Done</span>';
       who  = esc(done.submissions?.staff_name || '—');
+      // Store user_id for future reference
+      const userId = done.submissions?.user_id;
       whenTime = done.submissions?.submitted_at ? new Date(done.submissions.submitted_at).toLocaleTimeString() : '—';
     }else if(isPast){
       statusChip = '<span class="chip danger">Missed</span>';
