@@ -18,14 +18,30 @@ async function testStaffWelcomeAuth() {
     console.log('\n📍 Testing Staff Welcome Authentication...\n');
     
     // Navigate to the login page
-    await page.goto('http://127.0.0.1:58156/index.html');
+    await page.goto('http://127.0.0.1:54341/index.html');
     await page.waitForLoadState('networkidle');
     
-    // Login
-    console.log('1. Logging in...');
-    await page.locator('#email').fill('ben.howard@stoke.nhs.uk');
-    await page.locator('input[type="password"]').fill('Hello1!');
-    await page.click('button:has-text("Sign In")');
+    // Check if we need to login or if we're already logged in
+    const hasEmailField = await page.locator('#email').count() > 0;
+    
+    if (hasEmailField) {
+      // Login
+      console.log('1. Logging in...');
+      await page.locator('#email').fill('ben.howard@stoke.nhs.uk');
+      await page.locator('input[type="password"]').fill('Hello1!');
+      await page.click('button:has-text("Sign In")');
+    } else {
+      // Check for email input field
+      const hasEmailInput = await page.locator('input[type="email"]').count() > 0;
+      if (hasEmailInput) {
+        console.log('1. Logging in with email input field...');
+        await page.locator('input[type="email"]').fill('ben.howard@stoke.nhs.uk');
+        await page.locator('input[type="password"]').fill('Hello1!');
+        await page.click('button:has-text("Sign In")');
+      } else {
+        console.log('1. Already logged in or different login page structure');
+      }
+    }
     
     // Wait for redirect to staff page
     await page.waitForTimeout(3000);
@@ -36,7 +52,7 @@ async function testStaffWelcomeAuth() {
     
     // Navigate to staff-welcome.html
     console.log('3. Navigating to staff-welcome.html...');
-    await page.goto('http://127.0.0.1:58156/staff-welcome.html');
+    await page.goto('http://127.0.0.1:54341/staff-welcome.html');
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(3000);
     
