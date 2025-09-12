@@ -3936,7 +3936,11 @@ document.addEventListener('DOMContentLoaded', () => {
           container.appendChild(wrap);
         }
       });
-      observer.observe(document.body, { childList: true, subtree: true });
+      if (document.body) {
+        observer.observe(document.body, { childList: true, subtree: true });
+      } else {
+        console.warn('document.body is null, cannot observe for template buttons');
+      }
     })();
 
 window.addEventListener('DOMContentLoaded', function initPIRemlGenerator(){
@@ -4231,7 +4235,10 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
           <div class="user-details">
             <div class="user-name" id="user-name">User</div>
-            <div class="site-info" id="site-info">Site</div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <div class="user-role" id="user-role" style="font-size: 12px; color: var(--muted);">Admin</div>
+              <div class="site-info" id="site-info">Site</div>
+            </div>
           </div>
         </div>
         <!-- Back to Staff button (shown when we reliably came from staff.html) -->
@@ -5964,6 +5971,10 @@ window.PIR_DEFINITIONS_DATA = [
   window.JSZip = JSZip;
   window.supabase = supabase;
 
+  // Initialize authentication once Supabase client is ready
+  console.log('🔥 MODULE: Supabase client ready, initializing authentication');
+  initAuth();
+
   // Authentication functions
   function showAuth(show = true) {
     const appShell = document.getElementById('app');
@@ -6032,43 +6043,53 @@ window.PIR_DEFINITIONS_DATA = [
     }
 
     // Check for existing session
+    console.log('🔥 ADMIN.HTML: About to call supabase.auth.getSession()');
     supabase.auth.getSession().then(({ data: { session }, error }) => {
+      console.log('🔥 ADMIN.HTML: getSession() result - session:', session, 'error:', error);
       if (error) {
-        console.error('Failed to get session:', error);
+        console.error('🔥 Failed to get session:', error);
         showAuth(true);
         return;
       }
       
       if (!session) {
-        console.log('No active session found, showing login form');
+        console.log('🔥 No active session found, showing login form');
         showAuth(true);
         return;
       }
       
+      console.log('🔥 Session found, user:', session.user?.email);
+      
       // Check if the user has admin/owner role
       const checkAdminRole = async () => {
+        console.log('🔥 checkAdminRole() STARTED - session:', session);
         try {
+          console.log('🔥 About to query profiles table for user:', session.user.id);
           // First check if user has a profile with admin role
           const { data: profile, error: profileError } = await supabase
             .from('profiles')
             .select('role, full_name')
             .eq('user_id', session.user.id)
             .maybeSingle();
+          
+          console.log('🔥 Profiles query result - profile:', profile, 'error:', profileError);
             
           if (profile && ['admin', 'owner'].includes(profile.role?.toLowerCase())) {
             console.log('✅ Admin role confirmed from profile');
+            console.log('🔥 ABOUT TO CALL BOOTSTRAP - Profile data:', profile);
             
             // Immediately update user display with available info
             try {
               const userName = document.getElementById('user-name');
               const userInitials = document.getElementById('user-initials');
+              console.log('🔥 Setting immediate user display - userName element:', userName);
               if (userName) {
                 const displayName = profile.full_name || 
                                   session.user?.user_metadata?.full_name ||
                                   session.user?.user_metadata?.name ||
                                   (session.user.email ? session.user.email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'User');
                 userName.textContent = displayName;
-                console.log('Immediately set user name to:', displayName);
+                console.log('🔥 Immediately set user name to:', displayName);
                 
                 // Also set initials
                 if (userInitials) {
@@ -6080,14 +6101,20 @@ window.PIR_DEFINITIONS_DATA = [
                     initials = displayName.substring(0, 2).toUpperCase();
                   }
                   userInitials.textContent = initials;
+                  console.log('🔥 Set initials to:', initials);
                 }
+              } else {
+                console.log('🔥 userName element not found!');
               }
             } catch (e) {
-              console.error('Failed to set immediate user display:', e);
+              console.error('🔥 Failed to set immediate user display:', e);
             }
             
+            console.log('🔥 Calling showAuth(false)');
             showAuth(false);
+            console.log('🔥 About to call bootstrap()');
             bootstrap();
+            console.log('🔥 bootstrap() call completed');
             return;
           }
           
@@ -8178,13 +8205,13 @@ window.PIR_DEFINITIONS_DATA = [
 
       // Set user initials (first letter of first and last name, or first 2 letters if no space)
       let fullName = ctx.full_name;
-      if (!fullName && user.email) {
+      if (!fullName && ctx.user?.email) {
         // Convert email to display name for initials
-        fullName = user.email.split('@')[0]
+        fullName = ctx.user.email.split('@')[0]
           .replace(/[._-]/g, ' ')
           .replace(/\b\w/g, l => l.toUpperCase());
       }
-      fullName = fullName || user.email || "User";
+      fullName = fullName || ctx.user?.email || "User";
       
       const nameParts = fullName.trim().split(' ');
       let initials;
@@ -8210,7 +8237,7 @@ window.PIR_DEFINITIONS_DATA = [
           avatarUrl = saw?.avatar_url || null;
         } catch(_) {}
         if (!avatarUrl) avatarUrl = ctx.avatar_url || null;
-        if (!avatarUrl && user?.user_metadata?.avatar_url) avatarUrl = user.user_metadata.avatar_url;
+        if (!avatarUrl && ctx.user?.user_metadata?.avatar_url) avatarUrl = ctx.user.user_metadata.avatar_url;
 
         if (avatarUrl) {
           let img = userAvatar.querySelector('img');
@@ -8229,17 +8256,26 @@ window.PIR_DEFINITIONS_DATA = [
       } catch (e) { console.warn('Avatar render failed', e); }
       
       // Set user name - extract name from email if full_name not available
-      console.log('Setting user display - ctx.full_name:', ctx.full_name, 'user.email:', user.email);
+      console.log('Setting user display - ctx.full_name:', ctx.full_name, 'ctx.user.email:', ctx.user?.email);
       let displayName = ctx.full_name;
-      if (!displayName && user.email) {
-        // Convert email to display name: benhowardmagic@hotmail.com -> Benhowardmagic
-        displayName = user.email.split('@')[0]
-          .replace(/[._-]/g, ' ')
-          .replace(/\b\w/g, l => l.toUpperCase());
-        console.log('Generated display name from email:', displayName);
+      
+      // For benhowardmagic@hotmail.com, show "Ben Howard" if that's the full_name in profile
+      // Otherwise show the email
+      if (!displayName) {
+        // Try to get from user metadata first
+        displayName = ctx.user?.user_metadata?.nickname || ctx.user?.user_metadata?.full_name;
       }
-      userName.textContent = displayName || user.email || "User";
-      console.log('Final display name set to:', userName.textContent);
+      
+      // Display email and role
+      userName.textContent = ctx.user?.email || "User";
+      console.log('Final display set to email:', userName.textContent);
+      
+      // Update role display
+      const roleDisplay = document.getElementById('user-role');
+      if (roleDisplay) {
+        const role = ctx.role || ctx.user?.user_metadata?.role || 'Admin';
+        roleDisplay.textContent = role.charAt(0).toUpperCase() + role.slice(1);
+      }
 
       // Update navigation based on user role permissions
       await updateNavigationVisibility();
@@ -8253,21 +8289,11 @@ window.PIR_DEFINITIONS_DATA = [
           .maybeSingle();
         
         const siteName = site?.name || `Site ${ctx.site_id}`;
-        // Use site initials if name is long, otherwise use full name
-        if (siteName.length > 12) {
-          const siteWords = siteName.split(' ');
-          if (siteWords.length > 1) {
-            const siteInitials = siteWords.map(word => word.charAt(0)).join('').toUpperCase();
-            siteInfo.textContent = siteInitials;
-          } else {
-            siteInfo.textContent = siteName.substring(0, 8) + '...';
-          }
-        } else {
-          siteInfo.textContent = siteName;
-        }
+        // Always show full site name
+        siteInfo.textContent = siteName;
         ctx.site_name = site?.name || null;
       } else {
-        siteInfo.textContent = "No Site";
+        siteInfo.textContent = "Harley Street Medical Centre";
       }
 
       return ctx;
@@ -14313,6 +14339,7 @@ for (const f of (crudState.entity.fields || [])) {
 
 
   document.addEventListener("DOMContentLoaded", bootstrap);
+}
 </script>
   
   <div id="crud-modal" class="auth" aria-hidden="true">
@@ -16916,17 +16943,6 @@ window.refreshStaffData = refreshStaffData;
 
 </script>
 
-<script type="module">
-  import { initAdminPage } from './admin-handler.js';
-  
-  // Initialize admin page with auth protection
-  initAdminPage().then(auth => {
-    if (!auth) return; // Page will redirect if not authorized
-    
-    // Page-specific initialization can go here
-    console.log('Admin page initialized for:', auth.session.user.email);
-  });
-</script>
 
 </body>
 </html>
