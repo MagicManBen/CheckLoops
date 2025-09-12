@@ -65,31 +65,8 @@ export async function requireStaffSession(supabase) {
     });
   } catch (_) {}
 
-  // Enforce onboarding with single source of truth (database first, then metadata)
-  try {
-    const locked = (sessionStorage.getItem('forceOnboarding') === '1');
-    const isWelcome = /staff-welcome\.html$/i.test(new URL(window.location.href).pathname);
-    
-    // Check onboarding status from database first, then metadata
-    const dbOnboardingComplete = profileRow?.onboarding_complete === true;
-    const metaOnboardingRequired = (String(meta.onboarding_required).toLowerCase() === 'true' || String(meta.onboarding_required) === '1');
-    const welcomeCompleted = !!meta.welcome_completed_at;
-
-    // Determine if onboarding is needed
-    const needsOnboarding = !dbOnboardingComplete && (locked || metaOnboardingRequired || !welcomeCompleted);
-
-    if (dbOnboardingComplete || welcomeCompleted) {
-      try { sessionStorage.removeItem('forceOnboarding'); } catch(_) {}
-    }
-
-    // Only redirect to onboarding if user is NOT already on the welcome page and truly needs forced onboarding
-    if (needsOnboarding && !isWelcome && locked) {
-      window.location.replace('staff-welcome.html?force=1');
-      throw new Error('REDIRECT_ONBOARDING');
-    }
-  } catch (e) {
-    if (e.message === 'REDIRECT_ONBOARDING') throw e;
-  }
+  // Removed forced onboarding redirect logic per updated navigation requirements
+  try { sessionStorage.removeItem('forceOnboarding'); } catch(_) {}
 
   // For staff-welcome page, allow users without roles to complete setup
   const isWelcomePage = /staff-welcome\.html$/i.test(window.location.pathname);
@@ -128,16 +105,7 @@ export function handleAuthState(supabase){
       return;
     }
 
-    // If user signs in and metadata says onboarding_required, set the client lock
-    try {
-      const meta = session?.user?.user_metadata || session?.user?.raw_user_meta_data || {};
-      if (String(meta.onboarding_required).toLowerCase() === 'true' || String(meta.onboarding_required) === '1') {
-        sessionStorage.setItem('forceOnboarding', '1');
-      }
-      if (meta.welcome_completed_at) {
-        sessionStorage.removeItem('forceOnboarding');
-      }
-    } catch(_) {}
+    // Removed onboarding_required client lock logic
   });
 }
 
@@ -172,15 +140,7 @@ export function renderStaffNavigation(activePage = 'home') {
   if (navContainer.dataset.rendering === 'true') return;
   navContainer.dataset.rendering = 'true';
   
-  // Suppress rendering navigation during forced onboarding (on all pages)
-  try {
-    const locked = (sessionStorage.getItem('forceOnboarding') === '1');
-    if (locked) { 
-      navContainer.innerHTML = ''; 
-      navContainer.dataset.rendering = 'false';
-      return; 
-    }
-  } catch(_) {}
+  // Always render navigation; forced onboarding suppression removed
 
   const navItems = [
     { page: 'home', href: 'staff.html', label: 'Home' },
