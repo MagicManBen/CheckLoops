@@ -1633,6 +1633,40 @@
         }
 
         // Step 4 - Working Pattern Setup
+        let fullBodyAttempted = false;
+        async function generateFullBodyAvatarOnce(){
+          if (fullBodyAttempted) return; // one-time
+            fullBodyAttempted = true;
+          try {
+            const current = window.currentSavedAvatarUrl || window.currentAvatarUrl || buildAvatarUrlFromControls();
+            if (!current) throw new Error('No base avatar URL');
+            // Skip if already appears to be full body (heuristic: path contains full_avatars)
+            if (/full_avatars\//.test(current)) return;
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+            if (!token) throw new Error('Missing session token');
+            const role = (window.selectedRole || session?.user?.raw_user_meta_data?.role_detail || session?.user?.raw_user_meta_data?.role || 'staff');
+            const nickname = document.getElementById('nickname')?.value || null;
+            const endpoint = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+              ? 'http://127.0.0.1:54321/functions/v1/generate-full-avatar'
+              : `${location.origin}/functions/v1/generate-full-avatar`;
+            const res = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({ avatarUrl: current, role, nickname })
+            });
+            if (!res.ok) throw new Error(`Full body gen failed (${res.status})`);
+            const js = await res.json();
+            if (js?.full_body_url) {
+              // persist to auth + profile for future loads
+              try { await supabase.auth.updateUser({ data: { avatar_url: js.full_body_url }}); } catch(_){ }
+              try { await supabase.from('profiles').update({ avatar_url: js.full_body_url }).eq('user_id', session.user.id); } catch(_){ }
+              window.currentSavedAvatarUrl = js.full_body_url;
+            }
+          } catch(e){
+            console.warn('Full body avatar generation skipped:', e);
+          }
+        }
         function setupWorkingPatternForm() {
           const container = document.getElementById('pattern-fields-container');
           const roleNote = document.getElementById('role-specific-note');
@@ -1702,8 +1736,15 @@
                     msg.textContent = 'Could not save working pattern. Please try again.';
                     return;
                   }
-                  
-                  msg.textContent = 'Completing setup…';
+                  // Generate full body avatar (one-time best effort)
+                  msg.textContent = 'Generating full body avatar…';
+                  try {
+                    await generateFullBodyAvatarOnce();
+                    msg.textContent = 'Avatar ready. Completing setup…';
+                  } catch(e){
+                    console.warn('Full body avatar generation failed (continuing):', e);
+                    msg.textContent = 'Completing setup…';
+                  }
                   
                   // Mark onboarding as complete (same logic as before but moved here)
                   try {
@@ -1765,8 +1806,14 @@
                   msg.textContent = 'Could not save working pattern. Please try again.';
                   return;
                 }
-                
-                msg.textContent = 'Completing setup…';
+                msg.textContent = 'Generating full body avatar…';
+                try {
+                  await generateFullBodyAvatarOnce();
+                  msg.textContent = 'Avatar ready. Completing setup…';
+                } catch(e){
+                  console.warn('Full body avatar generation failed (continuing):', e);
+                  msg.textContent = 'Completing setup…';
+                }
                 
                 // Mark onboarding as complete (same logic as before but moved here)
                 try {
