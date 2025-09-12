@@ -11,10 +11,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="config.js"></script>
-<script src="user-utils.js"></script>
-<script type="module" src="admin-direct-auth.js"></script>
-<script type="module" src="dashboard-user-display.js"></script>
-<script src="menu-debug.js" defer></script>
 <script>
   // Configure PDF.js worker
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -5971,10 +5967,10 @@ window.PIR_DEFINITIONS_DATA = [
   // Authentication functions
   function showAuth(show = true) {
     const appShell = document.getElementById('app');
-    // When the Admin UI needs to show auth, direct to Home.html for the login screen
+    // When the Admin UI needs to show auth, direct to home.html for the login screen
     if (show) {
       // Add a query parameter to indicate this was an admin page
-      window.location.href = 'Home.html?redirect=admin';
+      window.location.href = 'home.html?redirect=admin';
       return;
     }
     if (appShell) appShell.style.display = 'grid';
@@ -6055,12 +6051,41 @@ window.PIR_DEFINITIONS_DATA = [
           // First check if user has a profile with admin role
           const { data: profile, error: profileError } = await supabase
             .from('profiles')
-            .select('role')
+            .select('role, full_name')
             .eq('user_id', session.user.id)
             .maybeSingle();
             
           if (profile && ['admin', 'owner'].includes(profile.role?.toLowerCase())) {
             console.log('✅ Admin role confirmed from profile');
+            
+            // Immediately update user display with available info
+            try {
+              const userName = document.getElementById('user-name');
+              const userInitials = document.getElementById('user-initials');
+              if (userName) {
+                const displayName = profile.full_name || 
+                                  session.user?.user_metadata?.full_name ||
+                                  session.user?.user_metadata?.name ||
+                                  (session.user.email ? session.user.email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'User');
+                userName.textContent = displayName;
+                console.log('Immediately set user name to:', displayName);
+                
+                // Also set initials
+                if (userInitials) {
+                  const nameParts = displayName.split(' ');
+                  let initials;
+                  if (nameParts.length >= 2) {
+                    initials = (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase();
+                  } else {
+                    initials = displayName.substring(0, 2).toUpperCase();
+                  }
+                  userInitials.textContent = initials;
+                }
+              }
+            } catch (e) {
+              console.error('Failed to set immediate user display:', e);
+            }
+            
             showAuth(false);
             bootstrap();
             return;
@@ -8014,6 +8039,28 @@ window.PIR_DEFINITIONS_DATA = [
       }
       
       console.log('Profile data:', profile);
+      console.log('User email:', user.email);
+      console.log('User metadata:', user.user_metadata);
+      
+      // If profile exists but doesn't have a full_name, try to update it
+      if (profile && !profile.full_name) {
+        const inferredName = user?.user_metadata?.full_name || 
+                            user?.user_metadata?.name ||
+                            (user.email ? user.email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'User');
+        
+        console.log('Updating profile with inferred name:', inferredName);
+        const { data: updatedProfile, error: updateError } = await supabase
+          .from("profiles")
+          .update({ full_name: inferredName })
+          .eq("user_id", user.id)
+          .select("site_id, role, full_name")
+          .single();
+        
+        if (!updateError && updatedProfile) {
+          profile = updatedProfile;
+          console.log('Profile updated with full_name:', profile);
+        }
+      }
       
       // If no profile exists, try to create one from pending invitation
       if(!profile) {
@@ -8090,7 +8137,11 @@ window.PIR_DEFINITIONS_DATA = [
 
       ctx.site_id = profile.site_id;
       ctx.role = profile.role;
-      ctx.full_name = profile.full_name;
+      // Try to get full name from profile, user metadata, or construct from email
+      ctx.full_name = profile.full_name || 
+                      user?.user_metadata?.full_name || 
+                      user?.user_metadata?.name ||
+                      (user.email ? user.email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : null);
       ctx.avatar_url = user?.user_metadata?.avatar_url || null;
       
       // Make ctx available globally for training matrix and other features
@@ -8126,7 +8177,15 @@ window.PIR_DEFINITIONS_DATA = [
       const siteInfo = document.getElementById("site-info");
 
       // Set user initials (first letter of first and last name, or first 2 letters if no space)
-      const fullName = ctx.full_name || user.email || "User";
+      let fullName = ctx.full_name;
+      if (!fullName && user.email) {
+        // Convert email to display name for initials
+        fullName = user.email.split('@')[0]
+          .replace(/[._-]/g, ' ')
+          .replace(/\b\w/g, l => l.toUpperCase());
+      }
+      fullName = fullName || user.email || "User";
+      
       const nameParts = fullName.trim().split(' ');
       let initials;
       if (nameParts.length >= 2) {
@@ -8169,8 +8228,18 @@ window.PIR_DEFINITIONS_DATA = [
         }
       } catch (e) { console.warn('Avatar render failed', e); }
       
-      // Set user name
-      userName.textContent = ctx.full_name || user.email || "User";
+      // Set user name - extract name from email if full_name not available
+      console.log('Setting user display - ctx.full_name:', ctx.full_name, 'user.email:', user.email);
+      let displayName = ctx.full_name;
+      if (!displayName && user.email) {
+        // Convert email to display name: benhowardmagic@hotmail.com -> Benhowardmagic
+        displayName = user.email.split('@')[0]
+          .replace(/[._-]/g, ' ')
+          .replace(/\b\w/g, l => l.toUpperCase());
+        console.log('Generated display name from email:', displayName);
+      }
+      userName.textContent = displayName || user.email || "User";
+      console.log('Final display name set to:', userName.textContent);
 
       // Update navigation based on user role permissions
       await updateNavigationVisibility();
@@ -11875,9 +11944,25 @@ function applySchedulesFilters() {
         console.log('✅ Context loaded successfully');
       } catch (contextError) {
         console.error('❌ Context loading failed:', contextError);
-        // Don't redirect to auth immediately - show error instead
-        showError('Failed to load user context: ' + (contextError.message || 'Unknown error'));
-        return;
+        
+        // Try to at least display basic user info from session
+        try {
+          const userName = document.getElementById('user-name');
+          const userInitials = document.getElementById('user-initials');
+          if (userName && session.user) {
+            const displayName = session.user.email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            userName.textContent = displayName;
+            
+            if (userInitials) {
+              userInitials.textContent = displayName.substring(0, 2).toUpperCase();
+            }
+          }
+        } catch (displayError) {
+          console.error('Failed to set fallback user display:', displayError);
+        }
+        
+        // Continue loading the page even if context failed
+        console.log('⚠️ Continuing with limited functionality');
       }
 
       try {
@@ -16830,3 +16915,18 @@ window.saveWorkingPattern = saveWorkingPattern;
 window.refreshStaffData = refreshStaffData;
 
 </script>
+
+<script type="module">
+  import { initAdminPage } from './admin-handler.js';
+  
+  // Initialize admin page with auth protection
+  initAdminPage().then(auth => {
+    if (!auth) return; // Page will redirect if not authorized
+    
+    // Page-specific initialization can go here
+    console.log('Admin page initialized for:', auth.session.user.email);
+  });
+</script>
+
+</body>
+</html>
