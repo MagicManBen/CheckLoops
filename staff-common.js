@@ -82,8 +82,8 @@ export async function requireStaffSession(supabase) {
       try { sessionStorage.removeItem('forceOnboarding'); } catch(_) {}
     }
 
-    if (needsOnboarding && !isWelcome) {
-      try { sessionStorage.setItem('forceOnboarding', '1'); } catch(_) {}
+    // Only redirect to onboarding if user is NOT already on the welcome page and truly needs forced onboarding
+    if (needsOnboarding && !isWelcome && locked) {
       window.location.replace('staff-welcome.html?force=1');
       throw new Error('REDIRECT_ONBOARDING');
     }

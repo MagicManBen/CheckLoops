@@ -568,7 +568,10 @@
         const url = new URL(window.location.href);
         forceMode = (sessionStorage.getItem('forceOnboarding') === '1') || url.searchParams.get('force') === '1';
       } catch(_) { forceMode = (sessionStorage.getItem('forceOnboarding') === '1'); }
-      if (!forceMode) { navActivate('welcome'); attachLogout(supabase); }
+      
+      // Always show navigation and logout for regular welcome page access
+      navActivate('welcome'); 
+      attachLogout(supabase);
 
       // Early reveal admin nav using local session metadata (fast UI path)
       try {
@@ -583,9 +586,9 @@
       try{
         const { session, profileRow } = await requireStaffSession(supabase);
         const user = session.user;
-        // Get complete user profile
-        const userProfile = await getUserProfile(supabase, user);
-        const siteId = userProfile.site_id || profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
+        // Use the profileRow data we already have
+        const userProfile = profileRow;
+        const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
         
         // Store globally for access by saveWorkingPattern function
         globalUser = user;
@@ -631,21 +634,17 @@
           }
         } catch(_) { /* soft-fail */ }
 
+        // Always set topbar with user details
+        setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: roleDetail });
+        
         if (!forceMode) {
-          setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: roleDetail });
-          // Show Admin nav if applicable
+          // Normal mode: show admin nav if applicable
           revealAdminNav(profileRow?.role || user?.raw_user_meta_data?.role);
         } else {
-          // Hide pills and nav in force mode
+          // Force onboarding: hide navigation only, keep user details
           try {
-            document.querySelector('.nav.seg-nav')?.remove();
-            document.getElementById('logout-btn')?.remove();
-            document.getElementById('site-pill')?.remove();
-            document.getElementById('email-pill')?.remove();
-            document.getElementById('role-pill')?.remove();
-            // Also remove top halo bar empty space
-            const tb = document.querySelector('.topbar.panel');
-            if (tb) tb.style.display = 'none';
+            document.querySelector('.nav.seg-nav')?.style.display = 'none';
+            document.getElementById('logout-btn')?.style.display = 'none';
           } catch(_) {}
         }
 
@@ -1770,6 +1769,50 @@
               finishSetup.dataset.bound = '1';
             }
           }, 100);
+        }
+        
+        // Track if we've attempted full body generation to avoid multiple calls
+        let fullBodyGenerationAttempted = false;
+        
+        // Helper to generate full body avatar (one-time only)
+        async function generateFullBodyAvatarOnce() {
+          if (fullBodyGenerationAttempted) return;
+          fullBodyGenerationAttempted = true;
+          
+          try {
+            // Use current saved avatar URL
+            const avatarUrl = window.currentSavedAvatarUrl || window.currentAvatarUrl || null;
+            if (!avatarUrl) {
+              console.warn('No avatar URL available for full body generation');
+              return;
+            }
+            
+            // Get current role
+            const role = window.selectedRole || user?.raw_user_meta_data?.role_detail || 'staff';
+            const nickname = document.getElementById('nickname')?.value || user?.raw_user_meta_data?.nickname || null;
+            
+            const getEdgeFunctionUrl = () => {
+              const loc = window.location;
+              if (loc.hostname === '127.0.0.1' || loc.hostname === 'localhost') return 'http://localhost:54321/functions/v1/generate-full-avatar';
+              return '/api/generate-full-avatar';
+            };
+            
+            // Call edge function to generate full body image
+            const { data, error } = await supabase.functions.invoke('generate-full-avatar', {
+              body: { avatarUrl, role, nickname }
+            });
+            
+            if (error) throw new Error(error.message || 'Function call failed');
+            if (!data?.full_body_url) throw new Error('No full body avatar URL returned');
+            
+            console.log('Full body avatar generated successfully');
+            
+            // No need to save - the edge function updates profiles directly
+            return data.full_body_url;
+          } catch (e) {
+            console.error('Error generating full body avatar:', e);
+            throw e;
+          }
         }
         
         function updateProgressBar(step) {

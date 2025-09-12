@@ -60,6 +60,41 @@ document.addEventListener('DOMContentLoaded', async () => {
     // If we get here, the user is authenticated as admin
     console.log('✅ Admin session verified');
     
+    // Immediately update user display
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('full_name, role')
+          .eq('user_id', session.user.id)
+          .maybeSingle();
+        
+        const userName = document.getElementById('user-name');
+        const userInitials = document.getElementById('user-initials');
+        
+        if (userName) {
+          const displayName = profile?.full_name || 
+                            session.user?.user_metadata?.full_name ||
+                            session.user?.user_metadata?.name ||
+                            (session.user.email ? session.user.email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'User');
+          userName.textContent = displayName;
+          console.log('✅ Set user display to:', displayName);
+          
+          // Also update initials
+          if (userInitials) {
+            const nameParts = displayName.split(' ');
+            const initials = nameParts.length >= 2 
+              ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
+              : displayName.substring(0, 2).toUpperCase();
+            userInitials.textContent = initials;
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to update user display:', e);
+    }
+    
   } catch (err) {
     console.error('Authentication check error:', err);
     window.location.replace('home.html');

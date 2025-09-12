@@ -42,6 +42,7 @@
   <script type="module">
     import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
     
+    // Create Supabase client with same settings as staff-common.js
     const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
       auth: { 
         persistSession: true, 
@@ -55,95 +56,48 @@
 
     async function checkAdminAccess() {
       try {
-        // Wait for Supabase to initialize and restore session from localStorage
-        await new Promise(resolve => setTimeout(resolve, 300));
-        
-        // First, try to get the existing session
+        // Get current session
         const { data: { session }, error } = await supabase.auth.getSession();
         
-        if (error) {
-          console.error('Error getting session:', error);
-        }
-        
-        // If no session found, try to refresh it using the stored refresh token
-        if (!session) {
-          console.log('No initial session found, attempting to refresh...');
-          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-          
-          if (refreshError) {
-            console.log('Session refresh failed:', refreshError);
-            // No valid session, redirect to home.html
-            console.log('No valid session found, redirecting to home.html');
-            window.location.replace('home.html');
-            return;
-          }
-          
-          if (!refreshData?.session) {
-            console.log('No session after refresh, redirecting to home.html');
-            window.location.replace('home.html');
-            return;
-          }
-          
-          // Use the refreshed session
-          const verifiedSession = refreshData.session;
-          console.log('Session refreshed for user:', verifiedSession.user.email);
-          await validateAdminAccess(verifiedSession);
-        } else {
-          console.log('Session found for user:', session.user.email);
-          await validateAdminAccess(session);
-        }
-      } catch (err) {
-        console.error('Session check error:', err);
-        window.location.replace('home.html');
-      }
-    }
-
-    async function validateAdminAccess(session) {
-      try {
-        // Helper to normalize role
-        const isAdminRole = (v) => ['admin','owner'].includes(String(v||'').toLowerCase());
-        
-        // Check role from multiple sources
-        const metaRole = session.user?.raw_user_meta_data?.role || session.user?.user_metadata?.role;
-        let isAdmin = isAdminRole(metaRole);
-        
-        console.log('Checking admin access - metadata role:', metaRole, 'isAdmin:', isAdmin);
-
-        // Always fetch profile to get authoritative role
-        try {
-          const { data: profile, error: profileError } = await supabase
-            .from('profiles')
-            .select('role')
-            .eq('user_id', session.user.id)
-            .maybeSingle();
-          
-          if (profileError) {
-            console.error('Profile fetch error:', profileError);
-          } else if (profile) {
-            console.log('Profile role:', profile.role);
-            // Profile role is authoritative
-            isAdmin = isAdminRole(profile.role);
-          }
-        } catch (e) {
-          console.error('Profile fetch exception:', e);
-        }
-        
-        console.log('Final admin check result:', isAdmin);
-        
-        if (!isAdmin) {
-          // Not an admin: redirect to home.html
-          console.log('User is not admin, redirecting to home.html');
+        if (error || !session) {
+          console.log('No session found, redirecting to login');
           window.location.replace('home.html');
           return;
         }
-
-        // Admin access confirmed, redirect to admin.html
+        
+        console.log('Session found for:', session.user.email);
+        
+        // Check if user is admin
+        const userId = session.user.id;
+        
+        // Check profile for role
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('user_id', userId)
+          .maybeSingle();
+        
+        // Check multiple sources for role
+        const profileRole = profile?.role?.toLowerCase();
+        const metaRole = (session.user?.raw_user_meta_data?.role || session.user?.user_metadata?.role || '').toLowerCase();
+        
+        const isAdmin = profileRole === 'admin' || profileRole === 'owner' || 
+                       metaRole === 'admin' || metaRole === 'owner';
+        
+        console.log('User role check - Profile:', profileRole, 'Metadata:', metaRole, 'Is Admin:', isAdmin);
+        
+        if (!isAdmin) {
+          console.log('User is not admin, redirecting to staff page');
+          window.location.replace('staff.html');
+          return;
+        }
+        
+        // Admin confirmed, redirect to admin dashboard
         console.log('Admin access confirmed, redirecting to admin.html');
         window.location.replace('admin.html');
         
       } catch (err) {
         console.error('Error checking admin access:', err);
-        // On error, redirect to home.html
         window.location.replace('home.html');
       }
     }

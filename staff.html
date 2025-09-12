@@ -9,7 +9,6 @@
   <link rel="preconnect" href="https://img.icons8.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="config.js"></script>
-  <script src="admin-nav.js"></script>
   <link rel="stylesheet" href="staff.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css">
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
@@ -430,7 +429,10 @@
       // Show admin access panel for admins and owners
       const role = (profileRow?.role || session.user?.raw_user_meta_data?.role || '').toLowerCase();
       if (role === 'admin' || role === 'owner') {
-        document.getElementById('admin-access-panel').style.display = 'block';
+        const adminPanel = document.getElementById('admin-access-panel');
+        if (adminPanel) {
+          adminPanel.style.display = 'block';
+        }
       }
     }).catch(e => {
   if (String(e.message).includes('NO_SESSION')) { window.location.replace('home.html'); return; }
@@ -478,8 +480,30 @@
             if (p?.avatar_url) avatarUrl = p.avatar_url;
           } catch(_) {}
         }
+        
+        // Check if this is a full-body avatar (from uploads bucket)
+        const isFullBodyAvatar = avatarUrl && (avatarUrl.includes('/uploads/') || avatarUrl.includes('/full_avatars/'));
+        
         const img = document.getElementById('ring-avatar');
-        if (img && avatarUrl) { img.src = avatarUrl; }
+        if (img && avatarUrl) { 
+          img.src = avatarUrl;
+          if (isFullBodyAvatar) {
+            img.style.objectFit = 'contain';
+            img.style.padding = '4px';
+          }
+        }
+        
+        // Also update staff-avatar if present
+        const staffAvatar = document.getElementById('staff-avatar');
+        if (staffAvatar && avatarUrl) {
+          staffAvatar.style.backgroundImage = `url('${avatarUrl}')`;
+          staffAvatar.style.display = 'block';
+          if (isFullBodyAvatar) {
+            staffAvatar.style.backgroundSize = 'contain';
+            staffAvatar.style.backgroundPosition = 'center';
+            staffAvatar.style.backgroundColor = '#ffffff';
+          }
+        }
       } catch(_){}
       // Set top bar site/email/role
       setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: roleDetail });
@@ -545,7 +569,7 @@
       } catch(_){}
 
       // Get kiosk_user_id from user profile
-      const kioskUserId = userProfile.kiosk_user_id;
+      const kioskUserId = profileRow?.kiosk_user_id;
 
       // Achievements: compute heuristics and upsert to DB if unlocked
       try{
