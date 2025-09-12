@@ -1859,6 +1859,83 @@
             }
             
             console.log('Working pattern saved successfully');
+            
+            // Now populate the 1_staff_holiday_profiles table with all the information we have
+            try {
+              // Get the full name from various sources
+              const fullName = globalUserProfile?.full_name || 
+                             globalUser?.user_metadata?.full_name || 
+                             globalUser?.raw_user_meta_data?.full_name ||
+                             globalUser?.email?.split('@')[0] || 
+                             'Unknown';
+              
+              // Get the email
+              const email = globalUser?.email || '';
+              
+              // Get the selected team name (stored when user selected team)
+              const teamName = window.selectedTeamName || null;
+              
+              // Create the holiday profile data
+              const holidayProfileData = {
+                user_id: globalUser.id,  // Link to auth user
+                full_name: fullName,
+                role: selectedRole || 'Staff',
+                is_gp: isGP,
+                email: email,
+                team_name: teamName,
+                site_id: globalSiteId,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              };
+              
+              console.log('Creating holiday profile:', holidayProfileData);
+              
+              // Insert into 1_staff_holiday_profiles table
+              const { data: profileData, error: profileError } = await globalSupabase
+                .from('1_staff_holiday_profiles')
+                .upsert(holidayProfileData, {
+                  onConflict: 'email',  // Use email as unique identifier
+                  ignoreDuplicates: false
+                })
+                .select();
+              
+              if (profileError) {
+                console.error('Error creating holiday profile:', profileError);
+                // Don't fail the whole process if holiday profile creation fails
+                // The working pattern is already saved
+              } else {
+                console.log('Holiday profile created successfully:', profileData);
+                
+                // If we got a profile ID back, also create an entitlement record
+                if (profileData && profileData[0]?.id) {
+                  const currentYear = new Date().getFullYear();
+                  const entitlementData = {
+                    staff_profile_id: profileData[0].id,
+                    year: currentYear,
+                    annual_hours: isGP ? null : totalHours * 52, // Annual hours for staff
+                    annual_sessions: isGP ? totalSessions * 52 : null, // Annual sessions for GPs
+                    annual_education_sessions: isGP ? 10 : null // Default education sessions for GPs
+                  };
+                  
+                  const { error: entitlementError } = await globalSupabase
+                    .from('2_staff_entitlements')
+                    .upsert(entitlementData, {
+                      onConflict: 'staff_profile_id,year',
+                      ignoreDuplicates: false
+                    });
+                  
+                  if (entitlementError) {
+                    console.error('Error creating entitlement:', entitlementError);
+                  } else {
+                    console.log('Entitlement record created successfully');
+                  }
+                }
+              }
+            } catch (holidayError) {
+              console.error('Exception creating holiday profile:', holidayError);
+              // Don't fail the whole process
+            }
+            
             return true;
             
           } catch (error) {
