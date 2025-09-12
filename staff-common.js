@@ -4,7 +4,14 @@
 export async function initSupabase() {
   const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
   return createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' }
+    auth: { 
+      persistSession: true, 
+      autoRefreshToken: true, 
+      detectSessionInUrl: true, 
+      flowType: 'pkce',
+      storage: window.localStorage,
+      storageKey: `sb-${CONFIG.SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`
+    }
   });
 }
 
@@ -184,7 +191,7 @@ export function renderStaffNavigation(activePage = 'home') {
     { page: 'achievements', href: 'achievements.html', label: 'Achievements' },
     { page: 'quiz', href: 'staff-quiz.html', label: 'Quiz' },
     // Per navigation rules: Admin Site button must link to admin check page and keep the user logged in
-    { page: 'admin', href: 'admin-check.html?from=staff', label: 'Admin Site', adminOnly: true }
+    { page: 'admin', href: 'index.html', label: 'Admin Site', adminOnly: true }
   ];
 
   // Clear existing content and event listeners

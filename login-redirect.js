@@ -42,7 +42,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!window.supabase && typeof createClient !== 'undefined') {
           console.log('🔄 Creating Supabase client to check auth state');
           window.supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
-            auth: { persistSession: true, autoRefreshToken: true }
+            auth: { 
+              persistSession: true, 
+              autoRefreshToken: true,
+              detectSessionInUrl: true,
+              flowType: 'pkce',
+              storage: window.localStorage,
+              storageKey: `sb-${CONFIG.SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`
+            }
           });
         }
         
@@ -62,7 +69,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               
               // Handle different redirect targets
               if (pendingRedirect === 'admin') {
-                window.location.href = 'admin-check.html?from=login';
+                window.location.href = 'index.html';
               } else if (pendingRedirect === 'staff') {
                 window.location.href = 'staff.html?from=login';
               }
@@ -85,7 +92,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 
                 // Handle different redirect targets
                 if (pendingRedirect === 'admin') {
-                  window.location.href = 'admin-check.html?from=login';
+                  window.location.href = 'index.html';
                 } else if (pendingRedirect === 'staff') {
                   window.location.href = 'staff.html?from=login';
                 }
