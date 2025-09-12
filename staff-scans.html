@@ -10,6 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="config.js"></script>
   <script src="admin-nav.js"></script>
+  <script src="user-utils.js"></script>
   <link rel="stylesheet" href="staff.css">
   
   
@@ -549,9 +550,11 @@
     });
 
     async function loadDashboard() {
-      const displayName = currentProfile?.full_name || currentUser?.raw_user_meta_data?.full_name || (currentUser?.email?.split('@')[0]);
-      const siteId = currentProfile?.site_id || currentUser?.raw_user_meta_data?.site_id || null;
-      const role = currentProfile?.role || currentUser?.raw_user_meta_data?.role || 'Staff';
+      // Get complete user profile
+      const userProfile = await getUserProfile(supabase, currentUser);
+      const displayName = userProfile.display_name;
+      const siteId = userProfile.site_id;
+      const role = userProfile.role;
       
       // Set topbar
       setTopbar({ 
@@ -561,13 +564,15 @@
       });
 
       // Load scan data
-      await loadScans(displayName, siteId);
+      await loadScans(userProfile);
       
       // Setup event listeners
       setupEventListeners();
     }
 
-    async function loadScans(displayName, siteId) {
+    async function loadScans(userProfile) {
+      const displayName = userProfile.display_name;
+      const siteId = userProfile.site_id;
       try {
         let rows = [];
         
@@ -577,7 +582,7 @@
             .from('v_submission_detail')
             .select('submitted_at,item_name,room,check_type,check_value,staff_name,site_id,comment')
             .eq('site_id', siteId)
-            .eq('staff_name', displayName)
+            .eq('user_id', userProfile.user_id)
             .order('submitted_at', { ascending: false })
             .limit(200);
           
@@ -589,7 +594,7 @@
           const { data, error } = await supabase
             .from('submissions')
             .select('submitted_at, staff_name, comment')
-            .eq('staff_name', displayName)
+            .eq('user_id', userProfile.user_id)
             .order('submitted_at', { ascending: false })
             .limit(200);
           
