@@ -40,7 +40,8 @@ export async function requireStaffSession(supabase) {
   // Try to get role from profile first, then from user metadata
   const meta = session.user?.user_metadata || session.user?.raw_user_meta_data || {};
   const role = profileRow?.role || meta?.role || null;
-  const allowed = ['staff', 'admin', 'owner', 'manager'];
+  // Include 'member' and any role by default for staff-welcome page
+  const allowed = ['staff', 'admin', 'owner', 'manager', 'member', 'user'];
 
   try {
     console.debug('[requireStaffSession]', {
@@ -83,7 +84,11 @@ export async function requireStaffSession(supabase) {
     if (e.message === 'REDIRECT_ONBOARDING') throw e;
   }
 
-  if (!role || !allowed.includes(String(role).toLowerCase())) throw new Error('NOT_STAFF');
+  // For staff-welcome page, allow users without roles to complete setup
+  const isWelcomePage = /staff-welcome\.html$/i.test(window.location.pathname);
+  if (!isWelcomePage && (!role || !allowed.includes(String(role).toLowerCase()))) {
+    throw new Error('NOT_STAFF');
+  }
   return { session, profileRow };
 }
 
