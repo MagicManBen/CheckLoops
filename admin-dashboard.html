@@ -17052,7 +17052,7 @@ window.refreshStaffData = refreshStaffData;
         .from('1_staff_holiday_profiles')
         .select(`
           *,
-          entitlements:2_staff_entitlements!staff_profile_id(*)
+          entitlements:2_staff_entitlements!staff_id(*)
         `)
         .eq('entitlements.year', new Date().getFullYear());
 
@@ -17086,9 +17086,10 @@ window.refreshStaffData = refreshStaffData;
               const isGP = profile.is_gp;
               const unit = isGP ? 'sessions' : 'hours';
               const weekly = isGP ? ent.weekly_sessions : ent.weekly_hours;
-              const calculated = isGP ? ent.calculated_sessions : ent.calculated_hours;
-              const manual = isGP ? ent.manual_entitlement_sessions : ent.manual_entitlement_hours;
-              const final = isGP ? ent.annual_sessions : ent.annual_hours;
+              const multiplier = ent.multiplier || 6;
+              const calculated = weekly ? weekly * multiplier : 0;
+              const override = ent.override;
+              const final = override || calculated;
 
               // Format hours as HH:MM for non-GP staff
               const formatValue = (val, isGP) => {
@@ -17106,26 +17107,20 @@ window.refreshStaffData = refreshStaffData;
                   <td>
                     <input type="number"
                            id="multiplier-\${ent.id}"
-                           value="\${ent.holiday_multiplier || 10}"
+                           value="\${multiplier}"
                            min="1" max="52"
                            style="width:60px; padding:6px 8px; border-radius:6px; background:var(--glass); border:1px solid var(--border-color);"
                            onchange="updateMultiplier(\${ent.id}, \${profile.id}, \${isGP})">
                   </td>
                   <td id="calculated-\${ent.id}">\${formatValue(calculated, isGP)} \${unit}</td>
                   <td>
-                    <div style="display:flex; align-items:center; gap:8px;">
-                      <input type="checkbox"
-                             id="override-\${ent.id}"
-                             \${ent.manual_override ? 'checked' : ''}
-                             onchange="toggleOverride(\${ent.id})">
-                      <input type="\${isGP ? 'number' : 'text'}"
-                             id="manual-\${ent.id}"
-                             value="\${isGP ? (manual || 0) : formatValue(manual, false)}"
-                             placeholder="\${isGP ? '0' : '0:00'}"
-                             pattern="\${isGP ? '[0-9]*' : '[0-9]+:[0-5][0-9]'}"
-                             style="width:80px; padding:6px 8px; border-radius:6px; background:var(--glass); border:1px solid var(--border-color); \${!ent.manual_override ? 'display:none;' : ''}"
-                             onchange="updateManualEntitlement(\${ent.id}, \${isGP})">
-                    </div>
+                    <input type="\${isGP ? 'number' : 'text'}"
+                           id="override-\${ent.id}"
+                           value="\${override ? (isGP ? override : formatValue(override, false)) : ''}"
+                           placeholder="\${isGP ? 'Override' : 'HH:MM'}"
+                           pattern="\${isGP ? '[0-9]*' : '[0-9]+:[0-5][0-9]'}"
+                           style="width:80px; padding:6px 8px; border-radius:6px; background:var(--glass); border:1px solid var(--border-color);"
+                           onchange="updateOverride(\${ent.id}, \${isGP})">
                   </td>
                   <td id="final-\${ent.id}"><strong>\${formatValue(final, isGP)} \${unit}</strong></td>
                   <td>

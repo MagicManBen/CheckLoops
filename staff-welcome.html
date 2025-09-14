@@ -879,8 +879,8 @@
         // This runs when the user taps "🎉 Finish Setup" after entering working hours.
         // It ensures a row exists in 2_staff_entitlements for the current year.
 
-        // Helper: fetch the current working pattern row and derive weekly hours
-        async function fetchWeeklyHoursFromWorkingPattern(userId, siteId) {
+        // Helper: fetch the current working pattern row and derive weekly hours and sessions
+        async function fetchWeeklyTotalsFromWorkingPattern(userId, siteId) {
           // Pull whatever columns exist for hours/sessions; we will sum by day.
           const { data: wp, error } = await supabase
             .from('3_staff_working_patterns')
@@ -891,13 +891,13 @@
 
           if (error) {
             console.warn('[entitlement] working_patterns select error', error);
-            return 0;
+            return { weeklyHours: 0, weeklySessions: 0 };
           }
-          if (!wp) return 0;
+          if (!wp) return { weeklyHours: 0, weeklySessions: 0 };
 
           const dows = ['mon','tue','wed','thu','fri','sat','sun'];
 
-          // Prefer explicit *_hours columns (non‑GP). If absent, fall back to *_sessions (GP) × 4 hours.
+          // Sum up both hours and sessions separately
           let hoursSum = 0;
           let sessionsSum = 0;
 
@@ -909,11 +909,7 @@
             if (typeof s === 'number' && !Number.isNaN(s)) sessionsSum += s;
           }
 
-          if (hoursSum > 0) return hoursSum;
-
-          // Fallback conversion for GP-style sessions. Adjust if your org uses a different value per session.
-          const HOURS_PER_SESSION = 4;
-          return sessionsSum * HOURS_PER_SESSION;
+          return { weeklyHours: hoursSum, weeklySessions: sessionsSum };
         }
 
         // Helper: resolve staff_profile_id for the current user
@@ -942,26 +938,27 @@
           return null;
         }
 
-        // Main: ensure there is a current-year entitlement row with the multiplier/result columns populated
-        async function ensureEntitlementForUser(user, siteId, weeklyHours) {
+        // Main: ensure there is a current-year entitlement row with the new structure
+        async function ensureEntitlementForUser(user, siteId, totals, isGP) {
           const staffProfileId = await resolveStaffProfileId(user);
           if (!staffProfileId) return;
 
           const year = new Date().getFullYear();
 
-          // You can make this site-configurable later; for now default to 6 as requested.
-          const calcMultiplier = 6;
+          // Default multiplier as requested
+          const defaultMultiplier = 6;
 
           const payload = {
-            staff_profile_id: staffProfileId,
+            staff_id: staffProfileId,
             year: year,
-            calc_multiplier: calcMultiplier,
-            calc_output_hours: Number((Number(weeklyHours || 0) * calcMultiplier).toFixed(2))
+            weekly_hours: isGP ? null : totals.weeklyHours,
+            weekly_sessions: isGP ? totals.weeklySessions : null,
+            multiplier: defaultMultiplier
           };
 
           const { error: upErr } = await supabase
             .from('2_staff_entitlements')
-            .upsert(payload, { onConflict: 'staff_profile_id,year' });
+            .upsert(payload, { onConflict: 'staff_id,year' });
 
           if (upErr) {
             console.warn('[entitlement] upsert error', upErr);
@@ -979,8 +976,13 @@
             try {
               // Give the existing working-hours save a moment to complete
               await new Promise(r => setTimeout(r, 800));
-              const weeklyHours = await fetchWeeklyHoursFromWorkingPattern(user.id, siteId);
-              await ensureEntitlementForUser(user, siteId, weeklyHours);
+              const totals = await fetchWeeklyTotalsFromWorkingPattern(user.id, siteId);
+
+              // Check if user is a GP based on their role selection
+              const roleSelect = document.getElementById('role');
+              const isGP = roleSelect && roleSelect.value === 'GP';
+
+              await ensureEntitlementForUser(user, siteId, totals, isGP);
             } catch (e) {
               console.warn('[entitlement] post-setup routine failed', e);
             }
@@ -2894,59 +2896,36 @@
               const weeklyHours = isGP ? 0 : totalHours;
               const weeklySessions = isGP ? totalSessions : 0;
 
-              // Check for existing entitlement to preserve manual override
+              // Check for existing entitlement to preserve override
               const { data: existingEntitlement } = await globalSupabase
                 .from('2_staff_entitlements')
-                .select('manual_override, manual_entitlement_hours, manual_entitlement_sessions, holiday_multiplier')
-                .eq('staff_profile_id', profileId)
+                .select('override, multiplier')
+                .eq('staff_id', profileId)
                 .eq('year', currentYear)
                 .maybeSingle();
 
-              // Use admin-set default multiplier if no per-user value
-              let multiplier = existingEntitlement?.holiday_multiplier;
+              // Use existing multiplier or default
+              let multiplier = existingEntitlement?.multiplier;
               if (!multiplier || isNaN(multiplier)) {
                 // Try to read from localStorage (set by admin-dashboard)
                 const saved = localStorage.getItem('default-holiday-multiplier');
-                multiplier = saved && !isNaN(saved) ? parseFloat(saved) : 10;
-              }
-
-              // Calculate entitlements
-              let calculatedHours = null;
-              let calculatedSessions = null;
-              let finalHours = null;
-              let finalSessions = null;
-
-              if (isGP) {
-                calculatedSessions = weeklySessions * multiplier;
-                finalSessions = existingEntitlement?.manual_override ?
-                              existingEntitlement.manual_entitlement_sessions : calculatedSessions;
-              } else {
-                calculatedHours = weeklyHours * multiplier;
-                finalHours = existingEntitlement?.manual_override ?
-                           existingEntitlement.manual_entitlement_hours : calculatedHours;
+                multiplier = saved && !isNaN(saved) ? parseFloat(saved) : 6;
               }
 
               const entitlement = {
-                staff_profile_id: profileId,
+                staff_id: profileId,
                 year: currentYear,
-                weekly_hours: weeklyHours,
-                weekly_sessions: weeklySessions,
-                holiday_multiplier: multiplier,
-                calculated_hours: calculatedHours,
-                calculated_sessions: calculatedSessions,
-                annual_hours: finalHours,
-                annual_sessions: finalSessions,
-                annual_education_sessions: isGP ? 10 : null,
-                manual_override: existingEntitlement?.manual_override || false,
-                manual_entitlement_hours: existingEntitlement?.manual_entitlement_hours || null,
-                manual_entitlement_sessions: existingEntitlement?.manual_entitlement_sessions || null,
+                weekly_hours: isGP ? null : weeklyHours,
+                weekly_sessions: isGP ? weeklySessions : null,
+                multiplier: multiplier,
+                override: existingEntitlement?.override || null,
                 updated_at: new Date().toISOString()
               };
 
               const { error: entitlementError } = await globalSupabase
                 .from('2_staff_entitlements')
                 .upsert(entitlement, {
-                  onConflict: 'staff_profile_id,year',
+                  onConflict: 'staff_id,year',
                   ignoreDuplicates: false
                 });
 
