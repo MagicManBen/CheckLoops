@@ -17264,7 +17264,7 @@ window.refreshStaffData = refreshStaffData;
 
   // Update multiplier
   window.updateMultiplier = async function(entId, profileId, isGP) {
-    const multiplier = parseFloat(document.getElementById(`multiplier-${entId}`).value) || 10;
+    const multiplier = parseFloat(document.getElementById(`multiplier-${entId}`).value) || 6;
 
     // Get the current entitlement record to get weekly values
     if (!window.supabase) return;
@@ -17272,7 +17272,7 @@ window.refreshStaffData = refreshStaffData;
     try {
       const { data: ent } = await window.supabase
         .from('2_staff_entitlements')
-        .select('weekly_hours, weekly_sessions')
+        .select('weekly_hours, weekly_sessions, override')
         .eq('id', entId)
         .single();
 
@@ -17287,9 +17287,8 @@ window.refreshStaffData = refreshStaffData;
           calcEl.textContent = `${isGP ? calculated : formatHours(calculated)} ${unit}`;
         }
 
-        // Update final if not overridden
-        const overrideEl = document.getElementById(`override-${entId}`);
-        if (overrideEl && !overrideEl.checked) {
+        // Update final if no override
+        if (!ent.override) {
           const finalEl = document.getElementById(`final-${entId}`);
           if (finalEl) {
             const unit = isGP ? 'sessions' : 'hours';
@@ -17302,37 +17301,33 @@ window.refreshStaffData = refreshStaffData;
     }
   };
 
-  // Toggle override
-  window.toggleOverride = function(entId) {
-    const checked = document.getElementById(`override-${entId}`).checked;
-    const manualInput = document.getElementById(`manual-${entId}`);
-    manualInput.style.display = checked ? 'inline-block' : 'none';
-
-    // If unchecking, update final to calculated
-    if (!checked) {
-      const calcEl = document.getElementById(`calculated-${entId}`);
-      const finalEl = document.getElementById(`final-${entId}`);
-      if (calcEl && finalEl) {
-        finalEl.innerHTML = `<strong>${calcEl.textContent}</strong>`;
-      }
-    }
-  };
-
-  // Update manual value
-  window.updateManualEntitlement = function(entId, isGP) {
-    const manualInput = document.getElementById(`manual-${entId}`);
+  // Update override value
+  window.updateOverride = function(entId, isGP) {
+    const overrideInput = document.getElementById(`override-${entId}`);
     const finalEl = document.getElementById(`final-${entId}`);
+    const calcEl = document.getElementById(`calculated-${entId}`);
 
-    if (manualInput && finalEl) {
-      const val = manualInput.value;
+    if (overrideInput && finalEl) {
+      const val = overrideInput.value;
       const unit = isGP ? 'sessions' : 'hours';
 
-      if (isGP) {
-        finalEl.innerHTML = `<strong>${val || 0} ${unit}</strong>`;
-      } else {
-        // Validate HH:MM format
-        if (/^\d+:[0-5]\d$/.test(val)) {
+      if (val) {
+        // Has override value
+        if (isGP) {
           finalEl.innerHTML = `<strong>${val} ${unit}</strong>`;
+        } else {
+          // Validate HH:MM format for hours
+          if (/^\d+:[0-5]\d$/.test(val)) {
+            finalEl.innerHTML = `<strong>${val} ${unit}</strong>`;
+          } else if (!isNaN(val)) {
+            // If it's a number, format it as HH:MM
+            finalEl.innerHTML = `<strong>${formatHours(parseFloat(val))} ${unit}</strong>`;
+          }
+        }
+      } else {
+        // No override, use calculated
+        if (calcEl) {
+          finalEl.innerHTML = `<strong>${calcEl.textContent}</strong>`;
         }
       }
     }
@@ -17342,54 +17337,31 @@ window.refreshStaffData = refreshStaffData;
   window.saveEntitlement = async function(entId, isGP) {
     if (!window.supabase) return;
 
-    const multiplier = parseFloat(document.getElementById(`multiplier-${entId}`).value) || 10;
-    const override = document.getElementById(`override-${entId}`).checked;
-    const manualInput = document.getElementById(`manual-${entId}`);
-
-    // Get current entitlement to calculate values
-    const { data: current } = await window.supabase
-      .from('2_staff_entitlements')
-      .select('*')
-      .eq('id', entId)
-      .single();
-
-    if (!current) {
-      alert('Error: Could not find entitlement record');
-      return;
-    }
+    const multiplier = parseFloat(document.getElementById(`multiplier-${entId}`).value) || 6;
+    const overrideInput = document.getElementById(`override-${entId}`);
+    const overrideValue = overrideInput.value;
 
     const updateData = {
-      holiday_multiplier: multiplier,
-      manual_override: override,
+      multiplier: multiplier,
       updated_at: new Date().toISOString()
     };
 
-    // Calculate new values
-    if (isGP) {
-      const weekly = current.weekly_sessions || 0;
-      updateData.calculated_sessions = weekly * multiplier;
-
-      if (override) {
-        const manual = parseFloat(manualInput.value) || 0;
-        updateData.manual_entitlement_sessions = manual;
-        updateData.annual_sessions = manual;
+    // Handle override value
+    if (overrideValue) {
+      if (isGP) {
+        updateData.override = parseFloat(overrideValue) || null;
       } else {
-        updateData.manual_entitlement_sessions = null;
-        updateData.annual_sessions = updateData.calculated_sessions;
+        // Parse HH:MM format or decimal hours
+        if (/^\d+:[0-5]\d$/.test(overrideValue)) {
+          updateData.override = parseHours(overrideValue);
+        } else if (!isNaN(overrideValue)) {
+          updateData.override = parseFloat(overrideValue);
+        } else {
+          updateData.override = null;
+        }
       }
     } else {
-      const weekly = current.weekly_hours || 0;
-      updateData.calculated_hours = weekly * multiplier;
-
-      if (override) {
-        const manualStr = manualInput.value;
-        const manual = parseHours(manualStr);
-        updateData.manual_entitlement_hours = manual;
-        updateData.annual_hours = manual;
-      } else {
-        updateData.manual_entitlement_hours = null;
-        updateData.annual_hours = updateData.calculated_hours;
-      }
+      updateData.override = null;
     }
 
     try {
