@@ -304,8 +304,7 @@
           <div class="h1" id="welcome" style="font-size:32px;">Welcome</div>
           <!-- Badges removed as requested -->
         </div>
-        <div class="spacer"></div>
-        <div class="staff-avatar" id="staff-avatar" style="display:none;"></div>
+  <div class="spacer"></div>
         <div class="bubble-actions" aria-label="Quick actions">
           <a class="bubble" href="staff-scans.html">
             <div class="i c-purple"><img data-i8="document" data-i8-size="48" alt="My Scans"/></div>
@@ -314,6 +313,10 @@
           <a class="bubble" href="staff-training.html">
             <div class="i c-blue"><img data-i8="graduation-cap" data-i8-size="48" alt="Training"/></div>
             <div class="t">Training</div>
+          </a>
+          <a class="bubble" href="my-holidays.html">
+            <div class="i c-green"><img data-i8="calendar" data-i8-size="48" alt="My Holidays"/></div>
+            <div class="t">My Holidays</div>
           </a>
           <a class="bubble quiz-bubble" href="staff-quiz.html" id="quiz-bubble">
             <div class="i c-orange"><img data-i8="puzzle" data-i8-size="48" alt="Quiz"/></div>
@@ -380,7 +383,7 @@
   </main>
 
   <script type="module">
-  import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, setRing, fmtDate, revealAdminNav, getUserAchievements, upsertAchievement, clearAuthData } from './staff-common.js';
+  import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, setRing, fmtDate, getUserAchievements, upsertAchievement, clearAuthData, computeCompliance } from './staff-common.js';
     const supabase = await initSupabase();
     handleAuthState(supabase);
     navActivate('home');
@@ -394,7 +397,6 @@
         const user = data?.session?.user || {};
         const earlyRole = user?.raw_user_meta_data?.role || user?.user_metadata?.role;
         if (earlyRole) {
-          try { revealAdminNav(earlyRole); } catch(_) {}
         }
       }).catch(_=>{});
     } catch(_){}
@@ -417,7 +419,6 @@
     requireStaffSession(supabase).then(async ({ session, profileRow }) => {
       await loadDashboard(session.user, profileRow);
       // Reveal Admin link if applicable
-      revealAdminNav(profileRow?.role || session.user?.raw_user_meta_data?.role);
       
       // Show admin access panel for admins and owners
       const role = (profileRow?.role || session.user?.raw_user_meta_data?.role || '').toLowerCase();
@@ -451,51 +452,73 @@
       await checkQuizStatus(user, profileRow);
       
       // Resolve avatar and render into ring circle
+      // Check sources in priority order (most authoritative first)
       try {
-        let avatarUrl = user?.raw_user_meta_data?.avatar_url || null;
+        let avatarUrl = null;
+
+        // 1. First check profiles table (most authoritative/recent)
         try {
-          if (siteId) {
-            const { data: saw } = await supabase
-              .from('staff_app_welcome')
-              .select('avatar_url, updated_at')
-              .eq('user_id', user.id)
-              .eq('site_id', siteId)
-              .order('updated_at', { ascending: false })
-              .limit(1)
-              .maybeSingle();
-            if (saw?.avatar_url) avatarUrl = saw.avatar_url;
+          const { data: p } = await supabase.from('profiles').select('avatar_url').eq('user_id', user.id).maybeSingle();
+          if (p?.avatar_url) {
+            avatarUrl = p.avatar_url;
+            console.log('Avatar from profiles:', avatarUrl);
           }
-        } catch(_) {}
+        } catch(e) {
+          console.warn('Error fetching avatar from profiles:', e);
+        }
+
+        // 2. If not in profiles, check staff_app_welcome
         if (!avatarUrl) {
           try {
-            const { data: p } = await supabase.from('profiles').select('avatar_url').eq('user_id', user.id).maybeSingle();
-            if (p?.avatar_url) avatarUrl = p.avatar_url;
-          } catch(_) {}
+            if (siteId) {
+              const { data: saw } = await supabase
+                .from('staff_app_welcome')
+                .select('avatar_url, updated_at')
+                .eq('user_id', user.id)
+                .eq('site_id', siteId)
+                .order('updated_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              if (saw?.avatar_url) {
+                avatarUrl = saw.avatar_url;
+                console.log('Avatar from staff_app_welcome:', avatarUrl);
+              }
+            }
+          } catch(e) {
+            console.warn('Error fetching avatar from staff_app_welcome:', e);
+          }
+        }
+
+        // 3. Finally fall back to user metadata
+        if (!avatarUrl) {
+          // Get fresh user data to ensure we have the latest metadata
+          const { data: { user: refreshedUser } } = await supabase.auth.getUser();
+          avatarUrl = refreshedUser?.user_metadata?.avatar_url || user?.raw_user_meta_data?.avatar_url || null;
+          if (avatarUrl) {
+            console.log('Avatar from user metadata:', avatarUrl);
+          }
+        }
+
+        if (!avatarUrl) {
+          console.log('No avatar found for user');
         }
         
         // Check if this is a full-body avatar (from uploads bucket)
         const isFullBodyAvatar = avatarUrl && (avatarUrl.includes('/uploads/') || avatarUrl.includes('/full_avatars/'));
         
         const img = document.getElementById('ring-avatar');
-        if (img && avatarUrl) { 
-          img.src = avatarUrl;
+        if (img && avatarUrl) {
+          // Add cache-busting parameter to ensure fresh avatar loads
+          const cacheBuster = new Date().getTime();
+          const separator = avatarUrl.includes('?') ? '&' : '?';
+          img.src = `${avatarUrl}${separator}v=${cacheBuster}`;
           if (isFullBodyAvatar) {
             img.style.objectFit = 'contain';
             img.style.padding = '4px';
           }
         }
         
-        // Also update staff-avatar if present
-        const staffAvatar = document.getElementById('staff-avatar');
-        if (staffAvatar && avatarUrl) {
-          staffAvatar.style.backgroundImage = `url('${avatarUrl}')`;
-          staffAvatar.style.display = 'block';
-          if (isFullBodyAvatar) {
-            staffAvatar.style.backgroundSize = 'contain';
-            staffAvatar.style.backgroundPosition = 'center';
-            staffAvatar.style.backgroundColor = '#ffffff';
-          }
-        }
+        // Small right-hand avatar removed from markup; we only use the ring avatar now
       } catch(_){}
       // Set top bar site/email/role
       setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: roleDetail });
@@ -534,13 +557,34 @@
           due = Math.max(0, total - valid);
         }
 
-        // Training/compliance percent: prefer a profile field, otherwise derive from counts
+        // Training/compliance percent: prefer an explicit profile field, otherwise
+        // try computing from the training matrix (training_types + training_records).
+        // If no training matrix exists for the site, fall back to the submissions heuristic.
         if (profileRow?.training_compliance_pct != null) {
           ringPct = Math.round(Number(profileRow.training_compliance_pct));
         } else if (profileRow?.training_percent != null) {
           ringPct = Math.round(Number(profileRow.training_percent));
         } else {
-          ringPct = total ? Math.round((valid / total) * 100) : 0;
+          try {
+            if (siteId) {
+              // Fetch the site's active training types and the user's training records
+              const [{ data: types, error: typesErr }, { data: recs, error: recsErr }] = await Promise.all([
+                supabase.from('training_types').select('id, validity_months, active').eq('site_id', siteId).eq('active', true),
+                // training_records schema varies; attempt to match either user_id or staff_id
+                supabase.from('training_records').select('*').eq('site_id', siteId).or(`user_id.eq.${user.id},staff_id.eq.${user.id}`)
+              ]);
+              if (!typesErr && types && types.length) {
+                const comp = computeCompliance(types, recs || [], new Date());
+                ringPct = comp.percent || 0;
+              } else {
+                ringPct = total ? Math.round((valid / total) * 100) : 0;
+              }
+            } else {
+              ringPct = total ? Math.round((valid / total) * 100) : 0;
+            }
+          } catch (_){
+            ringPct = total ? Math.round((valid / total) * 100) : 0;
+          }
         }
       } catch(e){
         console.error('Error loading metrics', e);

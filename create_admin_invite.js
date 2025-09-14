@@ -1,0 +1,70 @@
+import { createClient } from '@supabase/supabase-js';
+
+async function createAdminInvite() {
+  const supabaseUrl = 'https://unveoqnlqnobufhublyw.supabase.co';
+  const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME';
+  const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+  console.log('=== CREATING ADMIN INVITE ===\n');
+
+  try {
+    // Create admin invite for benhowardmagic@hotmail.com
+    const inviteData = {
+      email: 'benhowardmagic@hotmail.com',
+      role: 'admin',
+      site_id: 2, // Harley Street Medical Centre
+      full_name: 'Ben Howard',
+      status: 'accepted', // Pre-accept since this is for existing user
+      token: crypto.randomUUID(),
+      expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30 days from now
+    };
+
+    console.log('Creating admin invite:', inviteData);
+
+    const { data, error } = await supabase
+      .from('site_invites')
+      .insert([inviteData])
+      .select();
+
+    if (error) {
+      console.error('Error creating invite:', error);
+    } else {
+      console.log('✅ Admin invite created successfully:', data);
+
+      // Also check if we need to update the profiles table
+      console.log('\nChecking profiles table...');
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', '55f1b4e6-01f4-452d-8d6c-617fe7794873') // Known user ID from logs
+        .maybeSingle();
+
+      if (profileError) {
+        console.error('Error checking profile:', profileError);
+      } else if (profile) {
+        console.log('Current profile role:', profile.role);
+
+        if (profile.role !== 'admin') {
+          console.log('Updating profile role to admin...');
+          const { error: updateError } = await supabase
+            .from('profiles')
+            .update({ role: 'admin' })
+            .eq('user_id', '55f1b4e6-01f4-452d-8d6c-617fe7794873');
+
+          if (updateError) {
+            console.error('Error updating profile role:', updateError);
+          } else {
+            console.log('✅ Profile role updated to admin');
+          }
+        }
+      } else {
+        console.log('No profile found for user');
+      }
+    }
+
+  } catch (error) {
+    console.error('Error:', error);
+  }
+}
+
+createAdminInvite().catch(console.error);
