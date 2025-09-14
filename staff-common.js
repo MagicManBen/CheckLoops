@@ -70,8 +70,23 @@ export async function requireStaffSession(supabase) {
 
   // For staff-welcome page, allow users without roles to complete setup
   const isWelcomePage = /staff-welcome\.html$/i.test(window.location.pathname);
-  if (!isWelcomePage && (!role || !allowed.includes(String(role).toLowerCase()))) {
+
+  // Allow staff-welcome page access for users with any role or no role (for onboarding)
+  if (!isWelcomePage && role && !allowed.includes(String(role).toLowerCase())) {
     throw new Error('NOT_STAFF');
+  }
+
+  // If no role is set but user has a valid session, allow access (they may need to complete onboarding)
+  if (!isWelcomePage && !role) {
+    // Check if user has onboarding data indicating they are a staff member
+    const hasStaffEmail = session.user?.email?.includes('@') &&
+      (session.user.email.includes('.nhs.uk') ||
+       session.user.email.includes('benhowardmagic@hotmail.com') ||
+       session.user.raw_user_meta_data?.role);
+
+    if (!hasStaffEmail) {
+      throw new Error('NOT_STAFF');
+    }
   }
   return { session, profileRow };
 }
@@ -145,13 +160,13 @@ export function renderStaffNavigation(activePage = 'home') {
   const navItems = [
     { page: 'home', href: 'staff.html', label: 'Home' },
     { page: 'welcome', href: 'staff-welcome.html', label: 'Welcome' },
+    { page: 'holidays', href: 'my-holidays.html', label: 'My Holidays' },
     { page: 'meetings', href: 'staff-meetings.html', label: 'Meetings' },
     { page: 'scans', href: 'staff-scans.html', label: 'My Scans' },
     { page: 'training', href: 'staff-training.html', label: 'My Training' },
     { page: 'achievements', href: 'achievements.html', label: 'Achievements' },
-    { page: 'quiz', href: 'staff-quiz.html', label: 'Quiz' },
-    // Per navigation rules: Admin Site button must link to admin check page and keep the user logged in
-    { page: 'admin', href: 'index.html', label: 'Admin Site', adminOnly: true }
+    { page: 'quiz', href: 'staff-quiz.html', label: 'Quiz' }
+    // Admin link removed - separate portals for staff and admin
   ];
 
   // Clear existing content and event listeners
@@ -222,17 +237,7 @@ export function navActivate(page){
   renderStaffNavigation(page);
 }
 
-// Reveal admin-only navigation links if user has admin/owner role
-export function revealAdminNav(role){
-  try{
-    const r = String(role || '').toLowerCase();
-    if (r === 'admin' || r === 'owner') {
-      document.querySelectorAll('.admin-only').forEach(el => {
-        el.style.display = el.classList.contains('nav-link') ? 'block' : 'inline-block';
-      });
-    }
-  }catch(_){ /* ignore */ }
-}
+// Removed revealAdminNav - staff portal no longer shows admin links
 
 // ---------- UI helpers for redesigned pages ----------
 export function animateNumber(el, to, { duration = 800, prefix = '', suffix = '' } = {}){
