@@ -356,7 +356,7 @@
           const { data: entitlement } = await supabase
             .from('2_staff_entitlements')
             .select('*')
-            .eq('staff_profile_id', holidayProfile.id)
+            .eq('staff_id', holidayProfile.id)
             .eq('year', currentYear)
             .maybeSingle();
 
@@ -377,13 +377,21 @@
           // Display entitlements
           const isGP = holidayProfile.is_gp;
 
-          // Determine total allowance with sensible fallbacks:
-          // 1) Entitlements table (annual_sessions / annual_hours)
-          // 2) Entitlements calculated output (calc_output_hours)
-          // 3) Working pattern snapshot (total_holiday_entitlement)
-          const totalAllowance = isGP
-            ? ((entitlement?.annual_sessions ?? window.workingPattern?.total_holiday_entitlement ?? 0))
-            : ((entitlement?.annual_hours ?? entitlement?.calc_output_hours ?? window.workingPattern?.total_holiday_entitlement ?? 0));
+          // Calculate total allowance based on new structure:
+          // Use override if present, otherwise calculate from weekly * multiplier
+          let totalAllowance = 0;
+          if (entitlement) {
+            if (entitlement.override) {
+              totalAllowance = entitlement.override;
+            } else {
+              const weekly = isGP ? entitlement.weekly_sessions : entitlement.weekly_hours;
+              const multiplier = entitlement.multiplier || 6;
+              totalAllowance = (weekly || 0) * multiplier;
+            }
+          } else {
+            // Fallback to working pattern if available
+            totalAllowance = window.workingPattern?.total_holiday_entitlement ?? 0;
+          }
 
           // Get approved bookings for current year
           const { data: bookings } = await supabase
