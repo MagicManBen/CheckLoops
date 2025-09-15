@@ -17571,6 +17571,82 @@ window.refreshStaffData = refreshStaffData;
   }
 
   // Load holiday requests
+  // Function to fix RLS permissions for holiday requests
+  window.fixHolidayRequestRLS = async function() {
+    if (!window.supabase) {
+      alert('Supabase client not initialized');
+      return;
+    }
+
+    try {
+      // First check if the current user is an admin
+      const { data: { user } } = await window.supabase.auth.getUser();
+      if (!user) {
+        alert('You must be logged in to run this fix');
+        return;
+      }
+
+      // Check if user has admin role
+      const { data: profile } = await window.supabase
+        .from('profiles')
+        .select('role')
+        .eq('user_id', user.id)
+        .single();
+
+      if (!profile || profile.role !== 'admin') {
+        alert('You must be an admin to run this fix');
+        return;
+      }
+
+      // Fix the RLS policy by running SQL as the admin user
+      const { error } = await window.supabase.rpc('execute_sql', {
+        sql: `
+          -- Enable RLS if not already enabled
+          ALTER TABLE IF EXISTS public."4_holiday_requests" ENABLE ROW LEVEL SECURITY;
+          
+          -- Drop any existing policy for admin updates
+          DROP POLICY IF EXISTS "admin_update_holiday_requests" ON public."4_holiday_requests";
+          
+          -- Create a policy that allows users with the 'admin' role to update any request
+          CREATE POLICY "admin_update_holiday_requests" 
+          ON public."4_holiday_requests"
+          FOR UPDATE 
+          TO authenticated
+          USING (
+            -- Check if the user has an admin role in the profiles table
+            EXISTS (
+              SELECT 1 FROM public.profiles 
+              WHERE user_id = auth.uid() 
+              AND role = 'admin'
+            )
+          )
+          WITH CHECK (
+            -- Same condition for the CHECK clause
+            EXISTS (
+              SELECT 1 FROM public.profiles 
+              WHERE user_id = auth.uid() 
+              AND role = 'admin'
+            )
+          );
+        `
+      });
+
+      if (error) {
+        console.error('Error fixing RLS:', error);
+        alert(`Error fixing permissions: ${error.message}\n\nPlease contact your database administrator to fix the RLS policies manually.`);
+        return;
+      }
+
+      alert('Holiday request permissions fixed successfully! Admins can now approve or reject holiday requests.');
+      
+      // Reload the holiday requests
+      loadHolidayRequests();
+    } catch (error) {
+      console.error('Error fixing holiday request RLS:', error);
+      alert(`Error fixing permissions: ${error.message}\n\nPlease contact your database administrator to fix the RLS policies manually using SQL in the Supabase dashboard.`);
+    }
+  };
+
   async function loadHolidayRequests() {
     if (!window.supabase) return;
 
@@ -17591,14 +17667,16 @@ window.refreshStaffData = refreshStaffData;
           .select('user_id, email')
           .in('user_id', userIds);
 
-        // Get holiday profiles to check if GP
+        // Get holiday profiles with more complete data
         const { data: holidayProfiles } = await window.supabase
           .from('1_staff_holiday_profiles')
-          .select('email, is_gp');
+          .select('id, user_id, email, full_name, is_gp');
 
-        // Map emails and GP status to requests
+        // Map emails, names and GP status to requests
         const profileMap = {};
+        const nameMap = {};
         const gpMap = {};
+        const userToHolidayProfileMap = {};
 
         if (profiles) {
           profiles.forEach(p => {
@@ -17607,15 +17685,35 @@ window.refreshStaffData = refreshStaffData;
         }
 
         if (holidayProfiles) {
+          // Create mapping by user_id and by email
           holidayProfiles.forEach(hp => {
-            gpMap[hp.email] = hp.is_gp;
+            if (hp.user_id) {
+              userToHolidayProfileMap[hp.user_id] = hp;
+            }
+            if (hp.email) {
+              gpMap[hp.email] = hp.is_gp;
+              nameMap[hp.email] = hp.full_name;
+            }
           });
         }
 
-        // Add emails and GP status to requests
+        // Add emails, names and GP status to requests
         requests.forEach(r => {
-          r.email = profileMap[r.user_id] || 'Unknown';
-          r.is_gp = gpMap[r.email] || false;
+          // First try to get user from direct user_id mapping
+          const holidayProfile = userToHolidayProfileMap[r.user_id];
+          
+          if (holidayProfile) {
+            // Direct match by user_id
+            r.email = holidayProfile.email;
+            r.full_name = holidayProfile.full_name;
+            r.is_gp = holidayProfile.is_gp;
+          } else {
+            // Fallback to email mapping
+            const email = profileMap[r.user_id] || 'Unknown';
+            r.email = email;
+            r.full_name = nameMap[email] || email;
+            r.is_gp = gpMap[email] || false;
+          }
         });
       }
 
@@ -17627,7 +17725,16 @@ window.refreshStaffData = refreshStaffData;
         return;
       }
 
-      container.innerHTML = `
+      // Add a button to fix permissions if needed
+      const fixPermissionsButton = `
+        <div style="margin-bottom: 20px; display: flex; justify-content: flex-end;">
+          <button onclick="fixHolidayRequestRLS()" class="btn primary" style="background-color: var(--info);">
+            Fix Admin Permissions
+          </button>
+        </div>
+      `;
+
+      container.innerHTML = fixPermissionsButton + `
         <table>
           <thead>
             <tr>
@@ -17653,7 +17760,7 @@ window.refreshStaffData = refreshStaffData;
 
               return `
                 <tr>
-                  <td>${req.email || 'Unknown'}</td>
+                  <td>${req.full_name || req.email || 'Unknown'}</td>
                   <td>${new Date(req.start_date).toLocaleDateString()} - ${new Date(req.end_date).toLocaleDateString()}</td>
                   <td>${amount}</td>
                   <td>${req.reason || '-'}</td>
@@ -17835,21 +17942,42 @@ window.refreshStaffData = refreshStaffData;
     if (!window.supabase) return;
 
     try {
+      // First get the current user
+      const { data: { user }, error: userError } = await window.supabase.auth.getUser();
+      
+      if (userError) {
+        console.error('Error getting current user:', userError);
+        alert('Error: Unable to verify your identity. Please reload the page and try again.');
+        return;
+      }
+      
+      if (!user || !user.id) {
+        alert('Error: You must be logged in to approve requests.');
+        return;
+      }
+      
+      // Update the request status
       const { error } = await window.supabase
         .from('4_holiday_requests')
         .update({
           status: 'approved',
           approved_at: new Date().toISOString(),
-          approved_by: (await window.supabase.auth.getUser()).data.user?.id
+          approved_by: user.id
         })
         .eq('id', reqId);
 
-      if (error) throw error;
-      alert('Request approved!');
-      loadHolidayRequests();
+      if (error) {
+        console.error('Database error approving request:', error);
+        alert(`Error approving request: ${error.message || 'Unknown database error'}`);
+        return;
+      }
+      
+      // Success!
+      alert('Request approved successfully!');
+      await loadHolidayRequests();
     } catch (error) {
       console.error('Error approving request:', error);
-      alert('Error approving request');
+      alert('Error approving request: ' + (error.message || 'Unknown error'));
     }
   };
 
@@ -17857,25 +17985,46 @@ window.refreshStaffData = refreshStaffData;
   window.rejectRequest = async function(reqId) {
     if (!window.supabase) return;
 
-    const reason = prompt('Rejection reason (optional):');
-
     try {
+      // First get the current user
+      const { data: { user }, error: userError } = await window.supabase.auth.getUser();
+      
+      if (userError) {
+        console.error('Error getting current user:', userError);
+        alert('Error: Unable to verify your identity. Please reload the page and try again.');
+        return;
+      }
+      
+      if (!user || !user.id) {
+        alert('Error: You must be logged in to reject requests.');
+        return;
+      }
+      
+      const reason = prompt('Rejection reason (optional):');
+      
+      // Update the request status
       const { error } = await window.supabase
         .from('4_holiday_requests')
         .update({
           status: 'rejected',
           rejection_reason: reason,
           rejected_at: new Date().toISOString(),
-          rejected_by: (await window.supabase.auth.getUser()).data.user?.id
+          rejected_by: user.id
         })
         .eq('id', reqId);
 
-      if (error) throw error;
-      alert('Request rejected.');
-      loadHolidayRequests();
+      if (error) {
+        console.error('Database error rejecting request:', error);
+        alert(`Error rejecting request: ${error.message || 'Unknown database error'}`);
+        return;
+      }
+      
+      // Success!
+      alert('Request rejected successfully.');
+      await loadHolidayRequests();
     } catch (error) {
       console.error('Error rejecting request:', error);
-      alert('Error rejecting request');
+      alert('Error rejecting request: ' + (error.message || 'Unknown error'));
     }
   };
 
