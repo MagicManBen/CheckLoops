@@ -46,7 +46,7 @@ export async function requireStaffSession(supabase) {
 
   // Try to get role from profile first, then from user metadata
   const meta = session.user?.user_metadata || session.user?.raw_user_meta_data || {};
-  const role = profileRow?.account_role || meta?.account_role || meta?.role || null;
+  const role = profileRow?.account_role || meta?.account_role || null;
   // Include 'member' and any role by default for staff-welcome page
   const allowed = ['staff', 'admin', 'owner', 'manager', 'member', 'user'];
 
@@ -82,8 +82,7 @@ export async function requireStaffSession(supabase) {
     const hasStaffEmail = session.user?.email?.includes('@') &&
       (session.user.email.includes('.nhs.uk') ||
        session.user.email.includes('benhowardmagic@hotmail.com') ||
-       session.user.raw_user_meta_data?.account_role ||
-       session.user.raw_user_meta_data?.role);
+       session.user.raw_user_meta_data?.account_role);
 
     if (!hasStaffEmail) {
       throw new Error('NOT_STAFF');
