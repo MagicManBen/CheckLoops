@@ -36,7 +36,7 @@ export async function requireStaffSession(supabase) {
 
   const { data: profileRow, error: profileError } = await supabase
     .from('profiles')
-    .select('role, full_name, site_id, onboarding_complete')
+    .select('account_role, full_name, site_id, onboarding_complete')
     .eq('user_id', session.user.id)
     .maybeSingle();
 
@@ -46,7 +46,7 @@ export async function requireStaffSession(supabase) {
 
   // Try to get role from profile first, then from user metadata
   const meta = session.user?.user_metadata || session.user?.raw_user_meta_data || {};
-  const role = profileRow?.role || meta?.role || null;
+  const role = profileRow?.account_role || meta?.account_role || meta?.role || null;
   // Include 'member' and any role by default for staff-welcome page
   const allowed = ['staff', 'admin', 'owner', 'manager', 'member', 'user'];
 
@@ -55,9 +55,9 @@ export async function requireStaffSession(supabase) {
       userId: session.user.id,
       email: session.user.email,
       profileRow: profileRow,
-      profileRole: profileRow?.role,
+      profileRole: profileRow?.account_role,
       userMetadata: meta,
-      metaRole: meta?.role,
+      metaRole: meta?.account_role,
       finalRole: role,
       onboarding_complete: profileRow?.onboarding_complete,
       onboarding_required: meta?.onboarding_required,
@@ -82,6 +82,7 @@ export async function requireStaffSession(supabase) {
     const hasStaffEmail = session.user?.email?.includes('@') &&
       (session.user.email.includes('.nhs.uk') ||
        session.user.email.includes('benhowardmagic@hotmail.com') ||
+       session.user.raw_user_meta_data?.account_role ||
        session.user.raw_user_meta_data?.role);
 
     if (!hasStaffEmail) {
