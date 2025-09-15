@@ -5311,11 +5311,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
       <!-- Working Hours Section -->
       <section class="view" id="working-hours">
-        <h2>Staff Working Hours Management</h2>
+        <div class="page-header">
+          <div class="page-title-wrapper">
+            <h1 class="page-title">Staff Working Hours Management</h1>
+          </div>
+        </div>
+
         <div class="card">
-          <h3>Manage Staff Working Patterns</h3>
-          <div id="working-hours-list" style="margin-top:20px;">
-            <!-- Working hours will be loaded here -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3>Manage Working Patterns & Holiday Entitlements</h3>
+            <button class="btn" id="refresh-working-hours" onclick="loadWorkingHours()">
+              <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M4 4v6h6M20 20v-6h-6M4 10l2.5-2.5C8 6 10.5 5 13 5s5 1 6.5 2.5L22 10M2 14l2.5 2.5C6 18 8.5 19 11 19s5-1 6.5-2.5L20 14"/>
+              </svg>
+              Refresh Data
+            </button>
+          </div>
+
+          <div id="working-hours-loading" style="text-align: center; padding: 40px; display: none;">
+            <div style="font-size: 16px; color: var(--muted);">Loading staff working hours...</div>
+          </div>
+
+          <div id="working-hours-table-container">
+            <!-- Working hours table will be loaded here -->
           </div>
         </div>
       </section>
@@ -5349,12 +5367,48 @@ document.addEventListener('DOMContentLoaded', () => {
       // Save multiplier on button click
       const btn = document.getElementById('save-multiplier');
       if (btn) {
-        btn.addEventListener('click', function() {
+        btn.addEventListener('click', async function() {
           const val = parseFloat(document.getElementById('default-multiplier').value);
           if (!isNaN(val) && val > 0) {
+            // Save to localStorage
             localStorage.setItem('default-holiday-multiplier', val);
-            const msg = document.getElementById('multiplier-saved-msg');
-            if (msg) { msg.style.display = 'inline'; setTimeout(()=>{msg.style.display='none';}, 1200); }
+
+            // Update all rows in 2_staff_entitlements table
+            if (window.supabase) {
+              try {
+                const { error } = await window.supabase
+                  .from('2_staff_entitlements')
+                  .update({ multiplier: val })
+                  .not('id', 'is', null); // Update all rows
+
+                if (error) {
+                  console.error('Error updating multipliers:', error);
+                  alert('Error updating multipliers: ' + error.message);
+                } else {
+                  const msg = document.getElementById('multiplier-saved-msg');
+                  if (msg) {
+                    msg.textContent = 'Saved and applied to all staff!';
+                    msg.style.display = 'inline';
+                    setTimeout(()=>{
+                      msg.style.display='none';
+                      msg.textContent = 'Saved!';
+                    }, 2000);
+                  }
+
+                  // Reload entitlements if currently viewing that section
+                  if (typeof loadHolidayEntitlements === 'function') {
+                    loadHolidayEntitlements();
+                  }
+                }
+              } catch (err) {
+                console.error('Error applying multiplier:', err);
+                alert('Error applying multiplier to all staff');
+              }
+            } else {
+              // If no Supabase connection, just save locally
+              const msg = document.getElementById('multiplier-saved-msg');
+              if (msg) { msg.style.display = 'inline'; setTimeout(()=>{msg.style.display='none';}, 1200); }
+            }
           }
         });
       }
@@ -17087,7 +17141,7 @@ window.refreshStaffData = refreshStaffData;
               const unit = isGP ? 'sessions' : 'hours';
               const weekly = isGP ? ent.weekly_sessions : ent.weekly_hours;
               const multiplier = ent.multiplier || 6;
-              const calculated = weekly ? weekly * multiplier : 0;
+              const calculated = isGP ? ent.calculated_sessions : ent.calculated_hours;
               const override = ent.override;
               const final = override || calculated;
 
@@ -17266,19 +17320,26 @@ window.refreshStaffData = refreshStaffData;
   window.updateMultiplier = async function(entId, profileId, isGP) {
     const multiplier = parseFloat(document.getElementById(`multiplier-${entId}`).value) || 6;
 
-    // Get the current entitlement record to get weekly values
     if (!window.supabase) return;
 
     try {
+      // Update the multiplier in the database (trigger will auto-calculate)
+      const { error: updateError } = await window.supabase
+        .from('2_staff_entitlements')
+        .update({ multiplier: multiplier })
+        .eq('id', entId);
+
+      if (updateError) throw updateError;
+
+      // Get the updated calculated values from the database
       const { data: ent } = await window.supabase
         .from('2_staff_entitlements')
-        .select('weekly_hours, weekly_sessions, override')
+        .select('calculated_hours, calculated_sessions, override')
         .eq('id', entId)
         .single();
 
       if (ent) {
-        const weekly = isGP ? ent.weekly_sessions : ent.weekly_hours;
-        const calculated = weekly * multiplier;
+        const calculated = isGP ? ent.calculated_sessions : ent.calculated_hours;
 
         // Update calculated display
         const calcEl = document.getElementById(`calculated-${entId}`);
@@ -17297,7 +17358,7 @@ window.refreshStaffData = refreshStaffData;
         }
       }
     } catch (e) {
-      console.error('Error updating multiplier display:', e);
+      console.error('Error updating multiplier:', e);
     }
   };
 

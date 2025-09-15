@@ -895,17 +895,29 @@
           }
           if (!wp) return { weeklyHours: 0, weeklySessions: 0 };
 
-          const dows = ['mon','tue','wed','thu','fri','sat','sun'];
+          // Use the pre-calculated totals if available
+          if (wp.total_hours !== undefined && wp.total_sessions !== undefined) {
+            console.log('[entitlement] Using pre-calculated totals - hours:', wp.total_hours, 'sessions:', wp.total_sessions);
+            return { weeklyHours: wp.total_hours || 0, weeklySessions: wp.total_sessions || 0 };
+          }
 
-          // Sum up both hours and sessions separately
+          // Fallback: calculate from individual days
+          const days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
           let hoursSum = 0;
           let sessionsSum = 0;
 
-          for (const d of dows) {
-            const h = wp[`${d}_hours`] ?? wp[`${d}day_hours`]; // very defensive; handles alternate naming
-            const s = wp[`${d}_sessions`];
+          for (const day of days) {
+            const h = wp[`${day}_hours`];
+            const s = wp[`${day}_sessions`];
 
-            if (typeof h === 'number' && !Number.isNaN(h)) hoursSum += h;
+            // Handle HH:MM format for hours
+            if (h && typeof h === 'string' && h.includes(':')) {
+              const [hours, minutes] = h.split(':').map(Number);
+              hoursSum += hours + (minutes / 60);
+            } else if (typeof h === 'number') {
+              hoursSum += h;
+            }
+
             if (typeof s === 'number' && !Number.isNaN(s)) sessionsSum += s;
           }
 
@@ -956,6 +968,8 @@
             multiplier: defaultMultiplier
           };
 
+          console.log('[entitlement] Creating entitlement - isGP:', isGP, 'totals:', totals, 'payload:', payload);
+
           const { error: upErr } = await supabase
             .from('2_staff_entitlements')
             .upsert(payload, { onConflict: 'staff_id,year' });
@@ -980,7 +994,9 @@
 
               // Check if user is a GP based on their role selection
               const roleSelect = document.getElementById('role');
-              const isGP = roleSelect && roleSelect.value === 'GP';
+              const roleValue = roleSelect ? roleSelect.value : window.selectedRole;
+              const isGP = roleValue && (roleValue.toLowerCase().includes('doctor') || roleValue.toLowerCase().includes('gp'));
+              console.log('[entitlement] Role check - roleValue:', roleValue, 'isGP:', isGP);
 
               await ensureEntitlementForUser(user, siteId, totals, isGP);
             } catch (e) {
@@ -2766,7 +2782,7 @@
           if (!inputEl) {
             console.warn(`Input element for ${day} not found`);
             // Set defaults
-            patternData[`${day}_hours`] = 0;
+            patternData[`${day}_hours`] = null;
             patternData[`${day}_sessions`] = 0;
             continue;
           }
@@ -2774,41 +2790,29 @@
           if (isGP) {
             const sessions = parseInt(inputEl.value || '0');
             patternData[`${day}_sessions`] = sessions;
-            patternData[`${day}_hours`] = 0;
+            patternData[`${day}_hours`] = null;  // NULL for GP staff
             totalSessions += sessions;
             console.log(`${day}: ${sessions} sessions`);
           } else {
             const timeValue = inputEl.value || '00:00';
+            // Store as HH:MM format string
+            patternData[`${day}_hours`] = timeValue === '00:00' ? null : timeValue;
+            patternData[`${day}_sessions`] = 0;
+
+            // Calculate total hours
             const [h, m] = timeValue.split(':').map(Number);
             const decimal = h + (m / 60);
-            patternData[`${day}_hours`] = parseFloat(decimal.toFixed(2));
-            patternData[`${day}_sessions`] = 0;
             totalHours += decimal;
-            console.log(`${day}: ${timeValue} = ${decimal.toFixed(2)} hours`);
+            console.log(`${day}: ${timeValue} (stored as HH:MM)`);
           }
         }
         
-        // Check if we need to preserve existing values
-        let existingData = null;
-        try {
-          const { data: existing } = await globalSupabase
-            .from('3_staff_working_patterns')
-            .select('total_holiday_entitlement, approved_holidays_used, holiday_year_start')
-            .eq('user_id', currentUser.id)
-            .maybeSingle();
-          existingData = existing;
-        } catch (e) {
-          console.warn('Could not check existing data:', e);
-        }
-
-        // Preserve existing values or set defaults
-        patternData.total_holiday_entitlement = existingData?.total_holiday_entitlement || (isGP ? 20 : 25);
-        patternData.approved_holidays_used = existingData?.approved_holidays_used || 0;
-        if (existingData?.holiday_year_start) {
-          patternData.holiday_year_start = existingData.holiday_year_start;
-        }
+        // Add totals to pattern data
+        patternData.total_hours = totalHours;
+        patternData.total_sessions = totalSessions;
 
         console.log('Pattern data to save:', patternData);
+        console.log('Is GP?:', isGP, 'Total Sessions:', totalSessions, 'Total Hours:', totalHours);
         
         try {
           // Save working pattern
@@ -2830,13 +2834,13 @@
           // Also save working hours summary to staff_app_welcome
           try {
             const workingHoursData = {
-              monday: patternData.monday_hours || patternData.monday_sessions || 0,
-              tuesday: patternData.tuesday_hours || patternData.tuesday_sessions || 0,
-              wednesday: patternData.wednesday_hours || patternData.wednesday_sessions || 0,
-              thursday: patternData.thursday_hours || patternData.thursday_sessions || 0,
-              friday: patternData.friday_hours || patternData.friday_sessions || 0,
-              saturday: patternData.saturday_hours || patternData.saturday_sessions || 0,
-              sunday: patternData.sunday_hours || patternData.sunday_sessions || 0,
+              monday: isGP ? patternData.monday_sessions : (patternData.monday_hours || '00:00'),
+              tuesday: isGP ? patternData.tuesday_sessions : (patternData.tuesday_hours || '00:00'),
+              wednesday: isGP ? patternData.wednesday_sessions : (patternData.wednesday_hours || '00:00'),
+              thursday: isGP ? patternData.thursday_sessions : (patternData.thursday_hours || '00:00'),
+              friday: isGP ? patternData.friday_sessions : (patternData.friday_hours || '00:00'),
+              saturday: isGP ? patternData.saturday_sessions : (patternData.saturday_hours || '00:00'),
+              sunday: isGP ? patternData.sunday_sessions : (patternData.sunday_hours || '00:00'),
               isGP: isGP
             };
 
@@ -2892,9 +2896,9 @@
               const profileId = profileData[0].id;
               const currentYear = new Date().getFullYear();
 
-              // Calculate weekly totals
-              const weeklyHours = isGP ? 0 : totalHours;
-              const weeklySessions = isGP ? totalSessions : 0;
+              // Use the already calculated totals
+              const weeklyHours = isGP ? null : totalHours;
+              const weeklySessions = isGP ? totalSessions : null;
 
               // Check for existing entitlement to preserve override
               const { data: existingEntitlement } = await globalSupabase
@@ -2915,12 +2919,14 @@
               const entitlement = {
                 staff_id: profileId,
                 year: currentYear,
-                weekly_hours: isGP ? null : weeklyHours,
-                weekly_sessions: isGP ? weeklySessions : null,
+                weekly_hours: isGP ? null : totalHours,
+                weekly_sessions: isGP ? totalSessions : null,
                 multiplier: multiplier,
                 override: existingEntitlement?.override || null,
                 updated_at: new Date().toISOString()
               };
+
+              console.log('[staff-welcome] Creating entitlement - isGP:', isGP, 'totalSessions:', totalSessions, 'totalHours:', totalHours, 'entitlement:', entitlement);
 
               const { error: entitlementError } = await globalSupabase
                 .from('2_staff_entitlements')
