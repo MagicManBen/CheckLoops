@@ -421,8 +421,11 @@
       // Reveal Admin link if applicable
       
       // Show admin access panel for admins and owners
-      const role = (profileRow?.role || session.user?.raw_user_meta_data?.role || '').toLowerCase();
-      if (role === 'admin' || role === 'owner') {
+      // Check both 'account_role' (new) and 'role' (old) for backward compatibility
+      const accountRole = (profileRow?.account_role || profileRow?.role ||
+                          session.user?.raw_user_meta_data?.account_role ||
+                          session.user?.raw_user_meta_data?.role || '').toLowerCase();
+      if (accountRole === 'admin' || accountRole === 'owner') {
         const adminPanel = document.getElementById('admin-access-panel');
         if (adminPanel) {
           adminPanel.style.display = 'block';
@@ -443,8 +446,14 @@
       }catch(_){/* ignore */}
 
       const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
-      const role = profileRow?.role || user?.raw_user_meta_data?.role || 'Staff';
-      const roleDetail = role.charAt(0).toUpperCase() + role.slice(1);  // Capitalize first letter
+
+      // Get job role for display (from staff_app_welcome or user metadata)
+      // Try to get job_role from staff_app_welcome or role_detail from metadata first
+      const jobRole = user?.raw_user_meta_data?.job_role ||
+                      user?.raw_user_meta_data?.role_detail ||
+                      profileRow?.job_role ||
+                      'Staff';
+      const roleDetail = jobRole.charAt(0).toUpperCase() + jobRole.slice(1);  // Capitalize first letter
 
       document.getElementById('welcome').textContent = `Welcome, ${displayName}`;
       
