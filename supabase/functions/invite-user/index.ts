@@ -9,7 +9,9 @@ const getAllowedOrigin = (req: Request): string => {
     'http://127.0.0.1:5500',
     'http://localhost:5173',
     'http://localhost:5500',
-    'https://magicmanben.github.io'
+    'https://magicmanben.github.io',
+    'https://checkloops.co.uk',
+    'https://www.checkloops.co.uk'
   ]
   
   return allowedOrigins.includes(origin) ? origin : allowedOrigins[0]
@@ -44,7 +46,7 @@ serve(async (req) => {
 
     // Get environment variables
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
-    const supabaseServiceKey = Deno.env.get('SECRET_KEY')
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SECRET_KEY')
 
     if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error('Missing environment variables')
@@ -115,10 +117,12 @@ serve(async (req) => {
 
     // Determine redirect URL based on environment or allow override
     const origin = req.headers.get('origin') || ''
-    const isProduction = origin.includes('github.io')
-    const defaultRedirect = isProduction 
-      ? 'https://magicmanben.github.io/CheckLoops/set-password.html'
-      : 'http://127.0.0.1:5500/set-password.html'
+    const isProduction = origin.includes('checkloops.co.uk') || origin.includes('github.io')
+    const defaultRedirect = origin.includes('checkloops.co.uk')
+      ? 'https://checkloops.co.uk/simple-set-password.html'
+      : (origin.includes('github.io')
+        ? 'https://magicmanben.github.io/CheckLoops/simple-set-password.html'
+        : 'http://127.0.0.1:5500/simple-set-password.html')
     const redirectTo = requestBody.redirect_to || defaultRedirect
 
     // Now send the actual invitation email using Supabase Auth
@@ -159,4 +163,3 @@ serve(async (req) => {
     })
   }
 })
-

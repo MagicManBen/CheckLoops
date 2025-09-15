@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="refresh" content="0; url=/home.html" />
+    <title>Redirecting…</title>
+    <script>
+      // Ensure query string and hash are preserved when redirecting
+      (function(){
+        var qs = location.search || '';
+        var hash = location.hash || '';
+        try { location.replace('/home.html' + qs + hash); } catch(e) { location.href = '/home.html' + qs + hash; }
+      })();
+    </script>
+  </head>
+  <body>
+    Redirecting to <a href="/home.html">staff login</a>…
+  </body>
+</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Staff Sign In — CheckLoop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="config.js"></script>
+<script src="login-redirect.js"></script>
+<style>
+  :root{
+    --bg1:#0b4fb3; --bg2:#062b6f; --glass:#ffffff12; --glass-2:#ffffff1a;
+    --white:#e6f0ff; --muted:#b8c7e8; --ink:#eaf1ff;
+    --accent:#76a7ff; --accent-2:#5f96ff; --success:#2bd4a7; --danger:#ff6b6b;
+    --shadow: 0 10px 30px rgba(6,43,111,.35);
+    --round:18px;
+    --panel-bg: linear-gradient(145deg, #133b8a, #0c275e);
+    --border-color: #ffffff1f;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+
+  /* Page background copied from index.html for consistent palette */
+  body{
+    margin:0; font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);
+    background: linear-gradient(180deg, #0e3f93 0%, #082a69 100%);
+    overflow-x:hidden;
+    min-height:100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Silky animated background matching index.html */
+  .bg{
+    position:fixed; inset:0; z-index:-1; overflow:hidden; background: radial-gradient(1200px 700px at 20% -10%, #6aa0ff33, transparent),
+      radial-gradient(900px 600px at 90% 10%, #3566ff2e, transparent),
+      linear-gradient(180deg, #0e3f93 0%, #082a69 100%);
+  }
+  .wave{
+    position:absolute; width:160%; height:160%; left:-30%; top:-30%;
+    background: conic-gradient(from 180deg at 50% 50%, #2c63ff22, #143a9622, #2c63ff22);
+    filter: blur(60px);
+    animation: drift 22s ease-in-out infinite alternate;
+    transform-origin: 50% 50%;
+  }
+  .wave2{ animation-duration: 28s; mix-blend-mode: screen; }
+  @keyframes drift{ 0%{ transform: rotate(0deg) scale(1.0); } 100%{ transform: rotate(25deg) scale(1.08); } }
+
+  /* Centering container */
+  .card-wrap{ display:flex; justify-content:center; align-items:center; height:100vh; padding:24px; }
+
+  .card{
+    background: var(--panel-bg);
+    border:1px solid var(--border-color);
+    border-radius:20px;
+    box-shadow:var(--shadow);
+    padding:28px 32px;
+    width: min(460px, 92vw);
+    color: var(--white);
+    backdrop-filter: blur(6px);
+  }
+
+  .brand .t{ font-weight:800; color:var(--white); margin-bottom:8px }
+  .card h2{ margin:4px 0 12px; font-size:24px; color:var(--white); }
+  .hint{ font-size:13px; color:var(--muted); margin-bottom:10px }
+
+  .field{ display:flex; flex-direction:column; gap:8px; margin:12px 0; }
+  .field label{ font-weight:600; font-size:13px; color:var(--muted) }
+  .field input{ all:unset; background:#ffffff12; border:1px solid #ffffff14; padding:12px 14px; border-radius:12px; color:var(--white); }
+  .field input:focus{ border-color:var(--accent); box-shadow:0 0 0 4px #76a7ff22; }
+
+  .extra-options{ display:flex; justify-content:space-between; align-items:center; margin-top:8px; }
+  .extra-options label{ color:var(--muted); font-size:13px }
+  .extra-options a{ color:var(--muted); text-decoration:none }
+  .extra-options a:hover{ color:var(--white); text-decoration:underline }
+
+  .btn{ all:unset; display:block; width:100%; text-align:center; padding:12px; border-radius:12px; background:linear-gradient(135deg,#7db1ff,#4f89ff); color:#fff; font-weight:600; cursor:pointer; margin-top:16px }
+  .btn.secondary{ background: #ffffff12; border:1px solid var(--border-color); color:var(--white) }
+
+  .error{ color:var(--danger); font-size:13px; margin-top:12px; text-align:center; background:#ff6b6b15; padding:10px; border-radius:8px; border:1px solid #ff6b6b33 }
+  .success{ color:var(--success); font-size:13px; margin-top:12px; text-align:center; background:#2bd4a715; padding:10px; border-radius:8px; border:1px solid #2bd4a733 }
+
+  .signup-link{ text-align:center; margin-top:20px; padding-top:14px; border-top:1px solid var(--border-color); }
+  .signup-link a{ color:var(--accent); font-weight:600 }
+
+  /* Form switching */
+  .form-container{ position:relative; overflow:hidden }
+  .form-step{ transition: all .28s ease }
+  .form-step.hidden{ opacity:0; transform:translateX(20px); pointer-events:none; position:absolute; inset:0 }
+
+  @media (max-width:768px){ .card{ padding:20px; width:92vw } }
+</style>
+</head>
+<body>
+  <div class="bg">
+    <div class="wave"></div>
+    <div class="wave wave2"></div>
+  </div>
+
+  <div class="card">
+    <div class="brand">
+      <div class="logo"></div>
+      <div class="t">CheckLoop</div>
+    </div>
+    
+    <div class="form-container">
+      <!-- Sign In Form -->
+      <div class="form-step" id="signin-form-container">
+        <h2 id="signin-title">Welcome Back</h2>
+        <div class="hint" id="signin-hint">Enter your credentials to access the admin dashboard.</div>
+        
+        <form id="signin-form">
+          <div class="field">
+            <label>Email</label>
+            <input type="email" id="email" placeholder="you@practice.com" required />
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <input type="password" id="password" placeholder="••••••••" required />
+          </div>
+          
+          <div class="extra-options">
+            <label for="remember-me">
+              <input type="checkbox" id="remember-me">
+              Remember me
+            </label>
+            <a href="#" onclick="showForgotPassword()">Forgot Password?</a>
+          </div>
+
+          <button class="btn" type="submit">Sign In</button>
+          <div class="error" id="auth-error" role="alert"></div>
+          <div class="success" id="auth-success" style="display:none"></div>
+        </form>
+        
+        <div class="signup-link">
+          Don't have an account? <a href="signup.html">Sign up here</a>
+        </div>
+        <div style="text-align:center; margin-top:8px;">
+          <a href="admin-login.html" class="btn secondary" style="display:inline-block; width:auto; padding:6px 10px; border-radius:8px; font-size:13px; background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,0.06);">Admin Login</a>
+        </div>
+      </div>
+
+      <!-- Forgot Password Form -->
+      <div class="form-step hidden" id="forgot-form-container">
+        <h2>Reset Password</h2>
+        <div class="hint" style="margin-bottom: 20px;">Enter your email address and we'll send you a link to reset your password.</div>
+        <form id="forgot-form">
+          <div class="field">
+            <label for="reset-email">Email address</label>
+            <input type="email" placeholder="you@practice.com" required id="reset-email" />
+          </div>
+          <button type="submit" class="btn">Send Reset Link</button>
+          <button type="button" class="btn secondary" onclick="showSignIn()" style="margin-top: 12px;">Back to Sign In</button>
+          <div id="reset-error" class="error" style="display:none"></div>
+          <div id="reset-success" class="success" style="display:none"></div>
+        </form>
+      </div>
+
+      <!-- Reset Password Form (when coming from email link) -->
+      <div class="form-step hidden" id="reset-form-container">
+        <h2>Set New Password</h2>
+        <form id="reset-form">
+          <div class="field">
+            <label for="new-password">New Password</label>
+            <input type="password" placeholder="Enter new password" required id="new-password" minlength="6" />
+          </div>
+          <div class="field">
+            <label for="confirm-password">Confirm Password</label>
+            <input type="password" placeholder="Confirm new password" required id="confirm-password" minlength="6" />
+          </div>
+          <button type="submit" class="btn">Update Password</button>
+          <div id="update-error" class="error" style="display:none"></div>
+          <div id="update-success" class="success" style="display:none"></div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+  import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+
+  const SUPABASE_URL = "https://unveoqnlqnobufhublyw.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME";
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { 
+      persistSession: true, 
+      autoRefreshToken: true, 
+      detectSessionInUrl: true,
+      flowType: 'pkce'
+    }
+  });
+
+  // Helper: Clear any stale auth data that might cause session confusion
+  function clearStaleAuthData() {
+    console.log('Clearing any stale auth data...');
+    try {
+      // Clear remember me data if user manually logged out from another page
+      const entries = Object.keys(localStorage);
+      const authKeys = entries.filter(key => 
+        key.startsWith('sb-') || 
+        key.includes('supabase') || 
+        key === 'rememberMe' || 
+        key === 'rememberedEmail' || 
+        key === 'rememberedPassword'
+      );
+      
+      // Only clear if we detect inconsistent state
+      if (authKeys.some(key => key.startsWith('sb-')) && !localStorage.getItem('rememberMe')) {
+        authKeys.forEach(key => localStorage.removeItem(key));
+        console.log('Cleared stale auth data from localStorage');
+      }
+    } catch (error) {
+      console.error('Error clearing stale auth data:', error);
+    }
+  }
+
+  // Helper: redirect the current user to the correct site based on their profile.role
+  // Placed here (inside the module) so it can use the module-scoped `supabase` client.
+  async function redirectByRole(user) {
+    console.log('redirectByRole called with user:', user?.email || 'no user provided');
+    try {
+      let theUser = user;
+      if (!theUser) {
+        console.log('No user provided, fetching from auth...');
+        const res = await supabase.auth.getUser();
+        theUser = res?.data?.user;
+      }
+      if (!theUser) {
+        console.log('Cannot determine user, falling back to admin index');
+        // If we can't determine user, fallback to admin index
+        window.location.href = 'staff.html';
+        return;
+      }
+
+      console.log('Querying profile for user:', theUser.id);
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('user_id', theUser.id)
+        .maybeSingle();
+
+      console.log('Profile query result:', { profile, error });
+
+      // If profile row missing or has no role, fall back to auth user metadata
+      let effectiveRole = (profile && profile.role) ? profile.role : null;
+      if (!effectiveRole) {
+        try {
+          const rawRole = theUser?.raw_user_meta_data?.role;
+          if (rawRole) effectiveRole = rawRole;
+          console.log('Using fallback role from metadata:', rawRole);
+        } catch (e) {
+          console.log('Failed to get fallback role:', e);
+        }
+      }
+
+      console.log('Final effective role:', effectiveRole);
+
+      // Check if user has completed their profile setup
+      const { data: profileCheck } = await supabase
+        .from('profiles')
+        .select('full_name, nickname')
+        .eq('user_id', theUser.id)
+        .single();
+
+      // If user has no profile or incomplete profile, send to welcome
+      if (!profileCheck || !profileCheck.full_name) {
+        console.log('User has incomplete profile, redirecting to staff-welcome.html');
+        window.location.href = 'staff-welcome.html';
+        return;
+      }
+
+      // Staff-only login - redirect all users to staff.html
+      console.log('Redirecting to staff.html (staff-only portal)');
+      window.location.href = 'staff.html';
+    } catch (err) {
+      console.error('redirectByRole failed', err);
+      // Default to staff-welcome for safety
+      window.location.href = 'staff-welcome.html';
+    }
+  }
+
+  // DOM elements
+  const signinForm = document.getElementById("signin-form");
+  const forgotForm = document.getElementById("forgot-form");
+  const resetForm = document.getElementById("reset-form");
+  const authErr = document.getElementById("auth-error");
+  const authSuccess = document.getElementById("auth-success");
+  const emailInput = document.getElementById("email");
+  const passwordInput = document.getElementById("password");
+  const rememberMeCheckbox = document.getElementById("remember-me");
+  // Optional username field (some flows may include a username input)
+  const usernameInput = document.getElementById('username');
+
+  // Form switching functions
+  window.showForgotPassword = function() {
+    document.getElementById('signin-form-container').classList.add('hidden');
+    document.getElementById('forgot-form-container').classList.remove('hidden');
+    document.getElementById('reset-email').value = emailInput.value;
+  };
+
+  window.showSignIn = function() {
+    document.getElementById('forgot-form-container').classList.add('hidden');
+    document.getElementById('reset-form-container').classList.add('hidden');
+    document.getElementById('signin-form-container').classList.remove('hidden');
+  };
+
+  function showResetPassword() {
+    document.getElementById('signin-form-container').classList.add('hidden');
+    document.getElementById('forgot-form-container').classList.add('hidden');
+    document.getElementById('reset-form-container').classList.remove('hidden');
+  }
+
+  function showMessage(element, message, isError = false) {
+    element.textContent = message;
+    element.style.display = isError ? 'block' : 'block';
+    if (!isError) {
+      setTimeout(() => {
+        element.style.display = 'none';
+      }, 5000);
+    }
+  }
+
+  // Check URL for invite token or password recovery
+  async function handleUrlParams() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('invite');
+    const type = urlParams.get('type');
+    const accessToken = urlParams.get('access_token');
+    const refreshToken = urlParams.get('refresh_token');
+
+    // Handle password recovery
+    if (type === 'recovery' || (accessToken && refreshToken)) {
+      showResetPassword();
+      return 'recovery';
+    }
+
+    // Handle invite
+    if (!token) return false;
+
+    try {
+      const { data: invite, error: inviteError } = await supabase
+        .from('site_invites')
+        .select('*')
+        .eq('token', token)
+        .eq('status', 'pending')
+        .gte('expires_at', new Date().toISOString())
+        .single();
+
+      if (inviteError || !invite) {
+        showMessage(authErr, 'Invalid or expired invitation', true);
+        return false;
+      }
+
+      // Pre-fill email and update UI for invited user
+      emailInput.value = invite.email;
+      emailInput.readOnly = true;
+      document.getElementById('signin-title').textContent = 'Welcome to CheckLoop';
+      document.getElementById('signin-hint').textContent = 'Please create your password to complete registration';
+      
+      signinForm.setAttribute('data-invite', token);
+      return 'invite';
+    } catch (err) {
+      console.error('Failed to verify invite:', err);
+      showMessage(authErr, 'Failed to verify invitation', true);
+      return false;
+    }
+  }
+
+  // Complete invitation flow when user is already signed in from email link
+  async function completeInvitationFlow(user, inviteToken) {
+    try {
+      console.log('Completing invitation flow for user:', user.email, 'with token:', inviteToken);
+
+      // Get the invite details
+      const { data: invite, error: inviteError } = await supabase
+        .from('site_invites')
+        .select('*')
+        .eq('token', inviteToken)
+        .single();
+
+      if (inviteError || !invite) {
+        console.error('Failed to get invite details:', inviteError);
+        showMessage(authErr, "Invalid or expired invitation.", true);
+        return;
+      }
+
+      if (invite.status === 'accepted') {
+        showMessage(authSuccess, "This invitation has already been accepted. Redirecting...");
+        setTimeout(() => window.location.href = 'staff.html', 2000);
+        return;
+      }
+
+      const userId = user.id;
+
+      // Check if profile already exists
+      const { data: existingProfile, error: profileCheckError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('site_id', invite.site_id)
+        .single();
+
+      if (profileCheckError && profileCheckError.code !== 'PGRST116') {
+        console.error('Error checking existing profile:', profileCheckError);
+      }
+
+      // Create profile if it doesn't exist
+      if (!existingProfile) {
+        console.log('Creating user profile...');
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            user_id: userId,
+            site_id: invite.site_id,
+            full_name: invite.full_name,
+            role: invite.role,
+            created_at: new Date().toISOString()
+          });
+
+        if (profileError) {
+          console.error('Failed to create profile:', profileError);
+          showMessage(authErr, "Failed to create profile. Please contact support.", true);
+          return;
+        }
+      }
+
+      // Add to kiosk_users table if role detail is provided
+      if (invite.role_detail) {
+        const { data: existingKioskUser, error: kioskCheckError } = await supabase
+          .from('kiosk_users')
+          .select('*')
+          .eq('site_id', invite.site_id)
+          .eq('full_name', invite.full_name)
+          .single();
+
+        if (kioskCheckError && kioskCheckError.code !== 'PGRST116') {
+          console.error('Error checking existing kiosk user:', kioskCheckError);
+        }
+
+        if (!existingKioskUser) {
+          console.log('Creating kiosk user entry...');
+          const kioskUserData = {
+            site_id: invite.site_id,
+            full_name: invite.full_name,
+            role: invite.role_detail,
+            active: true,
+            created_at: new Date().toISOString()
+          };
+
+          if (invite.reports_to_id) {
+            kioskUserData.reports_to_id = parseInt(invite.reports_to_id);
+          }
+
+          const { error: kioskError } = await supabase
+            .from('kiosk_users')
+            .insert(kioskUserData);
+
+          if (kioskError) {
+            console.error('Failed to create kiosk user:', kioskError);
+            // Don't fail the process, just log the error
+          }
+        }
+      }
+
+      // Update invite status
+      const { error: updateError } = await supabase
+        .from('site_invites')
+        .update({ 
+          status: 'accepted',
+          accepted_at: new Date().toISOString()
+        })
+        .eq('token', inviteToken);
+
+      if (updateError) {
+        console.error('Failed to update invite status:', updateError);
+        // Don't fail if invite status update fails, user is created successfully
+      }
+
+      showMessage(authSuccess, "Welcome to CheckLoop! Your account has been activated successfully. Redirecting...");
+      
+      // Redirect based on role after invitation completion
+      setTimeout(() => {
+        redirectByRole(user);
+      }, 3000);
+
+    } catch (error) {
+      console.error('Error completing invitation flow:', error);
+      showMessage(authErr, "Failed to complete registration. Please try again or contact support.", true);
+    }
+  }
+
+  // Initialize page
+  supabase.auth.getSession().then(async ({ data: { session } }) => {
+    // Clear any stale auth data first
+    clearStaleAuthData();
+    
+    // Check for URL parameters first to handle invitations properly
+    const urlParams = new URLSearchParams(window.location.search);
+    const inviteToken = urlParams.get('invite');
+    
+    if (session && inviteToken) {
+      // User is signed in from clicking invitation email link
+      // Complete the invitation process automatically
+      console.log('User signed in via invitation, completing registration...');
+      await completeInvitationFlow(session.user, inviteToken);
+      return;
+    }
+    
+    if (session) {
+      // Regular signed-in user, redirect based on role
+      await redirectByRole(session.user);
+      return;
+    }
+
+    const urlType = await handleUrlParams();
+    
+    if (urlType !== 'recovery' && urlType !== 'invite' && localStorage.getItem('rememberMe') === 'true') {
+      emailInput.value = localStorage.getItem('rememberedEmail') || '';
+      passwordInput.value = localStorage.getItem('rememberedPassword') || '';
+      // If there's a stored username field, populate it
+      if (usernameInput) usernameInput.value = localStorage.getItem('rememberedUsername') || '';
+      rememberMeCheckbox.checked = true;
+    }
+  });
+
+  // Sign in form handler
+  signinForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    authErr.style.display = 'none';
+    authSuccess.style.display = 'none';
+    
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+    const inviteToken = signinForm.getAttribute('data-invite');
+
+    try {
+      let authResponse;
+      
+      if (inviteToken) {
+        // Handle invitation signup - check if user was already created by admin.inviteUserByEmail
+        console.log('Handling invitation signup for token:', inviteToken);
+
+        // Get the invite details first
+        const { data: invite, error: inviteError } = await supabase
+          .from('site_invites')
+          .select('*')
+          .eq('token', inviteToken)
+          .single();
+
+        if (inviteError || !invite) {
+          console.error('Failed to get invite details:', inviteError);
+          showMessage(authErr, "Invalid or expired invitation. Please contact support.", true);
+          return;
+        }
+
+        if (invite.status === 'accepted') {
+          showMessage(authErr, "This invitation has already been accepted. Please try signing in.", true);
+          return;
+        }
+
+        // Try to sign up the user
+        console.log('Creating new user account...');
+        authResponse = await supabase.auth.signUp({
+          email,
+          password,
+        });
+
+        if (authResponse.error) {
+          showMessage(authErr, authResponse.error.message, true);
+          return;
+        }
+
+        // Ensure we have a user ID
+        if (!authResponse.data.user?.id) {
+          showMessage(authErr, "Failed to get user information. Please try again.", true);
+          return;
+        }
+
+        const userId = authResponse.data.user.id;
+
+        // Check if profile already exists (might have been created by trigger)
+        const { data: existingProfile, error: profileCheckError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('site_id', invite.site_id)
+          .single();
+
+        if (profileCheckError && profileCheckError.code !== 'PGRST116') {
+          console.error('Error checking existing profile:', profileCheckError);
+        }
+
+        // Only create profile if it doesn't exist
+        if (!existingProfile) {
+          console.log('Creating user profile...');
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .insert({
+              user_id: userId,
+              site_id: invite.site_id,
+              full_name: invite.full_name,
+              role: invite.role,
+              created_at: new Date().toISOString()
+            });
+
+          if (profileError) {
+            console.error('Failed to create profile:', profileError);
+            showMessage(authErr, "Account created but failed to create profile. Please contact support.", true);
+            return;
+          }
+        }
+
+        // Add to kiosk_users table if role detail and reports_to were provided in the invite
+        if (invite.role_detail) {
+          // Check if kiosk user already exists
+          const { data: existingKioskUser, error: kioskCheckError } = await supabase
+            .from('kiosk_users')
+            .select('*')
+            .eq('site_id', invite.site_id)
+            .eq('full_name', invite.full_name)
+            .single();
+
+          if (kioskCheckError && kioskCheckError.code !== 'PGRST116') {
+            console.error('Error checking existing kiosk user:', kioskCheckError);
+          }
+
+          if (!existingKioskUser) {
+            console.log('Creating kiosk user entry...');
+            const kioskUserData = {
+              site_id: invite.site_id,
+              full_name: invite.full_name,
+              role: invite.role_detail,
+              active: true,
+              created_at: new Date().toISOString()
+            };
+
+            if (invite.reports_to_id) {
+              kioskUserData.reports_to_id = parseInt(invite.reports_to_id);
+            }
+
+            const { error: kioskError } = await supabase
+              .from('kiosk_users')
+              .insert(kioskUserData);
+
+            if (kioskError) {
+              console.error('Failed to create kiosk user:', kioskError);
+              // Don't fail the registration, just log the error
+            }
+          }
+        }
+
+        // Update invite status
+        const { error: updateError } = await supabase
+          .from('site_invites')
+          .update({ 
+            status: 'accepted',
+            accepted_at: new Date().toISOString()
+          })
+          .eq('token', inviteToken);
+
+        if (updateError) {
+          console.error('Failed to update invite status:', updateError);
+          // Don't fail if invite status update fails, user is created successfully
+        }
+
+        showMessage(authSuccess, "Welcome to CheckLoop! Your account has been activated successfully.");
+      } else {
+        // Handle normal sign in
+        authResponse = await supabase.auth.signInWithPassword({ email, password });
+
+        if (authResponse.error) {
+          showMessage(authErr, authResponse.error.message, true);
+          return;
+        }
+      }
+
+      if (!authResponse.data.session) {
+        showMessage(authErr, "Authentication successful but no session was created. Please try again.", true);
+        return;
+      }
+
+      // Handle "Remember me" — persist email and optional username/password if checked
+      if (rememberMeCheckbox.checked) {
+        localStorage.setItem('rememberMe', 'true');
+        localStorage.setItem('rememberedEmail', email);
+        if (usernameInput && usernameInput.value) localStorage.setItem('rememberedUsername', usernameInput.value.trim());
+        // Only store password if explicitly needed (not recommended) — preserve existing behavior if present
+        if (passwordInput.value) localStorage.setItem('rememberedPassword', passwordInput.value);
+      } else {
+        localStorage.removeItem('rememberMe');
+        localStorage.removeItem('rememberedEmail');
+        localStorage.removeItem('rememberedUsername');
+        localStorage.removeItem('rememberedPassword');
+      }
+
+      // Redirect after successful authentication based on role
+      console.log('About to redirect after sign-in, authResponse:', !!authResponse.data.session);
+      setTimeout(() => {
+        console.log('Executing redirect after sign-in...');
+        redirectByRole();
+      }, inviteToken ? 2000 : 500);
+      
+    } catch (err) {
+      console.error('Authentication error:', err);
+      showMessage(authErr, "An unexpected error occurred. Please try again.", true);
+    }
+  });
+
+  // Forgot password form handler
+  forgotForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const resetError = document.getElementById('reset-error');
+    const resetSuccess = document.getElementById('reset-success');
+    resetError.style.display = 'none';
+    resetSuccess.style.display = 'none';
+    
+    const email = document.getElementById('reset-email').value.trim();
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/home.html`
+      });
+
+      if (error) {
+        showMessage(resetError, error.message, true);
+      } else {
+        showMessage(resetSuccess, `Password reset instructions have been sent to ${email}. Please check your email.`);
+      }
+    } catch (err) {
+      console.error('Password reset error:', err);
+      showMessage(resetError, "An unexpected error occurred. Please try again.", true);
+    }
+  });
+
+  // Reset password form handler
+  resetForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const updateError = document.getElementById('update-error');
+    const updateSuccess = document.getElementById('update-success');
+    updateError.style.display = 'none';
+    updateSuccess.style.display = 'none';
+    
+    const newPassword = document.getElementById('new-password').value;
+    const confirmPassword = document.getElementById('confirm-password').value;
+
+    if (newPassword !== confirmPassword) {
+      showMessage(updateError, "Passwords do not match", true);
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      showMessage(updateError, "Password must be at least 6 characters long", true);
+      return;
+    }
+
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+
+      if (error) {
+        showMessage(updateError, error.message, true);
+      } else {
+        showMessage(updateSuccess, "Password updated successfully! Redirecting...");
+        // After password reset, redirect according to role
+        setTimeout(() => {
+          redirectByRole();
+        }, 2000);
+      }
+    } catch (err) {
+      console.error('Password update error:', err);
+      showMessage(updateError, "An unexpected error occurred. Please try again.", true);
+    }
+  });
+</script>
+
+
+</body>
+</html>
