@@ -388,6 +388,7 @@ async function showStaffDetailModal(staffId, userId, isGP) {
               ${isGPStaff ? 'min="0" max="2" step="1"' : 'pattern="\\d+:[0-5]\\d"'}
               class="working-day-input" 
               onchange="updateWeeklyTotalInModal()"
+              oninput="updateWeeklyTotalInModal()"
             >
             <span class="unit-label">${isGPStaff ? 'sessions' : 'hrs'}</span>
           </div>
@@ -517,6 +518,16 @@ async function showStaffDetailModal(staffId, userId, isGP) {
       } else {
         overrideRow.classList.add('hidden');
         overrideInput.disabled = true;
+        
+        // Update calculated value display when override is unchecked
+        updateWeeklyTotalInModal();
+      }
+    });
+    
+    // Add listener for multiplier input to update calculated value in real-time
+    document.getElementById('multiplier-input').addEventListener('input', function() {
+      if (!document.getElementById('override-checkbox').checked) {
+        updateWeeklyTotalInModal();
       }
     });
 
@@ -578,6 +589,33 @@ function updateWeeklyTotalInModal() {
       const minutes = Math.round((total - hours) * 60);
       totalEl.textContent = `${hours}:${String(minutes).padStart(2, '0')} hrs`;
     }
+  }
+  
+  // Also update the calculated entitlement preview
+  const multiplierInput = document.getElementById('multiplier-input');
+  const calculatedEl = document.getElementById('calculated-entitlement');
+  const overrideCheckbox = document.getElementById('override-checkbox');
+  
+  if (calculatedEl && multiplierInput && !overrideCheckbox.checked) {
+    const multiplier = parseFloat(multiplierInput.value) || 10;
+    const calculated = total * multiplier;
+    const unit = isGP ? 'sessions' : 'hrs';
+    
+    // Format hours as HH:MM for display if needed
+    if (isGP) {
+      calculatedEl.textContent = `${calculated} ${unit}`;
+    } else {
+      const hours = Math.floor(calculated);
+      const minutes = Math.round((calculated - hours) * 60);
+      calculatedEl.textContent = `${hours}:${String(minutes).padStart(2, '0')} ${unit}`;
+    }
+    
+    // Highlight with animation
+    calculatedEl.style.transition = 'color 0.3s';
+    calculatedEl.style.color = 'var(--warning)';
+    setTimeout(() => {
+      calculatedEl.style.color = 'var(--accent)';
+    }, 500);
   }
 }
 
