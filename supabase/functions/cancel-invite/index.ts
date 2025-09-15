@@ -9,7 +9,9 @@ const getAllowedOrigin = (req: Request): string => {
     'http://127.0.0.1:5500',
     'http://localhost:5173',
     'http://localhost:5500',
-    'https://magicmanben.github.io'
+    'https://magicmanben.github.io',
+    'https://checkloops.co.uk',
+    'https://www.checkloops.co.uk'
   ]
   
   return allowedOrigins.includes(origin) ? origin : allowedOrigins[0]
@@ -35,7 +37,7 @@ serve(async (req) => {
 
     // Get environment variables
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
-    const supabaseServiceKey = Deno.env.get('SECRET_KEY')
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SECRET_KEY')
 
     if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error('Missing environment variables')
