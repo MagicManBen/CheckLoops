@@ -447,13 +447,23 @@
 
       const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
 
-      // Get job role for display (from staff_app_welcome or user metadata)
-      // Try to get job_role from staff_app_welcome or role_detail from metadata first
-      const jobRole = user?.raw_user_meta_data?.job_role ||
-                      user?.raw_user_meta_data?.role_detail ||
-                      profileRow?.job_role ||
-                      'Staff';
-      const roleDetail = jobRole.charAt(0).toUpperCase() + jobRole.slice(1);  // Capitalize first letter
+      // Get role for display - prioritize account_role for admin/owner, then job_role
+      const accountRole = profileRow?.account_role ||
+                         user?.raw_user_meta_data?.account_role ||
+                         user?.user_metadata?.account_role;
+
+      let displayRole;
+      if (accountRole && ['admin', 'owner'].includes(accountRole.toLowerCase())) {
+        displayRole = accountRole.charAt(0).toUpperCase() + accountRole.slice(1);
+      } else {
+        // For regular staff, show job role
+        const jobRole = user?.raw_user_meta_data?.job_role ||
+                        user?.raw_user_meta_data?.role_detail ||
+                        profileRow?.job_role ||
+                        'Staff';
+        displayRole = jobRole.charAt(0).toUpperCase() + jobRole.slice(1);
+      }
+      const roleDetail = displayRole;
 
       document.getElementById('welcome').textContent = `Welcome, ${displayName}`;
       
