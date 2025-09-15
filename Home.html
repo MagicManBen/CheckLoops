@@ -218,6 +218,17 @@
     }
   }
 
+  // Helper function to check if a page exists
+  async function pageExists(url) {
+    try {
+      const response = await fetch(url, { method: 'HEAD' });
+      return response.ok && response.status < 400;
+    } catch (error) {
+      console.warn(`Could not check if ${url} exists:`, error);
+      return false;
+    }
+  }
+
   // Helper: redirect the current user to the correct site based on their profile.account_role
   // Placed here (inside the module) so it can use the module-scoped `supabase` client.
   async function redirectByRole(user) {
@@ -230,9 +241,14 @@
         theUser = res?.data?.user;
       }
       if (!theUser) {
-        console.log('Cannot determine user, falling back to admin index');
-        // If we can't determine user, fallback to admin index
-        window.location.href = 'staff.html';
+        console.log('Cannot determine user, checking for fallback page');
+        // Check if staff.html exists before redirecting
+        const staffExists = await pageExists('staff.html');
+        if (staffExists) {
+          window.location.href = 'staff.html';
+        } else {
+          console.warn('staff.html not found, staying on current page');
+        }
         return;
       }
 
@@ -268,24 +284,54 @@
 
       // If user has no profile or incomplete profile, send to welcome
       if (!profileCheck || !profileCheck.full_name) {
-        console.log('User has incomplete profile, redirecting to staff-welcome.html');
-        window.location.href = 'staff-welcome.html';
+        console.log('User has incomplete profile, checking for staff-welcome.html');
+        const welcomeExists = await pageExists('staff-welcome.html');
+        if (welcomeExists) {
+          window.location.href = 'staff-welcome.html';
+        } else {
+          console.warn('staff-welcome.html not found, staying on current page');
+        }
         return;
       }
 
-      // Redirect based on role
+      // Redirect based on role - check pages exist first
       if (effectiveRole && ['admin', 'owner'].includes(effectiveRole.toLowerCase())) {
-        console.log('Admin/Owner user - redirecting to admin-dashboard.html');
-        window.location.href = 'admin-dashboard.html';
+        console.log('Admin/Owner user - checking for admin-dashboard.html');
+        const adminExists = await pageExists('admin-dashboard.html');
+        if (adminExists) {
+          window.location.href = 'admin-dashboard.html';
+        } else {
+          console.warn('admin-dashboard.html not found, trying staff.html');
+          const staffExists = await pageExists('staff.html');
+          if (staffExists) {
+            window.location.href = 'staff.html?from=home';
+          } else {
+            console.warn('No dashboard pages found, staying on current page');
+          }
+        }
       } else {
-        console.log('Staff user - redirecting to staff.html');
-        // Add a parameter to help detect redirect loops
-        window.location.href = 'staff.html?from=home';
+        console.log('Staff user - checking for staff.html');
+        const staffExists = await pageExists('staff.html');
+        if (staffExists) {
+          // Add a parameter to help detect redirect loops
+          window.location.href = 'staff.html?from=home';
+        } else {
+          console.warn('staff.html not found, staying on current page');
+        }
       }
     } catch (err) {
       console.error('redirectByRole failed', err);
-      // Default to staff-welcome for safety
-      window.location.href = 'staff-welcome.html';
+      // Check if staff-welcome exists as fallback
+      try {
+        const welcomeExists = await pageExists('staff-welcome.html');
+        if (welcomeExists) {
+          window.location.href = 'staff-welcome.html';
+        } else {
+          console.warn('No fallback pages available, staying on current page');
+        }
+      } catch (e) {
+        console.error('Could not check for fallback page:', e);
+      }
     }
   }
 
