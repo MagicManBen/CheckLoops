@@ -12,7 +12,8 @@ const CONFIG = {
     if (this.isLocal) {
       return `${window.location.protocol}//${window.location.host}`;
     } else {
-      return 'https://magicmanben.github.io/CheckLoops';
+      // Production site URL
+      return 'https://checkloops.co.uk';
     }
   },
   
