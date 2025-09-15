@@ -587,8 +587,28 @@ async function saveWorkingPatternFromModal(userId, isGP) {
   const payload = { user_id: userId, updated_at: new Date().toISOString() };
   
   let total = 0;
+  let staffId = null;
   
   try {
+    // Get the save button and change it to a loading state
+    const saveBtn = document.getElementById('save-pattern-btn');
+    const originalText = saveBtn.textContent;
+    saveBtn.textContent = 'Saving...';
+    saveBtn.disabled = true;
+    saveBtn.style.opacity = '0.7';
+    
+    // Add a loading indicator to the entitlement section
+    const entitlementSection = document.querySelector('.entitlement-section');
+    if (entitlementSection) {
+      const calculatedEl = document.getElementById('calculated-entitlement');
+      if (calculatedEl) {
+        calculatedEl.innerHTML = `
+          <span class="loading-spinner" style="display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.2); border-left-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; margin-right: 8px;"></span>
+          Updating...
+        `;
+      }
+    }
+    
     days.forEach(day => {
       const input = document.getElementById(`${day}-input`);
       if (!input) return;
@@ -643,7 +663,7 @@ async function saveWorkingPatternFromModal(userId, isGP) {
       .single();
       
     if (staffProfile) {
-      const staffId = staffProfile.id;
+      staffId = staffProfile.id;
       const currentYear = new Date().getFullYear();
       
       // Get the current entitlement record
@@ -670,7 +690,7 @@ async function saveWorkingPatternFromModal(userId, isGP) {
       
       // Keep existing multiplier and override if present
       if (entitlement) {
-        entitlementPayload.multiplier = entitlement.multiplier;
+        entitlementPayload.multiplier = entitlement.multiplier || 10;
         if (entitlement.override !== null) {
           entitlementPayload.override = entitlement.override;
         }
@@ -684,6 +704,8 @@ async function saveWorkingPatternFromModal(userId, isGP) {
         entitlementPayload.calculated_hours = total * multiplier;
       }
       
+      console.log('Updating entitlement with payload:', entitlementPayload);
+      
       // Update the entitlement record
       const { error: entError } = await supabase
         .from('2_staff_entitlements')
@@ -694,10 +716,50 @@ async function saveWorkingPatternFromModal(userId, isGP) {
       }
     }
     
-    // Show success message
-    const saveBtn = document.getElementById('save-pattern-btn');
-    const originalText = saveBtn.textContent;
+    // Wait a bit to ensure the database update is complete
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
+    // Refresh the data in the modal
+    if (staffId) {
+      // Get the updated entitlement record
+      const currentYear = new Date().getFullYear();
+      const { data: updatedEntitlement } = await supabase
+        .from('2_staff_entitlements')
+        .select('*')
+        .eq('staff_id', staffId)
+        .eq('year', currentYear)
+        .maybeSingle();
+        
+      // Update the calculated entitlement display in the modal
+      const calculatedEl = document.getElementById('calculated-entitlement');
+      if (calculatedEl && updatedEntitlement) {
+        const unit = isGP ? 'sessions' : 'hrs';
+        const calculated = isGP ? updatedEntitlement.calculated_sessions : updatedEntitlement.calculated_hours;
+        
+        // Format hours as HH:MM for display
+        const formatHours = (val) => {
+          if (!val || val === '0:00') return '0:00';
+          if (typeof val === 'string' && val.includes(':')) return val;
+          const hours = Math.floor(val);
+          const minutes = Math.round((val - hours) * 60);
+          return `${hours}:${String(minutes).padStart(2, '0')}`;
+        };
+        
+        calculatedEl.innerHTML = `${isGP ? calculated || 0 : formatHours(calculated || 0)} ${unit}`;
+        calculatedEl.style.color = 'var(--accent)';
+        
+        // Flash animation to highlight the update
+        calculatedEl.style.transition = 'color 0.5s';
+        calculatedEl.style.color = 'var(--success)';
+        setTimeout(() => {
+          calculatedEl.style.color = 'var(--accent)';
+        }, 1000);
+      }
+    }
+    
+    // Show success message on the save button
+    saveBtn.disabled = false;
+    saveBtn.style.opacity = '1';
     saveBtn.textContent = '✓ Saved!';
     saveBtn.style.background = 'var(--success)';
     
@@ -706,7 +768,7 @@ async function saveWorkingPatternFromModal(userId, isGP) {
       saveBtn.style.background = '';
     }, 2000);
     
-    // Reload cards to show updated data
+    // Reload cards in the background to show updated data
     setTimeout(() => {
       loadStaffEntitlementCards();
     }, 500);
@@ -720,6 +782,22 @@ async function saveWorkingPatternFromModal(userId, isGP) {
 // Save entitlement from modal
 async function saveEntitlementFromModal(staffId, isGP) {
   try {
+    // Get the save button and change it to a loading state
+    const saveBtn = document.getElementById('save-entitlement-btn');
+    const originalText = saveBtn.textContent;
+    saveBtn.textContent = 'Saving...';
+    saveBtn.disabled = true;
+    saveBtn.style.opacity = '0.7';
+    
+    // Add a loading indicator to the calculated value
+    const calculatedEl = document.getElementById('calculated-entitlement');
+    if (calculatedEl) {
+      calculatedEl.innerHTML = `
+        <span class="loading-spinner" style="display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.2); border-left-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; margin-right: 8px;"></span>
+        Updating...
+      `;
+    }
+    
     const multiplierInput = document.getElementById('multiplier-input');
     const overrideCheckbox = document.getElementById('override-checkbox');
     const overrideInput = document.getElementById('override-input');
@@ -741,6 +819,14 @@ async function saveEntitlementFromModal(staffId, isGP) {
       }
     }
     
+    // Get weekly values from database
+    const { data: currentEntitlement } = await supabase
+      .from('2_staff_entitlements')
+      .select('weekly_hours, weekly_sessions')
+      .eq('staff_id', staffId)
+      .eq('year', new Date().getFullYear())
+      .maybeSingle();
+      
     const entitlementData = {
       staff_id: parseInt(staffId),
       year: new Date().getFullYear(),
@@ -748,6 +834,23 @@ async function saveEntitlementFromModal(staffId, isGP) {
       override: override,
       updated_at: new Date().toISOString()
     };
+    
+    // Keep existing weekly values
+    if (currentEntitlement) {
+      if (isGP && currentEntitlement.weekly_sessions !== null) {
+        entitlementData.weekly_sessions = currentEntitlement.weekly_sessions;
+        // Calculate new value if no override
+        if (override === null) {
+          entitlementData.calculated_sessions = currentEntitlement.weekly_sessions * multiplier;
+        }
+      } else if (!isGP && currentEntitlement.weekly_hours !== null) {
+        entitlementData.weekly_hours = currentEntitlement.weekly_hours;
+        // Calculate new value if no override
+        if (override === null) {
+          entitlementData.calculated_hours = currentEntitlement.weekly_hours * multiplier;
+        }
+      }
+    }
     
     console.log('Saving entitlement from modal:', entitlementData);
     
@@ -760,10 +863,45 @@ async function saveEntitlementFromModal(staffId, isGP) {
       throw error;
     }
     
-    // Show success message
-    const saveBtn = document.getElementById('save-entitlement-btn');
-    const originalText = saveBtn.textContent;
+    // Wait a bit to ensure the database update is complete
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
+    // Refresh the data in the modal
+    const { data: updatedEntitlement } = await supabase
+      .from('2_staff_entitlements')
+      .select('*')
+      .eq('staff_id', staffId)
+      .eq('year', new Date().getFullYear())
+      .maybeSingle();
+      
+    // Update the calculated entitlement display in the modal
+    if (calculatedEl && updatedEntitlement) {
+      const unit = isGP ? 'sessions' : 'hrs';
+      const final = override !== null ? override : (isGP ? updatedEntitlement.calculated_sessions : updatedEntitlement.calculated_hours);
+      
+      // Format hours as HH:MM for display
+      const formatHours = (val) => {
+        if (!val || val === '0:00') return '0:00';
+        if (typeof val === 'string' && val.includes(':')) return val;
+        const hours = Math.floor(val);
+        const minutes = Math.round((val - hours) * 60);
+        return `${hours}:${String(minutes).padStart(2, '0')}`;
+      };
+      
+      calculatedEl.innerHTML = `${isGP ? final || 0 : formatHours(final || 0)} ${unit}`;
+      calculatedEl.style.color = 'var(--accent)';
+      
+      // Flash animation to highlight the update
+      calculatedEl.style.transition = 'color 0.5s';
+      calculatedEl.style.color = 'var(--success)';
+      setTimeout(() => {
+        calculatedEl.style.color = 'var(--accent)';
+      }, 1000);
+    }
+    
+    // Show success message on the save button
+    saveBtn.disabled = false;
+    saveBtn.style.opacity = '1';
     saveBtn.textContent = '✓ Saved!';
     saveBtn.style.background = 'var(--success)';
     
