@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create Admin Account - CheckLoop</title>
+  <script src="config.js"></script>
+  <style>
+    body {
+      font-family: Inter, system-ui, -apple-system, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      border-radius: 16px;
+      padding: 32px;
+      max-width: 500px;
+      width: 100%;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #1a202c;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      color: #718096;
+      margin-bottom: 24px;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: #2d3748;
+      font-weight: 600;
+    }
+    input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 16px;
+      box-sizing: border-box;
+    }
+    input:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    button {
+      width: 100%;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      border: none;
+      padding: 14px 24px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 16px;
+      margin-top: 8px;
+    }
+    button:hover {
+      opacity: 0.9;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .alert {
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    .alert.success {
+      background: #c6f6d5;
+      color: #22543d;
+      border: 1px solid #9ae6b4;
+    }
+    .alert.error {
+      background: #fed7d7;
+      color: #742a2a;
+      border: 1px solid #fc8181;
+    }
+    .alert.info {
+      background: #bee3f8;
+      color: #2c5282;
+      border: 1px solid #90cdf4;
+    }
+    .steps {
+      background: #f7fafc;
+      padding: 16px;
+      border-radius: 8px;
+      margin-top: 24px;
+    }
+    .steps h3 {
+      margin-top: 0;
+      color: #2d3748;
+    }
+    .steps ol {
+      margin: 0;
+      padding-left: 20px;
+    }
+    .steps li {
+      margin-bottom: 8px;
+      color: #4a5568;
+    }
+    code {
+      background: #edf2f7;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+      color: #e53e3e;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔑 Create Admin Account</h1>
+    <div class="subtitle">Create a new admin account for benhowardmagic@hotmail.com</div>
+
+    <div id="status-message"></div>
+
+    <form id="create-form">
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input type="email" id="email" value="benhowardmagic@hotmail.com" readonly>
+      </div>
+
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" placeholder="Enter password (min 6 characters)" required>
+      </div>
+
+      <div class="form-group">
+        <label for="full-name">Full Name</label>
+        <input type="text" id="full-name" value="Ben Howard" required>
+      </div>
+
+      <button type="submit" id="create-btn">Create Admin Account</button>
+    </form>
+
+    <div class="steps">
+      <h3>What this does:</h3>
+      <ol>
+        <li>Creates a new auth.users account</li>
+        <li>Creates a profile with <code>account_role = 'admin'</code></li>
+        <li>Creates a site_invite record marked as accepted</li>
+        <li>Sets user metadata with admin role</li>
+        <li>You can immediately log in as admin</li>
+      </ol>
+    </div>
+  </div>
+
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+    const supabase = createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+    const form = document.getElementById('create-form');
+    const statusDiv = document.getElementById('status-message');
+
+    function showStatus(message, type = 'info') {
+      statusDiv.className = `alert ${type}`;
+      statusDiv.textContent = message;
+      statusDiv.style.display = 'block';
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const fullName = document.getElementById('full-name').value;
+      const createBtn = document.getElementById('create-btn');
+
+      if (password.length < 6) {
+        showStatus('Password must be at least 6 characters', 'error');
+        return;
+      }
+
+      createBtn.disabled = true;
+      createBtn.textContent = 'Creating...';
+
+      try {
+        showStatus('Creating account...', 'info');
+
+        // Step 1: Sign up the user
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: email,
+          password: password,
+          options: {
+            data: {
+              full_name: fullName,
+              role: 'admin',
+              account_role: 'admin',
+              site_id: 2,
+              role_detail: 'Administrator',
+              admin_access: true
+            }
+          }
+        });
+
+        if (signUpError) {
+          throw signUpError;
+        }
+
+        const userId = signUpData.user?.id;
+        if (!userId) {
+          throw new Error('User ID not returned');
+        }
+
+        showStatus('Account created! Creating profile...', 'info');
+
+        // Step 2: Create profile with admin role
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            user_id: userId,
+            full_name: fullName,
+            role: 'admin',
+            account_role: 'admin',
+            site_id: 2,
+            nickname: fullName.split(' ')[0],
+            onboarding_complete: false
+          });
+
+        if (profileError && !profileError.message.includes('duplicate')) {
+          console.error('Profile creation error:', profileError);
+          // Continue anyway - profile might be created by trigger
+        }
+
+        // Step 3: Create/Update site_invite as accepted
+        const { error: inviteError } = await supabase
+          .from('site_invites')
+          .upsert({
+            email: email,
+            full_name: fullName,
+            role: 'admin',
+            account_role: 'admin',
+            site_id: 2,
+            status: 'accepted',
+            accepted_at: new Date().toISOString(),
+            token: crypto.randomUUID(),
+            expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+          }, {
+            onConflict: 'email'
+          });
+
+        if (inviteError) {
+          console.error('Invite creation error:', inviteError);
+          // Continue anyway - not critical
+        }
+
+        showStatus('✅ Admin account created successfully!', 'success');
+
+        // Provide next steps
+        setTimeout(() => {
+          statusDiv.innerHTML = `
+            <div class="alert success">
+              <strong>✅ Success!</strong><br>
+              Admin account created for ${email}<br><br>
+              <strong>Next steps:</strong><br>
+              1. Go to <a href="home.html">home.html</a> or <a href="admin-login.html">admin-login.html</a><br>
+              2. Log in with your new password<br>
+              3. You should have full admin access
+            </div>
+          `;
+        }, 2000);
+
+        createBtn.textContent = 'Account Created!';
+        createBtn.style.background = '#48bb78';
+
+      } catch (error) {
+        console.error('Error:', error);
+        showStatus(`Error: ${error.message}`, 'error');
+        createBtn.disabled = false;
+        createBtn.textContent = 'Create Admin Account';
+      }
+    });
+  </script>
+</body>
+</html>
