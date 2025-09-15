@@ -6398,14 +6398,14 @@ window.PIR_DEFINITIONS_DATA = [
           // Check both 'role' and 'account_role' for backward compatibility
           const { data: profile, error: profileError } = await supabase
             .from('profiles')
-            .select('role, account_role, full_name')
+            .select('account_role, full_name')
             .eq('user_id', session.user.id)
             .maybeSingle();
           
           console.log('🔥 Profiles query result - profile:', profile, 'error:', profileError);
 
-          // Check both 'account_role' (new) and 'role' (old) for backward compatibility
-          const accountRole = profile?.account_role || profile?.role;
+          // Use account_role only (new schema)
+          const accountRole = profile?.account_role;
           if (profile && ['admin', 'owner'].includes(accountRole?.toLowerCase())) {
             console.log('✅ Admin role confirmed from profile:', accountRole);
             console.log('🔥 ABOUT TO CALL BOOTSTRAP - Profile data:', profile);
@@ -6454,12 +6454,12 @@ window.PIR_DEFINITIONS_DATA = [
           // Check both 'role' and 'account_role' for backward compatibility
           const { data: invite, error: inviteError } = await supabase
             .from('site_invites')
-            .select('role, account_role')
+            .select('account_role')
             .eq('email', session.user.email)
             .maybeSingle();
 
-          // Check both 'account_role' (new) and 'role' (old) for backward compatibility
-          const inviteRole = invite?.account_role || invite?.role;
+          // Use account_role only (new schema)
+          const inviteRole = invite?.account_role;
           if (invite && ['admin', 'owner'].includes(inviteRole?.toLowerCase())) {
             console.log('✅ Admin role confirmed from invitation:', inviteRole);
             showAuth(false);
@@ -6469,8 +6469,8 @@ window.PIR_DEFINITIONS_DATA = [
           
           // Finally check user metadata
           // Check both 'account_role' (new) and 'role' (old) for backward compatibility
-          const rawRole = session.user?.user_metadata?.account_role || session.user?.user_metadata?.role ||
-                         session.user?.raw_user_meta_data?.account_role || session.user?.raw_user_meta_data?.role;
+          const rawRole = session.user?.user_metadata?.account_role ||
+                         session.user?.raw_user_meta_data?.account_role;
           if (rawRole && ['admin', 'owner'].includes(String(rawRole).toLowerCase())) {
             console.log('✅ Admin role confirmed from user metadata:', rawRole);
             showAuth(false);
@@ -7677,7 +7677,7 @@ window.PIR_DEFINITIONS_DATA = [
       const { data, error } = await supabase
         .from('role_permissions')
         .select('allowed_pages')
-        .eq('role', 'staff')
+        .eq('account_role', 'staff')
         .single();
 
       if (error) {
@@ -8111,7 +8111,7 @@ window.PIR_DEFINITIONS_DATA = [
         
         // First check user metadata (most reliable source)
         // Check both 'account_role' (new) and 'role' (old) for backward compatibility
-        const userRole = (user?.raw_user_meta_data?.account_role || user?.raw_user_meta_data?.role)?.toLowerCase();
+        const userRole = (user?.raw_user_meta_data?.account_role)?.toLowerCase();
         if (userRole === 'admin' || userRole === 'owner') {
           console.log('✅ User allowed on admin site - role from metadata:', userRole);
           
@@ -8127,7 +8127,7 @@ window.PIR_DEFINITIONS_DATA = [
         // Then check profiles table
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
-          .select('role, full_name')
+          .select('account_role, full_name')
           .eq('user_id', user.id)
           .maybeSingle();
         
@@ -8135,8 +8135,8 @@ window.PIR_DEFINITIONS_DATA = [
           console.error('Error fetching profile:', profileError);
         }
         
-        if (profile?.role && ['admin', 'owner'].includes(profile.role.toLowerCase())) {
-          console.log(`✅ User allowed on admin site - role from profile: ${profile.role}`);
+        if (profile?.account_role && ['admin', 'owner'].includes(profile.account_role.toLowerCase())) {
+          console.log(`✅ User allowed on admin site - role from profile: ${profile.account_role}`);
           
           // Store that this user is verified as admin for future reference
           try {
@@ -8150,7 +8150,7 @@ window.PIR_DEFINITIONS_DATA = [
         // Finally check site_invites table as a fallback
         const { data: invite, error: inviteError } = await supabase
           .from('site_invites')
-          .select('role, full_name')
+          .select('account_role, full_name')
           .eq('email', user.email)
           .eq('status', 'accepted')
           .maybeSingle();
@@ -8159,8 +8159,8 @@ window.PIR_DEFINITIONS_DATA = [
           console.error('Error fetching invite:', inviteError);
         }
 
-        if (invite?.role && ['admin', 'owner'].includes(invite.role.toLowerCase())) {
-          console.log(`✅ User allowed on admin site - role from invite: ${invite.role}`);
+        if (invite?.account_role && ['admin', 'owner'].includes(invite.account_role.toLowerCase())) {
+          console.log(`✅ User allowed on admin site - role from invite: ${invite.account_role}`);
           
           // Store that this user is verified as admin for future reference
           try {
@@ -8265,12 +8265,12 @@ window.PIR_DEFINITIONS_DATA = [
         const user = session.user;
         const { data: invite } = await supabase
           .from('site_invites')
-          .select('role, full_name')
+          .select('account_role, full_name')
           .eq('email', user.email)
           .eq('status', 'accepted')
           .single();
 
-        if (invite && invite.role && invite.role.toLowerCase() === 'staff') {
+        if (invite && invite.account_role && invite.account_role.toLowerCase() === 'staff') {
           console.log(`🚫 BLOCKED: Staff user "${invite.full_name}" attempted to access admin site via back/refresh`);
           window.location.replace('staff.html');
           return;
@@ -8282,7 +8282,7 @@ window.PIR_DEFINITIONS_DATA = [
   });
 
   // Load profile + site context
-  let ctx = { site_id: null, role: null, user: null };
+  let ctx = { site_id: null, account_role: null, user: null };
   window.ctx = ctx; // Make ctx globally available
   // Items view state
   let itemsSort = { col: "item_name", dir: "asc" };
@@ -8458,14 +8458,14 @@ window.PIR_DEFINITIONS_DATA = [
           }
 
           // If role_detail is provided, also create kiosk_users entry
-          if (invitation.role_detail && invitation.role_detail.trim() !== '') {
+          if (invitation.job_role && invitation.job_role.trim() !== '') {
             console.log('Creating kiosk_users entry...', invitation.role_detail);
             const { error: kioskError } = await supabase
               .from("kiosk_users")
               .insert({
                 site_id: invitation.site_id,
                 full_name: invitation.full_name,
-                role: invitation.role_detail,
+                job_role: invitation.job_role,
                 active: true,
                 reports_to_id: invitation.reports_to_id
               });
@@ -8496,8 +8496,8 @@ window.PIR_DEFINITIONS_DATA = [
       }
 
       ctx.site_id = profile.site_id;
-      // Use account_role if available, otherwise fall back to role for backward compatibility
-      ctx.role = profile.account_role || profile.role;
+      // Use account_role from profile
+      ctx.account_role = profile.account_role || null;
       // Try to get full name from profile, user metadata, or construct from email
       ctx.full_name = profile.full_name || 
                       user?.user_metadata?.full_name || 
@@ -8509,7 +8509,7 @@ window.PIR_DEFINITIONS_DATA = [
       window.ctx = ctx;
 
       // Load page access permissions from role_permissions table
-      if (ctx.role === 'admin' || ctx.role === 'owner') {
+      if (ctx.account_role === 'admin' || ctx.account_role === 'owner') {
         // Admin and owner have access to all pages
         ctx.pageAccess = { allowed_pages: ['*'] };
       } else {
@@ -8517,7 +8517,7 @@ window.PIR_DEFINITIONS_DATA = [
         const { data: rolePermissions, error: permError } = await supabase
           .from('role_permissions')
           .select('allowed_pages')
-          .eq('role', ctx.role)
+          .eq('account_role', ctx.account_role)
           .single();
 
         if (permError) {
@@ -8529,7 +8529,7 @@ window.PIR_DEFINITIONS_DATA = [
         }
       }
 
-      console.log('Context loaded:', { site_id: ctx.site_id, role: ctx.role, full_name: ctx.full_name, pageAccess: ctx.pageAccess });
+      console.log('Context loaded:', { site_id: ctx.site_id, account_role: ctx.account_role, full_name: ctx.full_name, pageAccess: ctx.pageAccess });
 
       // Update user profile section
       const userAvatar = document.getElementById("user-avatar");
@@ -8604,10 +8604,10 @@ window.PIR_DEFINITIONS_DATA = [
       userName.textContent = ctx.user?.email || "User";
       console.log('Final display set to email:', userName.textContent);
       
-      // Update role display
+      // Update account role display
 
       const roleDisplay = document.getElementById('user-role');
-      let detectedRole = (ctx.role || ctx.user?.user_metadata?.role || ctx.user?.raw_user_meta_data?.role || '').toLowerCase();
+      let detectedRole = (ctx.account_role || ctx.user?.user_metadata?.account_role || ctx.user?.raw_user_meta_data?.account_role || '').toLowerCase();
       // Force admin for known admin emails or admin/owner roles
       if (
         detectedRole === 'admin' || detectedRole === 'owner' ||
@@ -8620,9 +8620,9 @@ window.PIR_DEFINITIONS_DATA = [
           el.style.display = '';
         });
       } else {
-        // fallback to detected role
+        // fallback to detected account role
         if (roleDisplay) {
-          const role = ctx.role || ctx.user?.user_metadata?.role || 'Staff';
+          const role = ctx.account_role || ctx.user?.user_metadata?.account_role || 'Staff';
           roleDisplay.textContent = role.charAt(0).toUpperCase() + role.slice(1);
         }
       }
@@ -12514,7 +12514,7 @@ function applySchedulesFilters() {
     rooms: { table: "rooms", label: "Room", pk: "id", fields: [{name:"name", label:"Name", type:"text", required:true}, {name:"occupied_by", label:"Owner (Staff)", type:"select", source:"kiosk_users", sourceLabel:"full_name"}] },
     check_types: { table: "check_types", label: "Check Type", pk: "id", fields: [{name:"name", label:"Name", type:"text", required:true}, {name:"active", label:"Active", type:"checkbox", default:true}] },
   kiosk_users: { table: "kiosk_users", label: "Staff", pk: "id", fields: [{name:"full_name", label:"Full Name", type:"text", required:true},
-{name:"role", label:"Role", type:"select", required:true},
+{name:"job_role", label:"Job Role", type:"select", required:true},
 {name:"reports_to_id", label:"Reports To", type:"select", source:"kiosk_users", sourceLabel:"full_name", valueKey:"id"},
 {name:"active", label:"Active", type:"checkbox", default:true}] },
     complaints: { table: "complaints", label: "Complaint", pk: "id", fields: [
@@ -12683,13 +12683,13 @@ function applySchedulesFilters() {
         crudTitle.textContent = (mode === "add") ? `Add ${crudState.entity.label}` : context.titlePrefix || `Edit ${crudState.entity.label}`;
         // Use a mutable copy so we can tweak fields per entity
         let _fields = Array.isArray(crudState.entity.fields) ? crudState.entity.fields.map(f=>({...f})) : [];
-        // Special-case: Staff role should be a dropdown sourced from kiosk_roles (text primary key)
+        // Special-case: Staff job_role should be a dropdown sourced from kiosk_job_roles (text primary key)
         if (entityKey === 'kiosk_users') {
-          const idx = _fields.findIndex(f => f.name === 'role');
+          const idx = _fields.findIndex(f => f.name === 'job_role');
           if (idx !== -1) {
-            _fields[idx] = { name:'role', label:'Role', type:'select', source:'kiosk_roles', sourceLabel:'role', valueKey:'role', required:true };
+            _fields[idx] = { name:'job_role', label:'Job Role', type:'select', source:'kiosk_job_roles', sourceLabel:'job_role', valueKey:'job_role', required:true };
           } else {
-            _fields.push({ name:'role', label:'Role', type:'select', source:'kiosk_roles', sourceLabel:'role', valueKey:'role', required:true });
+            _fields.push({ name:'job_role', label:'Job Role', type:'select', source:'kiosk_job_roles', sourceLabel:'job_role', valueKey:'job_role', required:true });
           }
         }
         crudFields.innerHTML = `<div class="crud-grid">${_fields.map(f => {
@@ -12863,7 +12863,7 @@ function applySchedulesFilters() {
 // Ensure Staff Role dropdown is populated even if not declared in entity schema
 if (entityKey === 'kiosk_users') {
   (async ()=>{
-    const sel = document.getElementById('field-role');
+    const sel = document.getElementById('field-job_role');
     if (sel && sel.tagName.toLowerCase()==='select') {
       // Roles are fixed to Admin and Staff
       const options = [ {v:'admin', l:'Admin'}, {v:'staff', l:'Staff'} ];
@@ -13848,7 +13848,7 @@ for (const f of (crudState.entity.fields || [])) {
       if (roleFilter) {
         // Populate role options
         if (window.trainingData && window.trainingData.staff) {
-          const uniqueRoles = [...new Set(window.trainingData.staff.map(s => s.role).filter(Boolean))];
+          const uniqueRoles = [...new Set(window.trainingData.staff.map(s => s.job_role).filter(Boolean))];
           roleFilter.innerHTML = '<option value="all">All Roles</option>' + 
             uniqueRoles.map(role => `<option value="${role}">${role}</option>`).join('');
         }
@@ -13916,8 +13916,8 @@ for (const f of (crudState.entity.fields || [])) {
           demoBtn.addEventListener('click', () => {
             // Small, non-destructive demo dataset
             trainingData.staff = [
-              { id: 1, full_name: 'Alice Example', role: 'Nurse' },
-              { id: 2, full_name: 'Bob Example', role: 'HCA' }
+              { id: 1, full_name: 'Alice Example', job_role: 'Nurse' },
+              { id: 2, full_name: 'Bob Example', job_role: 'HCA' }
             ];
             trainingData.types = [
               { id: 101, name: 'BLS', validity_months: 12 },
@@ -13952,13 +13952,13 @@ for (const f of (crudState.entity.fields || [])) {
     // Filter staff by type and search
     let filteredStaff = trainingData.staff.filter(staff => {
       const isClinical = ['GP', 'Nurse', 'HCA', 'Practice Nurse', 'ANP'].some(role => 
-        (staff.role || '').toLowerCase().includes(role.toLowerCase())
+        (staff.job_role || '').toLowerCase().includes(role.toLowerCase())
       );
       
       const matchesTab = currentTrainingTab === 'clinical' ? isClinical : !isClinical;
       const matchesSearch = !trainingFilters || !trainingFilters.search || 
         (staff.full_name || '').toLowerCase().includes(trainingFilters.search || '');
-      const matchesRole = !trainingFilters || trainingFilters.role === 'all' || staff.role === trainingFilters.role;
+      const matchesRole = !trainingFilters || trainingFilters.role === 'all' || staff.job_role === trainingFilters.role;
       
       return matchesTab && matchesSearch && matchesRole;
     });
@@ -17502,7 +17502,7 @@ window.refreshStaffData = refreshStaffData;
                   <tr data-staff-id="${profile.id}" data-user-id="${profile.user_id}" data-is-gp="${isGP}">
                     <td style="position: sticky; left: 0; background: white; font-weight: 600; z-index: 5;">
                       ${profile.full_name || 'Unknown'}
-                      <br><small style="color: var(--muted);">${profile.role || 'N/A'}</small>
+                      <br><small style="color: var(--muted);">${profile.job_role || 'N/A'}</small>
                     </td>
                     <td>
                       <span class="type-badge ${isGP ? 'gp' : 'staff'}" style="
@@ -17795,11 +17795,11 @@ window.refreshStaffData = refreshStaffData;
       // Check if user has admin role
       const { data: profile } = await window.supabase
         .from('profiles')
-        .select('role')
+        .select('account_role')
         .eq('user_id', user.id)
         .single();
 
-      if (!profile || profile.role !== 'admin') {
+      if (!profile || profile.account_role !== 'admin') {
         alert('You must be an admin to run this fix');
         return;
       }
@@ -17819,11 +17819,11 @@ window.refreshStaffData = refreshStaffData;
           FOR UPDATE 
           TO authenticated
           USING (
-            -- Check if the user has an admin role in the profiles table
+            -- Check if the user has an admin account role in the profiles table
             EXISTS (
               SELECT 1 FROM public.profiles 
               WHERE user_id = auth.uid() 
-              AND role = 'admin'
+              AND account_role = 'admin'
             )
           )
           WITH CHECK (
@@ -17831,7 +17831,7 @@ window.refreshStaffData = refreshStaffData;
             EXISTS (
               SELECT 1 FROM public.profiles 
               WHERE user_id = auth.uid() 
-              AND role = 'admin'
+              AND account_role = 'admin'
             )
           );
         `
@@ -18380,7 +18380,7 @@ window.refreshStaffData = refreshStaffData;
                       ${staff.full_name}
                       <div style="font-size: 12px; color: var(--muted);">${staff.email}</div>
                     </td>
-                    <td>${staff.role}</td>
+                    <td>${staff.job_role || ''}</td>
                     <td>
                       <span class="type-badge ${isGP ? 'gp' : 'staff'}" style="
                         padding: 2px 8px;
@@ -18733,7 +18733,7 @@ window.refreshStaffData = refreshStaffData;
       const { data: staffProfiles } = await supabase
         .from('1_staff_holiday_profiles')
         .select(`
-          id, full_name, email, role, team_name, is_gp, user_id,
+          id, full_name, email, job_role, team_name, is_gp, user_id,
           entitlement_hours, entitlement_sessions,
           total_booked_hours, total_booked_sessions,
           remaining_hours, remaining_sessions
@@ -18763,7 +18763,7 @@ window.refreshStaffData = refreshStaffData;
 
       // Generate CSV data
       const csvHeader = [
-        'Staff Name', 'Email', 'Role', 'Type',
+        'Staff Name', 'Email', 'Job Role', 'Type',
         'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
         'Weekly Total', 'Entitlement', 'Booked', 'Remaining', 'Override'
       ];
@@ -18786,7 +18786,7 @@ window.refreshStaffData = refreshStaffData;
         const row = [
           staff.full_name,
           staff.email,
-          staff.role,
+          staff.job_role,
           isGP ? 'GP' : 'Staff',
           ...dailyValues,
           weeklyTotal.toFixed(2),

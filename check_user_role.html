@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Check User Role - Debug Tool</title>
+  <script src="config.js"></script>
+  <style>
+    body {
+      font-family: Inter, system-ui, -apple-system, sans-serif;
+      background: #1a202c;
+      color: #e2e8f0;
+      padding: 20px;
+      margin: 0;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    h1 {
+      color: #f7fafc;
+      border-bottom: 2px solid #4a5568;
+      padding-bottom: 10px;
+    }
+    .section {
+      background: #2d3748;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .section h2 {
+      color: #81e6d9;
+      margin-top: 0;
+    }
+    pre {
+      background: #1a202c;
+      padding: 15px;
+      border-radius: 6px;
+      overflow-x: auto;
+      border: 1px solid #4a5568;
+    }
+    .success {
+      color: #68d391;
+    }
+    .error {
+      color: #fc8181;
+    }
+    .warning {
+      color: #f6e05e;
+    }
+    .info {
+      color: #90cdf4;
+    }
+    button {
+      background: #4299e1;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-right: 10px;
+      font-weight: 600;
+    }
+    button:hover {
+      background: #3182ce;
+    }
+    .fix-btn {
+      background: #48bb78;
+    }
+    .fix-btn:hover {
+      background: #38a169;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    th, td {
+      text-align: left;
+      padding: 12px;
+      border-bottom: 1px solid #4a5568;
+    }
+    th {
+      background: #1a202c;
+      color: #81e6d9;
+      font-weight: 600;
+    }
+    .highlight {
+      background: #4a5568;
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔍 User Role Debug Tool</h1>
+
+    <div class="section">
+      <h2>Target User: benhowardmagic@hotmail.com</h2>
+      <button onclick="checkEverything()">🔄 Run Complete Check</button>
+      <button onclick="fixUserRole()" class="fix-btn">🔧 Fix User Role to Admin</button>
+    </div>
+
+    <div class="section">
+      <h2>Auth User Data</h2>
+      <pre id="auth-data">Click "Run Complete Check" to load...</pre>
+    </div>
+
+    <div class="section">
+      <h2>Profiles Table</h2>
+      <pre id="profiles-data">Click "Run Complete Check" to load...</pre>
+    </div>
+
+    <div class="section">
+      <h2>Site Invites Table</h2>
+      <pre id="invites-data">Click "Run Complete Check" to load...</pre>
+    </div>
+
+    <div class="section">
+      <h2>Staff App Welcome Table</h2>
+      <pre id="welcome-data">Click "Run Complete Check" to load...</pre>
+    </div>
+
+    <div class="section">
+      <h2>Column Check</h2>
+      <pre id="columns-data">Click "Run Complete Check" to load...</pre>
+    </div>
+
+    <div class="section">
+      <h2>Fix Results</h2>
+      <pre id="fix-results">No fixes applied yet...</pre>
+    </div>
+  </div>
+
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+    let supabase;
+    const TARGET_EMAIL = 'benhowardmagic@hotmail.com';
+
+    async function init() {
+      supabase = createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+      return supabase;
+    }
+
+    function formatData(data, title) {
+      if (!data) return `<span class="error">No data found</span>`;
+
+      let output = `<span class="info">${title}</span>\n`;
+      if (Array.isArray(data)) {
+        output += `<span class="success">Found ${data.length} record(s)</span>\n\n`;
+        data.forEach((item, index) => {
+          output += `<span class="warning">Record ${index + 1}:</span>\n`;
+          output += JSON.stringify(item, null, 2) + '\n\n';
+        });
+      } else {
+        output += JSON.stringify(data, null, 2);
+      }
+      return output;
+    }
+
+    window.checkEverything = async function() {
+      const supabase = await init();
+
+      // 1. Check auth.users table
+      const authDiv = document.getElementById('auth-data');
+      authDiv.innerHTML = '<span class="info">Loading auth user data...</span>';
+
+      try {
+        // First get the user ID from profiles or site_invites
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('user_id')
+          .or(`full_name.eq.${TARGET_EMAIL},full_name.ilike.%benhowardmagic%`);
+
+        if (profileData && profileData.length > 0) {
+          authDiv.innerHTML = `<span class="success">User ID found: ${profileData[0].user_id}</span>\n`;
+
+          // Get current session to check metadata
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session && session.user.email === TARGET_EMAIL) {
+            authDiv.innerHTML += `\n<span class="info">Current Session User Metadata:</span>\n`;
+            authDiv.innerHTML += JSON.stringify(session.user.user_metadata, null, 2);
+            authDiv.innerHTML += `\n\n<span class="info">Raw User Metadata:</span>\n`;
+            authDiv.innerHTML += JSON.stringify(session.user.raw_user_meta_data, null, 2);
+          }
+        } else {
+          authDiv.innerHTML = '<span class="warning">User not found in profiles table</span>';
+        }
+      } catch (error) {
+        authDiv.innerHTML = `<span class="error">Error: ${error.message}</span>`;
+      }
+
+      // 2. Check profiles table
+      const profilesDiv = document.getElementById('profiles-data');
+      profilesDiv.innerHTML = '<span class="info">Loading profiles data...</span>';
+
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .or(`full_name.eq.${TARGET_EMAIL},full_name.ilike.%benhowardmagic%`);
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          profilesDiv.innerHTML = formatData(data, 'Profiles Table Data');
+
+          // Highlight important fields
+          data.forEach(profile => {
+            profilesDiv.innerHTML += `\n<span class="warning">Key Fields:</span>\n`;
+            profilesDiv.innerHTML += `  role: <span class="highlight">${profile.role || 'NULL'}</span>\n`;
+            profilesDiv.innerHTML += `  account_role: <span class="highlight">${profile.account_role || 'NULL'}</span>\n`;
+            profilesDiv.innerHTML += `  user_id: <span class="highlight">${profile.user_id}</span>\n`;
+          });
+        } else {
+          profilesDiv.innerHTML = '<span class="warning">No profile found for this user</span>';
+        }
+      } catch (error) {
+        profilesDiv.innerHTML = `<span class="error">Error: ${error.message}</span>`;
+      }
+
+      // 3. Check site_invites table
+      const invitesDiv = document.getElementById('invites-data');
+      invitesDiv.innerHTML = '<span class="info">Loading site invites data...</span>';
+
+      try {
+        const { data, error } = await supabase
+          .from('site_invites')
+          .select('*')
+          .eq('email', TARGET_EMAIL);
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          invitesDiv.innerHTML = formatData(data, 'Site Invites Table Data');
+
+          data.forEach(invite => {
+            invitesDiv.innerHTML += `\n<span class="warning">Key Fields:</span>\n`;
+            invitesDiv.innerHTML += `  role: <span class="highlight">${invite.role || 'NULL'}</span>\n`;
+            invitesDiv.innerHTML += `  account_role: <span class="highlight">${invite.account_role || 'NULL'}</span>\n`;
+            invitesDiv.innerHTML += `  job_role: <span class="highlight">${invite.job_role || 'NULL'}</span>\n`;
+            invitesDiv.innerHTML += `  status: <span class="highlight">${invite.status}</span>\n`;
+          });
+        } else {
+          invitesDiv.innerHTML = '<span class="warning">No invites found for this user</span>';
+        }
+      } catch (error) {
+        invitesDiv.innerHTML = `<span class="error">Error: ${error.message}</span>`;
+      }
+
+      // 4. Check staff_app_welcome table
+      const welcomeDiv = document.getElementById('welcome-data');
+      welcomeDiv.innerHTML = '<span class="info">Loading staff app welcome data...</span>';
+
+      try {
+        // First need to get user_id
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('user_id')
+          .or(`full_name.eq.${TARGET_EMAIL},full_name.ilike.%benhowardmagic%`)
+          .single();
+
+        if (profileData) {
+          const { data, error } = await supabase
+            .from('staff_app_welcome')
+            .select('*')
+            .eq('user_id', profileData.user_id);
+
+          if (error) throw error;
+
+          if (data && data.length > 0) {
+            welcomeDiv.innerHTML = formatData(data, 'Staff App Welcome Table Data');
+
+            data.forEach(welcome => {
+              welcomeDiv.innerHTML += `\n<span class="warning">Key Fields:</span>\n`;
+              welcomeDiv.innerHTML += `  role_detail: <span class="highlight">${welcome.role_detail || 'NULL'}</span>\n`;
+              welcomeDiv.innerHTML += `  job_role: <span class="highlight">${welcome.job_role || 'NULL'}</span>\n`;
+              welcomeDiv.innerHTML += `  display_name: <span class="highlight">${welcome.display_name || 'NULL'}</span>\n`;
+            });
+          } else {
+            welcomeDiv.innerHTML = '<span class="warning">No staff_app_welcome record found</span>';
+          }
+        }
+      } catch (error) {
+        welcomeDiv.innerHTML = `<span class="error">Error: ${error.message}</span>`;
+      }
+
+      // 5. Check if columns exist
+      const columnsDiv = document.getElementById('columns-data');
+      columnsDiv.innerHTML = '<span class="info">Checking column existence...</span>';
+
+      try {
+        // Try to select the new columns
+        const { data: testProfile, error: profileError } = await supabase
+          .from('profiles')
+          .select('account_role')
+          .limit(1);
+
+        const { data: testInvite, error: inviteError } = await supabase
+          .from('site_invites')
+          .select('account_role, job_role')
+          .limit(1);
+
+        let columnStatus = '<span class="success">Column Check Results:</span>\n\n';
+
+        if (!profileError || !profileError.message.includes('column')) {
+          columnStatus += '✅ profiles.account_role exists\n';
+        } else {
+          columnStatus += '❌ profiles.account_role MISSING\n';
+        }
+
+        if (!inviteError || !inviteError.message.includes('column')) {
+          columnStatus += '✅ site_invites.account_role exists\n';
+          columnStatus += '✅ site_invites.job_role exists\n';
+        } else {
+          columnStatus += '❌ site_invites columns MISSING\n';
+        }
+
+        columnsDiv.innerHTML = columnStatus;
+      } catch (error) {
+        columnsDiv.innerHTML = `<span class="error">Error checking columns: ${error.message}</span>`;
+      }
+    };
+
+    window.fixUserRole = async function() {
+      const fixDiv = document.getElementById('fix-results');
+      fixDiv.innerHTML = '<span class="info">Starting fix process...</span>\n';
+
+      const supabase = await init();
+
+      try {
+        // 1. Get user_id first
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('user_id, role, account_role')
+          .or(`full_name.eq.${TARGET_EMAIL},full_name.ilike.%benhowardmagic%`)
+          .single();
+
+        if (profileError || !profileData) {
+          fixDiv.innerHTML += '<span class="error">Could not find user profile!</span>\n';
+          return;
+        }
+
+        const userId = profileData.user_id;
+        fixDiv.innerHTML += `<span class="success">Found user ID: ${userId}</span>\n\n`;
+
+        // 2. Update profiles table
+        fixDiv.innerHTML += '<span class="info">Updating profiles table...</span>\n';
+
+        const { error: updateProfileError } = await supabase
+          .from('profiles')
+          .update({
+            role: 'admin',
+            account_role: 'admin'
+          })
+          .eq('user_id', userId);
+
+        if (updateProfileError) {
+          fixDiv.innerHTML += `<span class="error">Profile update error: ${updateProfileError.message}</span>\n`;
+        } else {
+          fixDiv.innerHTML += '<span class="success">✅ Profile updated: role=admin, account_role=admin</span>\n';
+        }
+
+        // 3. Update site_invites if exists
+        fixDiv.innerHTML += '\n<span class="info">Checking site_invites...</span>\n';
+
+        const { data: inviteData } = await supabase
+          .from('site_invites')
+          .select('id')
+          .eq('email', TARGET_EMAIL);
+
+        if (inviteData && inviteData.length > 0) {
+          const { error: updateInviteError } = await supabase
+            .from('site_invites')
+            .update({
+              role: 'admin',
+              account_role: 'admin',
+              status: 'accepted'
+            })
+            .eq('email', TARGET_EMAIL);
+
+          if (updateInviteError) {
+            fixDiv.innerHTML += `<span class="error">Invite update error: ${updateInviteError.message}</span>\n`;
+          } else {
+            fixDiv.innerHTML += '<span class="success">✅ Site invite updated: role=admin, account_role=admin</span>\n';
+          }
+        } else {
+          // Create an invite if it doesn't exist
+          fixDiv.innerHTML += '<span class="info">No invite found, creating one...</span>\n';
+
+          const { error: createInviteError } = await supabase
+            .from('site_invites')
+            .insert({
+              email: TARGET_EMAIL,
+              role: 'admin',
+              account_role: 'admin',
+              full_name: 'benhowardmagic',
+              site_id: 2,
+              status: 'accepted',
+              accepted_at: new Date().toISOString()
+            });
+
+          if (createInviteError) {
+            fixDiv.innerHTML += `<span class="warning">Could not create invite: ${createInviteError.message}</span>\n`;
+          } else {
+            fixDiv.innerHTML += '<span class="success">✅ Created new admin invite</span>\n';
+          }
+        }
+
+        // 4. Update user metadata
+        fixDiv.innerHTML += '\n<span class="info">Updating user metadata...</span>\n';
+
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session && session.user.email === TARGET_EMAIL) {
+          const { error: metaError } = await supabase.auth.updateUser({
+            data: {
+              role: 'admin',
+              account_role: 'admin',
+              role_detail: 'Pharmacist'  // Keep their job role
+            }
+          });
+
+          if (metaError) {
+            fixDiv.innerHTML += `<span class="warning">Metadata update error: ${metaError.message}</span>\n`;
+          } else {
+            fixDiv.innerHTML += '<span class="success">✅ User metadata updated</span>\n';
+          }
+        } else {
+          fixDiv.innerHTML += '<span class="warning">User not currently logged in - metadata not updated</span>\n';
+        }
+
+        fixDiv.innerHTML += '\n<span class="success">🎉 Fix process complete! Please log out and log back in.</span>\n';
+
+        // Re-run the check to show updated data
+        setTimeout(() => {
+          fixDiv.innerHTML += '\n<span class="info">Re-checking data...</span>\n';
+          checkEverything();
+        }, 1000);
+
+      } catch (error) {
+        fixDiv.innerHTML += `<span class="error">Fix error: ${error.message}</span>\n`;
+      }
+    };
+
+    // Auto-run check on load
+    window.addEventListener('load', () => {
+      setTimeout(checkEverything, 500);
+    });
+  </script>
+</body>
+</html>

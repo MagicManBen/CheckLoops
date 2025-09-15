@@ -218,7 +218,7 @@
     }
   }
 
-  // Helper: redirect the current user to the correct site based on their profile.role
+  // Helper: redirect the current user to the correct site based on their profile.account_role
   // Placed here (inside the module) so it can use the module-scoped `supabase` client.
   async function redirectByRole(user) {
     console.log('redirectByRole called with user:', user?.email || 'no user provided');
@@ -239,17 +239,17 @@
       console.log('Querying profile for user:', theUser.id);
       const { data: profile, error } = await supabase
         .from('profiles')
-        .select('role')
+        .select('account_role')
         .eq('user_id', theUser.id)
         .maybeSingle();
 
       console.log('Profile query result:', { profile, error });
 
-      // If profile row missing or has no role, fall back to auth user metadata
-      let effectiveRole = (profile && profile.role) ? profile.role : null;
+      // If profile row missing or has no account_role, fall back to auth user metadata
+      let effectiveRole = (profile && profile.account_role) ? profile.account_role : null;
       if (!effectiveRole) {
         try {
-          const rawRole = theUser?.raw_user_meta_data?.role;
+          const rawRole = theUser?.raw_user_meta_data?.account_role;
           if (rawRole) effectiveRole = rawRole;
           console.log('Using fallback role from metadata:', rawRole);
         } catch (e) {
@@ -603,7 +603,7 @@
               user_id: userId,
               site_id: invite.site_id,
               full_name: invite.full_name,
-              role: invite.role,
+              account_role: invite.account_role,
               created_at: new Date().toISOString()
             });
 
@@ -614,8 +614,8 @@
           }
         }
 
-        // Add to kiosk_users table if role detail and reports_to were provided in the invite
-        if (invite.role_detail) {
+        // Add to kiosk_users table if job_role and reports_to were provided in the invite
+        if (invite.job_role) {
           // Check if kiosk user already exists
           const { data: existingKioskUser, error: kioskCheckError } = await supabase
             .from('kiosk_users')
@@ -633,7 +633,7 @@
             const kioskUserData = {
               site_id: invite.site_id,
               full_name: invite.full_name,
-              role: invite.role_detail,
+              job_role: invite.job_role,
               active: true,
               created_at: new Date().toISOString()
             };
