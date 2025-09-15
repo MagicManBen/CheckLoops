@@ -10,6 +10,11 @@ async function loadStaffEntitlementCards() {
     return;
   }
   
+  // Also load holiday entitlements for the list view if available
+  if (typeof window.loadHolidayEntitlements === 'function') {
+    window.loadHolidayEntitlements();
+  }
+  
   const filterContainer = document.getElementById('entitlements-filter-container');
   if (filterContainer) {
     filterContainer.innerHTML = `
