@@ -3305,6 +3305,16 @@ document.addEventListener('DOMContentLoaded', () => {
   section.view .panel{ flex: 1 1 auto; display:flex; flex-direction:column; overflow: visible; min-height: 0; }
   .panel .table-wrap{ flex: 1 1 auto; overflow: auto; min-height: 0; }
 
+  /* Complaints Reporting: neutral table styling (no blue stripes) */
+  #view-complaints-reporting thead th{ background:#f8f9fa !important; color:#344054 !important; border-bottom:1px solid #e5e7eb !important; text-shadow:none !important; }
+  #view-complaints-reporting tbody tr:nth-child(even){ background:#fafafa !important; }
+  #view-complaints-reporting tbody tr:hover{ background:#f3f4f6 !important; box-shadow:none !important; transform:none !important; }
+  #view-complaints-reporting .table-wrap{ background:#ffffff0d; }
+
+  /* High-contrast training tooltip */
+  .training-tooltip{ background:#ffffff; color:#111827; border:1px solid #e5e7eb; padding:10px 12px; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,0.14); max-width:260px; }
+  .training-tooltip .chip{ color:#111827 !important; }
+
   /* Grids inside views become the scroll container, not the page */
   section.view .grid{ flex: 1 1 auto; overflow: auto; min-height: 0; }
   .grid .panel{ flex: 0 0 auto; min-height: 240px; }
@@ -4310,10 +4320,99 @@ document.addEventListener('DOMContentLoaded', () => {
 
     <main class="content">
       <section class="view active" id="view-dashboard">
-        <div class="panel" style="display:grid; place-items:center; min-height:220px; text-align:center;">
-          <div>
-            <div style="font-size:24px; font-weight:800; color: var(--white);">Dashboard Coming Soon</div>
-            <div style="margin-top:6px; color: var(--muted);">We’re building a fresh overview with live metrics and quick actions.</div>
+        <div class="panel">
+          <div class="page-header">
+            <div class="page-title-wrapper">
+              <h1 class="page-title">CQC Readiness Dashboard</h1>
+              <button class="help-icon" onclick="showHelp('view-dashboard')" title="Help">?</button>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center; color:var(--muted);">
+              <span>Last updated: <span id="last-updated-time">—</span></span>
+              <button class="btn secondary" onclick="refreshCQCData()">Refresh</button>
+            </div>
+          </div>
+
+          <div class="grid" style="display:grid; grid-template-columns: 1.2fr 1fr; gap:16px; align-items:stretch;">
+            <!-- Overall score + Priority actions -->
+            <div class="panel" style="background:var(--glass); border-radius:16px; padding:16px; display:grid; grid-template-columns: 240px 1fr; gap:16px; align-items:center;">
+              <div style="display:grid; place-items:center; padding:16px; background:linear-gradient(145deg,#133b8a,#0c275e); border-radius:14px; box-shadow: var(--shadow);">
+                <div id="readiness-status-icon" style="width:18px; height:18px; border-radius:50%; background:#6b7280; margin-bottom:10px;"></div>
+                <div style="font-weight:700; color:var(--muted);">Overall Readiness</div>
+                <div id="overall-readiness-score" style="font-size:40px; font-weight:800; color:var(--white);">—</div>
+                <div id="readiness-status-text" style="margin-top:6px; font-weight:600; color:var(--muted);">—</div>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:12px;">
+                <div class="panel-title" style="margin:0 0 6px 0;">Priority Actions</div>
+                <div id="priority-actions" style="background:#0d244b; border:1px solid #1c3d7a; border-radius:12px; padding:12px; min-height:72px; color:var(--ink);"></div>
+                <div style="font-size:12px; color:var(--muted);">Standards data last updated <span id="standards-last-updated">—</span></div>
+              </div>
+            </div>
+
+            <!-- Standards snapshot cards -->
+            <div class="panel" style="background:var(--glass); border-radius:16px; padding:16px; display:grid; grid-template-columns: repeat(3, 1fr); gap:12px;">
+              <div class="metric-card" style="background:linear-gradient(180deg,#f5f1ff,#eef3ff); color:#1f2937; border-radius:12px; padding:12px;">
+                <div style="font-weight:700;">Safety</div>
+                <div id="safety-score" style="font-size:28px; font-weight:800;">—</div>
+                <div id="safety-details" style="font-size:12px; color:#475467;">—</div>
+              </div>
+              <div class="metric-card" style="background:linear-gradient(180deg,#eefcf5,#e8fff9); color:#1f2937; border-radius:12px; padding:12px;">
+                <div style="font-weight:700;">Governance</div>
+                <div id="governance-score" style="font-size:28px; font-weight:800;">—</div>
+                <div id="governance-details" style="font-size:12px; color:#475467;">—</div>
+              </div>
+              <div class="metric-card" style="background:linear-gradient(180deg,#fff0f4,#fff7ef); color:#1f2937; border-radius:12px; padding:12px;">
+                <div style="font-weight:700;">Person-centred</div>
+                <div id="person-centred-score" style="font-size:28px; font-weight:800;">—</div>
+                <div id="person-centred-detail" style="font-size:12px; color:#475467;">—</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- PIR / Safety / Complaints modules -->
+          <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:16px; margin-top:16px;">
+            <div class="panel" style="background:var(--glass); border-radius:16px; padding:16px;">
+              <div class="panel-title" style="margin-bottom:8px;">PIR Documentation</div>
+              <div style="display:flex; align-items:center; gap:12px;">
+                <div style="flex:1;">
+                  <div style="height:8px; background:#0b2250; border-radius:6px; overflow:hidden;">
+                    <div id="pir-progress-bar" style="height:8px; width:0; background:#5f96ff;"></div>
+                  </div>
+                </div>
+                <div id="pir-completion-percent" style="min-width:52px; text-align:right;">—</div>
+              </div>
+              <div style="display:flex; gap:12px; margin-top:8px; color:var(--muted);">
+                <div>Total: <strong id="pir-total-docs">—</strong></div>
+                <div>Ready: <strong id="pir-ready-count">—</strong></div>
+                <div>Pending: <strong id="pir-pending-count">—</strong></div>
+                <div>Outdated: <strong id="pir-outdated-count">—</strong></div>
+              </div>
+            </div>
+            <div class="panel" style="background:var(--glass); border-radius:16px; padding:16px;">
+              <div class="panel-title" style="margin-bottom:8px;">Safety Checks</div>
+              <div style="display:flex; align-items:center; gap:12px;">
+                <div style="flex:1;">
+                  <div style="height:8px; background:#0b2250; border-radius:6px; overflow:hidden;">
+                    <div id="safety-checks-bar" style="height:8px; width:0; background:#22c55e;"></div>
+                  </div>
+                </div>
+                <div id="safety-checks-percent" style="min-width:52px; text-align:right;">—</div>
+              </div>
+              <div style="display:flex; gap:12px; margin-top:8px; color:var(--muted);">
+                <div>Completed: <strong id="safety-completed">—</strong></div>
+                <div>Required: <strong id="safety-required">—</strong></div>
+                <div>Passed: <strong id="safety-passed">—</strong></div>
+                <div>Failed: <strong id="safety-failed">—</strong></div>
+              </div>
+            </div>
+            <div class="panel" style="background:var(--glass); border-radius:16px; padding:16px;">
+              <div class="panel-title" style="margin-bottom:8px;">Complaints</div>
+              <div style="display:flex; gap:12px; color:var(--muted); flex-wrap:wrap;">
+                <div>Active: <strong id="complaints-active">—</strong></div>
+                <div>Investigating: <strong id="complaints-investigating">—</strong></div>
+                <div>Resolved: <strong id="complaints-resolved">—</strong></div>
+              </div>
+              <div style="margin-top:10px;">Response time: <strong id="complaints-response-time">—</strong></div>
+            </div>
           </div>
         </div>
       </section>
@@ -4940,15 +5039,51 @@ document.addEventListener('DOMContentLoaded', () => {
           <!-- Complaints Dashboard view -->
           <section class="view" id="view-complaints-dashboard">
             <div class="panel">
-            <div class="panel" style="text-align: center; padding: 60px 20px;">
-              <div style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(168, 85, 247, 0.1)); border-radius: 20px; padding: 40px; margin: 20px auto; max-width: 600px; border: 2px dashed rgba(99, 102, 241, 0.3);">
-                <div style="font-size: 3rem; margin-bottom: 16px; opacity: 0.6;">🗑️</div>
-                <h2 style="color: var(--muted); font-size: 1.5rem; margin: 0 0 12px 0; font-weight: 600;">Dashboard Cleared</h2>
-                <p style="color: var(--muted); font-size: 1rem; margin: 0; opacity: 0.8;">This complaints dashboard page has been completely cleared as requested.</p>
-                <div style="margin-top: 24px;">
-                  <button class="btn" onclick="setActiveSection('complaints-reporting')" style="background: linear-gradient(135deg, #667eea, #764ba2); color: white;">
-                    📊 View Complaints
-                  </button>
+              <div class="page-header">
+                <div class="page-title-wrapper">
+                  <div class="h1">Complaints Dashboard</div>
+                </div>
+                <div style="display:flex; gap:10px;">
+                  <button class="btn" id="btn-open-complaints-reporting">Open Explorer</button>
+                  <button class="btn secondary" id="btn-refresh-complaints-dashboard">Refresh</button>
+                </div>
+              </div>
+
+              <!-- Stat cards -->
+              <div style="display:grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap:16px; margin-bottom:16px;">
+                <div class="stat-card" style="border-radius:14px; padding:16px; background:var(--glass);">
+                  <div class="stat-num" id="cmp-total">0</div>
+                  <div class="stat-label">Total (30d)</div>
+                </div>
+                <div class="stat-card" style="border-radius:14px; padding:16px; background:var(--glass);">
+                  <div class="stat-num" id="cmp-open">0</div>
+                  <div class="stat-label">Open</div>
+                </div>
+                <div class="stat-card" style="border-radius:14px; padding:16px; background:var(--glass);">
+                  <div class="stat-num" id="cmp-resolved">0</div>
+                  <div class="stat-label">Resolved</div>
+                </div>
+                <div class="stat-card" style="border-radius:14px; padding:16px; background:var(--glass);">
+                  <div class="stat-num" id="cmp-share">0</div>
+                  <div class="stat-label">Shared with Team</div>
+                </div>
+              </div>
+
+              <!-- Main dashboard body -->
+              <div style="display:grid; grid-template-columns: 2fr 1fr; gap:16px;">
+                <div style="display:grid; gap:16px;">
+                  <div class="panel" style="background:var(--glass); border-radius:16px; padding:16px;">
+                    <div class="panel-title">Top Categories</div>
+                    <div id="cmp-top-categories"></div>
+                  </div>
+                  <div class="panel" style="background:var(--glass); border-radius:16px; padding:16px;">
+                    <div class="panel-title">Trend (30 days)</div>
+                    <svg id="dashboard-trend-chart" width="100%" height="140"></svg>
+                  </div>
+                </div>
+                <div class="panel" style="background:var(--glass); border-radius:16px; padding:16px;">
+                  <div class="panel-title">Status Breakdown</div>
+                  <div id="cmp-status-breakdown"></div>
                 </div>
               </div>
             </div>
@@ -6260,16 +6395,19 @@ window.PIR_DEFINITIONS_DATA = [
         try {
           console.log('🔥 About to query profiles table for user:', session.user.id);
           // First check if user has a profile with admin role
+          // Check both 'role' and 'account_role' for backward compatibility
           const { data: profile, error: profileError } = await supabase
             .from('profiles')
-            .select('role, full_name')
+            .select('role, account_role, full_name')
             .eq('user_id', session.user.id)
             .maybeSingle();
           
           console.log('🔥 Profiles query result - profile:', profile, 'error:', profileError);
-            
-          if (profile && ['admin', 'owner'].includes(profile.role?.toLowerCase())) {
-            console.log('✅ Admin role confirmed from profile');
+
+          // Check both 'account_role' (new) and 'role' (old) for backward compatibility
+          const accountRole = profile?.account_role || profile?.role;
+          if (profile && ['admin', 'owner'].includes(accountRole?.toLowerCase())) {
+            console.log('✅ Admin role confirmed from profile:', accountRole);
             console.log('🔥 ABOUT TO CALL BOOTSTRAP - Profile data:', profile);
             
             // Immediately update user display with available info
@@ -6313,24 +6451,28 @@ window.PIR_DEFINITIONS_DATA = [
           }
           
           // Next check site_invites table
+          // Check both 'role' and 'account_role' for backward compatibility
           const { data: invite, error: inviteError } = await supabase
             .from('site_invites')
-            .select('role')
+            .select('role, account_role')
             .eq('email', session.user.email)
-            .in('role', ['admin', 'owner'])
             .maybeSingle();
-            
-          if (invite) {
-            console.log('✅ Admin role confirmed from invitation');
+
+          // Check both 'account_role' (new) and 'role' (old) for backward compatibility
+          const inviteRole = invite?.account_role || invite?.role;
+          if (invite && ['admin', 'owner'].includes(inviteRole?.toLowerCase())) {
+            console.log('✅ Admin role confirmed from invitation:', inviteRole);
             showAuth(false);
             bootstrap();
             return;
           }
           
           // Finally check user metadata
-          const rawRole = session.user?.user_metadata?.role || session.user?.raw_user_meta_data?.role;
+          // Check both 'account_role' (new) and 'role' (old) for backward compatibility
+          const rawRole = session.user?.user_metadata?.account_role || session.user?.user_metadata?.role ||
+                         session.user?.raw_user_meta_data?.account_role || session.user?.raw_user_meta_data?.role;
           if (rawRole && ['admin', 'owner'].includes(String(rawRole).toLowerCase())) {
-            console.log('✅ Admin role confirmed from user metadata');
+            console.log('✅ Admin role confirmed from user metadata:', rawRole);
             showAuth(false);
             bootstrap();
             return;
@@ -7968,7 +8110,8 @@ window.PIR_DEFINITIONS_DATA = [
         console.log('Checking if user has admin role...');
         
         // First check user metadata (most reliable source)
-        const userRole = user?.raw_user_meta_data?.role?.toLowerCase();
+        // Check both 'account_role' (new) and 'role' (old) for backward compatibility
+        const userRole = (user?.raw_user_meta_data?.account_role || user?.raw_user_meta_data?.role)?.toLowerCase();
         if (userRole === 'admin' || userRole === 'owner') {
           console.log('✅ User allowed on admin site - role from metadata:', userRole);
           
@@ -8246,7 +8389,7 @@ window.PIR_DEFINITIONS_DATA = [
       console.log('🔍 Loading user profile...');
       let { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("site_id, role, full_name")
+        .select("site_id, role, account_role, full_name")
         .eq("user_id", user.id)
         .maybeSingle();
 
@@ -8353,7 +8496,8 @@ window.PIR_DEFINITIONS_DATA = [
       }
 
       ctx.site_id = profile.site_id;
-      ctx.role = profile.role;
+      // Use account_role if available, otherwise fall back to role for backward compatibility
+      ctx.role = profile.account_role || profile.role;
       // Try to get full name from profile, user metadata, or construct from email
       ctx.full_name = profile.full_name || 
                       user?.user_metadata?.full_name || 
@@ -9532,40 +9676,18 @@ let schedulesData = []; // Store original data for filtering
 
 async function loadSchedules(){
   const tb = document.getElementById("sched-tbody");
+  // Use resolved view to get names, room, and frequency in one query
   const { data: scheds, error } = await supabase
-    .from("item_allowed_types")
-    .select("id,item_id,check_type_id,frequency,required,scheduled_day")
-    .eq("site_id", ctx.site_id)
-    .order("id", { ascending: true });
-  if(error){ tb.innerHTML = `<tr><td colspan="6" class="muted">${error.message}</td></tr>`; return; }
+    .from('v_item_schedule_resolved')
+    .select('id,item_id,item_name,room_id,room_name,check_type_id,check_type,frequency,required,site_id')
+    .eq('site_id', ctx.site_id)
+    .order('item_name', { ascending: true });
+  if(error){ tb.innerHTML = `<tr><td colspan="6" class="muted">${error.message}</td></tr>`; schedulesData = []; return; }
   if(!scheds?.length){ 
     tb.innerHTML = `<tr><td colspan="6" class="muted">No schedules yet.</td></tr>`; 
     schedulesData = [];
     return; 
   }
-
-  const itemIds = [...new Set(scheds.map(s=>s.item_id).filter(Boolean))];
-  const ctIds   = [...new Set(scheds.map(s=>s.check_type_id).filter(Boolean))];
-
-  const [itemsRes, ctsRes] = await Promise.all([
-    itemIds.length ? (itemIds.length === 1 ? supabase.from("items").select("id,item_name,room_id").eq("id", itemIds[0]) : supabase.from("items").select("id,item_name,room_id").in("id", itemIds)) : Promise.resolve({ data: [] }),
-    ctIds.length   ? (ctIds.length === 1 ? supabase.from("check_types").select("id,name").eq("id", ctIds[0]) : supabase.from("check_types").select("id,name").in("id", ctIds))   : Promise.resolve({ data: [] }),
-  ]);
-
-  const itemsById = {};
-  const itemRoomIdByItemId = {};
-  (itemsRes.data||[]).forEach(r=> { itemsById[r.id] = r.item_name; itemRoomIdByItemId[r.id] = r.room_id; });
-
-  // Fetch room names for referenced room_ids
-  const roomIds = [...new Set(Object.values(itemRoomIdByItemId).filter(Boolean))];
-  let roomsById = {};
-  if (roomIds.length){
-    const roomsRes = roomIds.length === 1 ? await supabase.from("rooms").select("id,name").eq("id", roomIds[0]) : await supabase.from("rooms").select("id,name").in("id", roomIds);
-    const rooms = (roomsRes && roomsRes.data) || [];
-    (rooms||[]).forEach(r=> { roomsById[r.id] = r.name; });
-  }
-
-  const ctsById   = {}; (ctsRes.data||[]).forEach(r=> ctsById[r.id]   = r.name);
 
   // Pull upcoming occurrences from schedules_view to determine next due day per schedule
   let nextDueMap = {};
@@ -9592,14 +9714,18 @@ async function loadSchedules(){
   schedulesData = scheds.map(s => {
     const key = `${s.item_id}-${s.check_type_id}`;
     const nextTs = nextDueMap[key];
-    const dayText = nextTs ? new Date(nextTs).toLocaleDateString(undefined, { weekday: 'short' }) : (s.scheduled_day || '—');
+    const dayText = nextTs ? new Date(nextTs).toLocaleDateString(undefined, { weekday: 'short' }) : '—';
     return {
-      ...s,
-      itemName: itemsById[s.item_id] || '—',
-      roomName: roomsById[itemRoomIdByItemId[s.item_id]] || '—',
-      checkTypeName: ctsById[s.check_type_id] || '—',
+      id: s.id,
+      item_id: s.item_id,
+      check_type_id: s.check_type_id,
+      frequency: s.frequency,
+      required: !!s.required,
+      itemName: s.item_name || '—',
+      roomName: s.room_name || '—',
+      checkTypeName: s.check_type || '—',
       frequencyText: intervalToText(s.frequency),
-      roomId: itemRoomIdByItemId[s.item_id],
+      roomId: s.room_id,
       dayText
     };
   });
@@ -10044,10 +10170,75 @@ function applySchedulesFilters() {
               dailyData.get(dayKey).completed.add(`${c.item_pk}-${c.check_type_id}`);
             });
 
+            // Supplement from required schedules to ensure complete daily coverage
+            supplementCalendarDataWithRequiredSchedules(dailyData, monthStart, monthEnd);
             renderCalendar(dailyData);
             break;
         }
     }
+  }
+
+  // Ensure the calendar includes all required schedules even if the view lacks rows
+  function supplementCalendarDataWithRequiredSchedules(dailyData, startDate, endDate){
+    try{
+      if (!Array.isArray(requiredSchedulesCache) || requiredSchedulesCache.length === 0) return;
+      const start = new Date(startDate); start.setHours(0,0,0,0);
+      const end = new Date(endDate); end.setHours(23,59,59,999);
+
+      // Helper: add a schedule to a given day if missing
+      const addIfMissing = (dayKey, item_id, check_type_id, item_name, check_type_name) => {
+        if (!dailyData.has(dayKey)) dailyData.set(dayKey, { completed: new Set(), scheduled: [] });
+        const dayObj = dailyData.get(dayKey);
+        const exists = dayObj.scheduled.some(t => t.item_id === item_id && t.check_type_id === check_type_id);
+        if (!exists) dayObj.scheduled.push({ item_id, check_type_id, item_name, check_type_name });
+      };
+
+      const daysInRange = [];
+      const cursor = new Date(start);
+      while (cursor <= end){ daysInRange.push(new Date(cursor)); cursor.setDate(cursor.getDate()+1); }
+
+      const dow = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+      requiredSchedulesCache.forEach(s => {
+        const item_id = s.items?.id ?? s.item_id;
+        const item_name = s.items?.item_name ?? s.item_name ?? '—';
+        const check_type_id = s.check_types?.id ?? s.check_type_id;
+        const check_type_name = s.check_types?.name ?? s.check_type ?? '—';
+        const scheduled_day = (s.scheduled_day || '').trim();
+        const freq = (s.frequency || '').toString();
+
+        // Weekly by day-of-week
+        if (dow.includes(scheduled_day)){
+          daysInRange.forEach(d => {
+            if (dow[d.getDay()] === scheduled_day){
+              const key = d.toISOString().slice(0,10);
+              addIfMissing(key, item_id, check_type_id, item_name, check_type_name);
+            }
+          });
+          return;
+        }
+
+        // Monthly by day of month (numeric 1..31)
+        if (/^\d{1,2}$/.test(scheduled_day)){
+          const dayNum = Math.min(parseInt(scheduled_day,10), 31);
+          const d = new Date(start.getFullYear(), start.getMonth(), dayNum);
+          if (d >= start && d <= end){
+            const key = d.toISOString().slice(0,10);
+            addIfMissing(key, item_id, check_type_id, item_name, check_type_name);
+          }
+          return;
+        }
+
+        // Daily/interval: if interval mentions 'day', assume appears each day in range
+        if (/\bday\b/i.test(freq)){
+          daysInRange.forEach(d => {
+            const key = d.toISOString().slice(0,10);
+            addIfMissing(key, item_id, check_type_id, item_name, check_type_name);
+          });
+          return;
+        }
+      });
+    }catch(e){ /* non-fatal */ }
   }
 
   async function renderComplianceView(period) {
