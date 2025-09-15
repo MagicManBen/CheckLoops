@@ -358,7 +358,7 @@
               </div>
               <div style="display:flex; gap:12px; margin-top:20px;">
                 <button class="btn btn-secondary" id="avatar-randomize" style="padding:12px 20px; border-radius:12px; font-weight:600; background:linear-gradient(135deg, #8b5cf6, #7c3aed); color:white; border:none;">🎲 Randomize</button>
-                <button class="btn" id="avatar-save-manual" style="padding:12px 20px; border-radius:12px; font-weight:600; background:linear-gradient(135deg, #22c55e, #16a34a); color:white; border:none;">💾 Save Avatar</button>
+                <button class="btn" id="avatar-save-manual" style="padding:12px 20px; border-radius:12px; font-weight:600; background:linear-gradient(135deg, #22c55e, #16a34a); color:white; border:none;">Save</button>
               </div>
               <div class="meta-note" id="avatar-save-msg" style="margin-top:12px; text-align:center; font-weight:500;"></div>
             </div>
@@ -657,6 +657,20 @@
           // Users can complete their profile at their leisure
         } catch(_) { /* soft-fail */ }
 
+        // Prime avatar preview globals from any existing saved URL
+        try {
+          if (!avatarUrl) {
+            try { avatarUrl = user?.raw_user_meta_data?.avatar_url || null; } catch(_) {}
+          }
+          if (avatarUrl) {
+            window.existingAvatarUrl = avatarUrl;
+            window.currentSavedAvatarUrl = avatarUrl;
+            window.currentAvatarUrl = avatarUrl;
+            const img = document.getElementById('avatarPreview');
+            if (img) img.src = avatarUrl;
+          }
+        } catch(_) { /* non-critical */ }
+
         // Always show navigation and topbar
         setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: roleDetail });
 
@@ -851,25 +865,7 @@
           btn.dataset.avatarPersistBound = '1';
         })();
 
-        (function bindFinalSave(){
-          const btn = document.getElementById('complete-setup');
-          if (!btn || btn.dataset.finalPersistBound === '1') return;
-          btn.addEventListener('click', async () => {
-            try {
-              await persistRoleTeam();
-              const imgEl = document.getElementById('avatarPreview');
-              let url = imgEl?.getAttribute('src') || window.currentAvatarUrl || (typeof buildAvatarUrlFromControls === 'function' ? buildAvatarUrlFromControls() : null);
-              if (!url && typeof updateAvatarPreview === 'function') {
-                updateAvatarPreview();
-                url = document.getElementById('avatarPreview')?.getAttribute('src') || null;
-              }
-              if (url && window.saveAvatarToSupabase) await window.saveAvatarToSupabase(url);
-            } catch (e) {
-              console.warn('[bindFinalSave] save failed', e);
-            }
-          }, { once: true });
-          btn.dataset.finalPersistBound = '1';
-        })();
+        // Removed auto-save on final step; avatar saves only on explicit Save or Continue
 
         // === /Persist Role/Team and Avatar helpers ===
         // Adds two new fields to the entitlement payload:
@@ -1202,13 +1198,10 @@
 
             console.log('Successfully generated avatar data:', data);
             applyAiResult(data);
-            // Auto-save after applying AI result (guard if helper not yet bound)
+            // Do not auto-save; user must click Save or Continue.
             updateAvatarPreview();
-            if (window.saveAvatarToSupabase) {
-              await window.saveAvatarToSupabase(window.currentAvatarUrl || buildAvatarUrlFromControls());
-            }
             const msg = document.getElementById('avatar-ai-msg');
-            if (msg) msg.innerHTML = '✅ Avatar generated and saved automatically. You can fine-tune below.';
+            if (msg) msg.innerHTML = '✅ Avatar generated. Click Save to keep it.';
             return data;
           } catch (supabaseError) {
             // Log error for console only
@@ -1777,37 +1770,7 @@
               const opt = Array.from(fEl.options).find(o=>o.value===val); if (opt) opt.selected = true;
             }
             updateAvatarPreview();
-            markManualChange(); // Show the save button after randomizing
-
-            // Auto-save the randomized avatar
-            setTimeout(async () => {
-              try {
-                const avatarUrl = buildAvatarUrlFromControls();
-                console.log('Randomize: Saving avatar URL:', avatarUrl);
-                console.log('Randomize: saveAvatarToSupabase available?', typeof saveAvatarToSupabase);
-                console.log('Randomize: window.saveAvatarToSupabase available?', typeof window.saveAvatarToSupabase);
-
-                // Try using window.saveAvatarToSupabase if local is not available
-                const saveFunction = (typeof saveAvatarToSupabase !== 'undefined') ? saveAvatarToSupabase : window.saveAvatarToSupabase;
-
-                if (saveFunction) {
-                  const saveResult = await saveFunction(avatarUrl);
-                  console.log('Randomize: Save result:', saveResult);
-                  const saveMsg = document.getElementById('avatar-save-msg');
-                  if (saveMsg && saveResult !== false) {
-                    saveMsg.textContent = '✅ Avatar randomized and saved!';
-                  }
-                } else {
-                  console.error('Randomize: saveAvatarToSupabase function not found');
-                }
-              } catch (error) {
-                console.error('Randomize: Error saving avatar:', error);
-                const saveMsg = document.getElementById('avatar-save-msg');
-                if (saveMsg) {
-                  saveMsg.textContent = '❌ Failed to save avatar: ' + error.message;
-                }
-              }
-            }, 500); // Small delay to ensure preview is updated
+            markManualChange(); // Mark unsaved changes but do not auto-save
           }); rnd.dataset.bound='1'; }
 
           // Manual save button
@@ -2211,8 +2174,15 @@
             }
           }); finish.dataset.bound='1'; }
 
-          // Initial render
-          updateAvatarPreview();
+          // Initial render: if a saved avatar exists, show it; otherwise build from controls
+          if (window.existingAvatarUrl) {
+            const img = document.getElementById('avatarPreview');
+            if (img) img.src = window.existingAvatarUrl;
+            window.currentAvatarUrl = window.existingAvatarUrl;
+            window.currentSavedAvatarUrl = window.existingAvatarUrl;
+          } else {
+            updateAvatarPreview();
+          }
         }
 
         window.burstConfetti = function burstConfetti(){
