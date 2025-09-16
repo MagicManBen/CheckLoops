@@ -643,22 +643,7 @@
         return { taken: false, lastAttempt: null, nextAvailable: new Date() };
       }
       
-      // First check localStorage for recent quiz attempts (fallback for RLS issues)
-      const localKey = `quiz_attempt_${currentUser.id}_${weekStart.toISOString().split('T')[0]}`;
-      const localAttempt = localStorage.getItem(localKey);
-      if (localAttempt) {
-        try {
-          const attemptData = JSON.parse(localAttempt);
-          console.log('📅 Found quiz attempt in localStorage:', attemptData);
-          return {
-            taken: true,
-            lastAttempt: new Date(attemptData.completed_at),
-            nextAvailable: getNextWeekStart()
-          };
-        } catch (e) {
-          console.error('📅 Error parsing localStorage quiz attempt:', e);
-        }
-      }
+      // Check database directly for cross-device sync reliability
       
       try {
         // Simplified query - just check for any quiz attempts this week
@@ -978,6 +963,7 @@
             completed_at: new Date().toISOString(),
             total_questions: currentQuestions.length,
             correct_answers: correctCount,
+            score_percent: scorePercent,
             is_practice: false
           };
           console.log('💾 submitQuiz: Insert data:', insertData);
@@ -986,32 +972,11 @@
           
           if (error) {
             console.error('💾 submitQuiz: Error saving required quiz:', error);
-            console.error('💾 submitQuiz: Using localStorage fallback');
-            
-            // Save to localStorage as fallback
-            const weekStart = getWeekStart();
-            const localKey = `quiz_attempt_${currentUser.id}_${weekStart.toISOString().split('T')[0]}`;
-            const localData = {
-              user_id: currentUser.id,
-              completed_at: new Date().toISOString(),
-              score: correctCount,
-              total: currentQuestions.length
-            };
-            localStorage.setItem(localKey, JSON.stringify(localData));
-            console.log('💾 submitQuiz: Saved to localStorage with key:', localKey);
+            // Show error to user instead of using localStorage fallback
+            alert('Error saving quiz results. Please check your connection and try again.');
+            return;
           } else {
             console.log('💾 submitQuiz: Required quiz saved successfully:', data);
-            
-            // Also save to localStorage for immediate availability
-            const weekStart = getWeekStart();
-            const localKey = `quiz_attempt_${currentUser.id}_${weekStart.toISOString().split('T')[0]}`;
-            const localData = {
-              user_id: currentUser.id,
-              completed_at: new Date().toISOString(),
-              score: correctCount,
-              total: currentQuestions.length
-            };
-            localStorage.setItem(localKey, JSON.stringify(localData));
           }
         } else {
           // Save to quiz_practices if table exists
@@ -1180,8 +1145,8 @@
       });
       
     }).catch(e => {
-      if (String(e.message).includes('NO_SESSION')) { window.location.replace('Home.html'); return; }
-      if (String(e.message).includes('NOT_STAFF')) { window.location.replace('Home.html'); return; }
+      if (String(e.message).includes('NO_SESSION')) { window.location.replace('home.html'); return; }
+      if (String(e.message).includes('NOT_STAFF')) { window.location.replace('home.html'); return; }
       console.error('Quiz page initialization error:', e);
     });
     

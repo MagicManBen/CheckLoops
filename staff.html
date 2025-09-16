@@ -724,38 +724,27 @@
         function getNextWeekStart(d=new Date()){ const e=getWeekEnd(d); return new Date(e.getTime()+24*60*60*1000); }
 
         const weekStart = getWeekStart();
-        const localKey = `quiz_attempt_${user.id}_${weekStart.toISOString().split('T')[0]}`;
 
         let quizTakenThisWeek = false;
-        // LocalStorage fallback (used by quiz page after save)
-        try {
-          const ls = localStorage.getItem(localKey);
-          if (ls) {
-            quizTakenThisWeek = true;
-          }
-        } catch(_) {}
-
         let lastCompletedDate = null;
 
-        // DB check only if not already confirmed via localStorage
-        if (!quizTakenThisWeek) {
-          try {
-            // Fetch any non‑practice attempt this week
-            const { data: weekly, error: weeklyErr } = await supabase
-              .from('quiz_attempts')
-              .select('completed_at,created_at')
-              .eq('user_id', user.id)
-              .eq('is_practice', false)
-              .gte('created_at', weekStart.toISOString())
-              .lte('created_at', getWeekEnd().toISOString())
-              .limit(1);
-            if (!weeklyErr && weekly && weekly.length) {
-              quizTakenThisWeek = true;
-              const attempt = weekly[0];
-              lastCompletedDate = attempt.completed_at || attempt.created_at;
-            }
-          } catch(_) {}
-        }
+        // Always check database for reliable cross-device sync
+        try {
+          // Fetch any non‑practice attempt this week
+          const { data: weekly, error: weeklyErr } = await supabase
+            .from('quiz_attempts')
+            .select('completed_at,created_at')
+            .eq('user_id', user.id)
+            .eq('is_practice', false)
+            .gte('created_at', weekStart.toISOString())
+            .lte('created_at', getWeekEnd().toISOString())
+            .limit(1);
+          if (!weeklyErr && weekly && weekly.length) {
+            quizTakenThisWeek = true;
+            const attempt = weekly[0];
+            lastCompletedDate = attempt.completed_at || attempt.created_at;
+          }
+        } catch(_) {}
 
         // If still not found, fetch the last attempt (any week) to compute next due date / upcoming window
         if (!lastCompletedDate) {
