@@ -5,13 +5,13 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const getAllowedOrigin = (req: Request): string => {
   const origin = req.headers.get('origin') || ''
   const allowedOrigins = [
+    'https://checkloops.co.uk',
     'http://127.0.0.1:58156',
     'http://127.0.0.1:5500',
     'http://localhost:5173',
-    'http://localhost:5500',
-    'https://magicmanben.github.io'
+    'http://localhost:5500'
   ]
-  
+
   return allowedOrigins.includes(origin) ? origin : allowedOrigins[0]
 }
 
@@ -115,9 +115,9 @@ serve(async (req) => {
 
     // Determine redirect URL based on environment or allow override
     const origin = req.headers.get('origin') || ''
-    const isProduction = origin.includes('github.io')
-    const defaultRedirect = isProduction 
-      ? 'https://magicmanben.github.io/CheckLoops/set-password.html'
+    const isProduction = origin.includes('checkloops.co.uk')
+    const defaultRedirect = isProduction
+      ? 'https://checkloops.co.uk/set-password.html'
       : 'http://127.0.0.1:5500/set-password.html'
     const redirectTo = requestBody.redirect_to || defaultRedirect
 
