@@ -358,7 +358,7 @@
               </div>
               <div style="display:flex; gap:12px; margin-top:20px;">
                 <button class="btn btn-secondary" id="avatar-randomize" style="padding:12px 20px; border-radius:12px; font-weight:600; background:linear-gradient(135deg, #8b5cf6, #7c3aed); color:white; border:none;">🎲 Randomize</button>
-                <button class="btn" id="avatar-save-manual" style="padding:12px 20px; border-radius:12px; font-weight:600; background:linear-gradient(135deg, #22c55e, #16a34a); color:white; border:none;">Save</button>
+                <button class="btn" id="avatar-save-manual" style="padding:12px 20px; border-radius:12px; font-weight:600; background:linear-gradient(135deg, #22c55e, #16a34a); color:white; border:none;">💾 Save Avatar</button>
               </div>
               <div class="meta-note" id="avatar-save-msg" style="margin-top:12px; text-align:center; font-weight:500;"></div>
             </div>
@@ -611,15 +611,7 @@
       try{
         const { session, profileRow } = await requireStaffSession(supabase);
         const user = session.user;
-        
-        // Special handling for benhowardmagic@hotmail.com - ensure site_id is 2
-        let siteId;
-        if (user.email === 'benhowardmagic@hotmail.com') {
-          siteId = 2;
-          console.log('Setting site_id=2 for benhowardmagic@hotmail.com');
-        } else {
-          siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || 1; // Default to site 1 if not set
-        }
+        const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || 1; // Default to site 1 if not set
 
         // Store globally for handlers
         window.currentUser = user;
@@ -664,20 +656,6 @@
           // Don't force onboarding regardless of profile completion
           // Users can complete their profile at their leisure
         } catch(_) { /* soft-fail */ }
-
-        // Prime avatar preview globals from any existing saved URL
-        try {
-          if (!avatarUrl) {
-            try { avatarUrl = user?.raw_user_meta_data?.avatar_url || null; } catch(_) {}
-          }
-          if (avatarUrl) {
-            window.existingAvatarUrl = avatarUrl;
-            window.currentSavedAvatarUrl = avatarUrl;
-            window.currentAvatarUrl = avatarUrl;
-            const img = document.getElementById('avatarPreview');
-            if (img) img.src = avatarUrl;
-          }
-        } catch(_) { /* non-critical */ }
 
         // Always show navigation and topbar
         setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: roleDetail });
@@ -873,7 +851,25 @@
           btn.dataset.avatarPersistBound = '1';
         })();
 
-        // Removed auto-save on final step; avatar saves only on explicit Save or Continue
+        (function bindFinalSave(){
+          const btn = document.getElementById('complete-setup');
+          if (!btn || btn.dataset.finalPersistBound === '1') return;
+          btn.addEventListener('click', async () => {
+            try {
+              await persistRoleTeam();
+              const imgEl = document.getElementById('avatarPreview');
+              let url = imgEl?.getAttribute('src') || window.currentAvatarUrl || (typeof buildAvatarUrlFromControls === 'function' ? buildAvatarUrlFromControls() : null);
+              if (!url && typeof updateAvatarPreview === 'function') {
+                updateAvatarPreview();
+                url = document.getElementById('avatarPreview')?.getAttribute('src') || null;
+              }
+              if (url && window.saveAvatarToSupabase) await window.saveAvatarToSupabase(url);
+            } catch (e) {
+              console.warn('[bindFinalSave] save failed', e);
+            }
+          }, { once: true });
+          btn.dataset.finalPersistBound = '1';
+        })();
 
         // === /Persist Role/Team and Avatar helpers ===
         // Adds two new fields to the entitlement payload:
@@ -1206,10 +1202,13 @@
 
             console.log('Successfully generated avatar data:', data);
             applyAiResult(data);
-            // Do not auto-save; user must click Save or Continue.
+            // Auto-save after applying AI result (guard if helper not yet bound)
             updateAvatarPreview();
+            if (window.saveAvatarToSupabase) {
+              await window.saveAvatarToSupabase(window.currentAvatarUrl || buildAvatarUrlFromControls());
+            }
             const msg = document.getElementById('avatar-ai-msg');
-            if (msg) msg.innerHTML = '✅ Avatar generated. Click Save to keep it.';
+            if (msg) msg.innerHTML = '✅ Avatar generated and saved automatically. You can fine-tune below.';
             return data;
           } catch (supabaseError) {
             // Log error for console only
@@ -1778,7 +1777,37 @@
               const opt = Array.from(fEl.options).find(o=>o.value===val); if (opt) opt.selected = true;
             }
             updateAvatarPreview();
-            markManualChange(); // Mark unsaved changes but do not auto-save
+            markManualChange(); // Show the save button after randomizing
+
+            // Auto-save the randomized avatar
+            setTimeout(async () => {
+              try {
+                const avatarUrl = buildAvatarUrlFromControls();
+                console.log('Randomize: Saving avatar URL:', avatarUrl);
+                console.log('Randomize: saveAvatarToSupabase available?', typeof saveAvatarToSupabase);
+                console.log('Randomize: window.saveAvatarToSupabase available?', typeof window.saveAvatarToSupabase);
+
+                // Try using window.saveAvatarToSupabase if local is not available
+                const saveFunction = (typeof saveAvatarToSupabase !== 'undefined') ? saveAvatarToSupabase : window.saveAvatarToSupabase;
+
+                if (saveFunction) {
+                  const saveResult = await saveFunction(avatarUrl);
+                  console.log('Randomize: Save result:', saveResult);
+                  const saveMsg = document.getElementById('avatar-save-msg');
+                  if (saveMsg && saveResult !== false) {
+                    saveMsg.textContent = '✅ Avatar randomized and saved!';
+                  }
+                } else {
+                  console.error('Randomize: saveAvatarToSupabase function not found');
+                }
+              } catch (error) {
+                console.error('Randomize: Error saving avatar:', error);
+                const saveMsg = document.getElementById('avatar-save-msg');
+                if (saveMsg) {
+                  saveMsg.textContent = '❌ Failed to save avatar: ' + error.message;
+                }
+              }
+            }, 500); // Small delay to ensure preview is updated
           }); rnd.dataset.bound='1'; }
 
           // Manual save button
@@ -2182,15 +2211,8 @@
             }
           }); finish.dataset.bound='1'; }
 
-          // Initial render: if a saved avatar exists, show it; otherwise build from controls
-          if (window.existingAvatarUrl) {
-            const img = document.getElementById('avatarPreview');
-            if (img) img.src = window.existingAvatarUrl;
-            window.currentAvatarUrl = window.existingAvatarUrl;
-            window.currentSavedAvatarUrl = window.existingAvatarUrl;
-          } else {
-            updateAvatarPreview();
-          }
+          // Initial render
+          updateAvatarPreview();
         }
 
         window.burstConfetti = function burstConfetti(){
@@ -2854,6 +2876,7 @@
               team_name: window.selectedTeamName || null,
               avatar_url: avatarUrl,
               site_id: currentSiteId,
+              user_id: currentUser.id,
               updated_at: new Date().toISOString()
             };
 
@@ -2915,6 +2938,22 @@
 
               if (entitlementError) {
                 console.error('Entitlement error:', entitlementError);
+              }
+
+              // Call the calculate_holiday_summary function to populate calculated fields
+              try {
+                const { error: calcError } = await globalSupabase.rpc('calculate_holiday_summary', {
+                  p_profile_id: profileId,
+                  p_target_year: currentYear
+                });
+
+                if (calcError) {
+                  console.warn('Holiday calculation warning:', calcError);
+                } else {
+                  console.log('[staff-welcome] Holiday summary calculated successfully');
+                }
+              } catch (calcErr) {
+                console.warn('Could not calculate holiday summary:', calcErr);
               }
 
               // Create/Update link in 5_staff_profile_user_links

@@ -54,8 +54,48 @@ serve(async (req: Request) => {
     const { error: upErr } = await admin.storage.from('uploads').upload(path, bytes, { upsert: true, contentType: 'image/png', cacheControl: '3600' });
     if (upErr) return json(req, { error: 'Upload failed', detail: upErr.message }, 500);
     const { data: pub } = admin.storage.from('uploads').getPublicUrl(path); const publicUrl = pub?.publicUrl || null; if (!publicUrl) return json(req, { error: 'Could not resolve public URL' }, 500);
-    try { await admin.from('profiles').update({ avatar_url: publicUrl }).eq('user_id', userId); } catch(_) {}
-    try { await admin.auth.admin.updateUserById(userId, { user_metadata: { avatar_url: publicUrl } }); } catch(_) {}
+    
+    // Save to all avatar storage locations for consistency
+    console.log('[generate-full-avatar] Saving full body avatar to all tables:', publicUrl);
+    
+    // 1. Update profiles table
+    try { 
+      await admin.from('profiles').update({ avatar_url: publicUrl }).eq('user_id', userId); 
+    } catch(e) { 
+      console.warn('Profiles table update failed:', e); 
+    }
+    
+    // 2. Update auth user metadata
+    try { 
+      await admin.auth.admin.updateUserById(userId, { user_metadata: { avatar_url: publicUrl } }); 
+    } catch(e) { 
+      console.warn('Auth metadata update failed:', e); 
+    }
+    
+    // 3. Update staff_app_welcome table
+    try {
+      await admin.from('staff_app_welcome').update({ avatar_url: publicUrl }).eq('user_id', userId);
+    } catch(e) {
+      console.warn('staff_app_welcome update failed:', e);
+    }
+    
+    // 4. Update holiday profiles table (find by user email)
+    try {
+      // First get the user's email from auth
+      const { data: { user }, error: userError } = await admin.auth.admin.getUserById(userId);
+      if (!userError && user?.email) {
+        await admin
+          .from('1_staff_holiday_profiles')
+          .update({ 
+            avatar_url: publicUrl,
+            updated_at: new Date().toISOString()
+          })
+          .eq('email', user.email);
+      }
+    } catch(e) {
+      console.warn('Holiday profiles table update failed:', e);
+    }
+    
     return json(req, { full_body_url: publicUrl, promptUsed: prompt });
   } catch (e) { return json(req, { error: e instanceof Error ? e.message : 'Internal error' }, 500); }
 });

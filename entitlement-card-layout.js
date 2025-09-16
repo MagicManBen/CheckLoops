@@ -971,3 +971,11 @@ window.closeStaffDetailModal = closeStaffDetailModal;
 window.updateWeeklyTotalInModal = updateWeeklyTotalInModal;
 window.saveWorkingPatternFromModal = saveWorkingPatternFromModal;
 window.saveEntitlementFromModal = saveEntitlementFromModal;
+
+// Auto-load if we're already on the holidays section
+document.addEventListener('DOMContentLoaded', () => {
+  const activeSection = document.querySelector('.view.active');
+  if (activeSection && activeSection.id === 'holidays') {
+    setTimeout(() => loadStaffEntitlementCards(), 500);
+  }
+});

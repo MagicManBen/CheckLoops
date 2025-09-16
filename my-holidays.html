@@ -249,40 +249,49 @@
       try {
         const { session, profileRow } = await requireStaffSession(supabase);
         const user = session.user;
-        
-        // Special handling for benhowardmagic@hotmail.com - ensure site_id is 2
-        let siteId;
-        if (user.email === 'benhowardmagic@hotmail.com') {
-          siteId = 2;
-          console.log('Setting site_id=2 for benhowardmagic@hotmail.com');
-        } else {
-          siteId = profileRow?.site_id || 1;
-        }
+        const siteId = profileRow?.site_id || 1;
 
-        // Set topbar using job role for staff display
-        const roleDetail = profileRow?.job_role || user?.raw_user_meta_data?.job_role || 'Staff';
+        // Set topbar
+        const roleDetail = profileRow?.role || user?.raw_user_meta_data?.role || 'Staff';
         setTopbar({
           siteText: await getSiteText(supabase, siteId),
           email: user.email,
           role: roleDetail.charAt(0).toUpperCase() + roleDetail.slice(1)
         });
 
-        // Load holiday data from consolidated summary
+        // Load holiday data from holiday_summary view
         async function loadHolidayData() {
           console.log('[my-holidays] Loading holiday data for user:', user.email);
 
-          // Get consolidated holiday summary
-          const { data: holidaySummary, error: summaryError } = await supabase
+          // Get data from holiday_summary view (or fallback to table if view doesn't exist)
+          let holidaySummary = null;
+          let summaryError = null;
+
+          // Try the view first
+          const viewResult = await supabase
             .from('holiday_summary')
             .select('*')
             .eq('user_id', user.id)
             .eq('year', new Date().getFullYear())
             .maybeSingle();
 
-          console.log('[my-holidays] Holiday summary result:', { holidaySummary, summaryError });
+          if (!viewResult.error || viewResult.error.code !== '42P01') {
+            // View exists, use its result
+            holidaySummary = viewResult.data;
+            summaryError = viewResult.error;
+            console.log('[my-holidays] Holiday summary result:', { holidaySummary, summaryError });
+          } else {
+            // View doesn't exist, fallback to direct table query
+            console.log('[my-holidays] View not found, using direct table query');
+            const { data: profileData, error: profileError } = await supabase
+              .from('1_staff_holiday_profiles')
+              .select('*')
+              .eq('user_id', user.id)
+              .eq('year', new Date().getFullYear())
+              .maybeSingle();
 
-          if (summaryError) {
-            console.error('[my-holidays] Error fetching holiday summary:', summaryError);
+            holidaySummary = profileData;
+            summaryError = profileError;
           }
 
           if (!holidaySummary) {
@@ -318,11 +327,22 @@
           const isGP = holidaySummary.is_gp;
           console.log('[my-holidays] Updating display - isGP:', isGP, 'summary:', holidaySummary);
 
+          let totalAllowance, usedAmount, remaining;
+
           if (isGP) {
             // GP uses sessions
-            const totalAllowance = holidaySummary.entitlement_sessions || 0;
-            const usedAmount = holidaySummary.total_booked_sessions || 0;
-            const remaining = holidaySummary.remaining_sessions || 0;
+            totalAllowance = holidaySummary.entitlement_sessions || 0;
+            usedAmount = holidaySummary.total_booked_sessions || 0;
+            remaining = holidaySummary.remaining_sessions || 0;
+          } else {
+            // Non-GP uses hours
+            totalAllowance = holidaySummary.entitlement_hours || 0;
+            usedAmount = holidaySummary.total_booked_hours || 0;
+            remaining = holidaySummary.remaining_hours || 0;
+          }
+
+          if (isGP) {
+            // GP uses sessions
 
             document.getElementById('total-allowance').textContent = totalAllowance;
             document.getElementById('used-holidays').textContent = usedAmount;
@@ -338,10 +358,6 @@
             console.log('[my-holidays] GP display updated - Total:', totalAllowance, 'Used:', usedAmount, 'Remaining:', remaining);
           } else {
             // Non-GP uses hours
-            const totalAllowance = holidaySummary.entitlement_hours || 0;
-            const usedAmount = holidaySummary.total_booked_hours || 0;
-            const remaining = holidaySummary.remaining_hours || 0;
-
             document.getElementById('total-allowance').textContent = formatHours(totalAllowance);
             document.getElementById('used-holidays').textContent = formatHours(usedAmount);
             document.getElementById('remaining-holidays').textContent = formatHours(remaining);
