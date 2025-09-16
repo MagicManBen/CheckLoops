@@ -314,10 +314,10 @@
             <div class="i c-blue"><img data-i8="graduation-cap" data-i8-size="48" alt="Training"/></div>
             <div class="t">Training</div>
           </a>
-          <a class="bubble" href="my-holidays.html">
-            <div class="i c-green"><img data-i8="calendar" data-i8-size="48" alt="My Holidays"/></div>
-            <div class="t">My Holidays</div>
-          </a>
+          <div class="bubble disabled-bubble" title="Coming Soon" style="cursor: pointer; opacity: 0.6; color: #9ca3af;" onclick="handleHolidaysClick()">
+            <div class="i c-green" style="opacity: 0.6;"><img data-i8="calendar" data-i8-size="48" alt="My Holidays" style="opacity: 0.6;"/></div>
+            <div class="t" style="color: #9ca3af;">My Holidays</div>
+          </div>
           <a class="bubble quiz-bubble" href="staff-quiz.html" id="quiz-bubble">
             <div class="i c-orange"><img data-i8="puzzle" data-i8-size="48" alt="Quiz"/></div>
             <div class="t">Quiz</div>
@@ -384,6 +384,19 @@
 
   <script type="module">
   import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, setRing, fmtDate, getUserAchievements, upsertAchievement, clearAuthData, computeCompliance } from './staff-common.js';
+    
+    // Global function to handle holidays click
+    window.handleHolidaysClick = function() {
+      const pin = prompt('Enter 4-digit PIN to access My Holidays:');
+      if (pin === '9021') {
+        // Correct PIN - navigate to holidays page
+        window.location.href = 'my-holidays.html';
+      } else if (pin !== null) {
+        // Wrong PIN (but user didn't cancel)
+        alert('Incorrect PIN. Access denied.');
+      }
+    };
+    
     const supabase = await initSupabase();
     handleAuthState(supabase);
     navActivate('home');
@@ -395,7 +408,7 @@
     try {
       supabase.auth.getSession().then(({ data }) => {
         const user = data?.session?.user || {};
-        const earlyRole = user?.raw_user_meta_data?.account_role || user?.user_metadata?.account_role;
+        const earlyRole = user?.raw_user_meta_data?.role || user?.user_metadata?.role;
         if (earlyRole) {
         }
       }).catch(_=>{});
@@ -406,7 +419,7 @@
       try { clearAuthData(true); } catch(_) {}
       try { sessionStorage.clear(); } catch(_) {}
       try { document.cookie.split(';').forEach(c => document.cookie = c.replace(/^ +/, '').replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`)); } catch(_) {}
-  window.location.replace('home.html?from=logout&_=' + Date.now());
+  window.location.replace('home.html?_=' + Date.now());
     }
     async function forceLogout() {
       if (isLoggingOut) return;
@@ -421,18 +434,16 @@
       // Reveal Admin link if applicable
       
       // Show admin access panel for admins and owners
-      // Only check account_role (role field deprecated)
-      const accountRole = (profileRow?.account_role ||
-                          session.user?.raw_user_meta_data?.account_role || '').toLowerCase();
-      if (accountRole === 'admin' || accountRole === 'owner') {
+      const role = (profileRow?.role || session.user?.raw_user_meta_data?.role || '').toLowerCase();
+      if (role === 'admin' || role === 'owner') {
         const adminPanel = document.getElementById('admin-access-panel');
         if (adminPanel) {
           adminPanel.style.display = 'block';
         }
       }
     }).catch(e => {
-  if (String(e.message).includes('NO_SESSION')) { window.location.replace('home.html?force=login'); return; }
-  if (String(e.message).includes('NOT_STAFF')) { window.location.replace('home.html?force=login'); return; }
+  if (String(e.message).includes('NO_SESSION')) { window.location.replace('home.html'); return; }
+  if (String(e.message).includes('NOT_STAFF')) { window.location.replace('home.html'); return; }
       console.error(e);
     });
 
@@ -445,24 +456,8 @@
       }catch(_){/* ignore */}
 
       const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
-
-      // Get role for display - prioritize account_role for admin/owner, then job_role
-      const accountRole = profileRow?.account_role ||
-                         user?.raw_user_meta_data?.account_role ||
-                         user?.user_metadata?.account_role;
-
-      let displayRole;
-      if (accountRole && ['admin', 'owner'].includes(accountRole.toLowerCase())) {
-        displayRole = accountRole.charAt(0).toUpperCase() + accountRole.slice(1);
-      } else {
-        // For regular staff, show job role
-        const jobRole = user?.raw_user_meta_data?.job_role ||
-                        user?.raw_user_meta_data?.role_detail ||
-                        profileRow?.job_role ||
-                        'Staff';
-        displayRole = jobRole.charAt(0).toUpperCase() + jobRole.slice(1);
-      }
-      const roleDetail = displayRole;
+      const role = profileRow?.role || user?.raw_user_meta_data?.role || 'Staff';
+      const roleDetail = role.charAt(0).toUpperCase() + role.slice(1);  // Capitalize first letter
 
       document.getElementById('welcome').textContent = `Welcome, ${displayName}`;
       

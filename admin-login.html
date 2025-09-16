@@ -337,7 +337,7 @@
       
       <div class="links">
         <div class="divider">or</div>
-  <a href="home.html">Go to Staff Login</a>
+        <a href="home.html">Go to Staff Login</a>
         <div class="divider">•</div>
         <a href="index.html">Back to Home</a>
       </div>
@@ -365,19 +365,19 @@
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
           const user = session.user;
-          // 1. Check profiles table for account_role
+          // 1. Check profiles table for role
           let effectiveRole = null;
           const { data: profile } = await supabase
             .from('profiles')
-            .select('account_role')
+            .select('role')
             .eq('user_id', user.id)
             .maybeSingle();
-          if (profile && profile.account_role) {
-            effectiveRole = profile.account_role.toLowerCase();
+          if (profile && profile.role) {
+            effectiveRole = profile.role.toLowerCase();
           }
-          // 2. Fallback to user_metadata.account_role
+          // 2. Fallback to user_metadata.role
           if (!effectiveRole) {
-            const metaRole = (user?.user_metadata?.account_role || '').toLowerCase();
+            const metaRole = (user?.user_metadata?.role || '').toLowerCase();
             if (metaRole) effectiveRole = metaRole;
           }
           // 3. Bonus: check site_invites for admin/owner
@@ -385,12 +385,12 @@
           if (!effectiveRole || (effectiveRole !== 'admin' && effectiveRole !== 'owner')) {
             const { data: invites } = await supabase
               .from('site_invites')
-              .select('account_role, status, site_id')
+              .select('role, status, site_id')
               .eq('email', user.email)
-              .in('account_role', ['admin', 'owner'])
+              .in('role', ['admin', 'owner'])
               .in('status', ['accepted', 'approved']);
             hasAdminInvite = invites && invites.length > 0;
-            if (hasAdminInvite) effectiveRole = invites[0].account_role.toLowerCase();
+            if (hasAdminInvite) effectiveRole = invites[0].role.toLowerCase();
           }
           const isAdmin = (effectiveRole === 'admin' || effectiveRole === 'owner' || hasAdminInvite);
           console.log('Session check - admin access granted:', isAdmin, 'role:', effectiveRole);
@@ -441,21 +441,21 @@
         if (error) throw new Error(error.message);
         if (!data.session) throw new Error('No session created');
         const user = data.user;
-        // 1. Check profiles table for account_role
+        // 1. Check profiles table for role
         let effectiveRole = null;
         let profile = null;
         const { data: profileData } = await supabase
           .from('profiles')
-          .select('account_role, onboarding_complete')
+          .select('role, onboarding_complete')
           .eq('user_id', user.id)
           .maybeSingle();
         profile = profileData;
-        if (profile && profile.account_role) {
-          effectiveRole = profile.account_role.toLowerCase();
+        if (profile && profile.role) {
+          effectiveRole = profile.role.toLowerCase();
         }
-        // 2. Fallback to user_metadata.account_role
+        // 2. Fallback to user_metadata.role
         if (!effectiveRole) {
-          const metaRole = (user?.user_metadata?.account_role || '').toLowerCase();
+          const metaRole = (user?.user_metadata?.role || '').toLowerCase();
           if (metaRole) effectiveRole = metaRole;
         }
         // 3. Bonus: check site_invites for admin/owner
@@ -463,12 +463,12 @@
         if (!effectiveRole || (effectiveRole !== 'admin' && effectiveRole !== 'owner')) {
           const { data: invites } = await supabase
             .from('site_invites')
-            .select('account_role, status, site_id')
+            .select('role, status, site_id')
             .eq('email', user.email)
-            .in('account_role', ['admin', 'owner'])
+            .in('role', ['admin', 'owner'])
             .in('status', ['accepted', 'approved']);
           hasAdminInvite = invites && invites.length > 0;
-          if (hasAdminInvite) effectiveRole = invites[0].account_role.toLowerCase();
+          if (hasAdminInvite) effectiveRole = invites[0].role.toLowerCase();
         }
         const isAdmin = (effectiveRole === 'admin' || effectiveRole === 'owner' || hasAdminInvite);
         console.log('Admin access granted:', isAdmin, 'role:', effectiveRole);

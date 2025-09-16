@@ -36,7 +36,7 @@ export async function requireStaffSession(supabase) {
 
   const { data: profileRow, error: profileError } = await supabase
     .from('profiles')
-    .select('account_role, full_name, site_id, onboarding_complete')
+    .select('role, full_name, site_id, onboarding_complete')
     .eq('user_id', session.user.id)
     .maybeSingle();
 
@@ -46,7 +46,7 @@ export async function requireStaffSession(supabase) {
 
   // Try to get role from profile first, then from user metadata
   const meta = session.user?.user_metadata || session.user?.raw_user_meta_data || {};
-  const role = profileRow?.account_role || meta?.account_role || null;
+  const role = profileRow?.role || meta?.role || null;
   // Include 'member' and any role by default for staff-welcome page
   const allowed = ['staff', 'admin', 'owner', 'manager', 'member', 'user'];
 
@@ -55,9 +55,9 @@ export async function requireStaffSession(supabase) {
       userId: session.user.id,
       email: session.user.email,
       profileRow: profileRow,
-      profileRole: profileRow?.account_role,
+      profileRole: profileRow?.role,
       userMetadata: meta,
-      metaRole: meta?.account_role,
+      metaRole: meta?.role,
       finalRole: role,
       onboarding_complete: profileRow?.onboarding_complete,
       onboarding_required: meta?.onboarding_required,
@@ -82,7 +82,7 @@ export async function requireStaffSession(supabase) {
     const hasStaffEmail = session.user?.email?.includes('@') &&
       (session.user.email.includes('.nhs.uk') ||
        session.user.email.includes('benhowardmagic@hotmail.com') ||
-       session.user.raw_user_meta_data?.account_role);
+       session.user.raw_user_meta_data?.role);
 
     if (!hasStaffEmail) {
       throw new Error('NOT_STAFF');
@@ -160,7 +160,7 @@ export function renderStaffNavigation(activePage = 'home') {
   const navItems = [
     { page: 'home', href: 'staff.html', label: 'Home' },
     { page: 'welcome', href: 'staff-welcome.html', label: 'Welcome' },
-    { page: 'holidays', href: 'my-holidays.html', label: 'My Holidays' },
+    { page: 'holidays', href: 'my-holidays.html', label: 'My Holidays', disabled: true, tooltip: 'Coming Soon' },
     { page: 'meetings', href: 'staff-meetings.html', label: 'Meetings' },
     { page: 'scans', href: 'staff-scans.html', label: 'My Scans' },
     { page: 'training', href: 'staff-training.html', label: 'My Training' },
@@ -180,8 +180,21 @@ export function renderStaffNavigation(activePage = 'home') {
     button.dataset.href = item.href; // Store href for navigation
     button.textContent = item.label;
     
+    // Add tooltip if specified - use data attribute for better tooltip control
+    if (item.tooltip) {
+      button.title = item.tooltip;
+      button.setAttribute('data-tooltip', item.tooltip);
+    }
+    
     // Set classes and visibility
-    if (item.page === activePage && item.adminOnly) {
+    if (item.disabled) {
+      button.className = 'disabled-nav-item';
+      // Don't actually disable the button so tooltip works and we can handle clicks
+      // button.disabled = true;
+      button.style.color = '#9ca3af'; // Grey color
+      button.style.cursor = 'pointer'; // Allow clicking for PIN prompt
+      button.style.opacity = '0.6';
+    } else if (item.page === activePage && item.adminOnly) {
       button.className = 'admin-only active';
       button.style.display = 'none';
     } else if (item.page === activePage) {
@@ -202,6 +215,23 @@ export function renderStaffNavigation(activePage = 'home') {
       
       e.preventDefault();
       e.stopPropagation();
+      
+      // Prevent navigation for disabled items - show PIN prompt instead
+      if (btn.classList.contains('disabled-nav-item') || btn.dataset.section === 'holidays') {
+        // Show PIN prompt for holidays
+        const pin = prompt('Enter 4-digit PIN to access My Holidays:');
+        if (pin === '9021') {
+          // Correct PIN - navigate to holidays page
+          const href = btn.getAttribute('data-href');
+          if (href) {
+            window.location.href = href;
+          }
+        } else if (pin !== null) {
+          // Wrong PIN (but user didn't cancel)
+          alert('Incorrect PIN. Access denied.');
+        }
+        return;
+      }
       
       // Prevent double clicks
       if (btn.dataset.clicking === 'true') return;

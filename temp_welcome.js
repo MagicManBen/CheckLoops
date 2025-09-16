@@ -888,41 +888,123 @@
           }); rnd.dataset.bound='1'; }
 
           // Save helper used by both AI auto-save and finish/save flow
+          // CONSOLIDATED Avatar Save Function - saves to all necessary tables
           async function saveAvatarToSupabase(avatarUrl){
             const saveMsg = document.getElementById('avatar-save-msg');
+            console.log('[saveAvatarToSupabase] Starting save with URL:', avatarUrl);
             try {
               const nickVal = String(document.getElementById('nickname')?.value || '').trim() || null;
+              const displayName = nickVal || fullName || user?.email?.split('@')[0] || 'Staff';
               if (saveMsg) { saveMsg.textContent = 'Saving avatar...'; }
-              // Save avatar URL to user metadata
-              await supabase.auth.updateUser({ 
-                data: { 
+              console.log('[saveAvatarToSupabase] Nickname:', nickVal, 'Display name:', displayName);
+
+              // 1. Save avatar URL to user metadata
+              await supabase.auth.updateUser({
+                data: {
                   avatar_url: avatarUrl,
                   nickname: nickVal,
-                  role_detail: window.selectedRole || user?.raw_user_meta_data?.role_detail || null
-                } 
+                  role_detail: window.selectedRole || user?.raw_user_meta_data?.role_detail || null,
+                  team_id: window.selectedTeamId || null,
+                  team_name: window.selectedTeamName || null
+                }
               });
-              // Also save to staff_app_welcome if possible
+
+              // 2. Save to profiles table (main storage) - CRITICAL FOR HOMEPAGE DISPLAY
+              try {
+                // First, ensure we have the correct role
+                const userRole = window.selectedRole ? window.selectedRole.toLowerCase() : 'staff';
+
+                // Normalize roles to match database constraint
+                // Database only allows: admin, staff (other specific roles should default to 'staff')
+                let normalizedRole = 'staff';
+                if (userRole === 'admin') {
+                  normalizedRole = 'admin';
+                }
+                // All other roles (doctor, nurse, gp, receptionist, etc.) map to 'staff'
+
+                const profileData = {
+                  user_id: user.id,
+                  avatar_url: avatarUrl,
+                  nickname: nickVal,
+                  full_name: fullName || displayName,
+                  role: normalizedRole
+                };
+                if (siteId) profileData.site_id = siteId;
+
+                console.log('[saveAvatarToSupabase] Upserting to profiles:', profileData);
+                const { data: profileResult, error: profileErr } = await supabase
+                  .from('profiles')
+                  .upsert(profileData, {
+                    onConflict: 'user_id',
+                    ignoreDuplicates: false
+                  })
+                  .select();
+
+                if (profileErr) {
+                  console.error('[saveAvatarToSupabase] Profile update error:', profileErr);
+                  throw profileErr;
+                } else {
+                  console.log('[saveAvatarToSupabase] Profile updated successfully:', profileResult);
+                }
+              } catch (e) {
+                console.error('[saveAvatarToSupabase] Profile save exception:', e);
+                throw e; // Re-throw to handle upstream
+              }
+
+              // 3. Save to staff_app_welcome
               if (siteId) {
                 try {
                   const payload = {
                     user_id: user.id,
                     site_id: siteId,
-                    full_name: fullName,
+                    full_name: fullName || displayName,
                     nickname: nickVal,
                     avatar_url: avatarUrl,
                     role_detail: window.selectedRole || user?.raw_user_meta_data?.role_detail || null,
                     team_id: window.selectedTeamId || null,
                     team_name: window.selectedTeamName || null
                   };
+                  console.log('[saveAvatarToSupabase] Upserting to staff_app_welcome:', payload);
                   await supabase.from('staff_app_welcome').upsert(payload);
-                } catch (_) { /* non-critical */ }
+                } catch (e) {
+                  console.warn('[saveAvatarToSupabase] staff_app_welcome save error:', e);
+                  // Non-critical, continue
+                }
               }
+
+              // 4. Update 1_staff_holiday_profiles with avatar and latest info
+              try {
+                // First check if profile exists
+                const { data: existingProfile } = await supabase
+                  .from('1_staff_holiday_profiles')
+                  .select('id')
+                  .eq('email', user.email)
+                  .maybeSingle();
+
+                if (existingProfile) {
+                  // Update existing profile with avatar
+                  console.log('[saveAvatarToSupabase] Updating holiday profile with avatar');
+                  await supabase
+                    .from('1_staff_holiday_profiles')
+                    .update({
+                      avatar_url: avatarUrl,
+                      role: window.selectedRole || user?.raw_user_meta_data?.role || 'Staff',
+                      team_name: window.selectedTeamName || null,
+                      updated_at: new Date().toISOString()
+                    })
+                    .eq('id', existingProfile.id);
+                }
+              } catch (e) {
+                console.warn('[saveAvatarToSupabase] Holiday profile avatar update error:', e);
+                // Non-critical, continue
+              }
+
               window.currentSavedAvatarUrl = avatarUrl;
               window.avatarDirty = false;
               if (saveMsg) saveMsg.innerHTML = '✅ Avatar saved successfully!';
               return true;
             } catch (e) {
-              console.error('Save avatar error:', e);
+              console.error('[saveAvatarToSupabase] Save avatar error:', e);
               if (saveMsg) saveMsg.innerHTML = `❌ Save failed: ${e.message || e}`;
               return false;
             }
@@ -1126,9 +1208,45 @@
             if (!res.ok) throw new Error(`Full body gen failed (${res.status})`);
             const js = await res.json();
             if (js?.full_body_url) {
-              // persist to auth + profile for future loads
-              try { await supabase.auth.updateUser({ data: { avatar_url: js.full_body_url }}); } catch(_){ }
-              try { await supabase.from('profiles').update({ avatar_url: js.full_body_url }).eq('user_id', session.user.id); } catch(_){ }
+              // Save to all avatar storage locations for consistency
+              console.log('[generateFullBodyAvatarOnce] Saving full body avatar to all tables:', js.full_body_url);
+              
+              // 1. Update auth metadata
+              try { 
+                await supabase.auth.updateUser({ data: { avatar_url: js.full_body_url }}); 
+              } catch(e) { 
+                console.warn('Auth metadata update failed:', e); 
+              }
+              
+              // 2. Update profiles table
+              try { 
+                await supabase.from('profiles').update({ avatar_url: js.full_body_url }).eq('user_id', session.user.id); 
+              } catch(e) { 
+                console.warn('Profiles table update failed:', e); 
+              }
+              
+              // 3. Update staff_app_welcome if we have siteId
+              if (siteId) {
+                try {
+                  await supabase.from('staff_app_welcome').update({ avatar_url: js.full_body_url }).eq('user_id', session.user.id);
+                } catch(e) {
+                  console.warn('staff_app_welcome update failed:', e);
+                }
+              }
+              
+              // 4. Update holiday profiles table
+              try {
+                await supabase
+                  .from('1_staff_holiday_profiles')
+                  .update({ 
+                    avatar_url: js.full_body_url,
+                    updated_at: new Date().toISOString()
+                  })
+                  .eq('email', session.user.email);
+              } catch(e) {
+                console.warn('Holiday profiles table update failed:', e);
+              }
+              
               window.currentSavedAvatarUrl = js.full_body_url;
             }
           } catch(e){

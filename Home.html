@@ -218,18 +218,7 @@
     }
   }
 
-  // Helper function to check if a page exists
-  async function pageExists(url) {
-    try {
-      const response = await fetch(url, { method: 'HEAD' });
-      return response.ok && response.status < 400;
-    } catch (error) {
-      console.warn(`Could not check if ${url} exists:`, error);
-      return false;
-    }
-  }
-
-  // Helper: redirect the current user to the correct site based on their profile.account_role
+  // Helper: redirect the current user to the correct site based on their profile.role
   // Placed here (inside the module) so it can use the module-scoped `supabase` client.
   async function redirectByRole(user) {
     console.log('redirectByRole called with user:', user?.email || 'no user provided');
@@ -241,31 +230,26 @@
         theUser = res?.data?.user;
       }
       if (!theUser) {
-        console.log('Cannot determine user, checking for fallback page');
-        // Check if staff.html exists before redirecting
-        const staffExists = await pageExists('staff.html');
-        if (staffExists) {
-          window.location.href = 'staff.html';
-        } else {
-          console.warn('staff.html not found, staying on current page');
-        }
+        console.log('Cannot determine user, falling back to admin index');
+        // If we can't determine user, fallback to admin index
+        window.location.href = 'staff.html';
         return;
       }
 
       console.log('Querying profile for user:', theUser.id);
       const { data: profile, error } = await supabase
         .from('profiles')
-        .select('account_role')
+        .select('role')
         .eq('user_id', theUser.id)
         .maybeSingle();
 
       console.log('Profile query result:', { profile, error });
 
-      // If profile row missing or has no account_role, fall back to auth user metadata
-      let effectiveRole = (profile && profile.account_role) ? profile.account_role : null;
+      // If profile row missing or has no role, fall back to auth user metadata
+      let effectiveRole = (profile && profile.role) ? profile.role : null;
       if (!effectiveRole) {
         try {
-          const rawRole = theUser?.raw_user_meta_data?.account_role;
+          const rawRole = theUser?.raw_user_meta_data?.role;
           if (rawRole) effectiveRole = rawRole;
           console.log('Using fallback role from metadata:', rawRole);
         } catch (e) {
@@ -284,54 +268,18 @@
 
       // If user has no profile or incomplete profile, send to welcome
       if (!profileCheck || !profileCheck.full_name) {
-        console.log('User has incomplete profile, checking for staff-welcome.html');
-        const welcomeExists = await pageExists('staff-welcome.html');
-        if (welcomeExists) {
-          window.location.href = 'staff-welcome.html';
-        } else {
-          console.warn('staff-welcome.html not found, staying on current page');
-        }
+        console.log('User has incomplete profile, redirecting to staff-welcome.html');
+        window.location.href = 'staff-welcome.html';
         return;
       }
 
-      // Redirect based on role - check pages exist first
-      if (effectiveRole && ['admin', 'owner'].includes(effectiveRole.toLowerCase())) {
-        console.log('Admin/Owner user - checking for admin-dashboard.html');
-        const adminExists = await pageExists('admin-dashboard.html');
-        if (adminExists) {
-          window.location.href = 'admin-dashboard.html';
-        } else {
-          console.warn('admin-dashboard.html not found, trying staff.html');
-          const staffExists = await pageExists('staff.html');
-          if (staffExists) {
-            window.location.href = 'staff.html?from=home';
-          } else {
-            console.warn('No dashboard pages found, staying on current page');
-          }
-        }
-      } else {
-        console.log('Staff user - checking for staff.html');
-        const staffExists = await pageExists('staff.html');
-        if (staffExists) {
-          // Add a parameter to help detect redirect loops
-          window.location.href = 'staff.html?from=home';
-        } else {
-          console.warn('staff.html not found, staying on current page');
-        }
-      }
+      // Staff-only login - redirect all users to staff.html
+      console.log('Redirecting to staff.html (staff-only portal)');
+      window.location.href = 'staff.html';
     } catch (err) {
       console.error('redirectByRole failed', err);
-      // Check if staff-welcome exists as fallback
-      try {
-        const welcomeExists = await pageExists('staff-welcome.html');
-        if (welcomeExists) {
-          window.location.href = 'staff-welcome.html';
-        } else {
-          console.warn('No fallback pages available, staying on current page');
-        }
-      } catch (e) {
-        console.error('Could not check for fallback page:', e);
-      }
+      // Default to staff-welcome for safety
+      window.location.href = 'staff-welcome.html';
     }
   }
 
@@ -549,25 +497,11 @@
   supabase.auth.getSession().then(async ({ data: { session } }) => {
     // Clear any stale auth data first
     clearStaleAuthData();
-
+    
     // Check for URL parameters first to handle invitations properly
     const urlParams = new URLSearchParams(window.location.search);
     const inviteToken = urlParams.get('invite');
-    const fromLogout = urlParams.get('from') === 'logout';
-    const forceLogin = urlParams.get('force') === 'login';
-
-    // If coming from logout or force login, don't redirect even if session exists
-    if (fromLogout || forceLogin) {
-      console.log('Showing login form (from logout or forced)');
-      // Clear the session if it exists to prevent confusion
-      if (session && fromLogout) {
-        await supabase.auth.signOut();
-      }
-      // Clear URL params to prevent issues on refresh
-      window.history.replaceState({}, document.title, window.location.pathname);
-      return;
-    }
-
+    
     if (session && inviteToken) {
       // User is signed in from clicking invitation email link
       // Complete the invitation process automatically
@@ -575,24 +509,9 @@
       await completeInvitationFlow(session.user, inviteToken);
       return;
     }
-
+    
     if (session) {
       // Regular signed-in user, redirect based on role
-      // But prevent redirect loops by checking if we've been redirected recently
-      const lastRedirect = sessionStorage.getItem('lastRedirectTime');
-      const now = Date.now();
-
-      // If we were redirected in the last 2 seconds, don't redirect again
-      if (lastRedirect && (now - parseInt(lastRedirect)) < 2000) {
-        console.log('Preventing redirect loop - showing login form instead');
-        // Clear the session to force re-login
-        await supabase.auth.signOut();
-        sessionStorage.removeItem('lastRedirectTime');
-        return;
-      }
-
-      // Store redirect time to detect loops
-      sessionStorage.setItem('lastRedirectTime', now.toString());
       await redirectByRole(session.user);
       return;
     }
@@ -684,7 +603,7 @@
               user_id: userId,
               site_id: invite.site_id,
               full_name: invite.full_name,
-              account_role: invite.account_role,
+              role: invite.role,
               created_at: new Date().toISOString()
             });
 
@@ -695,8 +614,8 @@
           }
         }
 
-        // Add to kiosk_users table if job_role and reports_to were provided in the invite
-        if (invite.job_role) {
+        // Add to kiosk_users table if role detail and reports_to were provided in the invite
+        if (invite.role_detail) {
           // Check if kiosk user already exists
           const { data: existingKioskUser, error: kioskCheckError } = await supabase
             .from('kiosk_users')
@@ -714,7 +633,7 @@
             const kioskUserData = {
               site_id: invite.site_id,
               full_name: invite.full_name,
-              job_role: invite.job_role,
+              role: invite.role_detail,
               active: true,
               created_at: new Date().toISOString()
             };

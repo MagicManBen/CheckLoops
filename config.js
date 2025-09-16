@@ -12,13 +12,7 @@ const CONFIG = {
     if (this.isLocal) {
       return `${window.location.protocol}//${window.location.host}`;
     } else {
-      // Production site URL - support both direct domain and GitHub Pages
-      const currentUrl = window.location.href;
-      if (currentUrl.includes('github.io')) {
-        return 'https://magicmanben.github.io/CheckLoops';
-      } else {
-        return 'https://checkloops.co.uk';
-      }
+      return 'https://magicmanben.github.io/CheckLoops';
     }
   },
   

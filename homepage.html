@@ -393,87 +393,16 @@
   <!-- If the user is already authenticated, move them straight into the app. -->
   <script type="module">
     import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-    // Check if a page exists using HEAD request
-    async function pageExists(url) {
-      try {
-        const response = await fetch(url, { method: 'HEAD' });
-        return response.ok && response.status < 400;
-      } catch (error) {
-        console.warn(`Could not check if ${url} exists:`, error);
-        return false;
-      }
-    }
-
-    // Check for redirect loops
-    function isInRedirectLoop() {
-      try {
-        const now = Date.now();
-        const lastRedirect = sessionStorage.getItem('homepage_redirect_time');
-        const redirectCount = parseInt(sessionStorage.getItem('homepage_redirect_count') || '0');
-
-        // Reset counter if more than 5 seconds have passed
-        if (lastRedirect && (now - parseInt(lastRedirect)) > 5000) {
-          sessionStorage.removeItem('homepage_redirect_count');
-          sessionStorage.removeItem('homepage_redirect_time');
-          return false;
-        }
-
-        // If we've redirected more than 3 times in 5 seconds, we're in a loop
-        if (redirectCount >= 3) {
-          console.warn('Redirect loop detected, staying on homepage');
-          return true;
-        }
-
-        return false;
-      } catch (e) {
-        return false;
-      }
-    }
-
-    // Record redirect attempt
-    function recordRedirectAttempt() {
-      try {
-        const now = Date.now();
-        const count = parseInt(sessionStorage.getItem('homepage_redirect_count') || '0');
-        sessionStorage.setItem('homepage_redirect_count', String(count + 1));
-        sessionStorage.setItem('homepage_redirect_time', String(now));
-      } catch (e) {
-        // Ignore storage errors
-      }
-    }
-
     const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
     });
-
     try {
       const { data: { session } } = await supabase.auth.getSession();
-
       if (session && session.user) {
-        // Check for redirect loops
-        if (isInRedirectLoop()) {
-          console.log('Skipping auto-redirect due to loop detection');
-          return;
-        }
-
-        // Check if staff.html exists before redirecting
-        const staffPageExists = await pageExists('staff.html');
-
-        if (staffPageExists) {
-          recordRedirectAttempt();
-          console.log('Authenticated user detected, redirecting to staff.html');
-          window.location.href = 'staff.html';
-        } else {
-          console.warn('staff.html not found, staying on homepage');
-          // Optionally show a message to the user
-          // You could display a banner or notification here
-        }
+        // Match Home.html behaviour — staff-first entry
+        window.location.href = 'staff.html';
       }
-    } catch (error) {
-      console.error('Auth check failed:', error);
-      /* public page continues */
-    }
+    } catch (_) { /* public page continues */ }
   </script>
   <script>
     // Header shrink + scroll progress
