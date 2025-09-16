@@ -14,91 +14,253 @@
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
-    /* Page-specific tweaks only; core styles live in staff.css */
-    .subtitle{ color:#64748b; font-weight:600; }
+    /* Modern Calendar-Centric Design */
+    .meetings-container {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 20px;
+      margin-top: 20px;
+      animation: fadeInUp 0.6s ease;
+    }
 
-    /* Meetings Section Styles — High‑contrast redesign */
-    .meetings-section { margin-top: 10px; }
+    @media (max-width: 1024px) {
+      .meetings-container {
+        grid-template-columns: 1fr;
+      }
+      .sidebar-panel {
+        margin-top: 20px;
+      }
+    }
 
-    .meetings-tabs {
+    /* Main Calendar Section */
+    .calendar-section {
+      background: white;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+      border: 1px solid rgba(219, 226, 234, 0.5);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .calendar-section::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle, rgba(99, 102, 241, 0.05) 0%, transparent 70%);
+      animation: rotate 30s linear infinite;
+    }
+
+    @keyframes rotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .calendar-header {
       display: flex;
-      gap: 8px;
-      margin-bottom: 12px;
-      border-bottom: 2px solid #dbe2ea;
-      align-items: flex-end;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      position: relative;
+      z-index: 1;
     }
 
-    .meetings-tab {
-      padding: 10px 14px;
-      background: #f3f5f8;
+    .calendar-title {
+      font-size: 24px;
+      font-weight: 800;
       color: #0f172a;
-      border: 1px solid #cbd5e1;
-      border-bottom: 3px solid transparent;
-      border-radius: 10px 10px 0 0;
-      font-weight: 700;
-      cursor: pointer;
-      transition: background .2s ease, color .2s ease, border-color .2s ease, transform .1s ease;
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }
 
-    .meetings-tab:hover { background: #e8eef5; transform: translateY(-1px); }
-
-    .meetings-tab:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
-
-    .meetings-tab.active {
-      background: #ffffff;
-      color: #0b2a6b;
-      border-color: #93c5fd;
-      border-bottom-color: #ffffff; /* merge with content card */
+    .calendar-title::before {
+      content: '📅';
+      font-size: 28px;
+      animation: bounce 2s infinite;
     }
 
-    .meetings-content { display: none; }
-    .meetings-content.active { display: block; }
-
-    /* Calendar container card */
-    #calendar {
-      height: 520px;
-      background: #ffffff;
-      padding: 16px;
-      border-radius: 14px;
-      border: 1px solid #dbe2ea;
-      box-shadow: 0 6px 16px rgba(2,6,23,0.06);
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-5px); }
     }
 
-    /* FullCalendar high‑contrast overrides */
-    .fc .fc-toolbar-title{ color:#0f172a; font-weight:800; letter-spacing:.2px; }
-    .fc .fc-col-header-cell-cushion{ color:#0f172a; font-weight:700; }
-    .fc .fc-daygrid-day-number{ color:#0f172a; font-weight:700; }
-    .fc .fc-daygrid-day{ background:#fff; }
-    .fc .fc-daygrid-day.fc-day-today{ background:#eff6ff; }
-    .fc-theme-standard td, .fc-theme-standard th{ border-color:#dbe2ea; }
-
-    /* Toolbar buttons */
-    .fc .fc-button-primary{
-      background:#0f172a; border-color:#0f172a; color:#fff; font-weight:700; border-radius:10px;
-    }
-    .fc .fc-button-primary:not(:disabled):hover{ background:#1f2937; border-color:#1f2937; }
-    .fc .fc-button-primary.fc-button-active{ background:#1d4ed8; border-color:#1d4ed8; color:#fff; }
-    .fc .fc-button-group .fc-button{ border-radius:10px; }
-
-    /* Events — make text dark and background readable */
-    .fc .fc-event{ background:#dbeafe; border-color:#60a5fa; color:#0f172a; cursor: pointer; }
-    .fc .fc-h-event .fc-event-title{ font-weight:800; }
-    .fc .fc-daygrid-dot-event .fc-event-title{ color:#0f172a; font-weight:700; }
-    .fc .fc-daygrid-event-dot{ border-color:#2563eb; }
-
-    /* Meeting creation button */
-    .btn-create-meeting {
-      background: linear-gradient(135deg, #667eea, #764ba2);
+    .btn-new-meeting {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
-      padding: 10px 20px;
+      padding: 12px 24px;
       border: none;
-      border-radius: 8px;
+      border-radius: 12px;
       font-weight: 600;
       cursor: pointer;
-      margin-bottom: 15px;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
-    /* Modal styles */
+    .btn-new-meeting:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-new-meeting::before {
+      content: '+';
+      font-size: 20px;
+      font-weight: bold;
+    }
+
+    /* Calendar Styling */
+    #calendar {
+      height: 600px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Sidebar Panel */
+    .sidebar-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Upcoming Meetings Card */
+    .upcoming-card {
+      background: white;
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+      border: 1px solid rgba(219, 226, 234, 0.5);
+      animation: slideInRight 0.6s ease;
+    }
+
+    .upcoming-header {
+      font-size: 18px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .upcoming-header::before {
+      content: '⏰';
+      font-size: 20px;
+    }
+
+    .upcoming-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .upcoming-item {
+      padding: 12px;
+      background: linear-gradient(135deg, #f0f4f8 0%, #e8eef5 100%);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      border-left: 4px solid transparent;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .upcoming-item::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 0;
+      height: 100%;
+      background: linear-gradient(90deg, rgba(99, 102, 241, 0.1) 0%, transparent 100%);
+      transition: width 0.3s ease;
+    }
+
+    .upcoming-item:hover {
+      transform: translateX(5px);
+      border-left-color: #6366f1;
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+    }
+
+    .upcoming-item:hover::before {
+      width: 100%;
+    }
+
+    .upcoming-title {
+      font-weight: 600;
+      color: #0f172a;
+      margin-bottom: 4px;
+    }
+
+    .upcoming-time {
+      font-size: 13px;
+      color: #64748b;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .time-remaining {
+      background: #fef3c7;
+      color: #d97706;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
+    /* Quick Stats Card */
+    .stats-card {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 16px;
+      padding: 20px;
+      color: white;
+      animation: slideInRight 0.8s ease;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .stat-item {
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 32px;
+      font-weight: 800;
+      margin-bottom: 4px;
+      animation: countUp 1s ease;
+    }
+
+    @keyframes countUp {
+      from { opacity: 0; transform: scale(0.5); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    .stat-label {
+      font-size: 12px;
+      opacity: 0.9;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* Enhanced Modal Design */
     .modal-overlay {
       display: none;
       position: fixed;
@@ -106,150 +268,551 @@
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(0, 0, 0, 0.5);
-      z-index: 999;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(5px);
+      z-index: 9998;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .modal-overlay.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
     }
 
     .modal {
       position: fixed;
       top: 50%;
       left: 50%;
-      transform: translate(-50%, -50%);
+      transform: translate(-50%, -50%) scale(0.9);
       background: white;
-      padding: 30px;
-      border-radius: 12px;
-      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-      z-index: 1000;
-      max-width: 600px;
+      padding: 0;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      z-index: 9999;
+      max-width: 700px;
       width: 90%;
-      max-height: 80vh;
+      max-height: 90vh;
+      overflow: hidden;
+      display: none;
+      animation: modalShow 0.3s ease forwards;
+    }
+
+    .modal.active {
+      display: block;
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    @keyframes modalShow {
+      from {
+        opacity: 0;
+        transform: translate(-50%, -60%) scale(0.9);
+      }
+      to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
+    }
+
+    .modal-header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 24px;
+      position: relative;
+      color: white;
+    }
+
+    .modal-close {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(255,255,255,0.2);
+      border: none;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      font-size: 24px;
+      cursor: pointer;
+      color: white;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-close:hover {
+      background: rgba(255,255,255,0.3);
+      transform: rotate(90deg);
+    }
+
+    .modal-body {
+      padding: 24px;
+      max-height: calc(90vh - 80px);
       overflow-y: auto;
     }
 
-    .modal h3 { margin-top: 0; color: #0f172a; }
-    
-    .modal-close {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      background: none;
-      border: none;
+    .modal-title {
       font-size: 24px;
-      cursor: pointer;
-      color: #6b7280;
+      font-weight: 800;
+      margin: 0;
     }
 
-    .agenda-form {
-      background: #f8f9fa;
-      padding: 20px;
-      border-radius: 12px;
-      margin-bottom: 20px;
+    .modal-subtitle {
+      font-size: 14px;
+      opacity: 0.9;
+      margin-top: 8px;
     }
-    .agenda-item { 
-      background: white; 
-      padding: 15px; 
-      border-radius: 8px; 
-      margin-bottom: 10px; 
-      border: 1px solid #e5e7eb;
-      position: relative;
-    }
-    .agenda-item-actions {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      display: flex;
-      gap: 5px;
-    }
-    .btn-delete {
-      background: #ef4444;
-      color: white;
-      border: none;
-      padding: 4px 8px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 12px;
-    }
-    .attendance-buttons { display: flex; gap: 10px; margin-top: 10px; }
-    .btn-accept { background: #10b981; color: white; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; }
-    .btn-decline { background: #ef4444; color: white; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; }
-    .btn-tentative { background: #f59e0b; color: white; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; }
-    .meeting-notes { width: 100%; min-height: 300px; padding: 15px; border: 1px solid #e5e7eb; border-radius: 8px; font-family: inherit; resize: vertical; }
-    .btn-generate-pdf { background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 12px 24px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; margin-top: 15px; }
-    .btn-save-notes { background: #3b82f6; color: white; padding: 12px 24px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; margin-top: 15px; margin-right: 10px; }
-    .meeting-history-item { 
-      background: white; 
-      padding: 15px; 
-      border-radius: 8px; 
-      margin-bottom: 10px; 
-      border: 1px solid #e5e7eb; 
-      cursor: pointer; 
-      transition: all 0.3s;
-      position: relative;
-    }
-    .meeting-history-item:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); transform: translateY(-2px); }
-    .meeting-form-group { margin-bottom: 15px; }
-    .meeting-form-group label { display: block; margin-bottom: 5px; font-weight: 600; color: #374151; }
-    .meeting-form-group input, .meeting-form-group textarea, .meeting-form-group select { 
-      width: 100%; 
-      padding: 10px; 
-      border: 1px solid #e5e7eb; 
-      border-radius: 6px; 
-      font-family: inherit; 
-    }
-    .meeting-form-group input[type="datetime-local"] { padding: 8px 10px; }
-    .meeting-form-group select option { color: #333; background: white; }
-    .attendees-list { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
-    .attendee-badge { padding: 5px 12px; border-radius: 20px; font-size: 14px; font-weight: 500; }
-    .attendee-badge.accepted { background: #dcfce7; color: #16a34a; }
-    .attendee-badge.declined { background: #fee2e2; color: #dc2626; }
-    .attendee-badge.tentative { background: #fed7aa; color: #c2410c; }
-    .attendee-badge.pending { background: #fef3c7; color: #d97706; }
-    
-    .stats-grid {
+
+    /* Meeting Details Sections */
+    .meeting-info-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 15px;
-      margin-bottom: 20px;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
     }
-    
-    .stat-card {
-      background: white;
-      padding: 15px;
-      border-radius: 8px;
-      border: 1px solid #e5e7eb;
-      text-align: center;
+
+    .info-item {
+      padding: 16px;
+      background: #f8fafc;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
     }
-    
-    .stat-number {
-      font-size: 28px;
-      font-weight: 700;
+
+    .info-label {
+      font-size: 12px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .info-value {
+      font-size: 16px;
+      font-weight: 600;
       color: #0f172a;
     }
-    
-    .stat-label {
-      font-size: 14px;
-      color: #6b7280;
-      margin-top: 5px;
+
+    /* Action Buttons Grid */
+    .action-buttons {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      margin: 24px 0;
     }
 
-    .meeting-status {
-      display: inline-block;
-      padding: 3px 8px;
+    .action-btn {
+      padding: 12px;
+      border: none;
       border-radius: 12px;
-      font-size: 11px;
       font-weight: 600;
-      margin-left: 10px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      background: white;
+      border: 2px solid #e2e8f0;
+      color: #475569;
     }
-    
-    .meeting-status.completed { background: #dcfce7; color: #16a34a; }
-    .meeting-status.scheduled { background: #dbeafe; color: #1d4ed8; }
-    .meeting-status.cancelled { background: #fee2e2; color: #dc2626; }
-    
-    /* Recording animation */
-    @keyframes pulse {
-      0% { opacity: 1; }
-      50% { opacity: 0.5; }
-      100% { opacity: 1; }
+
+    .action-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .action-btn.primary {
+      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+      color: white;
+      border: none;
+    }
+
+    .action-btn.success {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: white;
+      border: none;
+    }
+
+    .action-btn.danger {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      color: white;
+      border: none;
+    }
+
+    .action-btn-icon {
+      font-size: 24px;
+    }
+
+    /* Tabs within Modal */
+    .modal-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #e2e8f0;
+    }
+
+    .modal-tab {
+      padding: 12px 20px;
+      background: transparent;
+      border: none;
+      color: #64748b;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      position: relative;
+    }
+
+    .modal-tab::after {
+      content: '';
+      position: absolute;
+      bottom: -2px;
+      left: 0;
+      width: 0;
+      height: 3px;
+      background: #6366f1;
+      transition: width 0.3s ease;
+    }
+
+    .modal-tab.active {
+      color: #6366f1;
+    }
+
+    .modal-tab.active::after {
+      width: 100%;
+    }
+
+    .modal-tab:hover {
+      color: #0f172a;
+    }
+
+    .tab-content {
+      display: none;
+      animation: fadeInUp 0.3s ease;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Notes Section */
+    .notes-container {
+      background: #f8fafc;
+      border-radius: 12px;
+      padding: 16px;
+      margin-top: 16px;
+    }
+
+    .notes-textarea {
+      width: 100%;
+      min-height: 200px;
+      padding: 12px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      resize: vertical;
+      transition: all 0.3s ease;
+    }
+
+    .notes-textarea:focus {
+      outline: none;
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+
+    /* Agenda Items */
+    .agenda-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .agenda-item {
+      padding: 16px;
+      background: white;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      transition: all 0.3s ease;
+      position: relative;
+      padding-left: 32px;
+    }
+
+    .agenda-item::before {
+      content: '•';
+      position: absolute;
+      left: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #6366f1;
+      font-size: 20px;
+      font-weight: bold;
+    }
+
+    .agenda-item:hover {
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      transform: translateX(5px);
+    }
+
+    .agenda-title {
+      font-weight: 600;
+      color: #0f172a;
+      margin-bottom: 4px;
+    }
+
+    .agenda-description {
+      color: #64748b;
+      font-size: 14px;
+    }
+
+    /* Recording Controls */
+    .recording-section {
+      background: linear-gradient(135deg, #fef3c7 0%, #fed7aa 100%);
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 16px;
+    }
+
+    .recording-controls {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .record-btn {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .record-btn.record {
+      background: #ef4444;
+      color: white;
+    }
+
+    .record-btn.stop {
+      background: #10b981;
+      color: white;
+    }
+
+    .record-btn:hover {
+      transform: scale(1.05);
+    }
+
+    .recording-indicator {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: white;
+      border-radius: 8px;
+      font-weight: 600;
+      color: #ef4444;
+    }
+
+    .recording-indicator.active {
+      display: flex;
+    }
+
+    .recording-dot {
+      width: 12px;
+      height: 12px;
+      background: #ef4444;
+      border-radius: 50%;
+      animation: recordPulse 1.5s infinite;
+    }
+
+    @keyframes recordPulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.2); }
+    }
+
+    /* Audio Visualizer */
+    #audio-visualizer {
+      width: 100%;
+      height: 80px;
+      background: white;
+      border-radius: 8px;
+      margin-top: 12px;
+    }
+
+    /* Attendees Grid */
+    .attendees-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .attendee-card {
+      padding: 12px;
+      background: white;
+      border-radius: 10px;
+      border: 2px solid #e2e8f0;
+      text-align: center;
+      transition: all 0.3s ease;
+    }
+
+    .attendee-card.accepted {
+      border-color: #10b981;
+      background: linear-gradient(135deg, #dcfce7 0%, #d1fae5 100%);
+    }
+
+    .attendee-card.declined {
+      border-color: #ef4444;
+      background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+    }
+
+    .attendee-card.tentative {
+      border-color: #f59e0b;
+      background: linear-gradient(135deg, #fef3c7 0%, #fed7aa 100%);
+    }
+
+    .attendee-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .attendee-avatar {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 50%;
+      margin: 0 auto 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      font-size: 16px;
+    }
+
+    .attendee-name {
+      font-weight: 600;
+      color: #0f172a;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+
+    .attendee-status {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+    }
+
+    /* Loading Animation */
+    .loading-spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(0,0,0,0.1);
+      border-radius: 50%;
+      border-top-color: #6366f1;
+      animation: spin 1s ease-in-out infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Enhanced Calendar Event Styles */
+    .fc-event {
+      border: none !important;
+      padding: 4px 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .fc-event:hover {
+      transform: scale(1.05);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .fc-daygrid-event {
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
+      color: white !important;
+      border-radius: 6px !important;
+    }
+
+    .fc-timegrid-event {
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
+      color: white !important;
+      border-radius: 6px !important;
+    }
+
+    /* Today's Date Highlight */
+    .fc-day-today {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(139, 92, 246, 0.05) 100%) !important;
+    }
+
+    /* Custom Scrollbar */
+    .upcoming-list::-webkit-scrollbar,
+    .modal-body::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .upcoming-list::-webkit-scrollbar-track,
+    .modal-body::-webkit-scrollbar-track {
+      background: #f1f5f9;
+      border-radius: 3px;
+    }
+
+    .upcoming-list::-webkit-scrollbar-thumb,
+    .modal-body::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+
+    .upcoming-list::-webkit-scrollbar-thumb:hover,
+    .modal-body::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    /* Animation Classes */
+    @keyframes slideInRight {
+      from {
+        opacity: 0;
+        transform: translateX(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    /* Responsive Design */
+    @media (max-width: 768px) {
+      .meetings-container {
+        grid-template-columns: 1fr;
+      }
+
+      .action-buttons {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .modal {
+        width: 95%;
+        max-width: none;
+      }
     }
   </style>
 </head>
@@ -275,137 +838,54 @@
       <button class="btn" id="logout-btn">Sign Out</button>
     </div>
 
-    <section class="panel g-12" style="margin:0; position:relative; overflow:hidden;">
+    <section class="panel g-12" style="margin:0; position:relative; overflow:visible;">
       <div class="halo"></div>
       <div class="panel-header" style="align-items:center; gap:10px;">
         <div class="illus-circle"><img data-i8="calendar" alt="Meetings"></div>
         <div class="panel-title">Meetings Hub</div>
       </div>
 
-      <div class="meetings-section">
-        <div class="meetings-tabs">
-          <button class="meetings-tab active" data-tab="calendar">Calendar</button>
-          <button class="meetings-tab" data-tab="agenda">Agenda Items</button>
-          <button class="meetings-tab" data-tab="notes">Meeting Notes</button>
-          <button class="meetings-tab" data-tab="history">Past Meetings</button>
-        </div>
-
-        <!-- Calendar Tab -->
-        <div class="meetings-content active" id="calendar-content">
-          <button class="btn-create-meeting" onclick="openCreateMeetingModal()">+ Create New Meeting</button>
+      <div class="meetings-container">
+        <!-- Main Calendar Section -->
+        <div class="calendar-section">
+          <div class="calendar-header">
+            <h2 class="calendar-title">Meeting Calendar</h2>
+            <button class="btn-new-meeting" onclick="openCreateMeetingModal()">New Meeting</button>
+          </div>
           <div id="calendar"></div>
         </div>
 
-        <!-- Agenda Tab -->
-        <div class="meetings-content" id="agenda-content">
-          <div class="agenda-form">
-            <h3>Submit Agenda Item</h3>
-            <div class="meeting-form-group">
-              <label>Meeting</label>
-              <select id="agenda-meeting-select">
-                <option value="">Select a meeting...</option>
-              </select>
+        <!-- Sidebar -->
+        <div class="sidebar-panel">
+          <!-- Upcoming Meetings -->
+          <div class="upcoming-card">
+            <h3 class="upcoming-header">Upcoming Meetings</h3>
+            <div class="upcoming-list" id="upcoming-list">
+              <!-- Dynamically populated -->
             </div>
-            <div class="meeting-form-group">
-              <label>Agenda Item</label>
-              <input type="text" id="agenda-item-title" placeholder="Enter agenda item title">
-            </div>
-            <div class="meeting-form-group">
-              <label>Description</label>
-              <textarea id="agenda-item-description" rows="3" placeholder="Provide details about this agenda item"></textarea>
-            </div>
-            <button class="btn" onclick="submitAgendaItem()" style="background: #4f89ff; color: white;">Submit Agenda Item</button>
           </div>
-          <h3>Current Agenda Items</h3>
-          <div id="agenda-items-list"></div>
-        </div>
 
-        <!-- Meeting Notes Tab -->
-        <div class="meetings-content" id="notes-content">
-          <div class="meeting-form-group">
-            <label>Select Meeting</label>
-            <select id="notes-meeting-select" onchange="loadMeetingNotes()">
-              <option value="">Select a meeting...</option>
-            </select>
-          </div>
-          <div class="meeting-form-group">
-            <label>Meeting Notes/Minutes</label>
-            <textarea class="meeting-notes" id="meeting-notes-textarea" placeholder="Type your meeting notes here..."></textarea>
-          </div>
-          <div style="display: flex; gap: 10px;">
-            <button class="btn-save-notes" onclick="saveMeetingNotes()">Save Notes</button>
-            <button class="btn-generate-pdf" onclick="generateMeetingPDF()">Generate PDF</button>
-          </div>
-          <div class="meeting-form-group" style="margin-top: 20px;">
-            <label>Record or Upload Meeting Audio</label>
-            
-            <!-- Live Recording Controls -->
-            <div id="recording-controls" style="display: flex; gap: 10px; margin-bottom: 15px; align-items: center;">
-              <button id="start-recording" class="btn" onclick="startRecording()" style="background: #ef4444; color: white; padding: 10px 20px; border-radius: 8px; display: flex; align-items: center; gap: 8px;">
-                <span style="width: 12px; height: 12px; background: white; border-radius: 50%;"></span>
-                Start Recording
-              </button>
-              <button id="stop-recording" class="btn" onclick="stopRecording()" style="background: #10b981; color: white; padding: 10px 20px; border-radius: 8px; display: none; align-items: center; gap: 8px;">
-                <span style="width: 12px; height: 12px; background: white;"></span>
-                Stop Recording
-              </button>
-              <button id="pause-recording" class="btn" onclick="pauseRecording()" style="background: #f59e0b; color: white; padding: 10px 20px; border-radius: 8px; display: none;">
-                Pause
-              </button>
-              <div id="recording-timer" style="display: none; font-weight: 600; color: #ef4444; padding: 10px; background: #fee2e2; border-radius: 6px;">
-                <span style="animation: pulse 1.5s infinite;">🔴</span> Recording: <span id="recording-time">00:00</span>
+          <!-- Quick Stats -->
+          <div class="stats-card">
+            <div class="stats-grid">
+              <div class="stat-item">
+                <div class="stat-value" id="stat-upcoming">0</div>
+                <div class="stat-label">Upcoming</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-value" id="stat-month">0</div>
+                <div class="stat-label">This Month</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-value" id="stat-total">0</div>
+                <div class="stat-label">Total</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-value" id="stat-past">0</div>
+                <div class="stat-label">Completed</div>
               </div>
             </div>
-            
-            <!-- Audio Visualizer -->
-            <canvas id="audio-visualizer" width="400" height="60" style="width: 100%; height: 60px; background: #f3f4f6; border-radius: 8px; margin-bottom: 10px; display: none;"></canvas>
-            
-            <!-- Recorded Audio Playback -->
-            <div id="recorded-audio-container" style="display: none; margin-bottom: 15px;">
-              <audio id="recorded-audio" controls style="width: 100%;"></audio>
-              <div style="display: flex; gap: 10px; margin-top: 10px;">
-                <button class="btn" onclick="saveRecording()" style="background: #3b82f6; color: white; padding: 8px 16px; border-radius: 6px;">
-                  Save & Transcribe
-                </button>
-                <button class="btn" onclick="discardRecording()" style="background: #6b7280; color: white; padding: 8px 16px; border-radius: 6px;">
-                  Discard
-                </button>
-              </div>
-            </div>
-            
-            <!-- File Upload (existing) -->
-            <div style="border-top: 1px solid #e5e7eb; padding-top: 15px;">
-              <small style="color: #6b7280; display: block; margin-bottom: 8px;">Or upload an existing recording:</small>
-              <input type="file" id="meeting-recording" accept="audio/*,video/*" onchange="handleRecordingUpload(event)" style="padding: 8px;">
-            </div>
           </div>
-          <div id="pdf-status" style="margin-top: 15px; padding: 15px; background: #f0f9ff; border-radius: 8px; display: none;">
-            <p style="margin: 0; color: #0369a1;">Processing...</p>
-          </div>
-        </div>
-
-        <!-- History Tab -->
-        <div class="meetings-content" id="history-content">
-          <div class="stats-grid">
-            <div class="stat-card">
-              <div class="stat-number" id="stat-total">0</div>
-              <div class="stat-label">Total Meetings</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-number" id="stat-upcoming">0</div>
-              <div class="stat-label">Upcoming</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-number" id="stat-past">0</div>
-              <div class="stat-label">Completed</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-number" id="stat-month">0</div>
-              <div class="stat-label">This Month</div>
-            </div>
-          </div>
-          <h3>Past Meetings</h3>
-          <div id="meeting-history-list"></div>
         </div>
       </div>
     </section>
@@ -413,85 +893,232 @@
     <div class="muted" style="text-align:center; font-size:12px; padding:10px 0;">© CheckLoop • Staff Meetings</div>
   </main>
 
-  <!-- Meeting Details Modal -->
-  <div class="modal-overlay" id="meeting-modal-overlay" onclick="closeMeetingModal()"></div>
-  <div id="meeting-modal" class="modal" style="display: none;">
-    <button class="modal-close" onclick="closeMeetingModal()">×</button>
-    <h3 id="modal-meeting-title">Meeting Title</h3>
-    <p id="modal-meeting-date">Date</p>
-    <p id="modal-meeting-location">Location</p>
-    <p id="modal-meeting-description">Description</p>
-    
-    <h4>Attendees</h4>
-    <div class="attendees-list" id="modal-attendees"></div>
-    
-    <div class="attendance-buttons">
-      <button class="btn-accept" onclick="updateAttendance('accepted')">Accept</button>
-      <button class="btn-tentative" onclick="updateAttendance('tentative')">Tentative</button>
-      <button class="btn-decline" onclick="updateAttendance('declined')">Decline</button>
+  <!-- Enhanced Meeting Details Modal -->
+  <div class="modal-overlay" id="meeting-modal-overlay" onclick="closeMeetingModal(event)"></div>
+  <div id="meeting-modal" class="modal">
+    <div class="modal-header">
+      <button class="modal-close" onclick="closeMeetingModal()">×</button>
+      <h3 class="modal-title" id="modal-meeting-title">Meeting Title</h3>
+      <div class="modal-subtitle" id="modal-meeting-date">Date & Time</div>
     </div>
-    
-    <div style="margin-top: 20px;">
-      <button class="btn-delete" onclick="deleteMeeting()">Delete Meeting</button>
+
+    <div class="modal-body">
+      <!-- Meeting Info Grid -->
+      <div class="meeting-info-grid">
+        <div class="info-item">
+          <div class="info-label">Location</div>
+          <div class="info-value" id="modal-meeting-location">Not specified</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Duration</div>
+          <div class="info-value" id="modal-meeting-duration">1 hour</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Type</div>
+          <div class="info-value" id="modal-meeting-type">General</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Status</div>
+          <div class="info-value" id="modal-meeting-status">Scheduled</div>
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <div class="action-buttons">
+        <button class="action-btn success" onclick="startMeetingNow()">
+          <span class="action-btn-icon">▶️</span>
+          <span>Start Meeting</span>
+        </button>
+        <button class="action-btn primary" onclick="startRecordingFromModal()">
+          <span class="action-btn-icon">🔴</span>
+          <span>Record</span>
+        </button>
+        <button class="action-btn" onclick="openNotesTab()">
+          <span class="action-btn-icon">📝</span>
+          <span>Notes</span>
+        </button>
+        <button class="action-btn" onclick="openAgendaTab()">
+          <span class="action-btn-icon">📋</span>
+          <span>Agenda</span>
+        </button>
+        <button class="action-btn" onclick="openAttendeesTab()">
+          <span class="action-btn-icon">👥</span>
+          <span>Attendees</span>
+        </button>
+        <button class="action-btn danger" onclick="deleteMeeting()">
+          <span class="action-btn-icon">🗑️</span>
+          <span>Delete</span>
+        </button>
+      </div>
+
+      <!-- Tab Navigation -->
+      <div class="modal-tabs">
+        <button class="modal-tab active" data-tab="details" onclick="switchModalTab('details')">Details</button>
+        <button class="modal-tab" data-tab="notes" onclick="switchModalTab('notes')">Notes</button>
+        <button class="modal-tab" data-tab="agenda" onclick="switchModalTab('agenda')">Agenda</button>
+        <button class="modal-tab" data-tab="attendees" onclick="switchModalTab('attendees')">Attendees</button>
+        <button class="modal-tab" data-tab="recording" onclick="switchModalTab('recording')">Recording</button>
+      </div>
+
+      <!-- Tab Contents -->
+      <div class="tab-content active" id="tab-details">
+        <div class="info-item" style="background: #f8fafc; padding: 16px; border-radius: 12px;">
+          <div class="info-label">Description</div>
+          <div class="info-value" id="modal-meeting-description" style="margin-top: 8px;">No description provided</div>
+        </div>
+      </div>
+
+      <div class="tab-content" id="tab-notes">
+        <div class="notes-container">
+          <textarea class="notes-textarea" id="meeting-notes-textarea" placeholder="Type your meeting notes here..."></textarea>
+          <div style="display: flex; gap: 12px; margin-top: 16px;">
+            <button class="action-btn primary" onclick="saveMeetingNotes()" style="flex: 1;">
+              <span>💾 Save Notes</span>
+            </button>
+            <button class="action-btn" onclick="generateMeetingPDF()" style="flex: 1;">
+              <span>📄 Generate PDF</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-content" id="tab-agenda">
+        <div style="margin-bottom: 20px;">
+          <input type="text" id="agenda-item-title" placeholder="New agenda item..." style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 8px;">
+          <textarea id="agenda-item-description" placeholder="Description (optional)" style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; height: 80px; resize: none; margin-bottom: 12px;"></textarea>
+          <button class="action-btn primary" onclick="submitAgendaItem()" style="width: 100%;">
+            <span>➕ Add Agenda Item</span>
+          </button>
+        </div>
+        <div class="agenda-list" id="agenda-items-list">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+
+      <div class="tab-content" id="tab-attendees">
+        <div style="margin-bottom: 20px; display: flex; gap: 12px;">
+          <button class="action-btn success" onclick="updateAttendance('accepted')" style="flex: 1;">
+            <span>✅ Accept</span>
+          </button>
+          <button class="action-btn" onclick="updateAttendance('tentative')" style="flex: 1; background: linear-gradient(135deg, #f59e0b, #d97706); color: white;">
+            <span>❓ Maybe</span>
+          </button>
+          <button class="action-btn danger" onclick="updateAttendance('declined')" style="flex: 1;">
+            <span>❌ Decline</span>
+          </button>
+        </div>
+        <div class="attendees-grid" id="modal-attendees">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+
+      <div class="tab-content" id="tab-recording">
+        <div class="recording-section">
+          <div class="recording-controls">
+            <button id="start-recording" class="record-btn record" onclick="startRecording()">
+              <span>🔴</span>
+              <span>Start Recording</span>
+            </button>
+            <button id="stop-recording" class="record-btn stop" onclick="stopRecording()" style="display: none;">
+              <span>⏹️</span>
+              <span>Stop Recording</span>
+            </button>
+            <div class="recording-indicator" id="recording-indicator">
+              <span class="recording-dot"></span>
+              <span>Recording: <span id="recording-time">00:00</span></span>
+            </div>
+          </div>
+
+          <canvas id="audio-visualizer" width="400" height="80" style="display: none;"></canvas>
+
+          <div id="recorded-audio-container" style="display: none; margin-top: 16px;">
+            <audio id="recorded-audio" controls style="width: 100%;"></audio>
+            <div style="display: flex; gap: 12px; margin-top: 12px;">
+              <button class="action-btn success" onclick="saveRecording()" style="flex: 1;">
+                <span>💾 Save & Transcribe</span>
+              </button>
+              <button class="action-btn" onclick="discardRecording()" style="flex: 1;">
+                <span>🗑️ Discard</span>
+              </button>
+            </div>
+          </div>
+
+          <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(0,0,0,0.1);">
+            <label style="display: block; margin-bottom: 8px; font-weight: 600;">Or upload existing recording:</label>
+            <input type="file" id="meeting-recording" accept="audio/*,video/*" onchange="handleRecordingUpload(event)" style="width: 100%;">
+          </div>
+        </div>
+
+        <div id="recording-status" style="margin-top: 16px; padding: 16px; background: #f0f9ff; border-radius: 8px; display: none;">
+          <p style="margin: 0; color: #0369a1;">Processing...</p>
+        </div>
+      </div>
     </div>
   </div>
 
   <!-- Create Meeting Modal -->
-  <div class="modal-overlay" id="create-modal-overlay" onclick="closeCreateMeetingModal()"></div>
-  <div id="create-meeting-modal" class="modal" style="display: none;">
-    <button class="modal-close" onclick="closeCreateMeetingModal()">×</button>
-    <h3>Create New Meeting</h3>
-    
-    <div class="meeting-form-group">
-      <label>Meeting Title *</label>
-      <input type="text" id="new-meeting-title" placeholder="Enter meeting title" required>
+  <div class="modal-overlay" id="create-modal-overlay" onclick="closeCreateMeetingModal(event)"></div>
+  <div id="create-meeting-modal" class="modal">
+    <div class="modal-header">
+      <button class="modal-close" onclick="closeCreateMeetingModal()">×</button>
+      <h3 class="modal-title">Create New Meeting</h3>
+      <div class="modal-subtitle">Schedule a new meeting</div>
     </div>
-    
-    <div class="meeting-form-group">
-      <label>Description</label>
-      <textarea id="new-meeting-description" rows="3" placeholder="Meeting description"></textarea>
+
+    <div class="modal-body">
+      <div class="meeting-form-group">
+        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">Meeting Title *</label>
+        <input type="text" id="new-meeting-title" placeholder="Enter meeting title" style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px;" required>
+      </div>
+
+      <div class="meeting-form-group" style="margin-top: 16px;">
+        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">Description</label>
+        <textarea id="new-meeting-description" rows="3" placeholder="Meeting description" style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; resize: vertical;"></textarea>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+        <div class="meeting-form-group">
+          <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">Start Date & Time *</label>
+          <input type="datetime-local" id="new-meeting-start" style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px;" required>
+        </div>
+
+        <div class="meeting-form-group">
+          <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">End Date & Time</label>
+          <input type="datetime-local" id="new-meeting-end" style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px;">
+        </div>
+      </div>
+
+      <div class="meeting-form-group" style="margin-top: 16px;">
+        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">Location</label>
+        <input type="text" id="new-meeting-location" placeholder="Meeting location or video link" style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px;">
+      </div>
+
+      <div class="meeting-form-group" style="margin-top: 16px;">
+        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">Meeting Type</label>
+        <select id="new-meeting-type" style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <option value="general">General Meeting</option>
+          <option value="partners">Partners Meeting</option>
+          <option value="staff">Staff Meeting</option>
+          <option value="training">Training Session</option>
+          <option value="pcn">PCN Meeting</option>
+          <option value="clinical">Clinical Meeting</option>
+        </select>
+      </div>
+
+      <button class="action-btn success" onclick="createMeeting()" style="width: 100%; margin-top: 24px; padding: 14px;">
+        <span>✅ Create Meeting</span>
+      </button>
     </div>
-    
-    <div class="meeting-form-group">
-      <label>Start Date & Time *</label>
-      <input type="datetime-local" id="new-meeting-start" required>
-    </div>
-    
-    <div class="meeting-form-group">
-      <label>End Date & Time</label>
-      <input type="datetime-local" id="new-meeting-end">
-    </div>
-    
-    <div class="meeting-form-group">
-      <label>Location</label>
-      <input type="text" id="new-meeting-location" placeholder="Meeting location">
-    </div>
-    
-    <div class="meeting-form-group">
-      <label>Meeting Type</label>
-      <select id="new-meeting-type">
-        <option value="general">General</option>
-        <option value="partners">Partners Meeting</option>
-        <option value="staff">Staff Meeting</option>
-        <option value="training">Training</option>
-        <option value="pcn">PCN Meeting</option>
-        <option value="clinical">Clinical Meeting</option>
-      </select>
-    </div>
-    
-    <button class="btn" onclick="createMeeting()" style="background: #10b981; color: white; width: 100%;">Create Meeting</button>
   </div>
 
   <script type="module">
     import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, clearAuthData } from './staff-common.js';
     import { MeetingsManager } from './meetings-module.js';
-    
+
     const supabase = await initSupabase();
     handleAuthState(supabase);
     navActivate('meetings');
 
-    // Admin nav removed - separate staff portal
-    
     // Make MeetingsManager globally available
     window.meetingsManager = null;
     window.supabase = supabase;
@@ -512,7 +1139,6 @@
     document.getElementById('logout-btn').addEventListener('click', async (e) => { e.preventDefault(); e.stopPropagation(); await forceLogout(); });
 
     requireStaffSession(supabase).then(async ({ session, profileRow }) => {
-
       const siteId = profileRow?.site_id || session.user?.raw_user_meta_data?.site_id || null;
       const role = (profileRow?.role || session.user?.raw_user_meta_data?.role || 'Staff');
       setTopbar({ siteText: await getSiteText(supabase, siteId), email: session.user.email, role });
@@ -520,7 +1146,7 @@
       // Initialize MeetingsManager
       window.meetingsManager = new MeetingsManager(supabase);
       await window.meetingsManager.setContext(session);
-      
+
       // Initialize the meetings UI
       await initializeMeetings();
     }).catch(e => {
@@ -535,142 +1161,226 @@
     let calendar = null;
     let currentMeetingId = null;
     let currentMeeting = null;
-
-    // Tab switching
-    function switchTab(tabName) {
-      document.querySelectorAll('.meetings-tab').forEach(tab => { tab.classList.remove('active'); });
-      const btn = document.querySelector(`[data-tab="${tabName}"]`); 
-      if (btn) btn.classList.add('active');
-      document.querySelectorAll('.meetings-content').forEach(content => { content.classList.remove('active'); });
-      const panel = document.getElementById(`${tabName}-content`); 
-      if (panel) panel.classList.add('active');
-      
-      // Refresh data when switching tabs
-      if (tabName === 'history') {
-        loadMeetingHistory();
-        updateStats();
-      } else if (tabName === 'agenda') {
-        loadAgendaItems();
-      }
-    }
+    let meetings = [];
 
     // Initialize meetings functionality
     async function initializeMeetings() {
-      // Setup tab switching
-      document.querySelectorAll('.meetings-tab').forEach(tab => {
-        tab.addEventListener('click', function(){ switchTab(this.dataset.tab); });
-      });
-
       // Initialize calendar
       await new Promise(r => setTimeout(r, 50));
       const calendarEl = document.getElementById('calendar');
       if (calendarEl && typeof FullCalendar !== 'undefined') {
         calendar = new FullCalendar.Calendar(calendarEl, {
           initialView: 'dayGridMonth',
-          headerToolbar: { 
-            left: 'prev,next today', 
-            center: 'title', 
-            right: 'dayGridMonth,timeGridWeek,timeGridDay' 
+          headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,timeGridWeek,timeGridDay'
           },
           events: async (fetchInfo, success, fail) => {
-            try { 
-              const events = await loadMeetings(); 
-              success(events); 
-            } catch (e) { 
-              console.error(e); 
-              fail(e); 
+            try {
+              const events = await loadMeetings();
+              success(events);
+            } catch (e) {
+              console.error(e);
+              fail(e);
             }
           },
-          eventClick: (info) => { 
-            showMeetingDetails(info.event); 
+          eventClick: (info) => {
+            showMeetingDetails(info.event.id);
           },
           editable: true,
           eventDrop: async (info) => {
-            // Update meeting when dragged to new date
             await window.meetingsManager.updateMeeting(info.event.id, {
               start: info.event.start.toISOString(),
               end: info.event.end ? info.event.end.toISOString() : null
             });
-          }
+          },
+          height: 600,
+          eventColor: '#6366f1'
         });
         calendar.render();
       }
-      
+
       // Load initial data
       await loadMeetings();
-      populateMeetingSelects();
+      loadUpcomingMeetings();
       updateStats();
     }
 
     // Load meetings from storage
     async function loadMeetings() {
       if (!window.meetingsManager) return [];
-      
-      const meetings = await window.meetingsManager.getMeetings();
+
+      meetings = await window.meetingsManager.getMeetings();
       const events = window.meetingsManager.formatForFullCalendar(meetings);
-      
-      // Update selects
-      setTimeout(populateMeetingSelects, 50);
-      
+
+      // Update upcoming meetings list
+      setTimeout(loadUpcomingMeetings, 50);
+
       return events;
     }
 
-    // Populate meeting select dropdowns
-    async function populateMeetingSelects() {
+    // Load upcoming meetings sidebar
+    async function loadUpcomingMeetings() {
       if (!window.meetingsManager) return;
-      
-      const meetings = await window.meetingsManager.getUpcomingMeetings(20);
-      const agendaSelect = document.getElementById('agenda-meeting-select');
-      const notesSelect = document.getElementById('notes-meeting-select');
-      
-      if (!meetings || !meetings.length) {
-        if (agendaSelect) agendaSelect.innerHTML = '<option value="">No upcoming meetings</option>';
-        if (notesSelect) notesSelect.innerHTML = '<option value="">No meetings available</option>';
+
+      const upcomingMeetings = await window.meetingsManager.getUpcomingMeetings(5);
+      const listEl = document.getElementById('upcoming-list');
+
+      if (!upcomingMeetings || upcomingMeetings.length === 0) {
+        listEl.innerHTML = '<div style="text-align: center; color: #94a3b8; padding: 20px;">No upcoming meetings</div>';
         return;
       }
-      
-      const options = meetings.map(m => 
-        `<option value="${m.id}">${m.title} - ${new Date(m.start).toLocaleDateString()}</option>`
-      ).join('');
-      
-      if (agendaSelect) agendaSelect.innerHTML = '<option value="">Select a meeting...</option>' + options;
-      if (notesSelect) notesSelect.innerHTML = '<option value="">Select a meeting...</option>' + options;
+
+      listEl.innerHTML = upcomingMeetings.map(meeting => {
+        const startDate = new Date(meeting.start);
+        const now = new Date();
+        const diffMs = startDate - now;
+        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+        const diffDays = Math.floor(diffHours / 24);
+
+        let timeRemaining = '';
+        if (diffDays > 0) {
+          timeRemaining = `${diffDays} day${diffDays > 1 ? 's' : ''}`;
+        } else if (diffHours > 0) {
+          timeRemaining = `${diffHours} hour${diffHours > 1 ? 's' : ''}`;
+        } else {
+          const diffMins = Math.floor(diffMs / (1000 * 60));
+          timeRemaining = `${diffMins} min${diffMins > 1 ? 's' : ''}`;
+        }
+
+        return `
+          <div class="upcoming-item" onclick="showMeetingDetails('${meeting.id}')">
+            <div class="upcoming-title">${meeting.title}</div>
+            <div class="upcoming-time">
+              ${startDate.toLocaleDateString()} at ${startDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+              <span class="time-remaining">${timeRemaining}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
     }
 
     // Show meeting details modal
-    async function showMeetingDetails(event) {
+    async function showMeetingDetails(meetingId) {
       if (!window.meetingsManager) return;
-      
-      currentMeetingId = event.id;
-      const meetings = await window.meetingsManager.getMeetings();
-      currentMeeting = meetings.find(m => m.id === currentMeetingId);
-      
+
+      currentMeetingId = meetingId;
+      currentMeeting = meetings.find(m => m.id === meetingId);
+
       if (!currentMeeting) return;
-      
+
+      // Update modal header
       document.getElementById('modal-meeting-title').textContent = currentMeeting.title;
-      document.getElementById('modal-meeting-date').textContent = new Date(currentMeeting.start).toLocaleString();
+      const startDate = new Date(currentMeeting.start);
+      document.getElementById('modal-meeting-date').textContent = startDate.toLocaleString();
+
+      // Update info grid
       document.getElementById('modal-meeting-location').textContent = currentMeeting.location || 'Not specified';
-      document.getElementById('modal-meeting-description').textContent = currentMeeting.description || 'No description';
-      
-      // Load attendees
-      const attendees = await window.meetingsManager.getMeetingAttendees(currentMeetingId);
-      const attendeesList = document.getElementById('modal-attendees');
-      
-      if (attendees.length > 0) {
-        attendeesList.innerHTML = attendees.map(a => 
-          `<span class="attendee-badge ${a.status}">${a.name || a.email}</span>`
-        ).join('');
-      } else {
-        attendeesList.innerHTML = '<span class="attendee-badge pending">No attendees yet</span>';
+
+      // Calculate duration
+      let duration = '1 hour';
+      if (currentMeeting.end) {
+        const endDate = new Date(currentMeeting.end);
+        const diffMs = endDate - startDate;
+        const hours = Math.floor(diffMs / (1000 * 60 * 60));
+        const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+        if (hours > 0 && mins > 0) {
+          duration = `${hours} hour${hours > 1 ? 's' : ''} ${mins} min${mins > 1 ? 's' : ''}`;
+        } else if (hours > 0) {
+          duration = `${hours} hour${hours > 1 ? 's' : ''}`;
+        } else {
+          duration = `${mins} minute${mins > 1 ? 's' : ''}`;
+        }
       }
-      
-      document.getElementById('meeting-modal').style.display = 'block';
-      document.getElementById('meeting-modal-overlay').style.display = 'block';
+      document.getElementById('modal-meeting-duration').textContent = duration;
+      document.getElementById('modal-meeting-type').textContent = currentMeeting.meeting_type || 'General';
+      document.getElementById('modal-meeting-status').textContent = currentMeeting.status || 'Scheduled';
+      document.getElementById('modal-meeting-description').textContent = currentMeeting.description || 'No description provided';
+
+      // Load attendees
+      await loadMeetingAttendees();
+
+      // Load notes
+      await loadMeetingNotes();
+
+      // Load agenda items
+      await loadAgendaItems();
+
+      // Show modal
+      document.getElementById('meeting-modal').classList.add('active');
+      document.getElementById('meeting-modal-overlay').classList.add('active');
+
+      // Reset to details tab
+      switchModalTab('details');
     }
 
-    function closeMeetingModal() {
-      document.getElementById('meeting-modal').style.display = 'none';
-      document.getElementById('meeting-modal-overlay').style.display = 'none';
+    // Load meeting attendees
+    async function loadMeetingAttendees() {
+      if (!window.meetingsManager || !currentMeetingId) return;
+
+      const attendees = await window.meetingsManager.getMeetingAttendees(currentMeetingId);
+      const attendeesList = document.getElementById('modal-attendees');
+
+      if (attendees.length > 0) {
+        attendeesList.innerHTML = attendees.map(a => {
+          const initial = (a.name || a.email || '?')[0].toUpperCase();
+          return `
+            <div class="attendee-card ${a.status}">
+              <div class="attendee-avatar">${initial}</div>
+              <div class="attendee-name">${a.name || a.email}</div>
+              <div class="attendee-status">${a.status}</div>
+            </div>
+          `;
+        }).join('');
+      } else {
+        attendeesList.innerHTML = '<div style="text-align: center; color: #94a3b8; padding: 40px;">No attendees yet</div>';
+      }
+    }
+
+    // Modal tab switching
+    function switchModalTab(tabName) {
+      // Update tab buttons
+      document.querySelectorAll('.modal-tab').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      document.querySelector(`[data-tab="${tabName}"]`)?.classList.add('active');
+
+      // Update content
+      document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
+      });
+      document.getElementById(`tab-${tabName}`)?.classList.add('active');
+    }
+
+    // Quick action handlers
+    function startMeetingNow() {
+      alert('Starting meeting... (Integration with video conferencing platform would go here)');
+    }
+
+    function startRecordingFromModal() {
+      switchModalTab('recording');
+      startRecording();
+    }
+
+    function openNotesTab() {
+      switchModalTab('notes');
+    }
+
+    function openAgendaTab() {
+      switchModalTab('agenda');
+    }
+
+    function openAttendeesTab() {
+      switchModalTab('attendees');
+    }
+
+    // Close meeting modal
+    function closeMeetingModal(event) {
+      if (event && event.target !== event.currentTarget) return;
+
+      document.getElementById('meeting-modal').classList.remove('active');
+      document.getElementById('meeting-modal-overlay').classList.remove('active');
     }
 
     // Create meeting modal functions
@@ -680,19 +1390,21 @@
       now.setHours(now.getHours() + 1, 0, 0, 0);
       const dateStr = now.toISOString().slice(0, 16);
       document.getElementById('new-meeting-start').value = dateStr;
-      
+
       const end = new Date(now);
       end.setHours(end.getHours() + 1);
       document.getElementById('new-meeting-end').value = end.toISOString().slice(0, 16);
-      
-      document.getElementById('create-meeting-modal').style.display = 'block';
-      document.getElementById('create-modal-overlay').style.display = 'block';
+
+      document.getElementById('create-meeting-modal').classList.add('active');
+      document.getElementById('create-modal-overlay').classList.add('active');
     }
 
-    function closeCreateMeetingModal() {
-      document.getElementById('create-meeting-modal').style.display = 'none';
-      document.getElementById('create-modal-overlay').style.display = 'none';
-      
+    function closeCreateMeetingModal(event) {
+      if (event && event.target !== event.currentTarget) return;
+
+      document.getElementById('create-meeting-modal').classList.remove('active');
+      document.getElementById('create-modal-overlay').classList.remove('active');
+
       // Clear form
       document.getElementById('new-meeting-title').value = '';
       document.getElementById('new-meeting-description').value = '';
@@ -702,19 +1414,19 @@
     // Create new meeting
     async function createMeeting() {
       if (!window.meetingsManager) return;
-      
+
       const title = document.getElementById('new-meeting-title').value;
       const description = document.getElementById('new-meeting-description').value;
       const start = document.getElementById('new-meeting-start').value;
       const end = document.getElementById('new-meeting-end').value;
       const location = document.getElementById('new-meeting-location').value;
       const meetingType = document.getElementById('new-meeting-type').value;
-      
+
       if (!title || !start) {
         alert('Please enter a title and start time');
         return;
       }
-      
+
       const meeting = await window.meetingsManager.createMeeting({
         title,
         description,
@@ -723,172 +1435,146 @@
         location,
         meeting_type: meetingType
       });
-      
+
       // Refresh calendar
       calendar.refetchEvents();
-      
+      loadUpcomingMeetings();
+      updateStats();
+
       closeCreateMeetingModal();
-      alert('Meeting created successfully!');
+
+      // Show the new meeting
+      setTimeout(() => showMeetingDetails(meeting.id), 300);
     }
 
     // Update attendance status
     async function updateAttendance(status) {
       if (!window.meetingsManager || !currentMeetingId) return;
-      
+
       const userId = window.supabase.auth.user?.()?.id || window.meetingsManager.currentUser.id;
       await window.meetingsManager.updateAttendeeStatus(currentMeetingId, userId, status);
-      
-      // Refresh the modal
-      const event = { id: currentMeetingId };
-      showMeetingDetails(event);
-      
-      alert(`Meeting ${status}!`);
+
+      // Refresh attendees
+      await loadMeetingAttendees();
+
+      // Show feedback
+      const statusEmoji = status === 'accepted' ? '✅' : status === 'declined' ? '❌' : '❓';
+      const statusText = status.charAt(0).toUpperCase() + status.slice(1);
+      alert(`${statusEmoji} Meeting ${statusText}!`);
     }
 
     // Delete meeting
     async function deleteMeeting() {
       if (!window.meetingsManager || !currentMeetingId) return;
-      
-      if (confirm('Are you sure you want to delete this meeting?')) {
+
+      if (confirm('Are you sure you want to delete this meeting? This action cannot be undone.')) {
         await window.meetingsManager.deleteMeeting(currentMeetingId);
         calendar.refetchEvents();
+        loadUpcomingMeetings();
+        updateStats();
         closeMeetingModal();
-        alert('Meeting deleted successfully');
       }
     }
 
     // Submit agenda item
     async function submitAgendaItem() {
-      if (!window.meetingsManager) return;
-      
-      const meetingId = document.getElementById('agenda-meeting-select').value;
+      if (!window.meetingsManager || !currentMeetingId) return;
+
       const title = document.getElementById('agenda-item-title').value;
       const description = document.getElementById('agenda-item-description').value;
-      
-      if (!meetingId || !title) {
-        alert('Please select a meeting and enter a title');
+
+      if (!title) {
+        alert('Please enter an agenda item title');
         return;
       }
-      
+
       await window.meetingsManager.createAgendaItem({
-        meeting_id: meetingId,
+        meeting_id: currentMeetingId,
         title,
         description
       });
-      
+
       // Clear form
       document.getElementById('agenda-item-title').value = '';
       document.getElementById('agenda-item-description').value = '';
-      
+
       // Reload agenda items
       loadAgendaItems();
-      
-      alert('Agenda item submitted successfully');
     }
 
     // Load agenda items
     async function loadAgendaItems() {
-      if (!window.meetingsManager) return;
-      
-      const meetingId = document.getElementById('agenda-meeting-select').value;
+      if (!window.meetingsManager || !currentMeetingId) return;
+
+      const items = await window.meetingsManager.getAgendaItems(currentMeetingId);
       const agendaList = document.getElementById('agenda-items-list');
-      
-      if (!meetingId) {
-        agendaList.innerHTML = '<p style="color: #6b7280;">Select a meeting to view agenda items</p>';
-        return;
-      }
-      
-      const items = await window.meetingsManager.getAgendaItems(meetingId);
-      
+
       if (items.length === 0) {
-        agendaList.innerHTML = '<p style="color: #6b7280;">No agenda items yet</p>';
+        agendaList.innerHTML = '<div style="text-align: center; color: #94a3b8; padding: 20px;">No agenda items yet</div>';
         return;
       }
-      
+
       agendaList.innerHTML = items.map(item => `
-        <div class="agenda-item" data-id="${item.id}">
-          <div class="agenda-item-actions">
-            <button class="btn-delete" onclick="deleteAgendaItem('${item.id}')">Delete</button>
+        <div class="agenda-item">
+          <div class="agenda-title">${item.title}</div>
+          ${item.description ? `<div class="agenda-description">${item.description}</div>` : ''}
+          <div style="margin-top: 8px; font-size: 12px; color: #94a3b8;">
+            Submitted by ${item.submitter_name}
           </div>
-          <h4>${item.title}</h4>
-          <p>${item.description || 'No description'}</p>
-          <small style="color: #6b7280;">Submitted by: ${item.submitter_name}</small>
         </div>
       `).join('');
     }
 
-    // Delete agenda item
-    async function deleteAgendaItem(itemId) {
-      if (!window.meetingsManager) return;
-      
-      if (confirm('Delete this agenda item?')) {
-        await window.meetingsManager.deleteAgendaItem(itemId);
-        loadAgendaItems();
-      }
-    }
-
     // Load meeting notes
     async function loadMeetingNotes() {
-      if (!window.meetingsManager) return;
-      
-      const meetingId = document.getElementById('notes-meeting-select').value;
-      const notesTextarea = document.getElementById('meeting-notes-textarea');
-      
-      if (!meetingId) {
-        notesTextarea.value = '';
-        return;
-      }
-      
-      const notes = await window.meetingsManager.getMeetingNotes(meetingId);
-      notesTextarea.value = notes?.content || '';
+      if (!window.meetingsManager || !currentMeetingId) return;
+
+      const notes = await window.meetingsManager.getMeetingNotes(currentMeetingId);
+      document.getElementById('meeting-notes-textarea').value = notes?.content || '';
     }
 
     // Save meeting notes
     async function saveMeetingNotes() {
-      if (!window.meetingsManager) return;
-      
-      const meetingId = document.getElementById('notes-meeting-select').value;
+      if (!window.meetingsManager || !currentMeetingId) return;
+
       const content = document.getElementById('meeting-notes-textarea').value;
-      
-      if (!meetingId) {
-        alert('Please select a meeting');
-        return;
-      }
-      
-      await window.meetingsManager.saveMeetingNotes(meetingId, content);
-      alert('Notes saved successfully');
+      await window.meetingsManager.saveMeetingNotes(currentMeetingId, content);
+
+      // Show feedback
+      const textarea = document.getElementById('meeting-notes-textarea');
+      textarea.style.borderColor = '#10b981';
+      textarea.style.boxShadow = '0 0 0 3px rgba(16, 185, 129, 0.1)';
+      setTimeout(() => {
+        textarea.style.borderColor = '';
+        textarea.style.boxShadow = '';
+      }, 2000);
     }
 
     // Generate PDF
     async function generateMeetingPDF() {
-      if (!window.meetingsManager) return;
-      
-      const meetingId = document.getElementById('notes-meeting-select').value;
+      if (!window.meetingsManager || !currentMeetingId) return;
+
       const notes = document.getElementById('meeting-notes-textarea').value;
-      
-      if (!meetingId || !notes) {
-        alert('Please select a meeting and enter notes');
+
+      if (!notes) {
+        alert('Please enter some notes before generating PDF');
         return;
       }
-      
-      const statusDiv = document.getElementById('pdf-status');
-      statusDiv.style.display = 'block';
-      statusDiv.innerHTML = '<p style="margin: 0; color: #0369a1;">Generating PDF...</p>';
-      
+
       try {
-        const pdfContent = await window.meetingsManager.exportMeetingToPDF(meetingId);
-        
+        const pdfContent = await window.meetingsManager.exportMeetingToPDF(currentMeetingId);
+
         // Generate PDF using jsPDF
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
-        
+
         doc.setFontSize(20);
         doc.text(pdfContent.title, 20, 20);
-        
+
         doc.setFontSize(12);
         doc.text('Date: ' + pdfContent.date, 20, 35);
         doc.text('Location: ' + pdfContent.location, 20, 45);
-        
+
         doc.setFontSize(14);
         doc.text('Attendees:', 20, 60);
         doc.setFontSize(11);
@@ -897,7 +1583,7 @@
           doc.text('• ' + a, 25, yPos);
           yPos += 7;
         });
-        
+
         doc.setFontSize(14);
         doc.text('Agenda Items:', 20, yPos + 10);
         doc.setFontSize(11);
@@ -907,140 +1593,86 @@
           doc.text(lines, 25, yPos);
           yPos += lines.length * 7;
         });
-        
+
         doc.setFontSize(14);
         doc.text('Meeting Notes:', 20, yPos + 10);
         doc.setFontSize(11);
         const noteLines = doc.splitTextToSize(pdfContent.notes, 170);
         doc.text(noteLines, 20, yPos + 20);
-        
-        doc.save(`meeting-${meetingId}.pdf`);
-        
-        statusDiv.innerHTML = '<p style="margin: 0; color: #16a34a;">✓ PDF generated successfully!</p>';
-        setTimeout(() => { statusDiv.style.display = 'none'; }, 2500);
+
+        doc.save(`meeting-${currentMeetingId}.pdf`);
+
+        alert('✅ PDF generated successfully!');
       } catch (e) {
         console.error(e);
-        statusDiv.innerHTML = '<p style="margin: 0; color: #dc2626;">Error generating PDF</p>';
+        alert('Error generating PDF');
       }
     }
 
     // Handle recording upload
     async function handleRecordingUpload(event) {
-      if (!window.meetingsManager) return;
-      
+      if (!window.meetingsManager || !currentMeetingId) return;
+
       const file = event.target.files?.[0];
       if (!file) return;
-      
-      const meetingId = document.getElementById('notes-meeting-select').value;
-      if (!meetingId) {
-        alert('Please select a meeting first');
-        event.target.value = '';
-        return;
-      }
-      
-      const statusDiv = document.getElementById('pdf-status');
+
+      const statusDiv = document.getElementById('recording-status');
       statusDiv.style.display = 'block';
       statusDiv.innerHTML = '<p style="margin: 0; color: #0369a1;">🎙️ Processing recording...</p>';
-      
+
       try {
         // Upload file
-        const url = await window.meetingsManager.uploadMeetingRecording(meetingId, file);
-        
+        const url = await window.meetingsManager.uploadMeetingRecording(currentMeetingId, file);
+
         // Transcribe with meeting ID
-        const transcript = await window.meetingsManager.transcribeRecording(file, meetingId);
-        
+        const transcript = await window.meetingsManager.transcribeRecording(file, currentMeetingId);
+
         // Add to notes
         const currentNotes = document.getElementById('meeting-notes-textarea').value;
-        document.getElementById('meeting-notes-textarea').value = 
+        document.getElementById('meeting-notes-textarea').value =
           currentNotes + (currentNotes ? '\n\n' : '') + transcript;
-        
+
         statusDiv.innerHTML = '<p style="margin: 0; color: #16a34a;">✅ Recording processed successfully!</p>';
         setTimeout(() => { statusDiv.style.display = 'none'; }, 2500);
       } catch (e) {
-        console.error(e);
-        statusDiv.innerHTML = '<p style="margin: 0; color: #dc2626;">❌ Error processing recording</p>';
-      }
-    }
-
-    // Load meeting history
-    async function loadMeetingHistory() {
-      if (!window.meetingsManager) return;
-      
-      const historyList = document.getElementById('meeting-history-list');
-      const pastMeetings = await window.meetingsManager.getPastMeetings();
-      
-      if (pastMeetings.length === 0) {
-        historyList.innerHTML = '<p style="color: #6b7280;">No past meetings</p>';
-        return;
-      }
-      
-      historyList.innerHTML = pastMeetings.map(meeting => {
-        const date = new Date(meeting.start);
-        const status = meeting.status || 'completed';
-        return `
-          <div class="meeting-history-item" onclick="viewMeetingNotes('${meeting.id}')">
-            <h4>${meeting.title}
-              <span class="meeting-status ${status}">${status}</span>
-            </h4>
-            <p>${meeting.description || 'No description'}</p>
-            <small style="color: #6b7280;">
-              ${date.toLocaleDateString()} at ${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-              • ${meeting.location || 'No location'}
-            </small>
-          </div>
-        `;
-      }).join('');
-    }
-
-    // View meeting notes from history
-    async function viewMeetingNotes(meetingId) {
-      switchTab('notes');
-      const sel = document.getElementById('notes-meeting-select');
-      if (sel) {
-        // Add option if not present
-        const meetings = await window.meetingsManager.getMeetings();
-        const meeting = meetings.find(m => m.id === meetingId);
-        if (meeting && !Array.from(sel.options).find(o => o.value === meetingId)) {
-          const option = document.createElement('option');
-          option.value = meetingId;
-          option.text = `${meeting.title} - ${new Date(meeting.start).toLocaleDateString()}`;
-          sel.add(option);
-        }
-        sel.value = meetingId;
-        loadMeetingNotes();
+        console.error('Recording processing error:', e);
+        const errorMsg = e.message || 'Unknown error occurred';
+        statusDiv.innerHTML = `<p style="margin: 0; color: #dc2626;">❌ Error: ${errorMsg}</p>`;
+        setTimeout(() => { statusDiv.style.display = 'none'; }, 5000);
       }
     }
 
     // Update statistics
     async function updateStats() {
       if (!window.meetingsManager) return;
-      
+
       const stats = await window.meetingsManager.getMeetingStats();
-      
-      document.getElementById('stat-total').textContent = stats.total;
-      document.getElementById('stat-upcoming').textContent = stats.upcoming;
-      document.getElementById('stat-past').textContent = stats.past;
-      document.getElementById('stat-month').textContent = stats.thisMonth;
+
+      // Animate the numbers
+      animateValue('stat-total', 0, stats.total, 1000);
+      animateValue('stat-upcoming', 0, stats.upcoming, 1000);
+      animateValue('stat-past', 0, stats.past, 1000);
+      animateValue('stat-month', 0, stats.thisMonth, 1000);
     }
 
-    // Make functions globally available
-    window.switchTab = switchTab;
-    window.showMeetingDetails = showMeetingDetails;
-    window.closeMeetingModal = closeMeetingModal;
-    window.openCreateMeetingModal = openCreateMeetingModal;
-    window.closeCreateMeetingModal = closeCreateMeetingModal;
-    window.createMeeting = createMeeting;
-    window.updateAttendance = updateAttendance;
-    window.deleteMeeting = deleteMeeting;
-    window.submitAgendaItem = submitAgendaItem;
-    window.deleteAgendaItem = deleteAgendaItem;
-    window.loadMeetingNotes = loadMeetingNotes;
-    window.saveMeetingNotes = saveMeetingNotes;
-    window.generateMeetingPDF = generateMeetingPDF;
-    window.handleRecordingUpload = handleRecordingUpload;
-    window.viewMeetingNotes = viewMeetingNotes;
-    window.initializeMeetings = initializeMeetings;
-    
+    // Animate number counting
+    function animateValue(id, start, end, duration) {
+      const element = document.getElementById(id);
+      const range = end - start;
+      const increment = range / (duration / 10);
+      let current = start;
+
+      const timer = setInterval(() => {
+        current += increment;
+        if (current >= end) {
+          element.textContent = end;
+          clearInterval(timer);
+        } else {
+          element.textContent = Math.floor(current);
+        }
+      }, 10);
+    }
+
     // Microphone Recording Functions
     let mediaRecorder = null;
     let audioChunks = [];
@@ -1050,119 +1682,85 @@
     let analyser = null;
     let microphone = null;
     let animationId = null;
-    
+
     async function startRecording() {
       try {
-        // Request microphone permission
-        const stream = await navigator.mediaDevices.getUserMedia({ 
+        const stream = await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true
-          } 
+          }
         });
-        
-        // Create MediaRecorder
+
         mediaRecorder = new MediaRecorder(stream, {
           mimeType: 'audio/webm;codecs=opus'
         });
-        
+
         audioChunks = [];
-        
-        // Set up audio visualization
+
         setupAudioVisualization(stream);
-        
-        // Handle data available
+
         mediaRecorder.ondataavailable = (event) => {
           if (event.data.size > 0) {
             audioChunks.push(event.data);
           }
         };
-        
-        // Handle recording stop
+
         mediaRecorder.onstop = () => {
           const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
           const audioUrl = URL.createObjectURL(audioBlob);
-          
-          // Show playback controls
+
           const audioElement = document.getElementById('recorded-audio');
           audioElement.src = audioUrl;
           document.getElementById('recorded-audio-container').style.display = 'block';
-          
-          // Store blob for upload
+
           window.currentRecordingBlob = audioBlob;
-          
-          // Stop visualization
+
           if (animationId) {
             cancelAnimationFrame(animationId);
             animationId = null;
           }
-          
-          // Clean up audio context
+
           if (audioContext) {
             audioContext.close();
             audioContext = null;
           }
         };
-        
-        // Start recording
-        mediaRecorder.start(1000); // Collect data every second
+
+        mediaRecorder.start(1000);
         recordingStartTime = Date.now();
-        
-        // Update UI
+
         document.getElementById('start-recording').style.display = 'none';
         document.getElementById('stop-recording').style.display = 'flex';
-        document.getElementById('pause-recording').style.display = 'block';
-        document.getElementById('recording-timer').style.display = 'block';
+        document.getElementById('recording-indicator').classList.add('active');
         document.getElementById('audio-visualizer').style.display = 'block';
-        
-        // Start timer
+
         updateRecordingTimer();
-        
+
       } catch (error) {
         console.error('Error starting recording:', error);
         alert('Unable to access microphone. Please check your permissions.');
       }
     }
-    
+
     function stopRecording() {
       if (mediaRecorder && mediaRecorder.state !== 'inactive') {
         mediaRecorder.stop();
-        
-        // Stop all tracks
         mediaRecorder.stream.getTracks().forEach(track => track.stop());
-        
-        // Clear timer
+
         if (recordingTimer) {
           clearInterval(recordingTimer);
           recordingTimer = null;
         }
-        
-        // Reset UI
+
         document.getElementById('start-recording').style.display = 'flex';
         document.getElementById('stop-recording').style.display = 'none';
-        document.getElementById('pause-recording').style.display = 'none';
-        document.getElementById('recording-timer').style.display = 'none';
+        document.getElementById('recording-indicator').classList.remove('active');
         document.getElementById('audio-visualizer').style.display = 'none';
       }
     }
-    
-    function pauseRecording() {
-      if (mediaRecorder && mediaRecorder.state === 'recording') {
-        mediaRecorder.pause();
-        document.getElementById('pause-recording').textContent = 'Resume';
-        document.getElementById('pause-recording').onclick = resumeRecording;
-      }
-    }
-    
-    function resumeRecording() {
-      if (mediaRecorder && mediaRecorder.state === 'paused') {
-        mediaRecorder.resume();
-        document.getElementById('pause-recording').textContent = 'Pause';
-        document.getElementById('pause-recording').onclick = pauseRecording;
-      }
-    }
-    
+
     function updateRecordingTimer() {
       recordingTimer = setInterval(() => {
         if (mediaRecorder && mediaRecorder.state === 'recording') {
@@ -1173,93 +1771,99 @@
         }
       }, 1000);
     }
-    
+
     function setupAudioVisualization(stream) {
       audioContext = new (window.AudioContext || window.webkitAudioContext)();
       analyser = audioContext.createAnalyser();
       microphone = audioContext.createMediaStreamSource(stream);
-      
+
       analyser.fftSize = 256;
       const bufferLength = analyser.frequencyBinCount;
       const dataArray = new Uint8Array(bufferLength);
-      
+
       microphone.connect(analyser);
-      
+
       const canvas = document.getElementById('audio-visualizer');
       const canvasCtx = canvas.getContext('2d');
-      
+
       function draw() {
         animationId = requestAnimationFrame(draw);
-        
+
         analyser.getByteFrequencyData(dataArray);
-        
-        canvasCtx.fillStyle = '#f3f4f6';
+
+        canvasCtx.fillStyle = '#f8fafc';
         canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
-        
+
         const barWidth = (canvas.width / bufferLength) * 2.5;
         let barHeight;
         let x = 0;
-        
+
         for (let i = 0; i < bufferLength; i++) {
           barHeight = (dataArray[i] / 255) * canvas.height;
-          
-          // Use gradient colors
+
           const gradient = canvasCtx.createLinearGradient(0, canvas.height, 0, 0);
-          gradient.addColorStop(0, '#ef4444');
-          gradient.addColorStop(0.5, '#f59e0b');
-          gradient.addColorStop(1, '#10b981');
-          
+          gradient.addColorStop(0, '#6366f1');
+          gradient.addColorStop(0.5, '#8b5cf6');
+          gradient.addColorStop(1, '#a78bfa');
+
           canvasCtx.fillStyle = gradient;
           canvasCtx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
-          
+
           x += barWidth + 1;
         }
       }
-      
+
       draw();
     }
-    
+
     async function saveRecording() {
-      if (!window.currentRecordingBlob) {
+      if (!window.currentRecordingBlob || !currentMeetingId) {
         alert('No recording to save');
         return;
       }
-      
-      const meetingId = document.getElementById('notes-meeting-select').value;
-      if (!meetingId) {
-        alert('Please select a meeting first');
-        return;
-      }
-      
-      // Create a File object from the blob
+
       const file = new File([window.currentRecordingBlob], `recording_${Date.now()}.webm`, {
         type: 'audio/webm'
       });
-      
-      // Use existing upload handler
+
       const event = {
         target: {
           files: [file]
         }
       };
-      
+
       await handleRecordingUpload(event);
-      
-      // Clear the recording
       discardRecording();
     }
-    
+
     function discardRecording() {
       window.currentRecordingBlob = null;
       document.getElementById('recorded-audio-container').style.display = 'none';
       document.getElementById('recorded-audio').src = '';
     }
-    
-    // Make recording functions globally available
+
+    // Make functions globally available
+    window.showMeetingDetails = showMeetingDetails;
+    window.closeMeetingModal = closeMeetingModal;
+    window.openCreateMeetingModal = openCreateMeetingModal;
+    window.closeCreateMeetingModal = closeCreateMeetingModal;
+    window.createMeeting = createMeeting;
+    window.updateAttendance = updateAttendance;
+    window.deleteMeeting = deleteMeeting;
+    window.submitAgendaItem = submitAgendaItem;
+    window.loadMeetingNotes = loadMeetingNotes;
+    window.saveMeetingNotes = saveMeetingNotes;
+    window.generateMeetingPDF = generateMeetingPDF;
+    window.handleRecordingUpload = handleRecordingUpload;
+    window.initializeMeetings = initializeMeetings;
+    window.switchModalTab = switchModalTab;
+    window.startMeetingNow = startMeetingNow;
+    window.startRecordingFromModal = startRecordingFromModal;
+    window.openNotesTab = openNotesTab;
+    window.openAgendaTab = openAgendaTab;
+    window.openAttendeesTab = openAttendeesTab;
     window.startRecording = startRecording;
     window.stopRecording = stopRecording;
-    window.pauseRecording = pauseRecording;
-    window.resumeRecording = resumeRecording;
     window.saveRecording = saveRecording;
     window.discardRecording = discardRecording;
   </script>
