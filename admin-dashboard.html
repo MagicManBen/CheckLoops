@@ -7678,34 +7678,14 @@ window.PIR_DEFINITIONS_DATA = [
 
       const redirectTo = `${CONFIG.passwordRedirectUrl}?${redirectParams.toString()}`;
 
-      // Create admin client with service role key
-      const adminClient = window.supabaseCreateClient(
-        window.SUPABASE_URL || 'https://unveoqnlqnobufhublyw.supabase.co',
-        serviceKey
-      );
-
-      let userId = null;
-      let userExists = false;
-
-      // Check if user already exists
-      try {
-        const { data: existingUser } = await adminClient.auth.admin.getUserByEmail(formData.email);
-        if (existingUser?.user) {
-          userId = existingUser.user.id;
-          userExists = true;
-          debugLog('info', 'User already exists, will send magic link', { userId });
-        }
-      } catch (e) {
-        debugLog('info', 'User does not exist, will create new user');
-      }
-
-      if (!userExists) {
-        // Create new user without password
-        debugLog('info', 'Creating new user');
-        const { data: newUser, error: createError } = await adminClient.auth.admin.createUser({
-          email: formData.email,
-          email_confirm: true,
-          user_metadata: {
+      // Send magic link email - this will create the user if they don't exist
+      debugLog('info', 'Sending magic link email');
+      const { error: magicLinkError } = await supabase.auth.signInWithOtp({
+        email: formData.email,
+        options: {
+          emailRedirectTo: redirectTo,
+          shouldCreateUser: true, // This will create the user if they don't exist
+          data: {
             full_name: formData.fullName,
             site_id: formData.siteId,
             role: formData.siteRole,
@@ -7713,27 +7693,10 @@ window.PIR_DEFINITIONS_DATA = [
             reports_to_id: formData.teamId,
             invite_id: inviteRecord.id
           }
-        });
-
-        if (createError) {
-          debugLog('error', 'Failed to create user', createError);
-          await supabase.from('site_invites').delete().eq('id', inviteRecord.id);
-          throw new Error(`Failed to create user: ${createError.message || 'Unknown error'}`);
-        }
-
-        userId = newUser.user.id;
-        debugLog('success', 'User created successfully', { userId });
-      }
-
-      // Send magic link email (proper Magic Link type, not password reset)
-      debugLog('info', 'Sending magic link email');
-      const { error: magicLinkError } = await supabase.auth.signInWithOtp({
-        email: formData.email,
-        options: {
-          emailRedirectTo: redirectTo,
-          shouldCreateUser: false // User already exists
         }
       });
+
+      let userId = null; // User will be created when they click the magic link
 
       if (magicLinkError) {
         debugLog('error', 'Failed to send magic link', magicLinkError);
@@ -7744,85 +7707,34 @@ window.PIR_DEFINITIONS_DATA = [
 
       debugLog('success', 'Magic link sent successfully to', formData.email);
 
-      // Step 3: Create initial profile and related data now that we have userId
-      if (userId) {
-        debugLog('info', 'Creating profile and related data for user');
+      // Step 3: Store all the data in the invite record for later processing
+      debugLog('info', 'Storing invite data for profile creation when user signs in');
 
-        // Create/update profile
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .upsert({
-            user_id: userId,
-            full_name: formData.fullName,
-            role: formData.siteRole,
-            site_id: formData.siteId,
-            nickname: formData.fullName.split(' ')[0],
-            total_hours: totalHours,
-            total_sessions: totalSessions,
-            holiday_entitlement: holidayEntitlement
-          }, { onConflict: 'user_id' });
+      const inviteData = {
+        working_pattern: formData.workingPattern,
+        total_hours: totalHours,
+        total_sessions: totalSessions,
+        holiday_entitlement: holidayEntitlement,
+        is_gp: isGP,
+        nickname: formData.fullName.split(' ')[0]
+      };
 
-        if (profileError) {
-          debugLog('warning', 'Failed to create profile', profileError);
-        } else {
-          debugLog('success', 'Profile created/updated');
-        }
+      const { error: updateInviteError } = await supabase
+        .from('site_invites')
+        .update({
+          invite_data: inviteData,
+          metadata: {
+            job_role: formData.jobRole,
+            team_id: formData.teamId,
+            working_pattern: formData.workingPattern
+          }
+        })
+        .eq('id', inviteRecord.id);
 
-        // Create staff_app_welcome entry
-        const { error: welcomeError } = await supabase
-          .from('staff_app_welcome')
-          .upsert({
-            user_id: userId,
-            site_id: formData.siteId,
-            full_name: formData.fullName,
-            nickname: formData.fullName.split(' ')[0],
-            role_detail: formData.jobRole,
-            team_id: formData.teamId || null
-          }, { onConflict: 'user_id' });
-
-        if (welcomeError) {
-          debugLog('warning', 'Failed to create welcome entry', welcomeError);
-        } else {
-          debugLog('success', 'Welcome entry created');
-        }
-
-        // Create working pattern
-        const patternData = {
-          user_id: userId,
-          site_id: formData.siteId,
-          monday_hours: Math.round(formData.workingPattern.monday_hours || 0),
-          tuesday_hours: Math.round(formData.workingPattern.tuesday_hours || 0),
-          wednesday_hours: Math.round(formData.workingPattern.wednesday_hours || 0),
-          thursday_hours: Math.round(formData.workingPattern.thursday_hours || 0),
-          friday_hours: Math.round(formData.workingPattern.friday_hours || 0),
-          saturday_hours: Math.round(formData.workingPattern.saturday_hours || 0),
-          sunday_hours: Math.round(formData.workingPattern.sunday_hours || 0),
-          monday_sessions: formData.workingPattern.monday_sessions || 0,
-          tuesday_sessions: formData.workingPattern.tuesday_sessions || 0,
-          wednesday_sessions: formData.workingPattern.wednesday_sessions || 0,
-          thursday_sessions: formData.workingPattern.thursday_sessions || 0,
-          friday_sessions: formData.workingPattern.friday_sessions || 0,
-          saturday_sessions: formData.workingPattern.saturday_sessions || 0,
-          sunday_sessions: formData.workingPattern.sunday_sessions || 0,
-          total_hours: Math.round(totalHours),
-          total_sessions: totalSessions
-        };
-
-        const { error: patternError } = await supabase
-          .from('3_staff_working_patterns')
-          .upsert(patternData, { onConflict: 'user_id' });
-
-        if (patternError) {
-          debugLog('warning', 'Failed to create working pattern', patternError);
-        } else {
-          debugLog('success', 'Working pattern created');
-        }
-
-        // Update invite record with userId
-        await supabase
-          .from('site_invites')
-          .update({ user_id: userId })
-          .eq('id', inviteRecord.id);
+      if (updateInviteError) {
+        debugLog('warning', 'Failed to store invite data', updateInviteError);
+      } else {
+        debugLog('success', 'Invite data stored for later profile creation');
       }
 
       // Step 4: Create holiday profile
@@ -7847,7 +7759,7 @@ window.PIR_DEFINITIONS_DATA = [
             is_gp: isGP,
             email: formData.email,
             site_id: formData.siteId,
-            user_id: userId,
+            user_id: null, // Will be set when user completes signup
             updated_at: new Date().toISOString()
           })
           .eq('id', existingHolidayProfile.id)
@@ -7866,7 +7778,7 @@ window.PIR_DEFINITIONS_DATA = [
             is_gp: isGP,
             email: formData.email,
             site_id: formData.siteId,
-            user_id: userId,
+            user_id: null, // Will be set when user completes signup
             updated_at: new Date().toISOString()
           })
           .select()
