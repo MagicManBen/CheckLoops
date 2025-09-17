@@ -7623,17 +7623,18 @@ window.PIR_DEFINITIONS_DATA = [
       // Create a temporary Supabase client with the service role key for admin operations
       const serviceKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTAxNzI3NiwiZXhwIjoyMDcwNTkzMjc2fQ.CJxV14F0T2TWkAjeR4bpYiBIOwLwyfzF9WzAWwS99Xc";
       
-      // First, check if this user already exists
-      const { data: existingUsers, error: existingUserError } = await supabase
-        .from('profiles')
-        .select('user_id, email')
+      // First, check if this email already exists in site_invites
+      const { data: existingInvites, error: existingInviteError } = await supabase
+        .from('site_invites')
+        .select('id, email')
         .eq('email', formData.email)
+        .eq('status', 'pending')
         .limit(1);
-      
-      if (existingUserError) {
-        debugLog('warning', 'Error checking for existing user', existingUserError);
-      } else if (existingUsers && existingUsers.length > 0) {
-        throw new Error(`User with email ${formData.email} already exists`);
+
+      if (existingInviteError && existingInviteError.code !== '42P01') {
+        debugLog('warning', 'Error checking for existing user', existingInviteError);
+      } else if (existingInvites && existingInvites.length > 0) {
+        throw new Error(`An invitation for ${formData.email} already exists`);
       }
       
       // Step 1: Create an invitation record in site_invites table
@@ -7665,8 +7666,8 @@ window.PIR_DEFINITIONS_DATA = [
       debugLog('info', 'Creating user in authentication system');
       
       // Create a dedicated admin client using the service role key
-      const redirectTo = `${window.location.origin}/simple-set-password.html`;
-      const adminClient = supabase.createClient(
+      const redirectTo = 'https://checkloops.co.uk/simple-set-password.html';
+      const adminClient = window.supabaseCreateClient(
         window.SUPABASE_URL || 'https://unveoqnlqnobufhublyw.supabase.co',
         serviceKey
       );
@@ -7756,13 +7757,6 @@ window.PIR_DEFINITIONS_DATA = [
           onboarding_complete: true,
           total_hours: totalHours,
           total_sessions: totalSessions,
-          monday_hours: formData.workingPattern.monday_hours,
-          tuesday_hours: formData.workingPattern.tuesday_hours,
-          wednesday_hours: formData.workingPattern.wednesday_hours,
-          thursday_hours: formData.workingPattern.thursday_hours,
-          friday_hours: formData.workingPattern.friday_hours,
-          saturday_hours: formData.workingPattern.saturday_hours,
-          sunday_hours: formData.workingPattern.sunday_hours,
           holiday_entitlement: holidayEntitlement
         })
         .eq('user_id', userId);
@@ -7783,17 +7777,8 @@ window.PIR_DEFINITIONS_DATA = [
           full_name: formData.fullName,
           nickname: formData.fullName.split(' ')[0],
           role_detail: formData.jobRole,
-          team_id: formData.teamId || null,
-          working_hours: {
-            monday: isGP ? formData.workingPattern.monday_sessions : `${Math.floor(formData.workingPattern.monday_hours)}:${Math.round((formData.workingPattern.monday_hours % 1) * 60).toString().padStart(2, '0')}`,
-            tuesday: isGP ? formData.workingPattern.tuesday_sessions : `${Math.floor(formData.workingPattern.tuesday_hours)}:${Math.round((formData.workingPattern.tuesday_hours % 1) * 60).toString().padStart(2, '0')}`,
-            wednesday: isGP ? formData.workingPattern.wednesday_sessions : `${Math.floor(formData.workingPattern.wednesday_hours)}:${Math.round((formData.workingPattern.wednesday_hours % 1) * 60).toString().padStart(2, '0')}`,
-            thursday: isGP ? formData.workingPattern.thursday_sessions : `${Math.floor(formData.workingPattern.thursday_hours)}:${Math.round((formData.workingPattern.thursday_hours % 1) * 60).toString().padStart(2, '0')}`,
-            friday: isGP ? formData.workingPattern.friday_sessions : `${Math.floor(formData.workingPattern.friday_hours)}:${Math.round((formData.workingPattern.friday_hours % 1) * 60).toString().padStart(2, '0')}`,
-            saturday: isGP ? formData.workingPattern.saturday_sessions : `${Math.floor(formData.workingPattern.saturday_hours)}:${Math.round((formData.workingPattern.saturday_hours % 1) * 60).toString().padStart(2, '0')}`,
-            sunday: isGP ? formData.workingPattern.sunday_sessions : `${Math.floor(formData.workingPattern.sunday_hours)}:${Math.round((formData.workingPattern.sunday_hours % 1) * 60).toString().padStart(2, '0')}`,
-            isGP: isGP
-          }
+          team_id: formData.teamId || null
+          // Removed working_hours field as it doesn't exist in the table
         });
 
       if (welcomeError) {
@@ -7804,11 +7789,25 @@ window.PIR_DEFINITIONS_DATA = [
 
       // Step 4: Create working pattern entry
       debugLog('info', 'Step 4: Creating working pattern');
+      // Convert decimal hours to integers for database storage
       const patternData = {
         user_id: userId,
         site_id: ctx.site_id,
-        ...formData.workingPattern,
-        total_hours: totalHours,
+        monday_hours: Math.round(formData.workingPattern.monday_hours || 0),
+        tuesday_hours: Math.round(formData.workingPattern.tuesday_hours || 0),
+        wednesday_hours: Math.round(formData.workingPattern.wednesday_hours || 0),
+        thursday_hours: Math.round(formData.workingPattern.thursday_hours || 0),
+        friday_hours: Math.round(formData.workingPattern.friday_hours || 0),
+        saturday_hours: Math.round(formData.workingPattern.saturday_hours || 0),
+        sunday_hours: Math.round(formData.workingPattern.sunday_hours || 0),
+        monday_sessions: formData.workingPattern.monday_sessions || 0,
+        tuesday_sessions: formData.workingPattern.tuesday_sessions || 0,
+        wednesday_sessions: formData.workingPattern.wednesday_sessions || 0,
+        thursday_sessions: formData.workingPattern.thursday_sessions || 0,
+        friday_sessions: formData.workingPattern.friday_sessions || 0,
+        saturday_sessions: formData.workingPattern.saturday_sessions || 0,
+        sunday_sessions: formData.workingPattern.sunday_sessions || 0,
+        total_hours: Math.round(totalHours),
         total_sessions: totalSessions,
         updated_at: new Date().toISOString()
       };
@@ -7825,19 +7824,53 @@ window.PIR_DEFINITIONS_DATA = [
 
       // Step 5: Create holiday profile
       debugLog('info', 'Step 5: Creating holiday profile');
-      const { data: holidayProfile, error: holidayError } = await supabase
+
+      // First check if profile already exists for this full_name
+      const { data: existingHolidayProfile } = await supabase
         .from('1_staff_holiday_profiles')
-        .upsert({
-          full_name: formData.fullName,
-          role: formData.jobRole,
-          is_gp: isGP,
-          email: formData.email,
-          site_id: ctx.site_id,
-          user_id: userId,
-          updated_at: new Date().toISOString()
-        })
-        .select()
+        .select('id')
+        .eq('full_name', formData.fullName)
         .single();
+
+      let holidayProfile, holidayError;
+
+      if (existingHolidayProfile) {
+        // Update existing profile
+        debugLog('info', 'Updating existing holiday profile');
+        const { data, error } = await supabase
+          .from('1_staff_holiday_profiles')
+          .update({
+            role: formData.jobRole,
+            is_gp: isGP,
+            email: formData.email,
+            site_id: ctx.site_id,
+            user_id: userId,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingHolidayProfile.id)
+          .select()
+          .single();
+        holidayProfile = data;
+        holidayError = error;
+      } else {
+        // Create new profile
+        debugLog('info', 'Creating new holiday profile');
+        const { data, error } = await supabase
+          .from('1_staff_holiday_profiles')
+          .insert({
+            full_name: formData.fullName,
+            role: formData.jobRole,
+            is_gp: isGP,
+            email: formData.email,
+            site_id: ctx.site_id,
+            user_id: userId,
+            updated_at: new Date().toISOString()
+          })
+          .select()
+          .single();
+        holidayProfile = data;
+        holidayError = error;
+      }
 
       if (holidayError) {
         debugLog('warning', 'Holiday profile warning', holidayError);

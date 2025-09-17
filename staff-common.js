@@ -31,8 +31,20 @@ export function clearAuthData(preserveRememberMe = false) {
 }
 
 export async function requireStaffSession(supabase) {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session || !session.user) throw new Error('NO_SESSION');
+  console.log('[requireStaffSession] Checking session...');
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+  if (sessionError) {
+    console.error('[requireStaffSession] Session error:', sessionError);
+    throw new Error('NO_SESSION');
+  }
+
+  if (!session || !session.user) {
+    console.error('[requireStaffSession] No session found');
+    throw new Error('NO_SESSION');
+  }
+
+  console.log('[requireStaffSession] Session found for:', session.user.email);
 
   const { data: profileRow, error: profileError } = await supabase
     .from('profiles')
@@ -51,20 +63,18 @@ export async function requireStaffSession(supabase) {
   // Include 'member' and any role by default for staff-welcome page
   const allowed = ['staff', 'admin', 'owner', 'manager', 'member', 'user'];
 
-  try {
-    console.debug('[requireStaffSession]', {
-      userId: session.user.id,
-      email: session.user.email,
-      profileRow: profileRow,
-      profileRole: profileRow?.role,
-      userMetadata: meta,
-      metaRole: meta?.role,
-      finalRole: role,
-      onboarding_complete: profileRow?.onboarding_complete,
-      onboarding_required: meta?.onboarding_required,
-      welcome_completed_at: meta?.welcome_completed_at
-    });
-  } catch (_) {}
+  console.log('[requireStaffSession] Debug info:', {
+    userId: session.user.id,
+    email: session.user.email,
+    profileRow: profileRow,
+    profileRole: profileRow?.role,
+    userMetadata: meta,
+    metaRole: meta?.role,
+    finalRole: role,
+    onboarding_complete: profileRow?.onboarding_complete,
+    onboarding_required: meta?.onboarding_required,
+    welcome_completed_at: meta?.welcome_completed_at
+  });
 
   // Removed forced onboarding redirect logic per updated navigation requirements
   try { sessionStorage.removeItem('forceOnboarding'); } catch(_) {}
