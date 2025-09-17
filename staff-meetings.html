@@ -230,6 +230,13 @@
               </div>
             </div>
           </div>
+
+          <!-- Past Recordings Button -->
+          <div style="margin-top: 16px;">
+            <button class="action-btn primary" onclick="openPastRecordingsModal()" style="width: 100%;">
+              <span>🎙️ View Past Recordings</span>
+            </button>
+          </div>
         </div>
       </div>
     </section>
@@ -420,6 +427,52 @@
       <button class="action-btn success" onclick="createMeeting()" style="width: 100%; margin-top: 24px; padding: 14px;">
         <span>✅ Create Meeting</span>
       </button>
+    </div>
+  </div>
+
+  <!-- Past Recordings Modal -->
+  <div class="modal-overlay" id="recordings-modal-overlay" onclick="closePastRecordingsModal(event)"></div>
+  <div id="past-recordings-modal" class="modal" style="max-width: 900px;">
+    <div class="modal-header">
+      <button class="modal-close" onclick="closePastRecordingsModal()">×</button>
+      <h3 class="modal-title">Past Meeting Recordings</h3>
+      <div class="modal-subtitle">View and generate PDFs from past recordings</div>
+    </div>
+
+    <div class="modal-body">
+      <!-- Toggle for saved vs all recordings -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 12px; background: #f1f5f9; border-radius: 12px;">
+        <div style="display: flex; gap: 12px; align-items: center;">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <input type="checkbox" id="show-all-recordings" onchange="toggleRecordingsView()" style="width: 18px; height: 18px;">
+            <span style="font-weight: 600; color: #0f172a;">Show all recordings (including unsaved)</span>
+          </label>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center; font-size: 12px; color: #64748b;">
+          <span id="recordings-count">0 recordings</span>
+        </div>
+      </div>
+
+      <!-- Search for specific recording -->
+      <div style="margin-bottom: 16px; display: flex; gap: 8px;">
+        <input
+          type="text"
+          id="recording-search"
+          placeholder="Search for recording (e.g., recording_1758113963778)"
+          style="flex: 1; padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;"
+          onkeypress="if(event.key === 'Enter') searchRecording()"
+        >
+        <button class="action-btn primary" onclick="searchRecording()">
+          <span>🔍 Search</span>
+        </button>
+        <button class="action-btn" onclick="document.getElementById('recording-search').value = 'recording_1758113963778'; searchRecording()">
+          <span>Find Your Recording</span>
+        </button>
+      </div>
+
+      <div id="recordings-list" style="display: flex; flex-direction: column; gap: 16px;">
+        <!-- Dynamically populated -->
+      </div>
     </div>
   </div>
 
@@ -868,7 +921,9 @@
       if (!window.meetingsManager || !currentMeetingId) return;
 
       const notes = await window.meetingsManager.getMeetingNotes(currentMeetingId);
-      document.getElementById('meeting-notes-textarea').value = notes?.content || '';
+      // Show transcript if available, otherwise show regular notes
+      const content = notes?.transcript || notes?.content || '';
+      document.getElementById('meeting-notes-textarea').value = content;
     }
 
     // Save meeting notes
@@ -889,19 +944,30 @@
     }
 
     // Generate PDF
-    async function generateMeetingPDF() {
-      if (!window.meetingsManager || !currentMeetingId) return;
+    async function generateMeetingPDF(meetingId = null, useExistingNotes = false) {
+      if (!window.meetingsManager) return;
 
-      const notes = document.getElementById('meeting-notes-textarea').value;
+      const targetMeetingId = meetingId || currentMeetingId;
+      if (!targetMeetingId) return;
+
+      let notes = '';
+      if (useExistingNotes) {
+        // Get notes from database for past recordings
+        const meetingNotes = await window.meetingsManager.getMeetingNotes(targetMeetingId);
+        notes = meetingNotes?.transcript || meetingNotes?.content || '';
+      } else {
+        // Get notes from textarea for current meeting
+        notes = document.getElementById('meeting-notes-textarea').value;
+      }
 
       if (!notes) {
-        alert('Please enter some notes before generating PDF');
+        alert('No notes available for PDF generation');
         return;
       }
 
       try {
-        const pdfContent = await window.meetingsManager.exportMeetingToPDF(currentMeetingId);
-        
+        const pdfContent = await window.meetingsManager.exportMeetingToPDF(targetMeetingId);
+
         // Parse notes to extract structured information - use the actual notes content
         const parsedNotes = parseNotesContent(notes);
         
@@ -1088,7 +1154,7 @@
         }
 
         // Save the PDF
-        doc.save(`meeting-${currentMeetingId}.pdf`);
+        doc.save(`meeting-${targetMeetingId}.pdf`);
         alert('✅ PDF generated successfully!');
       } catch (e) {
         console.error(e);
@@ -1208,29 +1274,42 @@
       const file = event.target.files?.[0];
       if (!file) return;
 
+      console.log('Processing uploaded file:', {
+        name: file.name,
+        size: file.size,
+        type: file.type
+      });
+
       const statusDiv = document.getElementById('recording-status');
       statusDiv.style.display = 'block';
-      statusDiv.innerHTML = '<p style="margin: 0; color: #0369a1;">🎙️ Processing recording...</p>';
+      statusDiv.innerHTML = '<p style="margin: 0; color: #0369a1;">📁 Processing uploaded recording...</p>';
 
       try {
-        // Upload file
+        // Upload file to storage
+        statusDiv.innerHTML = '<p style="margin: 0; color: #0369a1;">⬆️ Uploading to Supabase storage...</p>';
         const url = await window.meetingsManager.uploadMeetingRecording(currentMeetingId, file);
+        
+        console.log('File uploaded successfully:', url);
 
         // Transcribe with meeting ID
+        statusDiv.innerHTML = '<p style="margin: 0; color: #0369a1;">🎙️ Transcribing recording...</p>';
         const transcript = await window.meetingsManager.transcribeRecording(file, currentMeetingId);
 
-        // Add to notes
-        const currentNotes = document.getElementById('meeting-notes-textarea').value;
-        document.getElementById('meeting-notes-textarea').value =
-          currentNotes + (currentNotes ? '\n\n' : '') + transcript;
+        // Replace notes with full transcript (don't append to avoid duplication)
+        document.getElementById('meeting-notes-textarea').value = transcript;
 
-        statusDiv.innerHTML = '<p style="margin: 0; color: #16a34a;">✅ Recording processed successfully!</p>';
-        setTimeout(() => { statusDiv.style.display = 'none'; }, 2500);
-      } catch (e) {
-        console.error('Recording processing error:', e);
-        const errorMsg = e.message || 'Unknown error occurred';
+        // Auto-save the transcribed notes
+        statusDiv.innerHTML = '<p style="margin: 0; color: #0369a1;">💾 Saving transcript...</p>';
+        await window.meetingsManager.saveMeetingNotes(currentMeetingId, transcript);
+
+        statusDiv.innerHTML = '<p style="margin: 0; color: #16a34a;">✅ Recording uploaded and transcribed successfully!</p>';
+        setTimeout(() => { statusDiv.style.display = 'none'; }, 3000);
+        
+      } catch (error) {
+        console.error('Recording processing error:', error);
+        const errorMsg = error.message || 'Unknown error occurred';
         statusDiv.innerHTML = `<p style="margin: 0; color: #dc2626;">❌ Error: ${errorMsg}</p>`;
-        setTimeout(() => { statusDiv.style.display = 'none'; }, 5000);
+        setTimeout(() => { statusDiv.style.display = 'none'; }, 8000);
       }
     }
 
@@ -1455,18 +1534,69 @@
         return;
       }
 
-      const file = new File([window.currentRecordingBlob], `recording_${Date.now()}.webm`, {
-        type: 'audio/webm'
-      });
+      if (!window.meetingsManager) {
+        alert('Meetings system not initialized');
+        return;
+      }
 
-      const event = {
-        target: {
-          files: [file]
-        }
-      };
+      // Show saving status
+      const statusDiv = document.getElementById('recording-status');
+      statusDiv.style.display = 'block';
+      statusDiv.innerHTML = '<p style="margin: 0; color: #0369a1;">💾 Saving recording to storage...</p>';
 
-      await handleRecordingUpload(event);
-      discardRecording();
+      try {
+        // Get meeting title for filename
+        const meetingTitle = currentMeeting?.title || 'meeting';
+        const safeTitle = meetingTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const timestamp = Date.now();
+        const filename = `${safeTitle}_${timestamp}.webm`;
+
+        // Create proper File object from blob
+        const file = new File([window.currentRecordingBlob], filename, {
+          type: window.currentRecordingBlob.type || 'audio/webm'
+        });
+
+        console.log('Saving recording:', {
+          filename,
+          size: file.size,
+          type: file.type,
+          meetingId: currentMeetingId
+        });
+
+        // First upload the recording
+        statusDiv.innerHTML = '<p style="margin: 0; color: #0369a1;">⬆️ Uploading to Supabase storage...</p>';
+        const recordingUrl = await window.meetingsManager.uploadMeetingRecording(currentMeetingId, file);
+        
+        console.log('Recording uploaded successfully:', recordingUrl);
+
+        // Then transcribe it
+        statusDiv.innerHTML = '<p style="margin: 0; color: #0369a1;">🎙️ Transcribing audio...</p>';
+        const transcript = await window.meetingsManager.transcribeRecording(file, currentMeetingId);
+
+        // Update the notes textarea with transcript
+        document.getElementById('meeting-notes-textarea').value = transcript;
+
+        // Auto-save the transcribed notes
+        statusDiv.innerHTML = '<p style="margin: 0; color: #0369a1;">💾 Saving transcript...</p>';
+        await window.meetingsManager.saveMeetingNotes(currentMeetingId, transcript);
+
+        // Success message
+        statusDiv.innerHTML = '<p style="margin: 0; color: #16a34a;">✅ Recording saved and transcribed successfully!</p>';
+        
+        // Hide status after 3 seconds
+        setTimeout(() => { statusDiv.style.display = 'none'; }, 3000);
+
+        // Clear the temporary recording
+        discardRecording();
+
+      } catch (error) {
+        console.error('Recording save error:', error);
+        const errorMsg = error.message || 'Unknown error occurred';
+        statusDiv.innerHTML = `<p style="margin: 0; color: #dc2626;">❌ Failed to save recording: ${errorMsg}</p>`;
+        
+        // Show error longer
+        setTimeout(() => { statusDiv.style.display = 'none'; }, 8000);
+      }
     }
 
     function discardRecording() {
@@ -1497,6 +1627,281 @@
     window.stopRecording = stopRecording;
     window.saveRecording = saveRecording;
     window.discardRecording = discardRecording;
+
+    // Past Recordings Functions
+    let showAllRecordings = false;
+
+    async function openPastRecordingsModal() {
+      if (!window.meetingsManager) return;
+
+      // Reset toggle
+      showAllRecordings = false;
+      document.getElementById('show-all-recordings').checked = false;
+
+      await loadRecordings(false);
+
+      document.getElementById('past-recordings-modal').classList.add('active');
+      document.getElementById('recordings-modal-overlay').classList.add('active');
+    }
+
+    async function toggleRecordingsView() {
+      showAllRecordings = document.getElementById('show-all-recordings').checked;
+      await loadRecordings(showAllRecordings);
+    }
+
+    async function loadRecordings(includeUnsaved) {
+      if (!window.meetingsManager) return;
+
+      const listEl = document.getElementById('recordings-list');
+      const countEl = document.getElementById('recordings-count');
+
+      listEl.innerHTML = '<div style="text-align: center; color: #64748b; padding: 20px;">Loading recordings...</div>';
+
+      try {
+        const recordings = await window.meetingsManager.getMeetingsWithRecordings(includeUnsaved);
+
+        // Update count
+        countEl.textContent = `${recordings.length} recording${recordings.length !== 1 ? 's' : ''}`;
+
+        if (!recordings || recordings.length === 0) {
+          listEl.innerHTML = '<div style="text-align: center; color: #94a3b8; padding: 20px;">No recordings found</div>';
+        } else {
+          listEl.innerHTML = recordings.map(recording => {
+            const startDate = new Date(recording.start_time || recording.created_at);
+            const hasTranscript = recording.has_transcript;
+            const isSaved = recording.is_saved;
+            const isUnsaved = recording.id.startsWith('unsaved_');
+
+            return `
+              <div style="background: ${isSaved ? '#f8fafc' : '#fef3c7'}; border: 1px solid ${isSaved ? '#e2e8f0' : '#fde68a'}; border-radius: 12px; padding: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                  <div>
+                    <h4 style="margin: 0; color: #0f172a; font-weight: 700;">
+                      ${recording.title}
+                      ${!isSaved ? '<span style="color: #d97706; font-size: 12px; margin-left: 8px;">(Unsaved)</span>' : ''}
+                    </h4>
+                    <div style="color: #64748b; font-size: 14px; margin-top: 4px;">
+                      ${startDate.toLocaleDateString()} at ${startDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    </div>
+                    <div style="color: #64748b; font-size: 14px;">
+                      Type: ${recording.meeting_type || 'General'} | Location: ${recording.location || 'Not specified'}
+                    </div>
+                    ${recording.file_name ? `<div style="color: #94a3b8; font-size: 12px; margin-top: 4px;">File: ${recording.file_name}</div>` : ''}
+                  </div>
+                  <div style="display: flex; gap: 8px;">
+                    ${hasTranscript ? '<span style="background: #10b981; color: white; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600;">Transcribed</span>' : '<span style="background: #ef4444; color: white; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600;">No Transcript</span>'}
+                    ${isSaved ? '<span style="background: #3b82f6; color: white; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600;">Saved</span>' : ''}
+                  </div>
+                </div>
+                <div style="display: flex; gap: 12px;">
+                  ${!isUnsaved ? `
+                    <button class="action-btn" onclick="viewRecordingNotes('${recording.id}')" style="flex: 1;">
+                      <span>📝 View Notes</span>
+                    </button>
+                  ` : ''}
+                  ${isUnsaved ? `
+                    <button class="action-btn success" onclick="transcribeUnsavedRecording('${recording.id}', '${recording.recording_url}', '${recording.file_name}')" style="flex: 1;">
+                      <span>🎙️ Transcribe</span>
+                    </button>
+                  ` : ''}
+                  <button class="action-btn primary" onclick="generatePDFFromRecording('${recording.id}', '${recording.recording_url}')" style="flex: 1;">
+                    <span>📄 Generate PDF</span>
+                  </button>
+                  ${recording.recording_url ? `
+                    <a href="${recording.recording_url}" target="_blank" class="action-btn" style="flex: 1; text-align: center; text-decoration: none;">
+                      <span>⬇️ Download</span>
+                    </a>
+                  ` : ''}
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+      } catch (error) {
+        console.error('Error loading recordings:', error);
+        listEl.innerHTML = '<div style="text-align: center; color: #ef4444; padding: 20px;">Error loading recordings. Please try again.</div>';
+      }
+    }
+
+    function closePastRecordingsModal(event) {
+      if (event && event.target !== event.currentTarget) return;
+      document.getElementById('past-recordings-modal').classList.remove('active');
+      document.getElementById('recordings-modal-overlay').classList.remove('active');
+    }
+
+    async function viewRecordingNotes(meetingId) {
+      closePastRecordingsModal();
+      await showMeetingDetails(meetingId);
+    }
+
+    async function generatePDFFromRecording(recordingId, recordingUrl = null) {
+      if (recordingId.startsWith('unsaved_')) {
+        // For unsaved recordings, we need to transcribe first
+        alert('Please transcribe this recording first before generating a PDF.');
+        return;
+      }
+      await generateMeetingPDF(recordingId, true);
+    }
+
+    async function transcribeUnsavedRecording(recordingId, recordingUrl, fileName) {
+      if (!window.meetingsManager || !recordingUrl) return;
+
+      const confirmed = confirm(`Transcribe recording: ${fileName}?\n\nThis will process the audio and generate meeting notes.`);
+      if (!confirmed) return;
+
+      try {
+        // Show loading state
+        alert('Transcribing recording... This may take a moment.');
+
+        // Transcribe the unsaved recording
+        const transcript = await window.meetingsManager.transcribeUnsavedRecording(recordingUrl, fileName);
+
+        // Show the transcript
+        const viewTranscript = confirm('Transcription complete! Would you like to view the transcript?');
+        if (viewTranscript) {
+          // Create a temporary modal to show the transcript
+          const modal = document.createElement('div');
+          modal.innerHTML = `
+            <div class="modal-overlay active" onclick="this.parentElement.remove()">
+              <div class="modal active" style="max-width: 800px;" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                  <button class="modal-close" onclick="this.closest('div').remove()">×</button>
+                  <h3 class="modal-title">Transcript: ${fileName}</h3>
+                </div>
+                <div class="modal-body">
+                  <textarea style="width: 100%; height: 400px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-family: inherit;" readonly>${transcript}</textarea>
+                  <div style="margin-top: 16px; display: flex; gap: 12px;">
+                    <button class="action-btn primary" onclick="navigator.clipboard.writeText(this.parentElement.previousElementSibling.value).then(() => alert('Copied to clipboard!')); " style="flex: 1;">
+                      <span>📋 Copy to Clipboard</span>
+                    </button>
+                    <button class="action-btn" onclick="this.closest('div').remove()" style="flex: 1;">
+                      <span>Close</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+          document.body.appendChild(modal);
+        }
+
+        // Reload the recordings list to show updated status
+        await loadRecordings(showAllRecordings);
+      } catch (error) {
+        console.error('Error transcribing recording:', error);
+        alert('Error transcribing recording. Please try again.');
+      }
+    }
+
+    // Search for specific recording
+    async function searchRecording() {
+      const searchTerm = document.getElementById('recording-search').value.trim();
+      if (!searchTerm) {
+        alert('Please enter a recording name to search');
+        return;
+      }
+
+      const listEl = document.getElementById('recordings-list');
+      listEl.innerHTML = '<div style="text-align: center; color: #64748b; padding: 20px;">Searching for recording...</div>';
+
+      try {
+        // First ensure we have all recordings loaded (including unsaved)
+        if (!showAllRecordings) {
+          document.getElementById('show-all-recordings').checked = true;
+          showAllRecordings = true;
+        }
+
+        // Get all recordings
+        const recordings = await window.meetingsManager.getMeetingsWithRecordings(true);
+
+        // Filter for matching recordings
+        const matchingRecordings = recordings.filter(r =>
+          r.file_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          r.file_path?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          r.title?.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+
+        if (matchingRecordings.length === 0) {
+          // Try direct search in storage
+          const result = await window.meetingsManager.findRecording(searchTerm);
+
+          if (result.found) {
+            alert(`Found recording! URL: ${result.url}\n\nClick OK to open the transcription dialog.`);
+
+            // Create a temporary recording object for transcription
+            const tempRecording = {
+              id: `unsaved_${searchTerm}`,
+              recording_url: result.url,
+              file_name: searchTerm
+            };
+
+            await transcribeUnsavedRecording(tempRecording.id, tempRecording.recording_url, tempRecording.file_name);
+          } else {
+            listEl.innerHTML = `<div style="text-align: center; color: #ef4444; padding: 20px;">
+              Recording "${searchTerm}" not found.
+              <br><br>
+              Make sure you've checked "Show all recordings" and the file exists in the storage bucket.
+            </div>`;
+          }
+        } else {
+          // Display matching recordings
+          listEl.innerHTML = matchingRecordings.map(recording => {
+            const startDate = new Date(recording.start_time || recording.created_at);
+            const hasTranscript = recording.has_transcript;
+            const isSaved = recording.is_saved;
+            const isUnsaved = recording.id.startsWith('unsaved_');
+
+            return `
+              <div style="background: #fef3c7; border: 2px solid #f59e0b; border-radius: 12px; padding: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                  <div>
+                    <h4 style="margin: 0; color: #0f172a; font-weight: 700;">
+                      🎯 ${recording.title}
+                      ${!isSaved ? '<span style="color: #d97706; font-size: 12px; margin-left: 8px;">(Unsaved)</span>' : ''}
+                    </h4>
+                    <div style="color: #64748b; font-size: 14px; margin-top: 4px;">
+                      ${startDate.toLocaleDateString()} at ${startDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    </div>
+                    <div style="color: #64748b; font-size: 14px;">
+                      File: <strong>${recording.file_name}</strong>
+                    </div>
+                  </div>
+                </div>
+                <div style="display: flex; gap: 12px;">
+                  ${isUnsaved ? `
+                    <button class="action-btn success" onclick="transcribeUnsavedRecording('${recording.id}', '${recording.recording_url}', '${recording.file_name}')" style="flex: 1;">
+                      <span>🎙️ Transcribe Now</span>
+                    </button>
+                  ` : `
+                    <button class="action-btn" onclick="viewRecordingNotes('${recording.id}')" style="flex: 1;">
+                      <span>📝 View Notes</span>
+                    </button>
+                  `}
+                  ${recording.recording_url ? `
+                    <a href="${recording.recording_url}" target="_blank" class="action-btn" style="flex: 1; text-align: center; text-decoration: none;">
+                      <span>⬇️ Download</span>
+                    </a>
+                  ` : ''}
+                </div>
+              </div>
+            `;
+          }).join('');
+
+          document.getElementById('recordings-count').textContent = `${matchingRecordings.length} matching recording${matchingRecordings.length !== 1 ? 's' : ''}`;
+        }
+      } catch (error) {
+        console.error('Error searching recording:', error);
+        listEl.innerHTML = '<div style="text-align: center; color: #ef4444; padding: 20px;">Error searching for recording. Please try again.</div>';
+      }
+    }
+
+    window.openPastRecordingsModal = openPastRecordingsModal;
+    window.closePastRecordingsModal = closePastRecordingsModal;
+    window.viewRecordingNotes = viewRecordingNotes;
+    window.generatePDFFromRecording = generatePDFFromRecording;
+    window.toggleRecordingsView = toggleRecordingsView;
+    window.transcribeUnsavedRecording = transcribeUnsavedRecording;
+    window.searchRecording = searchRecording;
   </script>
 
   <script>

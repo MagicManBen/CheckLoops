@@ -7666,7 +7666,7 @@ window.PIR_DEFINITIONS_DATA = [
       debugLog('info', 'Creating user in authentication system');
       
       // Create a dedicated admin client using the service role key
-      const redirectTo = 'https://checkloops.co.uk/simple-set-password.html';
+      const redirectTo = `${CONFIG.passwordRedirectUrl}?invite_email=${encodeURIComponent(formData.email)}`;
       const adminClient = window.supabaseCreateClient(
         window.SUPABASE_URL || 'https://unveoqnlqnobufhublyw.supabase.co',
         serviceKey
@@ -14329,7 +14329,13 @@ for (const f of (crudState.entity.fields || [])) {
   // Error observed: "Cannot access uninitialized variable" when loadTrainingMatrix ran before let decls.
   // Switching to var with existing-value guard preserves state if already created earlier.
   // Enhanced Training Matrix with all quick win features - make globally accessible
-  window.trainingData = typeof window.trainingData !== 'undefined' ? window.trainingData : { staff: [], types: [], records: [] };
+  window.trainingData = typeof window.trainingData !== 'undefined' ? window.trainingData : {
+    staff: [],
+    types: [],
+    records: [],
+    isDataLoaded: false,  // Explicitly mark as not loaded yet
+    isDemoData: false
+  };
   window.currentTrainingTab = typeof window.currentTrainingTab !== 'undefined' ? window.currentTrainingTab : 'clinical';
   window.trainingFilters = typeof window.trainingFilters !== 'undefined' ? window.trainingFilters : {
     search: '',
@@ -14360,9 +14366,11 @@ for (const f of (crudState.entity.fields || [])) {
       window.trainingData = {
         staff: staffRes.data || [],
         types: typesRes.data || [],
-        records: recordsRes.data || []
+        records: recordsRes.data || [],
+        isDemoData: false,  // Clear demo data flag
+        isDataLoaded: true  // Mark that we've loaded data from database
       };
-      
+
       // Update local reference
       trainingData = window.trainingData;
 
@@ -14379,6 +14387,16 @@ for (const f of (crudState.entity.fields || [])) {
       setTimeout(() => renderTrainingMatrix(), 10);
     } catch (err) {
       console.error('Failed to load training data:', err);
+      // Mark data as loaded even on error so we don't keep retrying
+      window.trainingData = window.trainingData || {
+        staff: [],
+        types: [],
+        records: [],
+        isDataLoaded: false,
+        isDemoData: false
+      };
+      window.trainingData.isDataLoaded = true;
+      trainingData = window.trainingData;
       document.getElementById('training-tbody').innerHTML =
         '<tr><td colspan="100%" class="muted">Failed to load training data: ' + (err?.message || err) + '</td></tr>';
     }
@@ -14497,10 +14515,20 @@ for (const f of (crudState.entity.fields || [])) {
       if (window.trainingData) { try { trainingData = window.trainingData; } catch(_){} }
       const headers = document.getElementById('training-headers');
       const tbody = document.getElementById('training-tbody');
-      
+
       if (!headers || !tbody) return;
 
       try { window.debugLog && window.debugLog('renderTrainingMatrix:starting', { staffLen: trainingData.staff?.length, typesLen: trainingData.types?.length }); } catch(_) {}
+
+      // Check if data hasn't been loaded from database yet (not just empty)
+      // If trainingData.isDataLoaded is undefined, we haven't tried loading yet
+      if (!trainingData.isDataLoaded && !trainingData.isDemoData) {
+        tbody.innerHTML = `
+          <tr><td colspan="100%" class="muted">Loading training matrix...</td></tr>`;
+        // Trigger data load
+        loadTrainingMatrix();
+        return;
+      }
 
       // If there's no data loaded, provide a helpful fallback so UI can be inspected
       if ((!trainingData.staff || trainingData.staff.length === 0) || (!trainingData.types || trainingData.types.length === 0)) {
@@ -14528,7 +14556,19 @@ for (const f of (crudState.entity.fields || [])) {
               { id: 1001, staff_id: 1, training_type_id: 101, completion_date: now.toISOString(), expiry_date: nextYear.toISOString(), provider: 'Acme Training', verified_by: 'Manager' },
               { id: 1002, staff_id: 2, training_type_id: 102, completion_date: now.toISOString(), expiry_date: null, provider: 'Acme Training' }
             ];
+            // Mark as demo data so we can detect it
+            trainingData.isDemoData = true;
             renderTrainingMatrix();
+
+            // Add a button to reload real data
+            const reloadBtn = document.createElement('button');
+            reloadBtn.className = 'btn primary';
+            reloadBtn.textContent = 'Load Real Data';
+            reloadBtn.style.marginLeft = '10px';
+            reloadBtn.onclick = () => {
+              loadTrainingMatrix(); // Reload real data from database
+            };
+            demoBtn.parentElement.appendChild(reloadBtn);
           });
         }
 
@@ -14536,7 +14576,29 @@ for (const f of (crudState.entity.fields || [])) {
       }
 
       // Continue with rendering code
-      
+
+      // Show demo data warning if using demo data
+      if (trainingData.isDemoData) {
+        const matrixContainer = document.getElementById('training-matrix-container');
+        const existingWarning = matrixContainer.querySelector('.demo-data-warning');
+        if (!existingWarning) {
+          const warningDiv = document.createElement('div');
+          warningDiv.className = 'demo-data-warning';
+          warningDiv.style.cssText = 'background: #ff9800; color: white; padding: 10px; margin-bottom: 10px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;';
+          warningDiv.innerHTML = `
+            <span>⚠️ Using Demo Data - This is sample data for preview purposes only</span>
+            <button class="btn" onclick="loadTrainingMatrix()" style="background: white; color: #333; padding: 5px 15px; border: none; border-radius: 4px; cursor: pointer;">Load Real Data</button>
+          `;
+          matrixContainer.insertBefore(warningDiv, matrixContainer.firstChild);
+        }
+      } else {
+        // Remove warning if it exists and we're showing real data
+        const existingWarning = document.querySelector('.demo-data-warning');
+        if (existingWarning) {
+          existingWarning.remove();
+        }
+      }
+
       // Ensure trainingFilters is defined
     if (typeof trainingFilters === 'undefined') {
       window.trainingFilters = {
