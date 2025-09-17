@@ -12,13 +12,17 @@ const CONFIG = {
     if (this.isLocal) {
       return `${window.location.protocol}//${window.location.host}`;
     } else {
-      return 'https://magicmanben.github.io/CheckLoops';
+      return 'https://checkloops.co.uk';
     }
   },
-  
+
   // Get the appropriate redirect URL for password setting
   get passwordRedirectUrl() {
-    return `${this.baseUrl}/simple-set-password.html`;
+    if (this.isLocal) {
+      return `${window.location.protocol}//${window.location.host}/simple-set-password.html`;
+    } else {
+      return 'https://checkloops.co.uk/simple-set-password.html';
+    }
   },
   
   // Get environment info for debugging

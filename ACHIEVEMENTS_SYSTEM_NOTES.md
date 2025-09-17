@@ -13,7 +13,7 @@ This note documents the fixes and improvements applied:
 
 ## Frontend Changes
 - `staff.html`: Fixed First Login unlock logic (now uses auth user.created_at instead of missing profileRow.created_at).
-- `achievements.html`: Manual Unlock button now visible only for admin/owner roles; non-admin users can no longer arbitrarily unlock achievements.
+- `achievements.html`: Manual Unlock button removed. All achievements are unlocked automatically via database triggers; page is read‑only.
 
 ## Remaining / Future (Optional)
 - Server-side automation for streak, on-time submission, and training completion could be migrated to triggers or scheduled functions (currently computed client-side each dashboard load).
@@ -22,4 +22,3 @@ This note documents the fixes and improvements applied:
 
 ## Deployment
 Apply migrations via Supabase CLI or dashboard. Policies assume `auth.uid()` reflects the logged-in user (standard Supabase behavior). Ensure `kiosk_users` is populated for each staff user to allow automatic awarding.
-

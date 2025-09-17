@@ -288,19 +288,19 @@ async function getUserSubmissionDetails(supabase, userProfile, options = {}) {
  */
 async function getUserAchievements(supabase, userProfile) {
   if (!userProfile?.kiosk_user_id) return [];
-  
+
+  // Join user_achievements with achievements to get names/icons
   const { data, error } = await supabase
-    .from('achievements')
-    .select('*')
-    .eq('kiosk_user_id', userProfile.kiosk_user_id)
-    .eq('status', 'unlocked');
-  
+    .from('user_achievements')
+    .select('achievement_key, status, progress_percent, unlocked_at, achievements!inner(key, name, description, icon, points, metadata)')
+    .eq('kiosk_user_id', userProfile.kiosk_user_id);
+
   if (error) {
     console.error('Error fetching achievements:', error);
     return [];
   }
-  
-  return data;
+
+  return data || [];
 }
 
 /**

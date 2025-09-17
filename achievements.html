@@ -336,9 +336,8 @@
         }catch(_) {}
         kpiStreak.textContent = streak;
 
-        // Render
-  const isAdmin = ['admin','owner'].includes(String(profileRow?.role || user?.raw_user_meta_data?.role || '').toLowerCase());
-  listEl.innerHTML = rows.map(r => {
+        // Render (read‑only — auto‑awarded via DB triggers)
+        listEl.innerHTML = rows.map(r => {
           const status = r.user?.status || r.status || 'locked';
           const pct = r.user?.progress_percent ?? r.progress_percent ?? (status==='unlocked'?100:0);
           const unlockedAt = r.user?.unlocked_at || r.unlocked_at || null;
@@ -357,46 +356,10 @@
             </div>
             <div class="ach-actions">
               <div class="pr" style="--p:${Math.max(0, Math.min(100, Math.round(pct)))}%"><div class="pr-inner"><span>${Math.round(pct)}%</span></div></div>
-              ${isAdmin ? `<button class=\"btn small primary unlock-btn\" data-key=\"${esc(r.key)}\" ${status==='unlocked'? 'disabled': ''}>${status==='unlocked' ? 'Unlocked' : 'Unlock'}</button>` : ''}
             </div>
           </div>`;
         }).join('');
 
-        // Unlock handler (admin only)
-        listEl.querySelectorAll('.unlock-btn').forEach(btn => {
-          btn.addEventListener('click', async (ev) => {
-            const key = btn.getAttribute('data-key');
-            if (!kioskUserId) { alert('Unable to find your staff record.'); return; }
-            btn.disabled = true; const old = btn.textContent; btn.textContent = 'Saving…';
-            try{
-              // upsert into user_achievements
-              await supabase.from('user_achievements').upsert({
-                kiosk_user_id: kioskUserId, achievement_key: key, status: 'unlocked', progress_percent: 100, unlocked_at: new Date().toISOString()
-              });
-              // reflect UI
-              const card = btn.closest('.ach-card');
-              if (card) {
-                card.dataset.status = 'unlocked';
-                card.classList.add('unlocked');
-                card.classList.remove('locked');
-                const note = card.querySelector('.meta-note strong'); if (note) note.textContent = 'unlocked';
-                const ring = card.querySelector('.pr'); if (ring) ring.style.setProperty('--p','100%');
-                const ringLbl = card.querySelector('.pr-inner span'); if (ringLbl) ringLbl.textContent = '100%';
-                // celebrate
-                const rect = card.getBoundingClientRect();
-                confettiBurst(rect.left + rect.width/2, rect.top + window.scrollY + 10);
-                toast('Achievement unlocked!');
-              }
-              btn.textContent = 'Unlocked';
-              // update KPIs quickly
-              kpiUnlocked.textContent = Number(kpiUnlocked.textContent||'0') + 1;
-            }catch(e){
-              console.error(e);
-              btn.textContent = old; btn.disabled = false;
-              toast('Could not unlock. Try again.');
-            }
-          });
-        });
 
         // Filter (search input removed) - only filter by the segment buttons
         const filterBtns = Array.from(document.querySelectorAll('.seg button'));
