@@ -902,7 +902,7 @@
       try {
         const pdfContent = await window.meetingsManager.exportMeetingToPDF(currentMeetingId);
         
-        // Parse notes to extract structured information
+        // Parse notes to extract structured information - use the actual notes content
         const parsedNotes = parseNotesContent(notes);
         
         // Generate PDF using jsPDF
@@ -917,16 +917,18 @@
         const pageWidth = doc.internal.pageSize.width - (margin * 2);
         let y = margin;
         
-        // Title
+        // Title - use parsed title if available, otherwise fall back to meeting title
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(20);
-        doc.text(pdfContent.title, margin, y);
+        const meetingTitle = parsedNotes.title || pdfContent.title;
+        doc.text(meetingTitle, margin, y);
         y += 30;
         
         // Date and Location
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(12);
-        doc.text('Date: ' + parsedNotes.date || pdfContent.date, margin, y);
+        const meetingDate = parsedNotes.date || pdfContent.date;
+        doc.text('Date: ' + meetingDate, margin, y);
         y += 20;
         doc.text('Location: ' + pdfContent.location, margin, y);
         y += 30;
@@ -963,9 +965,11 @@
           doc.setFontSize(12);
           
           parsedNotes.discussionPoints.forEach((point, index) => {
-            const lines = doc.splitTextToSize((index + 1) + '. ' + point, pageWidth);
+            // Handle multi-line discussion points properly
+            const cleanPoint = point.replace(/\n+/g, ' ').trim();
+            const lines = doc.splitTextToSize((index + 1) + '. ' + cleanPoint, pageWidth);
             doc.text(lines, margin, y);
-            y += lines.length * 20;
+            y += lines.length * 20 + 5; // Add extra spacing between discussion points
           });
           
           y += 10;
@@ -1095,6 +1099,7 @@
     // Parse structured information from meeting notes
     function parseNotesContent(notes) {
       const result = {
+        title: '',
         date: '',
         attendees: [],
         discussionPoints: [],
@@ -1104,14 +1109,20 @@
         otherSections: []
       };
       
+      // Extract meeting title if present
+      const titleMatch = notes.match(/Meeting Title: ([^\n]+)/i);
+      if (titleMatch) {
+        result.title = titleMatch[1].trim();
+      }
+      
       // Extract title and date if present
-      const dateMatch = notes.match(/Date: ([^\n]+)/);
+      const dateMatch = notes.match(/Date: ([^\n]+)/i);
       if (dateMatch) {
         result.date = dateMatch[1].trim();
       }
       
-      // Extract attendees
-      const attendeesMatch = notes.match(/Attendees:([\s\S]*?)(?=\n\n|Main Discussion Points:|Action Items:|Key Decisions|Next Steps:|$)/i);
+      // Extract attendees - look for the pattern after "Attendees:"
+      const attendeesMatch = notes.match(/Attendees:\s*\n([\s\S]*?)(?=\n\s*\n|\nMain Discussion Points:|\nAction Items:|\nKey Decisions|\nNext Steps:|$)/i);
       if (attendeesMatch && attendeesMatch[1]) {
         const attendeeSection = attendeesMatch[1].trim();
         // Look for numbered list (1. Name)
@@ -1122,18 +1133,19 @@
       }
       
       // Extract main discussion points
-      const discussionMatch = notes.match(/Main Discussion Points:([\s\S]*?)(?=\n\n|Action Items:|Key Decisions|Next Steps:|$)/i);
+      const discussionMatch = notes.match(/Main Discussion Points:\s*\n([\s\S]*?)(?=\n\s*\nAction Items:|\n\s*\nKey Decisions|\n\s*\nNext Steps:|$)/i);
       if (discussionMatch && discussionMatch[1]) {
         const discussionSection = discussionMatch[1].trim();
-        // Look for numbered list
-        const discussionList = discussionSection.match(/\d+\.\s+([^\n]+)/g);
-        if (discussionList) {
-          result.discussionPoints = discussionList.map(item => item.replace(/^\d+\.\s+/, '').trim());
-        }
+        // Look for numbered list with potential sub-content
+        const discussionItems = discussionSection.split(/(?=\n\d+\.)/);
+        result.discussionPoints = discussionItems.map(item => {
+          // Clean up the item by removing leading numbers and whitespace
+          return item.replace(/^\n*\d+\.\s*/, '').trim();
+        }).filter(item => item.length > 0);
       }
       
       // Extract action items
-      const actionMatch = notes.match(/Action Items:([\s\S]*?)(?=\n\n|Key Decisions|Next Steps:|$)/i);
+      const actionMatch = notes.match(/Action Items:\s*\n([\s\S]*?)(?=\n\s*\nKey Decisions|\n\s*\nNext Steps:|$)/i);
       if (actionMatch && actionMatch[1]) {
         const actionSection = actionMatch[1].trim();
         // Look for numbered list
@@ -1144,7 +1156,7 @@
       }
       
       // Extract key decisions
-      const decisionsMatch = notes.match(/Key Decisions Made:([\s\S]*?)(?=\n\n|Next Steps:|$)/i);
+      const decisionsMatch = notes.match(/Key Decisions Made:\s*\n([\s\S]*?)(?=\n\s*\nNext Steps:|$)/i);
       if (decisionsMatch && decisionsMatch[1]) {
         const decisionSection = decisionsMatch[1].trim();
         // Look for numbered list
@@ -1155,7 +1167,7 @@
       }
       
       // Extract next steps
-      const nextStepsMatch = notes.match(/Next Steps:([\s\S]*?)(?=\n\n|$)/i);
+      const nextStepsMatch = notes.match(/Next Steps:\s*\n([\s\S]*?)(?=\n\s*\n|$)/i);
       if (nextStepsMatch && nextStepsMatch[1]) {
         const nextStepsSection = nextStepsMatch[1].trim();
         // Look for numbered list
