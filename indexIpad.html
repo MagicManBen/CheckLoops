@@ -1316,16 +1316,26 @@ function stopScanTrollyCycle(){
 
     async function tryPin(p) {
       $('pinMsg').textContent = 'Checking…';
+      console.log('Attempting PIN authentication for site:', S.siteId, 'with PIN:', p);
       try {
         const { data, error } = await sb
           .rpc('authenticate_kiosk_user_with_profiles', {
             p_site_id: S.siteId,
             p_pin: p
           });
+        console.log('Authentication response:', { data, error });
         if (error) { $('pinMsg').textContent = error.message; await glowPinError(500); pin=''; pinDots(0); return; }
         if (!data || !data.length) { $('pinMsg').textContent = 'Invalid PIN'; await glowPinError(500); pin=''; pinDots(0); return; }
 
-        S.staff = { name: data[0].full_name, role: data[0].role || 'staff' };
+        // Store the complete staff information including IDs
+        // Note: authenticate_kiosk_user_with_profiles returns 'id' which is actually kiosk_user_id
+        S.staff = {
+          name: data[0].full_name,
+          role: data[0].role || 'staff',
+          kiosk_user_id: data[0].id,  // The function returns kiosk_user_id as 'id'
+          user_id: data[0].user_id,
+          staff_id: data[0].id  // Use kiosk_user_id as staff_id for submissions
+        };
         $('footerWho').textContent = S.staff.name;
         $('pinMsg').textContent = '';
         // Flash bright green, show welcome popup, then navigate
@@ -1371,28 +1381,36 @@ function stopScanTrollyCycle(){
       return;
   }
   
-  // Now we get the profiles with kiosk_user_id
+  // Get ALL profiles for this site (not just those with kiosk_user_id)
+  console.log('Loading profiles for site:', S.siteId);
   const { data: users, error } = await readClient()
       .from('profiles')
-      .select('kiosk_user_id, full_name')
+      .select('user_id, kiosk_user_id, full_name')
       .eq('site_id', S.siteId)
-      .not('kiosk_user_id', 'is', null)
+      .not('full_name', 'is', null)  // Only get profiles with names
       .order('full_name');
-  
+
+  console.log('Loaded profiles:', users);
   if (error) {
+      console.error('Error loading profiles:', error);
       $('pinSetupMsg').textContent = 'Could not load staff list.';
       return;
   }
-  
+
   if (users && users.length > 0) {
       users.forEach(user => {
           const option = document.createElement('option');
-          option.value = user.kiosk_user_id;
+          // Use user_id as the value (since all profiles have this)
+          option.value = user.user_id;
           option.textContent = user.full_name;
+          // Store kiosk_user_id as data attribute if it exists
+          if (user.kiosk_user_id) {
+              option.setAttribute('data-kiosk-id', user.kiosk_user_id);
+          }
           selectEl.appendChild(option);
       });
   } else {
-      $('pinSetupMsg').textContent = 'No kiosk users found for this site.';
+      $('pinSetupMsg').textContent = 'No staff found for this site.';
   }
 }
 
@@ -1412,11 +1430,11 @@ function stopScanTrollyCycle(){
     $('btnPinSetupSave').addEventListener('click', async () => {
   const msgEl = $('pinSetupMsg');
   msgEl.textContent = 'Saving...';
-  const kioskUserId = $('pinSetupUser').value;
+  const userId = $('pinSetupUser').value;  // This is now the user_id
   const newPin = $('pinSetupNew').value;
   const confirmPin = $('pinSetupConfirm').value;
 
-  if (!kioskUserId) {
+  if (!userId) {
       msgEl.textContent = 'Please select a staff member.';
       return;
   }
@@ -1429,29 +1447,83 @@ function stopScanTrollyCycle(){
       return;
   }
 
-  // First get the user_id for this kiosk_user_id
-  const { data: userData, error: userError } = await sb
-      .from('profiles')
-      .select('user_id')
-      .eq('kiosk_user_id', kioskUserId)
-      .eq('site_id', S.siteId)
-      .single();
+  // First ensure the profile has a kiosk_user_id if it doesn't already
+  const selectedOption = $('pinSetupUser').options[$('pinSetupUser').selectedIndex];
+  let kioskUserId = selectedOption.getAttribute('data-kiosk-id');
+  console.log('Setting PIN for user:', userId, 'existing kiosk_id:', kioskUserId);
 
-  if (userError) {
-      msgEl.textContent = `Error: ${userError.message}`;
-      return;
+  if (!kioskUserId) {
+      // Profile doesn't have a kiosk_user_id yet, we need to create one
+      console.log('No kiosk_user_id found, creating new one...');
+      // Get the next available kiosk_user_id
+      const { data: maxId, error: maxError } = await sb
+          .from('kiosk_users')
+          .select('id')
+          .order('id', { ascending: false })
+          .limit(1);
+
+      kioskUserId = maxId && maxId.length > 0 ? maxId[0].id + 1 : 1000;
+      console.log('New kiosk_user_id will be:', kioskUserId);
+
+      // Get the profile details
+      const { data: profile, error: profileError } = await sb
+          .from('profiles')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('site_id', S.siteId)
+          .single();
+      console.log('Profile details:', profile);
+
+      if (profileError) {
+          msgEl.textContent = `Error getting profile: ${profileError.message}`;
+          return;
+      }
+
+      // Create the kiosk_users entry
+      const { error: kioskError } = await sb
+          .from('kiosk_users')
+          .insert({
+              id: kioskUserId,
+              site_id: S.siteId,
+              full_name: profile.full_name,
+              role: profile.role_detail || profile.role || 'staff',
+              active: profile.active !== false,
+              team_id: profile.team_id,
+              team_name: profile.team_name,
+              reports_to_id: profile.reports_to_id
+          });
+
+      if (kioskError && !kioskError.message.includes('duplicate')) {
+          msgEl.textContent = `Error creating kiosk user: ${kioskError.message}`;
+          return;
+      }
+
+      // Update the profile with the new kiosk_user_id
+      const { error: updateError } = await sb
+          .from('profiles')
+          .update({ kiosk_user_id: kioskUserId })
+          .eq('user_id', userId)
+          .eq('site_id', S.siteId);
+
+      if (updateError) {
+          msgEl.textContent = `Error updating profile: ${updateError.message}`;
+          return;
+      }
   }
 
+  // Now set the PIN using the RPC function
   const { error } = await sb
       .rpc('set_profile_pin', {
-          p_user_id: userData.user_id,
+          p_user_id: userId,
           p_site_id: S.siteId,
           p_pin: newPin
       });
 
   if (error) {
+      console.error('PIN save error:', error);
       msgEl.textContent = `Error: ${error.message}`;
   } else {
+      console.log('PIN saved successfully for user:', userId, 'with kiosk_id:', kioskUserId);
       msgEl.textContent = 'PIN updated successfully!';
       toast('PIN Saved!');
       setTimeout(() => {
@@ -1587,8 +1659,27 @@ function stopScanTrollyCycle(){
       const staffName = S.staff?.name || 'Staff';
 
       const sessionId = (crypto.randomUUID && crypto.randomUUID()) || String(Date.now());
+
+      // Build submission object with proper user/staff linking
+      const submissionData = {
+        site_id: S.siteId,
+        session_id: sessionId,
+        staff_name: staffName
+      };
+
+      // Add staff_id and user_id if available from PIN authentication
+      if (S.staff) {
+        if (S.staff.staff_id) submissionData.staff_id = S.staff.staff_id;
+        if (S.staff.user_id) submissionData.user_id = S.staff.user_id;
+      }
+
+      // Also add submitted_by_user_id from the logged-in user
+      if (S.user && S.user.id) {
+        submissionData.submitted_by_user_id = S.user.id;
+      }
+
       const { data: sub, error: e1 } = await sb.from('submissions')
-        .insert({ site_id: S.siteId, session_id: sessionId, staff_name: staffName })
+        .insert(submissionData)
         .select('id').single();
       if (e1) { $('submitMsg').textContent = e1.message; return; }
       const sid = sub.id;
