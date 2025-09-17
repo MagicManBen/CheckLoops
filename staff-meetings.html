@@ -901,50 +901,292 @@
 
       try {
         const pdfContent = await window.meetingsManager.exportMeetingToPDF(currentMeetingId);
-
+        
+        // Parse notes to extract structured information
+        const parsedNotes = parseNotesContent(notes);
+        
         // Generate PDF using jsPDF
         const { jsPDF } = window.jspdf;
-        const doc = new jsPDF();
+        const doc = new jsPDF({
+          unit: 'pt',
+          format: 'a4',
+          orientation: 'portrait'
+        });
 
+        const margin = 48;
+        const pageWidth = doc.internal.pageSize.width - (margin * 2);
+        let y = margin;
+        
+        // Title
+        doc.setFont('helvetica', 'bold');
         doc.setFontSize(20);
-        doc.text(pdfContent.title, 20, 20);
-
+        doc.text(pdfContent.title, margin, y);
+        y += 30;
+        
+        // Date and Location
+        doc.setFont('helvetica', 'normal');
         doc.setFontSize(12);
-        doc.text('Date: ' + pdfContent.date, 20, 35);
-        doc.text('Location: ' + pdfContent.location, 20, 45);
-
-        doc.setFontSize(14);
-        doc.text('Attendees:', 20, 60);
-        doc.setFontSize(11);
-        let yPos = 70;
-        pdfContent.attendees.forEach(a => {
-          doc.text('• ' + a, 25, yPos);
-          yPos += 7;
+        doc.text('Date: ' + parsedNotes.date || pdfContent.date, margin, y);
+        y += 20;
+        doc.text('Location: ' + pdfContent.location, margin, y);
+        y += 30;
+        
+        // Attendees
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(16);
+        doc.text('Attendees:', margin, y);
+        y += 25;
+        
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(12);
+        
+        // Use parsed attendees if available, otherwise fall back to meeting attendees
+        const attendeesList = parsedNotes.attendees && parsedNotes.attendees.length > 0 
+          ? parsedNotes.attendees 
+          : pdfContent.attendees.map(a => a.replace(/\([^)]*\)/g, '').trim());
+        
+        attendeesList.forEach((attendee, index) => {
+          doc.text((index + 1) + '. ' + attendee, margin, y);
+          y += 20;
         });
+        
+        y += 10;
+        
+        // Main Discussion Points
+        if (parsedNotes.discussionPoints && parsedNotes.discussionPoints.length > 0) {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(16);
+          doc.text('Main Discussion Points:', margin, y);
+          y += 25;
+          
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(12);
+          
+          parsedNotes.discussionPoints.forEach((point, index) => {
+            const lines = doc.splitTextToSize((index + 1) + '. ' + point, pageWidth);
+            doc.text(lines, margin, y);
+            y += lines.length * 20;
+          });
+          
+          y += 10;
+        }
+        
+        // Action Items
+        if (parsedNotes.actionItems && parsedNotes.actionItems.length > 0) {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(16);
+          doc.text('Action Items:', margin, y);
+          y += 25;
+          
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(12);
+          
+          parsedNotes.actionItems.forEach((action, index) => {
+            const lines = doc.splitTextToSize((index + 1) + '. ' + action, pageWidth);
+            doc.text(lines, margin, y);
+            y += lines.length * 20;
+          });
+          
+          y += 10;
+        }
+        
+        // Key Decisions
+        if (parsedNotes.decisions && parsedNotes.decisions.length > 0) {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(16);
+          doc.text('Key Decisions Made:', margin, y);
+          y += 25;
+          
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(12);
+          
+          parsedNotes.decisions.forEach((decision, index) => {
+            const lines = doc.splitTextToSize((index + 1) + '. ' + decision, pageWidth);
+            doc.text(lines, margin, y);
+            y += lines.length * 20;
+          });
+          
+          y += 10;
+        }
+        
+        // Next Steps
+        if (parsedNotes.nextSteps && parsedNotes.nextSteps.length > 0) {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(16);
+          doc.text('Next Steps:', margin, y);
+          y += 25;
+          
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(12);
+          
+          parsedNotes.nextSteps.forEach((step, index) => {
+            const lines = doc.splitTextToSize((index + 1) + '. ' + step, pageWidth);
+            doc.text(lines, margin, y);
+            y += lines.length * 20;
+          });
+          
+          y += 10;
+        }
+        
+        // Check if we need a new page for additional content
+        if (y > doc.internal.pageSize.height - 100) {
+          doc.addPage();
+          y = margin;
+        }
+        
+        // Agenda Items
+        if (pdfContent.agenda && pdfContent.agenda.length > 0) {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(16);
+          doc.text('Agenda Items:', margin, y);
+          y += 25;
+          
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(12);
+          
+          pdfContent.agenda.forEach((item, index) => {
+            const cleanItem = item.replace(/^•\s*/, '');
+            const lines = doc.splitTextToSize(cleanItem, pageWidth);
+            doc.text(lines, margin, y);
+            y += lines.length * 20;
+          });
+          
+          y += 10;
+        }
+        
+        // If there are any other sections in parsedNotes that aren't covered, add them
+        if (parsedNotes.otherSections) {
+          for (const section of parsedNotes.otherSections) {
+            if (section.items && section.items.length > 0) {
+              // Check if we need a new page
+              if (y > doc.internal.pageSize.height - 100) {
+                doc.addPage();
+                y = margin;
+              }
+              
+              doc.setFont('helvetica', 'bold');
+              doc.setFontSize(16);
+              doc.text(section.title, margin, y);
+              y += 25;
+              
+              doc.setFont('helvetica', 'normal');
+              doc.setFontSize(12);
+              
+              section.items.forEach((item, index) => {
+                const lines = doc.splitTextToSize((index + 1) + '. ' + item, pageWidth);
+                doc.text(lines, margin, y);
+                y += lines.length * 20;
+              });
+              
+              y += 10;
+            }
+          }
+        }
 
-        doc.setFontSize(14);
-        doc.text('Agenda Items:', 20, yPos + 10);
-        doc.setFontSize(11);
-        yPos += 20;
-        pdfContent.agenda.forEach(a => {
-          const lines = doc.splitTextToSize(a, 170);
-          doc.text(lines, 25, yPos);
-          yPos += lines.length * 7;
-        });
-
-        doc.setFontSize(14);
-        doc.text('Meeting Notes:', 20, yPos + 10);
-        doc.setFontSize(11);
-        const noteLines = doc.splitTextToSize(pdfContent.notes, 170);
-        doc.text(noteLines, 20, yPos + 20);
-
+        // Save the PDF
         doc.save(`meeting-${currentMeetingId}.pdf`);
-
         alert('✅ PDF generated successfully!');
       } catch (e) {
         console.error(e);
         alert('Error generating PDF');
       }
+    }
+    
+    // Parse structured information from meeting notes
+    function parseNotesContent(notes) {
+      const result = {
+        date: '',
+        attendees: [],
+        discussionPoints: [],
+        actionItems: [],
+        decisions: [],
+        nextSteps: [],
+        otherSections: []
+      };
+      
+      // Extract title and date if present
+      const dateMatch = notes.match(/Date: ([^\n]+)/);
+      if (dateMatch) {
+        result.date = dateMatch[1].trim();
+      }
+      
+      // Extract attendees
+      const attendeesMatch = notes.match(/Attendees:([\s\S]*?)(?=\n\n|Main Discussion Points:|Action Items:|Key Decisions|Next Steps:|$)/i);
+      if (attendeesMatch && attendeesMatch[1]) {
+        const attendeeSection = attendeesMatch[1].trim();
+        // Look for numbered list (1. Name)
+        const attendeesList = attendeeSection.match(/\d+\.\s+([^\n]+)/g);
+        if (attendeesList) {
+          result.attendees = attendeesList.map(item => item.replace(/^\d+\.\s+/, '').trim());
+        }
+      }
+      
+      // Extract main discussion points
+      const discussionMatch = notes.match(/Main Discussion Points:([\s\S]*?)(?=\n\n|Action Items:|Key Decisions|Next Steps:|$)/i);
+      if (discussionMatch && discussionMatch[1]) {
+        const discussionSection = discussionMatch[1].trim();
+        // Look for numbered list
+        const discussionList = discussionSection.match(/\d+\.\s+([^\n]+)/g);
+        if (discussionList) {
+          result.discussionPoints = discussionList.map(item => item.replace(/^\d+\.\s+/, '').trim());
+        }
+      }
+      
+      // Extract action items
+      const actionMatch = notes.match(/Action Items:([\s\S]*?)(?=\n\n|Key Decisions|Next Steps:|$)/i);
+      if (actionMatch && actionMatch[1]) {
+        const actionSection = actionMatch[1].trim();
+        // Look for numbered list
+        const actionList = actionSection.match(/\d+\.\s+([^\n]+)/g);
+        if (actionList) {
+          result.actionItems = actionList.map(item => item.replace(/^\d+\.\s+/, '').trim());
+        }
+      }
+      
+      // Extract key decisions
+      const decisionsMatch = notes.match(/Key Decisions Made:([\s\S]*?)(?=\n\n|Next Steps:|$)/i);
+      if (decisionsMatch && decisionsMatch[1]) {
+        const decisionSection = decisionsMatch[1].trim();
+        // Look for numbered list
+        const decisionList = decisionSection.match(/\d+\.\s+([^\n]+)/g);
+        if (decisionList) {
+          result.decisions = decisionList.map(item => item.replace(/^\d+\.\s+/, '').trim());
+        }
+      }
+      
+      // Extract next steps
+      const nextStepsMatch = notes.match(/Next Steps:([\s\S]*?)(?=\n\n|$)/i);
+      if (nextStepsMatch && nextStepsMatch[1]) {
+        const nextStepsSection = nextStepsMatch[1].trim();
+        // Look for numbered list
+        const nextStepsList = nextStepsSection.match(/\d+\.\s+([^\n]+)/g);
+        if (nextStepsList) {
+          result.nextSteps = nextStepsList.map(item => item.replace(/^\d+\.\s+/, '').trim());
+        }
+      }
+      
+      // Look for any other sections with a colon format
+      const sectionRegex = /([A-Za-z\s]+):([\s\S]*?)(?=\n\n[A-Za-z\s]+:|$)/g;
+      let match;
+      while ((match = sectionRegex.exec(notes)) !== null) {
+        const sectionTitle = match[1].trim();
+        // Skip sections we've already processed
+        if (['Meeting Title', 'Date', 'Attendees', 'Main Discussion Points', 'Action Items', 'Key Decisions Made', 'Next Steps'].includes(sectionTitle)) {
+          continue;
+        }
+        
+        const sectionContent = match[2].trim();
+        // Look for numbered or bulleted list
+        const listItems = sectionContent.match(/(?:\d+\.|•|\*)\s+([^\n]+)/g);
+        if (listItems && listItems.length > 0) {
+          result.otherSections.push({
+            title: sectionTitle,
+            items: listItems.map(item => item.replace(/(?:\d+\.|•|\*)\s+/, '').trim())
+          });
+        }
+      }
+      
+      return result;
     }
 
     // Handle recording upload
