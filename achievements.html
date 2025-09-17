@@ -61,12 +61,12 @@
 
     /* Responsive tweaks to prevent overlap at tight widths */
     @media (max-width: 480px){
-      .ach-card{ grid-template-columns:56px 1fr; grid-template-rows:auto auto auto; grid-template-areas: "ico pts" "ico meta" "ico actions"; }
+      .ach-card{ grid-template-columns:56px 1fr; grid-template-rows:auto auto; grid-template-areas: "ico meta" "ico actions"; }
       .ach-actions{ justify-content:flex-start; }
     }
 
   /* Cards */
-  .ach-card{ position:relative; padding:18px; border-radius:16px; background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(2,6,23,0.04)); box-shadow:0 6px 18px rgba(2,6,23,.08); border:1px solid rgba(2,6,23,.06); display:grid; grid-template-columns:64px 1fr auto; grid-template-rows:auto auto; grid-template-areas:"ico meta pts" "ico meta actions"; column-gap:16px; row-gap:10px; align-items:start; transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease; min-height:120px; color: #eaf4ff; }
+  .ach-card{ position:relative; padding:18px; border-radius:16px; background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(2,6,23,0.04)); box-shadow:0 6px 18px rgba(2,6,23,.08); border:1px solid rgba(2,6,23,.06); display:grid; grid-template-columns:64px 1fr auto; grid-template-rows:auto auto; grid-template-areas:"ico meta actions" "ico meta actions"; column-gap:16px; row-gap:10px; align-items:start; transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease; min-height:120px; color: #eaf4ff; }
   .ach-card:hover{ transform:translateY(-2px); box-shadow:0 10px 28px rgba(2,6,23,.14); }
   .ach-card.unlocked{ border-color:rgba(99,102,241,.38); box-shadow:0 10px 28px rgba(99,102,241,.12); background: linear-gradient(135deg, rgba(255,255,255,0.03), rgba(99,102,241,.03)); }
   .ach-ico{ width:64px; height:64px; border-radius:16px; display:grid; place-items:center; font-weight:700; font-size:28px; color:#eaf4ff; border:1px solid rgba(2,6,23,.06); grid-area: ico; }
@@ -81,9 +81,7 @@
   /* Actions float to the right to avoid overlap with badges */
   .ach-actions{ grid-area: actions; display:flex; gap:12px; align-items:center; justify-content:flex-end; }
 
-    /* Points ribbon */
-  /* points badge sits in its own grid cell (top-right) */
-  .pts{ grid-area: pts; justify-self:end; align-self:start; background:linear-gradient(135deg, var(--brand), var(--brand-2)); color:#fff; font-weight:700; font-size:12px; padding:6px 10px; border-radius:999px; opacity:.98; box-shadow: 0 6px 18px rgba(99,102,241,.18); }
+  /* Points removed from achievement system */
 
     /* Progress ring */
   .pr{ width:56px; height:56px; border-radius:50%; background:conic-gradient(var(--brand) var(--p,0%), var(--ring-bg) 0); padding:4px; display:grid; place-items:center; box-shadow:inset 0 0 0 1px rgba(2,6,23,.06); }
@@ -126,8 +124,7 @@
       <div class="pill" id="site-pill">Site: —</div>
       <div class="pill" id="email-pill">—</div>
       <div class="pill" id="role-pill">—</div>
-  
-  <button class="btn" id="logout-btn">Sign Out</button>
+      <button class="btn" id="logout-btn">Sign Out</button>
     </div>
 
     <section class="panel g-12" style="margin:0; padding: 24px;">
@@ -153,8 +150,6 @@
             <div class="meter" aria-hidden="true"><i id="ach-meter"></i></div>
             <div class="ach-kpis" style="margin-top:8px;">
               <div class="kpi"><span id="ach-unlocked">0</span>/<span id="ach-total">0</span> unlocked</div>
-              <div class="kpi"><span id="ach-streak">0</span> day streak</div>
-              <div class="kpi"><span id="ach-points">0</span> pts</div>
             </div>
           </div>
         </div>
@@ -177,6 +172,8 @@
   <script type="module">
     import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, attachLogout, fmtDate } from './staff-common.js';
     const supabase = await initSupabase();
+    // Make supabase available globally for Admin Portal button
+    window.supabase = supabase;
     handleAuthState(supabase);
     navActivate('achievements');
     attachLogout(supabase);
@@ -282,8 +279,6 @@
       const meter = $('#ach-meter');
       const kpiUnlocked = $('#ach-unlocked');
       const kpiTotal = $('#ach-total');
-      const kpiPoints = $('#ach-points');
-      const kpiStreak = $('#ach-streak');
 
       loading.style.display='block'; listEl.style.display='none'; empty.style.display='none';
 
@@ -313,41 +308,21 @@
         const total = rows.length;
         const unlockedRows = rows.filter(r => (r.user?.status || r.status) === 'unlocked');
         const unlocked = unlockedRows.length;
-        const totalPts = rows.reduce((a,r)=>a + (r.points||0), 0);
-        const unlockedPts = unlockedRows.reduce((a,r)=>a + (r.points||0), 0);
-        kpiUnlocked.textContent = unlocked; kpiTotal.textContent = total; kpiPoints.textContent = unlockedPts;
-        const pctOverall = totalPts ? Math.round((unlockedPts/totalPts)*100) : 0;
+        kpiUnlocked.textContent = unlocked;
+        kpiTotal.textContent = total;
+        const pctOverall = total ? Math.round((unlocked/total)*100) : 0;
         meter.style.width = pctOverall + '%';
-
-        // crude streak if present
-        let streak = 0;
-        try{
-          const { data: sdata } = await supabase.from('daily_activity').select('day,submitted').eq('user_id', user.id).order('day', { ascending:false }).limit(14);
-          const days = (sdata||[]).map(r => [r.day, !!r.submitted]);
-          let d = new Date();
-          for (let i=0;i<14;i++){
-            const iso = d.toISOString().slice(0,10);
-            const found = days.find(x => String(x[0]).startsWith(iso));
-            if (found && found[1]) streak++;
-            else if (i===0) { /* allow today to be empty */ }
-            else break;
-            d.setDate(d.getDate()-1);
-          }
-        }catch(_) {}
-        kpiStreak.textContent = streak;
 
         // Render (read‑only — auto‑awarded via DB triggers)
         listEl.innerHTML = rows.map(r => {
           const status = r.user?.status || r.status || 'locked';
           const pct = r.user?.progress_percent ?? r.progress_percent ?? (status==='unlocked'?100:0);
           const unlockedAt = r.user?.unlocked_at || r.unlocked_at || null;
-          const pts = r.points || 0;
           const cat = (r.metadata && r.metadata.category) ? String(r.metadata.category).toLowerCase() : '';
-          const catCls = cat === 'streak' ? 'cat-streak' : cat === 'behavior' ? 'cat-behavior' : 'cat-milestone';
+          const catCls = cat === 'behavior' ? 'cat-behavior' : 'cat-milestone';
           const lockedCls = (status !== 'unlocked') ? 'locked' : 'unlocked';
           const ico = iconMap[r.icon] || r.icon || '🏆';
           return `<div class="ach-card ${lockedCls}" data-key="${esc(r.key)}" data-status="${status}" data-title="${esc(r.name)} ${esc(r.description||'')}">
-            <span class="pts">${pts} pts</span>
             <div class="ach-ico ${catCls}">${esc(ico)}</div>
             <div class="ach-meta">
               <div class="title">${esc(r.name)}</div>

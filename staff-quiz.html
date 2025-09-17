@@ -473,8 +473,8 @@
       <div class="spacer"></div>
       <div class="pill" id="site-pill">Site: —</div>
       <div class="pill" id="email-pill">—</div>
-  <div class="pill" id="role-pill">—</div>
-  <button class="btn" id="logout-btn">Sign Out</button>
+      <div class="pill" id="role-pill">—</div>
+      <button class="btn" id="logout-btn">Sign Out</button>
     </div>
 
     <!-- Quiz Content Panel -->
@@ -577,6 +577,8 @@
     
     // Initialize Supabase
     const supabase = await initSupabase();
+    // Make supabase available globally for Admin Portal button
+    window.supabase = supabase;
     handleAuthState(supabase);
     navActivate('quiz');
 
@@ -1092,13 +1094,70 @@
               score_percent: scorePercent
             };
             console.log('💾 submitQuiz: Practice insert data:', insertData);
-            
+
+            // Check if this will be the user's first practice quiz BEFORE inserting
+            let isFirstPracticeQuiz = false;
+            try {
+              const { data: existingPractices, error: checkError } = await supabase
+                .from('quiz_practices')
+                .select('id')
+                .eq('user_id', currentUser.id)
+                .limit(1);
+
+              isFirstPracticeQuiz = !checkError && (!existingPractices || existingPractices.length === 0);
+              console.log('💾 Is first practice quiz?', isFirstPracticeQuiz);
+            } catch (err) {
+              console.warn('Could not check for existing practice quizzes:', err);
+            }
+
             const { data, error } = await supabase.from('quiz_practices').insert(insertData);
-            
+
             if (error) {
               console.error('💾 submitQuiz: Error saving practice quiz:', error);
             } else {
               console.log('💾 submitQuiz: Practice quiz saved successfully:', data);
+
+              // If this was their first practice quiz, unlock the achievement
+              if (isFirstPracticeQuiz) {
+                try {
+                  console.log('🏆 First practice quiz detected! Unlocking achievement...');
+
+                  // Get user's kiosk_user_id
+                  const { data: profileData } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('user_id', currentUser.id)
+                    .single();
+
+                  if (profileData && profileData.kiosk_user_id) {
+                    // Use kiosk_user_id from profile
+                    const kioskUserId = profileData.kiosk_user_id;
+                    console.log('Using kiosk_user_id from profile:', kioskUserId);
+
+                    if (kioskUserId) {
+                      // Unlock the achievement
+                      await supabase
+                        .from('user_achievements')
+                        .upsert({
+                          kiosk_user_id: kioskUserId,
+                          achievement_key: 'first_practice_quiz',
+                          status: 'unlocked',
+                          progress_percent: 100,
+                          unlocked_at: new Date().toISOString()
+                        }, {
+                          onConflict: 'kiosk_user_id,achievement_key'
+                        });
+                      console.log('✅ First Practice Quiz achievement unlocked!');
+
+                      // Show a toast notification
+                      showToast('🏆 Achievement Unlocked: Practice Makes Perfect!');
+                    }
+                  }
+                } catch (achievementError) {
+                  console.warn('Failed to check/unlock practice quiz achievement:', achievementError);
+                  // Don't block the quiz submission if achievement fails
+                }
+              }
             }
           } catch (err) {
             console.error('💾 submitQuiz: Exception saving practice quiz:', err);
@@ -1134,6 +1193,44 @@
       }
     }
     
+    // Show toast notification
+    function showToast(message, duration = 3000) {
+      const existingToast = document.querySelector('.achievement-toast');
+      if (existingToast) {
+        existingToast.remove();
+      }
+
+      const toast = document.createElement('div');
+      toast.className = 'achievement-toast';
+      toast.textContent = message;
+      toast.style.cssText = `
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%) translateY(100px);
+        background: linear-gradient(135deg, #6366f1, #22d3ee);
+        color: white;
+        padding: 16px 24px;
+        border-radius: 12px;
+        font-weight: 600;
+        z-index: 10000;
+        transition: transform 0.3s ease;
+        box-shadow: 0 10px 30px rgba(99, 102, 241, 0.3);
+      `;
+      document.body.appendChild(toast);
+
+      // Animate in
+      requestAnimationFrame(() => {
+        toast.style.transform = 'translateX(-50%) translateY(0)';
+      });
+
+      // Remove after duration
+      setTimeout(() => {
+        toast.style.transform = 'translateX(-50%) translateY(100px)';
+        setTimeout(() => toast.remove(), 300);
+      }, duration);
+    }
+
     // Show results
     function showResults(correct, total, percentage) {
       document.getElementById('quiz-active').classList.add('hidden');
@@ -1197,16 +1294,16 @@
     requireStaffSession(supabase).then(async ({ session, profileRow }) => {
       currentUser = session.user;
       currentProfile = profileRow;
-      
+
       // Set topbar info
       const siteId = profileRow?.site_id;
       const siteText = siteId ? await getSiteText(supabase, siteId) : null;
-      setTopbar({ 
-        siteText, 
-        email: session.user.email, 
-        role: profileRow?.role || 'Staff' 
+      setTopbar({
+        siteText,
+        email: session.user.email,
+        role: profileRow?.role || 'Staff'
       });
-      
+
       // Set up logout handler using staff-common function
       const { attachLogout } = await import('./staff-common.js');
       attachLogout(supabase);

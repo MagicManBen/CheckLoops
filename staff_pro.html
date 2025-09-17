@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CheckLoop — Staff</title>
+
+  <!-- Fonts & Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+  <!-- App Config & Libs kept for compatibility -->
+  <script src="config.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <style>
+    :root{
+      --bg: #0b1020;
+      --panel: #0f172a;
+      --card: #0e1530;
+      --muted: #93a4c5;
+      --text: #e6edf6;
+      --border: #1f2a44;
+      --ring-1: #60a5fa;
+      --ring-2: #a78bfa;
+      --brand-1: #6366f1;
+      --brand-2: #22d3ee;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --success: #16a34a;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body{
+      margin:0;
+      font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background:
+        radial-gradient(1200px 600px at 20% -10%, rgba(99,102,241,.20), transparent 60%),
+        radial-gradient(900px 500px at 90% 0%, rgba(34,211,238,.18), transparent 55%),
+        linear-gradient(180deg, #0b0f1f 0%, #0a0e1c 100%);
+      color: var(--text);
+    }
+    a{ color: inherit; text-decoration: none; }
+    img{ display:block; }
+
+    /* Layout */
+    .content{
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    .panel{
+      background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01));
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 12px 40px rgba(2, 6, 23, .25);
+    }
+
+    /* Topbar */
+    .topbar{
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display:flex;
+      align-items:center;
+      gap: 12px;
+      padding: 12px 14px;
+      backdrop-filter: saturate(160%) blur(10px);
+      background: linear-gradient(180deg, rgba(14,21,48,.88), rgba(14,21,48,.65));
+      border: 1px solid var(--border);
+      border-radius: 14px;
+    }
+    .brand{
+      display:flex; align-items:center; gap:10px; font-weight:800; letter-spacing:.4px;
+    }
+    .brand-mark{
+      width: 34px; height: 34px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--brand-1), var(--brand-2));
+      box-shadow: 0 6px 18px rgba(34,211,238,.35), inset 0 0 8px rgba(255,255,255,.15);
+    }
+    .seg-nav{ display:flex; gap: 8px; }
+    .seg-nav a{
+      font-weight:600; font-size:14px; padding: 8px 10px; border-radius:10px;
+      border:1px solid transparent; opacity:.85;
+    }
+    .seg-nav a:hover{ opacity:1; background: rgba(255,255,255,.04); border-color: var(--border); }
+    .spacer{ flex:1; }
+    .pill{
+      border:1px solid var(--border);
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      color: var(--muted);
+      background: rgba(255,255,255,.02);
+    }
+    .btn{
+      background: linear-gradient(135deg, var(--brand-1), var(--brand-2));
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 8px 22px rgba(34,211,238,.25);
+    }
+    .btn:hover{ transform: translateY(-1px); }
+
+    /* Hero */
+    .hero{
+      display:flex; align-items:center; gap: 18px; padding: 18px;
+    }
+    .ring{
+      --size: 120px;
+      position: relative;
+      width: var(--size); height: var(--size);
+      border-radius: 50%;
+      display:grid; place-items:center;
+      background:
+        conic-gradient(from 210deg, var(--ring-1) 0deg, var(--ring-2) 300deg, rgba(255,255,255,.14) 300deg);
+      padding: 8px;
+      box-shadow: 0 10px 30px rgba(99, 102, 241, .35), inset 0 0 18px rgba(255,255,255,.06);
+    }
+    .ring::after{
+      content:''; position:absolute; inset:10px; border-radius:50%;
+      background: linear-gradient(180deg, #0e1530, #0b1228);
+      border: 1px solid var(--border);
+    }
+    #ring-avatar{
+      position: relative; z-index:1;
+      width: 82px; height: 82px; border-radius: 50%;
+      object-fit: cover; background: #0b1120;
+      border:1px solid var(--border);
+      box-shadow: 0 8px 20px rgba(2,6,23,.35);
+    }
+    .subtitle{ color: var(--muted); font-weight:700; letter-spacing: .3px; }
+    .h1{ font-size: 28px; font-weight: 900; line-height:1.15; }
+
+    /* Quick Actions */
+    .bubble-actions{ display:flex; gap:12px; flex-wrap:wrap; }
+    .bubble{
+      display:flex; flex-direction:column; align-items:center; gap:10px;
+      min-width: 110px;
+      padding: 14px 12px;
+      border-radius: 16px;
+      border:1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
+      box-shadow: 0 10px 26px rgba(2,6,23,.25);
+      text-align:center;
+      transition: transform .12s ease;
+    }
+    .bubble:hover{ transform: translateY(-2px); }
+    .bubble .i{
+      width: 46px; height: 46px; border-radius: 12px;
+      display:grid; place-items:center;
+      background: linear-gradient(135deg, rgba(99,102,241,.22), rgba(34,211,238,.20));
+      border: 1px solid var(--border);
+    }
+    .bubble .i img{ width: 28px; height: 28px; }
+    .bubble .t{ font-weight:700; font-size: 13px; }
+    .disabled-bubble{ cursor:not-allowed; opacity:.65; }
+
+    /* Progress */
+    .progress-wrap{ padding: 0 8px 6px; }
+    .progress{
+      height: 10px; border-radius: 999px; overflow:hidden;
+      background: rgba(255,255,255,.06); border: 1px solid var(--border);
+    }
+    .bar{ height:100%; width: 0%; background: linear-gradient(90deg, var(--ring-1), var(--ring-2)); }
+
+    /* Grid */
+    .tile-grid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    @media (max-width: 900px){
+      .hero{ flex-direction: column; align-items:flex-start; }
+      .tile-grid{ grid-template-columns: 1fr; }
+    }
+
+    .tile{ padding: 14px; }
+    .panel-header{ display:flex; align-items:center; gap:10px; padding: 8px 6px 10px; }
+    .panel-title{ font-weight: 800; letter-spacing:.2px; }
+    .illus-circle{ width: 36px; height: 36px; border-radius: 50%;
+      display:grid; place-items:center;
+      background: linear-gradient(180deg, rgba(99,102,241,.18), rgba(34,211,238,.15));
+      border: 1px solid var(--border);
+    }
+    .illus-circle img{ width: 22px; height: 22px; }
+
+    /* Timeline (Recent Activity) */
+    .timeline{
+      display:grid; gap: 10px; padding: 2px 4px 12px;
+    }
+    .t-item{
+      display:grid; grid-template-columns: 140px 1fr auto; gap: 10px; align-items:center;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border:1px solid var(--border);
+      background: rgba(255,255,255,.02);
+    }
+    .t-item .muted{ color: var(--muted); font-size: 12px; }
+    .pill.inline{
+      padding: 4px 8px; font-size: 12px;
+    }
+    @media (max-width:700px){
+      .t-item{ grid-template-columns: 1fr; gap:6px; }
+    }
+
+    /* Achievements (reusing class names for script compatibility) */
+    .ach-grid{ display:grid; gap: 10px; }
+    .ach{
+      display:flex; gap: 10px; align-items:center;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.02);
+      transition: transform .12s ease;
+    }
+    .ach:hover{ transform: translateY(-2px); }
+    .ach .ico{ width: 46px; height:46px; border-radius: 10px; display:grid; place-items:center; background: rgba(255,255,255,.06); border:1px solid var(--border); }
+    .ach .ico img{ width: 26px; height: 26px; }
+    .ach .name{ font-weight:700; }
+    .ach .desc{ color: var(--muted); font-size: 12px; }
+
+    .empty, .muted{ color: var(--muted); }
+
+    /* Quiz alert kept but simplified for a cleaner, professional look */
+    .quiz-alert{
+      display:none;
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(245,158,11,.18), rgba(245,158,11,.12));
+      border-radius: 14px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .quiz-alert-content{ display:flex; align-items:center; gap:12px; }
+    .quiz-alert-title{ font-weight: 900; }
+    .quiz-alert-btn{
+      margin-left:auto;
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-weight:700;
+      background: rgba(255,255,255,.06);
+    }
+
+    /* Footer */
+    .footer{
+      text-align:center; font-size:12px; color: var(--muted); padding: 12px 0 4px;
+    }
+
+    /* Focus states */
+    :focus-visible{ outline: 2px dashed rgba(99,102,241,.8); outline-offset: 2px; border-radius: 8px; }
+
+  </style>
+</head>
+<body>
+  <main class="content">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"></div>
+        <div>CheckLoop</div>
+      </div>
+      <nav class="nav seg-nav" aria-label="Primary">
+        <!-- Navigation will be rendered by staff-common.js -->
+      </nav>
+      <div class="spacer"></div>
+      <div class="pill" id="site-pill" aria-live="polite">Site: —</div>
+      <div class="pill" id="email-pill" aria-live="polite">—</div>
+      <div class="pill" id="role-pill" aria-live="polite">—</div>
+      <button class="btn" id="logout-btn">Sign Out</button>
+    </header>
+
+    <section class="panel" style="margin-top:14px; overflow:hidden;">
+      <!-- Quiz Due Alert -->
+      <div id="quiz-alert" class="quiz-alert" role="status" aria-live="polite">
+        <div class="quiz-alert-content">
+          <div class="illus-circle" aria-hidden="true"><img data-i8="brain" data-i8-size="48" alt=""></div>
+          <div>
+            <div class="quiz-alert-title">Weekly Quiz</div>
+            <div class="muted" id="quiz-alert-message">Complete your required knowledge check</div>
+          </div>
+          <a href="staff-quiz.html" class="quiz-alert-btn" aria-label="Take Quiz">Take Quiz</a>
+        </div>
+      </div>
+
+      <div class="hero">
+        <div class="ring" id="compliance-ring" title="Training compliance">
+          <img id="ring-avatar" alt="Avatar" />
+        </div>
+
+        <div style="min-width:220px">
+          <div class="subtitle" id="site-subtitle"></div>
+          <div class="h1" id="welcome">Welcome</div>
+        </div>
+
+        <div class="spacer"></div>
+
+        <div class="bubble-actions" aria-label="Quick actions">
+          <a class="bubble" href="staff-scans.html">
+            <div class="i"><img data-i8="document" data-i8-size="48" alt="My Scans"/></div>
+            <div class="t">My Scans</div>
+          </a>
+          <a class="bubble" href="staff-training.html">
+            <div class="i"><img data-i8="graduation-cap" data-i8-size="48" alt="Training"/></div>
+            <div class="t">Training</div>
+          </a>
+          <div class="bubble disabled-bubble" title="Coming Soon" onclick="handleHolidaysClick()">
+            <div class="i"><img data-i8="calendar" data-i8-size="48" alt="My Holidays"/></div>
+            <div class="t">My Holidays</div>
+          </div>
+          <a class="bubble" href="staff-quiz.html" id="quiz-bubble">
+            <div class="i"><img data-i8="puzzle" data-i8-size="48" alt="Quiz"/></div>
+            <div class="t">Quiz</div>
+          </a>
+        </div>
+      </div>
+
+      <div class="progress-wrap" aria-label="Training progress">
+        <div class="progress">
+          <div id="training-progress-bar" class="bar" style="width:0%"></div>
+        </div>
+        <div id="training-progress-label" class="muted" style="text-align:right; margin-top:4px;">0% Training</div>
+      </div>
+
+      <div class="tile-grid">
+        <div class="tile panel">
+          <div class="panel-header">
+            <div class="illus-circle"><img data-i8="medal" alt="Achievements"></div>
+            <div class="panel-title">Achievements</div>
+          </div>
+          <div class="ach-grid" id="achievements-grid"></div>
+          <div id="no-achievements" class="muted" style="display:none; padding:18px; text-align:center; font-size:14px;">No achievements yet.</div>
+        </div>
+
+        <div class="tile panel">
+          <div class="panel-header">
+            <div class="illus-circle"><img data-i8="time-machine" alt="Recent Activity"></div>
+            <div class="panel-title">Recent Activity</div>
+          </div>
+          <div id="recent-scans-loading" style="padding:10px; text-align:center;">Loading…</div>
+          <div class="timeline" id="timeline" style="display:none;"></div>
+          <div id="recent-scans-empty" class="empty" style="display:none">No activity yet.</div>
+        </div>
+      </div>
+    </section>
+
+    <div class="footer">© CheckLoop • Staff</div>
+  </main>
+
+  <!-- Page logic preserved from original page for seamless compatibility -->
+  <script type="module">
+  import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, setRing, fmtDate, getUserAchievements, upsertAchievement, clearAuthData, computeCompliance } from './staff-common.js';
+
+    // Holidays click handler (unchanged for compatibility)
+    window.handleHolidaysClick = async function() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) { alert('Please sign in to access My Holidays.'); return; }
+
+        const { data: userData, error } = await supabase
+          .from('kiosk_users')
+          .select('holiday_approved')
+          .eq('user_id', session.user.id)
+          .single();
+
+        if (error) { console.error('Error checking holiday approval:', error); alert('Unable to check holiday access. Please try again later.'); return; }
+
+        if (userData && userData.holiday_approved === true) {
+          window.location.href = 'my-holidays.html';
+        } else {
+          alert('Your holiday entitlement is awaiting admin approval. Please check back later or contact your admin.');
+        }
+      } catch (error) {
+        console.error('Error in handleHolidaysClick:', error);
+        alert('An error occurred. Please try again.');
+      }
+    };
+
+    const supabase = await initSupabase();
+    window.supabase = supabase;
+    handleAuthState(supabase);
+    navActivate('home');
+
+    let isLoggingOut = false;
+    function cleanupAndRedirect() {
+      try { clearAuthData(true); } catch(_) {}
+      try { sessionStorage.clear(); } catch(_) {}
+      try { document.cookie.split(';').forEach(c => document.cookie = c.replace(/^ +/, '').replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`)); } catch(_) {}
+      window.location.replace('home.html?_=' + Date.now());
+    }
+    async function forceLogout() {
+      if (isLoggingOut) return;
+      isLoggingOut = true;
+      try { const { data } = await supabase.auth.getSession(); if (data?.session) await supabase.auth.signOut(); } catch (e) { console.error('Supabase signOut failed:', e); }
+      cleanupAndRedirect();
+    }
+    document.getElementById('logout-btn').addEventListener('click', async (e) => { e.preventDefault(); e.stopPropagation(); await forceLogout(); });
+
+    requireStaffSession(supabase).then(async ({ session, profileRow }) => {
+      await loadDashboard(session.user, profileRow);
+
+      // Check holiday approval status and update button
+      try {
+        const { data: userData, error } = await supabase
+          .from('kiosk_users')
+          .select('holiday_approved')
+          .eq('user_id', session.user.id)
+          .single();
+
+        if (!error && userData) {
+          const holidayBubble = document.querySelector('.disabled-bubble[onclick*="handleHolidaysClick"]');
+          if (holidayBubble) {
+            if (userData.holiday_approved === true) {
+              const newLink = document.createElement('a');
+              newLink.className = 'bubble';
+              newLink.href = 'my-holidays.html';
+              newLink.innerHTML = \`
+                <div class="i"><img data-i8="calendar" data-i8-size="48" alt="My Holidays"/></div>
+                <div class="t">My Holidays</div>
+              \`;
+              holidayBubble.parentNode.replaceChild(newLink, holidayBubble);
+            } else {
+              holidayBubble.title = 'Awaiting admin approval';
+              const textEl = holidayBubble.querySelector('.t');
+              if (textEl) {
+                textEl.innerHTML = 'My Holidays<br><small style="font-size: 10px; opacity: 0.7;">(Pending Approval)</small>';
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error checking holiday approval status:', error);
+      }
+
+      const role = (profileRow?.role || session.user?.raw_user_meta_data?.role || '').toLowerCase();
+      if (role === 'admin' || role === 'owner') {
+        const adminPanel = document.getElementById('admin-access-panel');
+        if (adminPanel) adminPanel.style.display = 'block';
+      }
+    }).catch(e => {
+      if (String(e.message).includes('NO_SESSION')) { window.location.replace('home.html'); return; }
+      if (String(e.message).includes('NOT_STAFF')) { window.location.replace('home.html'); return; }
+      console.error(e);
+    });
+
+    async function loadDashboard(user, profileRow){
+      let displayName = profileRow?.full_name || user?.raw_user_meta_data?.full_name || (user?.email?.split('@')[0]) || 'Staff Member';
+      try{
+        const { data: nickRow } = await supabase.from('profiles').select('nickname').eq('user_id', user.id).maybeSingle();
+        if (nickRow?.nickname) displayName = nickRow.nickname;
+      }catch(_){/* ignore */}
+
+      const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
+      const role = profileRow?.role || user?.raw_user_meta_data?.role || 'Staff';
+      const roleDetail = role.charAt(0).toUpperCase() + role.slice(1);
+
+      document.getElementById('welcome').textContent = \`Welcome, \${displayName}\`;
+
+      await checkQuizStatus(user, profileRow);
+
+      try {
+        let avatarUrl = null;
+        try {
+          const { data: p } = await supabase.from('profiles').select('avatar_url').eq('user_id', user.id).maybeSingle();
+          if (p?.avatar_url) avatarUrl = p.avatar_url;
+        } catch(e) { console.warn('Avatar from profiles err:', e); }
+
+        if (!avatarUrl) {
+          try {
+            if (siteId) {
+              const { data: saw } = await supabase
+                .from('staff_app_welcome')
+                .select('avatar_url, updated_at')
+                .eq('user_id', user.id)
+                .eq('site_id', siteId)
+                .order('updated_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              if (saw?.avatar_url) avatarUrl = saw.avatar_url;
+            }
+          } catch(e) { console.warn('Avatar from staff_app_welcome err:', e); }
+        }
+
+        if (!avatarUrl) {
+          const { data: { user: refreshedUser } } = await supabase.auth.getUser();
+          avatarUrl = refreshedUser?.user_metadata?.avatar_url || user?.raw_user_meta_data?.avatar_url || null;
+        }
+
+        const img = document.getElementById('ring-avatar');
+        if (img && avatarUrl) {
+          const cacheBuster = new Date().getTime();
+          const sep = avatarUrl.includes('?') ? '&' : '?';
+          img.src = \`\${avatarUrl}\${sep}v=\${cacheBuster}\`;
+          img.style.objectFit = 'cover';
+        }
+      } catch(_){}
+
+      setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: roleDetail });
+      if (!siteId){ document.getElementById('site-subtitle').textContent = 'Your staff dashboard'; }
+
+      let valid = 0, due = 0, total = 0, ringPct = 0;
+      try{
+        try {
+          const agg = await supabase.from('v_submission_summary').select('valid_count,due_count,total_count').eq('site_id', siteId).eq('staff_name', displayName).maybeSingle();
+          if (!agg.error && agg.data) {
+            valid = Number(agg.data.valid_count || 0);
+            due = Number(agg.data.due_count || 0);
+            total = Number(agg.data.total_count || 0);
+          }
+        } catch(_) {}
+
+        if (!total) {
+          try {
+            const tRes = await supabase.from('v_submission_detail').select('id', { head: true, count: 'exact' }).eq('site_id', siteId).eq('staff_name', displayName);
+            if (!tRes.error) total = Number(tRes.count || 0);
+          } catch(_){}
+          try {
+            const vRes = await supabase.from('v_submission_detail').select('id', { head: true, count: 'exact' }).eq('site_id', siteId).eq('staff_name', displayName).in('check_value', ['Valid','OK','Pass','Good','Yes']);
+            if (!vRes.error) valid = Number(vRes.count || 0);
+          } catch(_){}
+          due = Math.max(0, total - valid);
+        }
+
+        if (profileRow?.training_compliance_pct != null) {
+          ringPct = Math.round(Number(profileRow.training_compliance_pct));
+        } else if (profileRow?.training_percent != null) {
+          ringPct = Math.round(Number(profileRow.training_percent));
+        } else {
+          try {
+            if (siteId) {
+              const [{ data: types, error: typesErr }, { data: recs, error: recsErr }] = await Promise.all([
+                supabase.from('training_types').select('id, validity_months, active').eq('site_id', siteId).eq('active', true),
+                supabase.from('training_records').select('*').eq('site_id', siteId).or(\`user_id.eq.\${user.id},staff_id.eq.\${user.id}\`)
+              ]);
+              if (!typesErr && types && types.length) {
+                const comp = computeCompliance(types, recs || [], new Date());
+                ringPct = comp.percent || 0;
+              } else {
+                ringPct = total ? Math.round((valid / total) * 100) : 0;
+              }
+            } else {
+              ringPct = total ? Math.round((valid / total) * 100) : 0;
+            }
+          } catch (_){
+            ringPct = total ? Math.round((valid / total) * 100) : 0;
+          }
+        }
+      } catch(e){
+        console.error('Error loading metrics', e);
+      }
+
+      try {
+        const bar = document.getElementById('training-progress-bar');
+        const lbl = document.getElementById('training-progress-label');
+        if (bar) bar.style.width = \`\${ringPct}%\`;
+        if (lbl) lbl.textContent = \`\${ringPct}% Training\`;
+      } catch(_){}
+
+      const kioskUserId = profileRow?.kiosk_user_id;
+
+      try{
+        const achGrid = document.getElementById('achievements-grid');
+        const noAchievements = document.getElementById('no-achievements');
+
+        const existing = (kioskUserId) ? (await getUserAchievements(supabase, kioskUserId)) : [];
+        const unlockedAchievements = (existing || []).filter(a => a.status === 'unlocked');
+
+        const achievementDetails = {
+          'onboarding_completion': { name: 'Onboarding Complete', desc: 'Successfully completed the onboarding process!', icon: 'trophy' },
+          'first_practice_quiz': { name: 'Practice Makes Perfect', desc: 'Completed your first practice quiz!', icon: 'star' },
+          'first_training_upload': { name: 'Training Champion', desc: 'Uploaded your first training record!', icon: 'certificate' }
+        };
+
+        const viewedAchievements = JSON.parse(localStorage.getItem('viewedAchievements') || '[]');
+        const newAchievements = unlockedAchievements
+          .map(a => a.achievement_key)
+          .filter(key => !viewedAchievements.includes(key));
+
+        achGrid.innerHTML = '';
+        if (unlockedAchievements.length === 0) {
+          noAchievements.style.display = 'block';
+          achGrid.style.display = 'none';
+        } else {
+          noAchievements.style.display = 'none';
+          achGrid.style.display = 'grid';
+
+          unlockedAchievements.forEach(achievement => {
+            const key = achievement.achievement_key;
+            const details = achievementDetails[key] || { name: 'Achievement', desc: 'You unlocked an achievement!', icon: 'medal' };
+
+            const achDiv = document.createElement('div');
+            achDiv.className = 'ach' + (newAchievements.includes(key) ? ' new' : '');
+            achDiv.setAttribute('data-key', key);
+            achDiv.innerHTML = \`
+              <div class="ico"><img data-i8="\${details.icon}" alt="\${details.name}"></div>
+              <div class="txt">
+                <div class="name">\${details.name}</div>
+                <div class="desc">\${details.desc}</div>
+              </div>\`;
+            achGrid.appendChild(achDiv);
+
+            const img = achDiv.querySelector('img[data-i8]');
+            if (img) { img.src = i8(details.icon); }
+          });
+
+          if (newAchievements.length > 0) {
+            const allViewed = [...viewedAchievements, ...newAchievements];
+            localStorage.setItem('viewedAchievements', JSON.stringify(allViewed));
+          }
+        }
+
+        const statusMap = new Map((existing||[]).map(r => [String(r.achievement_key), String(r.status||'locked')]));
+
+        const ensureUnlocked = async (key, condition) => {
+          if (!kioskUserId) return;
+          if (statusMap.get(key) === 'unlocked') return;
+          if (!condition) return;
+          try { await upsertAchievement(supabase, kioskUserId, key, 'unlocked'); statusMap.set(key, 'unlocked'); }
+          catch (e) { console.error('Upsert failed for', key, e); }
+        };
+
+        const onboardingComplete = profileRow?.onboarding_complete || false;
+        if (onboardingComplete && statusMap.get('onboarding_completion') !== 'unlocked') await ensureUnlocked('onboarding_completion', true);
+
+        let hasCompletedPracticeQuiz = false;
+        try {
+          const { data: practiceData } = await supabase.from('quiz_practices').select('id').eq('user_id', user.id).limit(1).maybeSingle();
+          hasCompletedPracticeQuiz = Boolean(practiceData);
+        } catch(_) {}
+        if (hasCompletedPracticeQuiz && statusMap.get('first_practice_quiz') !== 'unlocked') await ensureUnlocked('first_practice_quiz', true);
+
+        let hasUploadedTraining = false;
+        try {
+          const { data: trainingData } = await supabase.from('staff_training_records').select('id').eq('user_id', user.id).limit(1).maybeSingle();
+          hasUploadedTraining = Boolean(trainingData);
+        } catch(_) {}
+        if (hasUploadedTraining && statusMap.get('first_training_upload') !== 'unlocked') await ensureUnlocked('first_training_upload', true);
+
+        setTimeout(() => checkAchievements(user, profileRow, kioskUserId), 100);
+      }catch(e){ console.error('Achievement check failed', e); }
+
+      await loadRecentActivity(displayName, siteId);
+    }
+
+    async function checkQuizStatus(user, profileRow) {
+      const quizAlert = document.getElementById('quiz-alert');
+      const quizAlertMessage = document.getElementById('quiz-alert-message');
+      const quizBubble = document.getElementById('quiz-bubble');
+
+      try {
+        const now = new Date();
+        function getWeekStart(d=new Date()){ const c=new Date(d); const day=c.getDay(); c.setDate(c.getDate()-day); c.setHours(0,0,0,0); return c; }
+        function getWeekEnd(d=new Date()){ const s=getWeekStart(d); const e=new Date(s.getTime()+6*24*60*60*1000); e.setHours(23,59,59,999); return e; }
+        function getNextWeekStart(d=new Date()){ const e=getWeekEnd(d); return new Date(e.getTime()+24*60*60*1000); }
+
+        const weekStart = getWeekStart();
+
+        let quizTakenThisWeek = false;
+        let lastCompletedDate = null;
+
+        try {
+          const { data: weekly, error: weeklyErr } = await supabase
+            .from('quiz_attempts')
+            .select('completed_at,created_at')
+            .eq('user_id', user.id)
+            .eq('is_practice', false)
+            .gte('created_at', weekStart.toISOString())
+            .lte('created_at', getWeekEnd().toISOString())
+            .limit(1);
+          if (!weeklyErr && weekly && weekly.length) {
+            quizTakenThisWeek = true;
+            const attempt = weekly[0];
+            lastCompletedDate = attempt.completed_at || attempt.created_at;
+          }
+        } catch(_) {}
+
+        if (!lastCompletedDate) {
+          try {
+            const { data: lastAny } = await supabase
+              .from('quiz_attempts')
+              .select('completed_at,created_at')
+              .eq('user_id', user.id)
+              .eq('is_practice', false)
+              .order('completed_at', { ascending: false, nullsFirst: false })
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (lastAny) lastCompletedDate = lastAny.completed_at || lastAny.created_at || null;
+          } catch(_) {}
+        }
+
+        let nextDue = null;
+        if (quizTakenThisWeek) {
+          nextDue = getNextWeekStart();
+        } else if (profileRow?.next_quiz_due) {
+          nextDue = new Date(profileRow.next_quiz_due);
+        } else if (lastCompletedDate) {
+          nextDue = new Date(lastCompletedDate); nextDue.setDate(nextDue.getDate() + 7);
+        }
+
+        if (quizTakenThisWeek) {
+          quizAlert.style.display = 'none';
+          quizBubble?.classList.remove('due');
+          return;
+        }
+
+        if (!nextDue || now >= nextDue) {
+          quizAlert.style.display = 'block';
+          quizBubble?.classList.add('due');
+          if (!nextDue) {
+            quizAlertMessage.textContent = 'Take your first weekly quiz now!';
+          } else {
+            const overdueDays = Math.floor((now - nextDue) / (1000 * 60 * 60 * 24));
+            quizAlertMessage.textContent = overdueDays > 0 ? \`Quiz is \${overdueDays} day\${overdueDays>1?'s':''} overdue!\` : 'Your weekly quiz is due today!';
+          }
+        } else {
+          const hoursUntilDue = (nextDue - now) / (1000 * 60 * 60);
+          if (hoursUntilDue <= 24) {
+            quizAlert.style.display = 'block';
+            quizAlertMessage.textContent = \`Quiz due in \${Math.ceil(hoursUntilDue)} hour\${Math.ceil(hoursUntilDue)>1?'s':''}\`;
+          } else {
+            quizAlert.style.display = 'none';
+            quizBubble?.classList.remove('due');
+          }
+        }
+      } catch (error) {
+        console.error('Error checking quiz status:', error);
+      }
+    }
+
+    async function loadRecentActivity(displayName, siteId){
+      const loadingEl = document.getElementById('recent-scans-loading');
+      const timeline = document.getElementById('timeline');
+      const emptyEl = document.getElementById('recent-scans-empty');
+      try{
+        let rows = [];
+        if (siteId){
+          const v = await supabase
+            .from('v_submission_detail')
+            .select('submitted_at,item_name,room,check_type,check_value,staff_name,site_id')
+            .eq('site_id', siteId)
+            .eq('staff_name', displayName)
+            .order('submitted_at', { ascending:false })
+            .limit(10);
+          if (!v.error && v.data) rows = v.data;
+        }
+        if (!rows?.length){
+          const s = await supabase
+            .from('submissions')
+            .select('submitted_at, staff_name, comment')
+            .eq('staff_name', displayName)
+            .order('submitted_at', { ascending:false })
+            .limit(5);
+          if (!s.error && s.data){ rows = s.data.map(r => ({ submitted_at:r.submitted_at, item_name:'—', room:'—', check_type:'—', check_value:r.comment||'Done' })); }
+        }
+        loadingEl.style.display='none';
+        if (!rows?.length){ emptyEl.style.display='block'; return { count: 0 }; }
+        timeline.style.display='grid';
+        timeline.innerHTML = rows.map(r => \`
+          <div class="t-item">
+            <div class="muted">\${fmtDate(r.submitted_at)}</div>
+            <div><strong>\${r.item_name || '—'}</strong> · \${r.check_type || '—'} → <span class="muted">\${r.check_value || '—'}</span></div>
+            <div class="pill inline">\${r.room || '—'}</div>
+          </div>\`).join('');
+        return { count: rows.length };
+      } catch(e){
+        console.error('Activity load error', e);
+        loadingEl.style.display='none';
+        emptyEl.style.display='block';
+        return { count: 0 };
+      }
+    }
+  </script>
+
+  <!-- Icons8 helper: resolve <img data-i8="..."> to URLs -->
+  <script>
+    (function(){
+      function i8(name, opts){
+        opts = opts || {}; 
+        var style = opts.style || 'fluency';
+        var size  = (opts.size == null) ? 48 : opts.size;
+        var base  = 'https://img.icons8.com';
+        var path  = [style, String(size || 48), encodeURIComponent(name) + '.png'].join('/');
+        return base + '/' + path;
+      }
+      function setIcon(el){
+        var name  = el.getAttribute('data-i8');
+        var size  = el.getAttribute('data-i8-size');
+        var style = el.getAttribute('data-i8-style') || 'fluency';
+        var url = i8(name, {style: style, size: size ? parseInt(size,10) : undefined});
+        el.src = url;
+        if (!el.alt) el.alt = (name || '').replace(/[\-_]/g,' ');
+      }
+      function wireIcons(){
+        document.querySelectorAll('img[data-i8]').forEach(setIcon);
+      }
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wireIcons);
+      else wireIcons();
+      window.i8 = i8;
+    })();
+  </script>
+</body>
+</html>
