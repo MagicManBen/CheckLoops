@@ -129,6 +129,30 @@ export function setTopbar({siteText, email, role}){
   if (emailPill && email) emailPill.textContent = email;
   const rolePill = document.getElementById('role-pill');
   if (rolePill && role) rolePill.textContent = role;
+  
+  // Update navigation to include Admin Portal for admin users
+  const navContainer = document.querySelector('.nav.seg-nav');
+  if (navContainer) {
+    const isAdmin = role && ['admin', 'owner'].includes(role.toLowerCase());
+    
+    // Check if Admin Portal button already exists in navigation
+    const existingAdminBtn = navContainer.querySelector('button[data-section="admin-portal"]');
+    
+    if (isAdmin && !existingAdminBtn) {
+      // Add Admin Portal button to navigation
+      const adminButton = document.createElement('button');
+      adminButton.type = 'button';
+      adminButton.dataset.section = 'admin-portal';
+      adminButton.dataset.href = 'admin-dashboard.html';
+      adminButton.textContent = 'Admin Portal';
+      navContainer.appendChild(adminButton);
+    } else if (!isAdmin && existingAdminBtn) {
+      // Remove Admin Portal button from navigation
+      existingAdminBtn.remove();
+    }
+  }
+  
+  // Remove the standalone admin portal button logic since it's now in the navigation
 }
 
 export function handleAuthState(supabase){
@@ -185,13 +209,12 @@ export function renderStaffNavigation(activePage = 'home') {
   const navItems = [
     { page: 'home', href: 'staff.html', label: 'Home' },
     { page: 'welcome', href: 'staff-welcome.html', label: 'Welcome' },
-    { page: 'holidays', href: 'my-holidays.html', label: 'My Holidays', disabled: true, tooltip: 'Coming Soon' },
+    { page: 'holidays', href: 'my-holidays.html', label: 'My Holidays' },
     { page: 'meetings', href: 'staff-meetings.html', label: 'Meetings' },
     { page: 'scans', href: 'staff-scans.html', label: 'My Scans' },
     { page: 'training', href: 'staff-training.html', label: 'My Training' },
     { page: 'achievements', href: 'achievements.html', label: 'Achievements' },
     { page: 'quiz', href: 'staff-quiz.html', label: 'Quiz' }
-    // Admin link removed - separate portals for staff and admin
   ];
 
   // Clear existing content and event listeners
@@ -234,27 +257,15 @@ export function renderStaffNavigation(activePage = 'home') {
   
   // Add single click handler using event delegation (like working version)
   if (!navContainer.dataset.hasClickHandler) {
-    navContainer.addEventListener('click', (e) => {
+    navContainer.addEventListener('click', async (e) => {
       const btn = e.target.closest('button[data-section]');
       if (!btn) return;
       
       e.preventDefault();
       e.stopPropagation();
       
-      // Prevent navigation for disabled items - show PIN prompt instead
-      if (btn.classList.contains('disabled-nav-item') || btn.dataset.section === 'holidays') {
-        // Show PIN prompt for holidays
-        const pin = prompt('Enter 4-digit PIN to access My Holidays:');
-        if (pin === '9021') {
-          // Correct PIN - navigate to holidays page
-          const href = btn.getAttribute('data-href');
-          if (href) {
-            window.location.href = href;
-          }
-        } else if (pin !== null) {
-          // Wrong PIN (but user didn't cancel)
-          alert('Incorrect PIN. Access denied.');
-        }
+      // Prevent navigation for disabled items
+      if (btn.classList.contains('disabled-nav-item')) {
         return;
       }
       
@@ -271,9 +282,43 @@ export function renderStaffNavigation(activePage = 'home') {
       navContainer.querySelectorAll('button').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       
-      // Navigate to page
-      if (href) {
-        window.location.href = href;
+      // Handle Admin Portal navigation with special logic
+      if (section === 'admin-portal') {
+        console.log('Admin Portal button clicked - checking authentication state...');
+        
+        try {
+          // Check if we have an active Supabase session
+          if (window.supabase && typeof window.supabase.auth.getSession === 'function') {
+            const { data: { session }, error } = await window.supabase.auth.getSession();
+            
+            if (error) {
+              console.warn('Error getting session:', error);
+            }
+            
+            if (session && session.user) {
+              console.log('Active session found for user:', session.user.email);
+              // Session is active, navigate directly to admin-dashboard.html
+              window.location.href = href;
+              return;
+            } else {
+              console.log('No active session found');
+            }
+          }
+          
+          // If no session, still navigate but let admin-dashboard handle authentication
+          console.log('Navigating to admin-dashboard.html - authentication will be handled there');
+          window.location.href = href;
+          
+        } catch (error) {
+          console.error('Error checking session before admin navigation:', error);
+          // Fallback: navigate anyway
+          window.location.href = href;
+        }
+      } else {
+        // Regular navigation for non-admin portal items
+        if (href) {
+          window.location.href = href;
+        }
       }
       
       // Reset click flag

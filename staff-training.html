@@ -182,6 +182,8 @@
             const isClinicalRole = (roleDetail='') => /doctor|nurse|clin|pharmacist/i.test(roleDetail);
 
             const supabase = await initSupabase();
+            // Make supabase available globally for Admin Portal button
+            window.supabase = supabase;
             console.debug('[staff-training] supabase inited');
             handleAuthState(supabase);
             navActivate('training');
@@ -220,13 +222,13 @@
                 required = allTypes.filter(t => isClinicalRole(roleDetail) ? t.is_clinical_required : t.is_non_clinical_required);
               }
 
-              // Load training records for the authenticated user
+              // Load training records for the authenticated user using user_id (UUID)
               if (siteId && user.id){
                 const tr = await supabase
                   .from('training_records')
                   .select('id,training_type_id,completion_date,expiry_date,certificate_url')
                   .eq('site_id', siteId)
-                  .eq('staff_id', user.id);  // Use actual user ID, not kiosk ID
+                  .eq('user_id', user.id);
                 if (!tr.error && tr.data) myRecords = tr.data;
               }
 
@@ -476,7 +478,7 @@
                   }
                   
                   if (!currentUser.id) {
-                    errorDiv.textContent = 'User not found. Please refresh and try again.';
+                    errorDiv.textContent = 'User session not found. Please refresh and try again.';
                     errorDiv.style.display = 'block';
                     return;
                   }
@@ -507,10 +509,10 @@
                     certificateUrl = filePath;
                   }
                   
-                  // Prepare record data
+                  // Prepare record data using user_id (UUID standard)
                   const recordData = {
                     site_id: currentUser.siteId,
-                    staff_id: currentUser.id,
+                    user_id: currentUser.id,
                     training_type_id: parseInt(typeId),
                     completion_date: completionDate,
                     expiry_date: expiryDate,
@@ -532,7 +534,50 @@
                   
                   // Success - close modal and reload page
                   closeTrainingModal();
-                  
+
+                  // Check if this is the user's first training upload and unlock achievement
+                  try {
+                    // Check if user has any previous training records
+                    const { data: previousRecords, error: checkError } = await supabase
+                      .from('training_records')
+                      .select('id')
+                      .eq('user_id', globalUser.id)
+                      .limit(2); // We need more than 1 to know if this is NOT the first
+
+                    if (!checkError && previousRecords && previousRecords.length === 1) {
+                      // This is their first training upload! Unlock the achievement
+                      console.log('🏆 First training upload detected! Unlocking achievement...');
+
+                      // Get user's kiosk_user_id from profile
+                      const { data: profileData } = await supabase
+                        .from('profiles')
+                        .select('kiosk_user_id')
+                        .eq('user_id', globalUser.id)
+                        .single();
+
+                      if (profileData && profileData.kiosk_user_id) {
+                        const kioskUserId = profileData.kiosk_user_id;
+
+                        // Unlock the achievement
+                        await supabase
+                          .from('user_achievements')
+                          .upsert({
+                            kiosk_user_id: kioskUserId,
+                            achievement_key: 'first_training_upload',
+                            status: 'unlocked',
+                            progress_percent: 100,
+                            unlocked_at: new Date().toISOString()
+                          }, {
+                            onConflict: 'kiosk_user_id,achievement_key'
+                          });
+                        console.log('✅ First Training Upload achievement unlocked!');
+                      }
+                    }
+                  } catch (achievementError) {
+                    console.warn('Failed to check/unlock training achievement:', achievementError);
+                    // Don't block the success flow if achievement fails
+                  }
+
                   // Show success message
                   const successDiv = document.createElement('div');
                   successDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; background: var(--success, #28a745); color: white; padding: 12px 20px; border-radius: 6px; z-index: 10000; font-weight: 600;';

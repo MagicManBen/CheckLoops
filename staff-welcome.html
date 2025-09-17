@@ -676,6 +676,8 @@
     
     (async function(){
       const supabase = await initSupabase();
+      // Make supabase available globally for Admin Portal button
+      window.supabase = supabase;
       globalSupabase = supabase; // Store in global variable
       handleAuthState(supabase);
       // Always show navigation for welcome page
@@ -894,16 +896,30 @@
           const finalTeamName = (typeof teamNameIn !== 'undefined' ? teamNameIn : teamName);
           const nickVal = String(document.getElementById('nickname')?.value || '').trim() || null;
 
+          // ADMIN PROTECTION: Check if user has admin access before overwriting role
+          const isAdmin = user?.user_metadata?.admin_access === true;
+          console.log('[persistRoleTeam] Admin check:', { isAdmin, currentRole: user?.user_metadata?.role, finalRole });
+
           // 1) auth metadata
           try {
-            await supabase.auth.updateUser({
-              data: {
-                role_detail: finalRole,
-                team_id: finalTeamId || null,
-                team_name: finalTeamName || null,
-                nickname: nickVal || null
-              }
-            });
+            const updateData = {
+              team_id: finalTeamId || null,
+              team_name: finalTeamName || null,
+              nickname: nickVal || null
+            };
+
+            // If user is admin, preserve admin role but store job role separately
+            if (isAdmin) {
+              updateData.role = 'admin'; // Keep admin role
+              updateData.role_detail = 'Admin'; // Keep admin display
+              updateData.job_role = finalRole; // Store their clinical role separately
+              console.log('[persistRoleTeam] Preserving admin role, storing job role:', finalRole);
+            } else {
+              updateData.role_detail = finalRole;
+              console.log('[persistRoleTeam] Setting role for non-admin:', finalRole);
+            }
+
+            await supabase.auth.updateUser({ data: updateData });
           } catch (e) {
             console.warn('[persistRoleTeam] auth.updateUser failed', e);
           }
@@ -913,10 +929,19 @@
             const profileData = {
               user_id: user.id,
               site_id: siteId || null,
-              role: finalRole ? finalRole.toLowerCase() : 'staff', // profiles table uses 'role', not 'role_detail'
               nickname: nickVal || null
               // Note: profiles table doesn't have team_id or team_name columns
             };
+
+            // Handle role assignment for profiles table
+            if (isAdmin) {
+              profileData.role = 'admin'; // Keep admin role in profiles
+              console.log('[persistRoleTeam] Setting admin role in profiles');
+            } else {
+              profileData.role = finalRole ? finalRole.toLowerCase() : 'staff';
+              console.log('[persistRoleTeam] Setting role in profiles:', profileData.role);
+            }
+
             const { error: profileErr } = await supabase.from('profiles').upsert(profileData);
             if (profileErr) console.warn('[persistRoleTeam] profiles upsert error', profileErr);
           } catch (e) {
@@ -928,11 +953,21 @@
             const sawData = {
               user_id: user.id,
               site_id: siteId || null,
-              role_detail: finalRole,
               team_id: finalTeamId || null,
               team_name: finalTeamName || null,
               nickname: nickVal || null
             };
+
+            // Handle role assignment for staff_app_welcome
+            if (isAdmin) {
+              sawData.role_detail = 'Admin'; // Keep admin display
+              sawData.job_role = finalRole; // Store clinical role separately
+              console.log('[persistRoleTeam] Setting admin in staff_app_welcome, job_role:', finalRole);
+            } else {
+              sawData.role_detail = finalRole;
+              console.log('[persistRoleTeam] Setting role_detail in staff_app_welcome:', finalRole);
+            }
+
             const { error: sawErr } = await supabase.from('staff_app_welcome').upsert(sawData);
             if (sawErr) console.warn('[persistRoleTeam] staff_app_welcome upsert error', sawErr);
           } catch (e) {
@@ -3277,7 +3312,45 @@
           } catch (e) {
             console.warn('completion meta update failed', e);
           }
-          
+
+          // Unlock the Onboarding Completion achievement
+          try {
+            // Get user profile to get kiosk_user_id
+            const { data: profileData } = await globalSupabase
+              .from('profiles')
+              .select('*')
+              .eq('user_id', currentUser.id)
+              .single();
+
+            if (profileData) {
+              // Use kiosk_user_id from profile if available, otherwise try to get/create
+              let kioskUserId = profileData.kiosk_user_id;
+
+              if (!kioskUserId) {
+                console.log('No kiosk_user_id in profile, will skip achievement unlock');
+              }
+
+              if (kioskUserId) {
+                // Unlock the achievement
+                await globalSupabase
+                  .from('user_achievements')
+                  .upsert({
+                    kiosk_user_id: kioskUserId,
+                    achievement_key: 'onboarding_completion',
+                    status: 'unlocked',
+                    progress_percent: 100,
+                    unlocked_at: new Date().toISOString()
+                  }, {
+                    onConflict: 'kiosk_user_id,achievement_key'
+                  });
+                console.log('✅ Onboarding Completion achievement unlocked!');
+              }
+            }
+          } catch (achievementError) {
+            console.warn('Failed to unlock achievement:', achievementError);
+            // Don't block onboarding completion if achievement fails
+          }
+
           // Success - show completion step with animations
           console.log('Working hours saved successfully');
           if (msg) msg.textContent = 'Saved!';

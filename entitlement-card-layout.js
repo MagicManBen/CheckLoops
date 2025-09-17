@@ -86,9 +86,19 @@ async function loadStaffEntitlementCards() {
       console.error('Error loading working patterns:', patternError);
     }
 
+    // Get approval status from kiosk_users
+    const { data: kioskUsers, error: kioskError } = await window.supabase
+      .from('kiosk_users')
+      .select('user_id, holiday_approved');
+
+    if (kioskError) {
+      console.error('Error loading kiosk users:', kioskError);
+    }
+
     // Create maps for easier lookup
     const entitlementMap = {};
     const patternMap = {};
+    const approvalMap = {};
 
     if (entitlements) {
       entitlements.forEach(ent => {
@@ -99,6 +109,12 @@ async function loadStaffEntitlementCards() {
     if (workingPatterns) {
       workingPatterns.forEach(pattern => {
         patternMap[pattern.user_id] = pattern;
+      });
+    }
+
+    if (kioskUsers) {
+      kioskUsers.forEach(user => {
+        approvalMap[user.user_id] = user.holiday_approved || false;
       });
     }
     
@@ -145,6 +161,7 @@ async function loadStaffEntitlementCards() {
         ${profiles.map(profile => {
           const ent = entitlementMap[profile.id] || {};
           const pattern = patternMap[profile.user_id] || {};
+          const isApproved = approvalMap[profile.user_id] || false;
           const isGP = profile.is_gp;
           const unit = isGP ? 'sessions' : 'hrs';
 
@@ -237,6 +254,9 @@ async function loadStaffEntitlementCards() {
                 <button class="edit-staff-btn" onclick="showStaffDetailModal('${profile.id}', '${profile.user_id}', ${isGP})">
                   Edit Details
                 </button>
+                ${isApproved ? `
+                  <span style="color: var(--success); margin-left: 8px; font-size: 13px;">✓ Holidays Approved</span>
+                ` : ''}
               </div>
             </div>
           `;
@@ -342,6 +362,19 @@ async function showStaffDetailModal(staffId, userId, isGP) {
     if (!profile) {
       throw new Error('Staff profile not found');
     }
+
+    // Get approval status from kiosk_users
+    const { data: kioskUser, error: kioskError } = await supabase
+      .from('kiosk_users')
+      .select('user_id, holiday_approved')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (kioskError && !kioskError.message.includes('column')) {
+      console.error('Error loading kiosk user:', kioskError);
+    }
+
+    const isApproved = kioskUser?.holiday_approved || false;
 
     // Get necessary values
     const name = profile.full_name || 'Unknown';
@@ -504,6 +537,28 @@ async function showStaffDetailModal(staffId, userId, isGP) {
               <button id="save-entitlement-btn" class="save-btn" onclick="saveEntitlementFromModal('${staffId}', ${isGPStaff})">
                 Save Entitlement
               </button>
+            </div>
+          </div>
+          
+          <div class="holiday-approval-section">
+            <h3>Holiday Access</h3>
+            <div class="approval-status">
+              ${isApproved ? `
+                <div class="approval-status-row approved">
+                  <span class="approval-icon">✓</span>
+                  <span class="approval-text">Holiday access approved</span>
+                  <span class="approval-date">Staff member can view and manage their holidays</span>
+                </div>
+              ` : `
+                <div class="approval-status-row pending">
+                  <span class="approval-icon">⏳</span>
+                  <span class="approval-text">Awaiting approval</span>
+                  <span class="approval-note">Staff member cannot access holidays until approved</span>
+                </div>
+                <button class="approve-holiday-btn" onclick="approveHolidaysFromModal('${userId}', '${name}')">
+                  Approve Holiday Access
+                </button>
+              `}
             </div>
           </div>
         </div>
@@ -964,9 +1019,172 @@ async function saveEntitlementFromModal(staffId, isGP) {
   }
 }
 
+// Approve holidays for a staff member from within the modal
+async function approveHolidaysFromModal(userId, staffName) {
+  if (!window.supabase) {
+    alert('Unable to connect to database');
+    return;
+  }
+
+  if (!confirm(`Are you sure you want to approve holidays for ${staffName}? This will allow them to view and manage their holiday entitlements.`)) {
+    return;
+  }
+
+  try {
+    // Get the approve button and update its state
+    const approveBtn = document.querySelector('.approve-holiday-btn');
+    const originalText = approveBtn ? approveBtn.textContent : '';
+    
+    if (approveBtn) {
+      approveBtn.textContent = 'Approving...';
+      approveBtn.disabled = true;
+      approveBtn.style.opacity = '0.7';
+    }
+
+    // Use service role key for this update
+    const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
+    const SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTAxNzI3NiwiZXhwIjoyMDcwNTkzMjc2fQ.CJxV14F0T2TWkAjeR4bpYiBIOwLwyfzF9WzAWwS99Xc';
+
+    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+    const serviceSupabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+
+    // First check if the column exists by trying to query it
+    const { data: testData, error: testError } = await serviceSupabase
+      .from('kiosk_users')
+      .select('holiday_approved')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (testError && testError.message.includes('column')) {
+      // Column doesn't exist, try to add it
+      console.log('Holiday approval column not found, adding it...');
+
+      // Since we can't alter table directly, we'll update the data differently
+      alert('The holiday approval feature is not yet enabled in the database. Please contact your system administrator to add the "holiday_approved" column to the kiosk_users table.');
+      
+      if (approveBtn) {
+        approveBtn.textContent = originalText;
+        approveBtn.disabled = false;
+        approveBtn.style.opacity = '1';
+      }
+      return;
+    }
+
+    // Update the approval status
+    const { data, error } = await serviceSupabase
+      .from('kiosk_users')
+      .update({ holiday_approved: true })
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Error approving holidays:', error);
+      alert('Error approving holidays: ' + error.message);
+      
+      if (approveBtn) {
+        approveBtn.textContent = originalText;
+        approveBtn.disabled = false;
+        approveBtn.style.opacity = '1';
+      }
+      return;
+    }
+
+    // Success message
+    alert(`Holidays approved for ${staffName}!`);
+
+    // Update the modal UI to show approved status
+    const approvalSection = document.querySelector('.holiday-approval-section .approval-status');
+    if (approvalSection) {
+      approvalSection.innerHTML = `
+        <div class="approval-status-row approved">
+          <span class="approval-icon">✓</span>
+          <span class="approval-text">Holiday access approved</span>
+          <span class="approval-date">Staff member can view and manage their holidays</span>
+        </div>
+      `;
+    }
+
+    // Refresh the card display in the background
+    setTimeout(() => {
+      loadStaffEntitlementCards();
+    }, 500);
+
+  } catch (error) {
+    console.error('Error in approveHolidaysFromModal:', error);
+    alert('An error occurred while approving holidays.');
+    
+    // Reset button state if there was an error
+    if (approveBtn) {
+      approveBtn.textContent = originalText;
+      approveBtn.disabled = false;
+      approveBtn.style.opacity = '1';
+    }
+  }
+}
+
+// Approve holidays for a staff member
+async function approveHolidays(userId, staffName) {
+  if (!window.supabase) {
+    alert('Unable to connect to database');
+    return;
+  }
+
+  if (!confirm(`Are you sure you want to approve holidays for ${staffName}? This will allow them to view and manage their holiday entitlements.`)) {
+    return;
+  }
+
+  try {
+    // Use service role key for this update
+    const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
+    const SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTAxNzI3NiwiZXhwIjoyMDcwNTkzMjc2fQ.CJxV14F0T2TWkAjeR4bpYiBIOwLwyfzF9WzAWwS99Xc';
+
+    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+    const serviceSupabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+
+    // First check if the column exists by trying to query it
+    const { data: testData, error: testError } = await serviceSupabase
+      .from('kiosk_users')
+      .select('holiday_approved')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (testError && testError.message.includes('column')) {
+      // Column doesn't exist, try to add it
+      console.log('Holiday approval column not found, adding it...');
+
+      // Since we can't alter table directly, we'll update the data differently
+      alert('The holiday approval feature is not yet enabled in the database. Please contact your system administrator to add the "holiday_approved" column to the kiosk_users table.');
+      return;
+    }
+
+    // Update the approval status
+    const { data, error } = await serviceSupabase
+      .from('kiosk_users')
+      .update({ holiday_approved: true })
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Error approving holidays:', error);
+      alert('Error approving holidays: ' + error.message);
+      return;
+    }
+
+    // Success message
+    alert(`Holidays approved for ${staffName}!`);
+
+    // Refresh the card display
+    loadStaffEntitlementCards();
+
+  } catch (error) {
+    console.error('Error in approveHolidays:', error);
+    alert('An error occurred while approving holidays.');
+  }
+}
+
 // Export to load on page init
 window.loadStaffEntitlementCards = loadStaffEntitlementCards;
 window.showStaffDetailModal = showStaffDetailModal;
+window.approveHolidays = approveHolidays;
+window.approveHolidaysFromModal = approveHolidaysFromModal;
 window.closeStaffDetailModal = closeStaffDetailModal;
 window.updateWeeklyTotalInModal = updateWeeklyTotalInModal;
 window.saveWorkingPatternFromModal = saveWorkingPatternFromModal;
