@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Permissions-Policy" content="microphone=*, camera=*">
   <title>CheckLoop — Staff Meetings</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -296,6 +297,12 @@
           <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(0,0,0,0.1);">
             <label style="display: block; margin-bottom: 8px; font-weight: 600;">Or upload existing recording:</label>
             <input type="file" id="meeting-recording" accept="audio/*,video/*" onchange="handleRecordingUpload(event)" style="width: 100%;">
+            <div style="margin-top: 8px; font-size: 12px; color: #666;">
+              Supported formats: MP3, WAV, MP4, WebM, M4A files (max 500MB)
+            </div>
+            <div style="margin-top: 5px; font-size: 12px; color: #4f89ff;">
+              💡 If direct recording doesn't work, you can record using your device's recorder app and upload the file.
+            </div>
           </div>
         </div>
         <div id="recording-status" style="margin-top: 16px; padding: 16px; background: #f0f9ff; border-radius: 8px; display: none;">
@@ -462,6 +469,36 @@
   </script>
 
   <script>
+    // Check browser compatibility for MediaRecorder/getUserMedia features
+    function checkRecordingCompatibility() {
+      const issues = [];
+      
+      // Check if we're in a secure context
+      if (!window.isSecureContext && !CONFIG.isLocal) {
+        issues.push('Site is not running in a secure context (HTTPS). Media recording requires HTTPS.');
+      }
+      
+      // Check for MediaDevices API
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        issues.push('MediaDevices API is not supported in this browser.');
+      }
+      
+      // Check for MediaRecorder API
+      if (!window.MediaRecorder) {
+        issues.push('MediaRecorder API is not supported in this browser.');
+      }
+      
+      // Check for AudioContext API (for visualization)
+      if (!window.AudioContext && !window.webkitAudioContext) {
+        issues.push('AudioContext API is not supported (audio visualization will be disabled).');
+      }
+      
+      return {
+        isCompatible: issues.length === 0,
+        issues: issues
+      };
+    }
+    
     // Global variables
     let calendar = null;
     let currentMeetingId = null;
@@ -470,6 +507,33 @@
 
     // Initialize meetings functionality
     async function initializeMeetings() {
+      // Check recording compatibility and log any issues
+      const compatibility = checkRecordingCompatibility();
+      if (!compatibility.isCompatible) {
+        console.warn('Recording compatibility issues detected:', compatibility.issues);
+        
+        // Add a warning to the recording section if available
+        const recordingSection = document.querySelector('.recording-section');
+        if (recordingSection) {
+          const warningDiv = document.createElement('div');
+          warningDiv.style.backgroundColor = '#fff3cd';
+          warningDiv.style.color = '#856404';
+          warningDiv.style.padding = '10px';
+          warningDiv.style.borderRadius = '6px';
+          warningDiv.style.marginTop = '10px';
+          warningDiv.style.marginBottom = '10px';
+          warningDiv.style.fontSize = '14px';
+          warningDiv.innerHTML = `
+            <strong>⚠️ Recording limitations detected:</strong>
+            <ul style="margin: 5px 0 0 20px; padding: 0;">
+              ${compatibility.issues.map(issue => `<li>${issue}</li>`).join('')}
+            </ul>
+            <p style="margin: 5px 0 0;">You may need to use Chrome/Firefox and ensure you're using HTTPS.</p>
+          `;
+          recordingSection.prepend(warningDiv);
+        }
+      }
+      
       // Initialize calendar
       await new Promise(r => setTimeout(r, 50));
       const calendarEl = document.getElementById('calendar');
@@ -958,7 +1022,22 @@
     let animationId = null;
 
     async function startRecording() {
+      // First, check if we're in a secure context (HTTPS or localhost)
+      if (!window.isSecureContext && !CONFIG.isLocal) {
+        console.error('MediaRecorder requires a secure context (HTTPS)');
+        alert('Recording requires HTTPS. Please ensure you\'re using a secure connection.');
+        return;
+      }
+      
+      // Check if mediaDevices is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.error('MediaDevices API not available');
+        alert('Audio recording is not supported in your browser. Try using Chrome, Firefox, or Safari.');
+        return;
+      }
+
       try {
+        // Request microphone permissions with error handling
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,
@@ -967,10 +1046,24 @@
           }
         });
 
-        mediaRecorder = new MediaRecorder(stream, {
-          mimeType: 'audio/webm;codecs=opus'
-        });
+        // Check if MediaRecorder is available
+        if (!window.MediaRecorder) {
+          console.error('MediaRecorder API not available');
+          alert('Recording is not supported in your browser. Try using Chrome, Firefox, or Safari.');
+          return;
+        }
+        
+        // Check for supported mime types
+        let mimeType = 'audio/webm';
+        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+          mimeType = 'audio/webm;codecs=opus';
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          mimeType = 'audio/mp4';
+        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+          mimeType = 'audio/webm';
+        }
 
+        mediaRecorder = new MediaRecorder(stream, { mimeType });
         audioChunks = [];
 
         setupAudioVisualization(stream);
@@ -982,7 +1075,7 @@
         };
 
         mediaRecorder.onstop = () => {
-          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+          const audioBlob = new Blob(audioChunks, { type: mimeType });
           const audioUrl = URL.createObjectURL(audioBlob);
 
           const audioElement = document.getElementById('recorded-audio');
@@ -1014,7 +1107,19 @@
 
       } catch (error) {
         console.error('Error starting recording:', error);
-        alert('Unable to access microphone. Please check your permissions.');
+        
+        // Provide more specific error message based on the error type
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+          alert('Microphone access was denied. Please check your browser settings and ensure CheckLoops has permission to use your microphone.');
+        } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+          alert('No microphone found. Please connect a microphone and try again.');
+        } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+          alert('Your microphone is busy or not readable. Please close other applications that might be using it.');
+        } else if (error.name === 'OverconstrainedError') {
+          alert('Cannot satisfy the media constraints. Please try again with different settings.');
+        } else {
+          alert('Unable to access microphone. Please check your permissions and try again.');
+        }
       }
     }
 

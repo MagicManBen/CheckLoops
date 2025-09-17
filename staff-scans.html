@@ -530,25 +530,39 @@
     requireStaffSession(supabase).then(async ({ session, profileRow }) => {
       currentUser = session.user;
       currentProfile = profileRow;
+      console.log('[staff-scans] Authentication successful:', {
+        email: currentUser.email,
+        profileRow: profileRow
+      });
       await loadDashboard();
     }).catch(e => {
+      console.error('[staff-scans] Authentication failed:', e.message);
       if (String(e.message).includes('NO_SESSION')) { window.location.replace('home.html'); return; }
       if (String(e.message).includes('NOT_STAFF')) { window.location.replace('home.html'); return; }
       console.error(e);
     });
 
     async function loadDashboard() {
-      // Get complete user profile
-      const userProfile = await getUserProfile(supabase, currentUser);
+      // Build user profile from currentUser and currentProfile
+      const userProfile = {
+        user_id: currentUser.id,
+        email: currentUser.email,
+        display_name: currentProfile?.full_name || currentUser.email.split('@')[0],
+        site_id: currentProfile?.site_id || null,
+        role: currentProfile?.role || 'staff'
+      };
+
+      console.log('[staff-scans] User profile:', userProfile);
+
       const displayName = userProfile.display_name;
       const siteId = userProfile.site_id;
       const role = userProfile.role;
-      
-      // Set topbar
-      setTopbar({ 
-        siteText: await getSiteText(supabase, siteId), 
-        email: currentUser.email, 
-        role: role.charAt(0).toUpperCase() + role.slice(1) 
+
+      // Set topbar with actual user email
+      setTopbar({
+        siteText: await getSiteText(supabase, siteId),
+        email: userProfile.email,  // Use actual email from userProfile
+        role: role.charAt(0).toUpperCase() + role.slice(1)
       });
 
       // Load scan data
@@ -609,7 +623,6 @@
               comment: r.comment
             }));
           }
-        }
 
         allScans = rows;
         filteredScans = [...allScans];
