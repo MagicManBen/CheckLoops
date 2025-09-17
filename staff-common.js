@@ -46,7 +46,8 @@ export async function requireStaffSession(supabase) {
 
   // Try to get role from profile first, then from user metadata
   const meta = session.user?.user_metadata || session.user?.raw_user_meta_data || {};
-  const role = profileRow?.role || meta?.role || null;
+  // If user has a profile with site_id but no role, default to 'staff'
+  const role = profileRow?.role || meta?.role || (profileRow?.site_id ? 'staff' : null);
   // Include 'member' and any role by default for staff-welcome page
   const allowed = ['staff', 'admin', 'owner', 'manager', 'member', 'user'];
 
@@ -78,13 +79,27 @@ export async function requireStaffSession(supabase) {
 
   // If no role is set but user has a valid session, allow access (they may need to complete onboarding)
   if (!isWelcomePage && !role) {
+    // If they have a profile with a site_id, they're likely staff
+    const hasProfile = profileRow && profileRow.site_id;
+
     // Check if user has onboarding data indicating they are a staff member
-    const hasStaffEmail = session.user?.email?.includes('@') &&
-      (session.user.email.includes('.nhs.uk') ||
-       session.user.email.includes('benhowardmagic@hotmail.com') ||
+    const email = session.user?.email?.toLowerCase() || '';
+    const hasStaffEmail = email.includes('@') &&
+      (email.includes('.nhs.uk') ||
+       email === 'benhowardmagic@hotmail.com' ||
+       email === 'ben.howard@stoke.nhs.uk' ||
        session.user.raw_user_meta_data?.role);
 
-    if (!hasStaffEmail) {
+    console.log('[requireStaffSession] No role check:', {
+      email: email,
+      hasProfile: hasProfile,
+      site_id: profileRow?.site_id,
+      hasStaffEmail: hasStaffEmail,
+      isAllowed: hasProfile || hasStaffEmail
+    });
+
+    // Allow if they have a profile with site_id OR have a staff email
+    if (!hasProfile && !hasStaffEmail) {
       throw new Error('NOT_STAFF');
     }
   }
