@@ -199,6 +199,14 @@
               const roleDetail = role.charAt(0).toUpperCase() + role.slice(1);  // Capitalize first letter
               setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: roleDetail });
 
+              // Create currentUser object for training functionality
+              let currentUser = {
+                id: user.id,
+                siteId,
+                displayName,
+                roleDetail
+              };
+
               let required = [];
               let myRecords = [];
 
@@ -212,23 +220,13 @@
                 required = allTypes.filter(t => isClinicalRole(roleDetail) ? t.is_clinical_required : t.is_non_clinical_required);
               }
 
-              let kioskId = null;
-              if (siteId){
-                const ku = await supabase
-                  .from('kiosk_users')
-                  .select('id')
-                  .eq('site_id', siteId)
-                  .eq('full_name', displayName)
-                  .maybeSingle();
-                kioskId = ku?.data?.id || null;
-              }
-
-              if (siteId && kioskId){
+              // Load training records for the authenticated user
+              if (siteId && user.id){
                 const tr = await supabase
                   .from('training_records')
                   .select('id,training_type_id,completion_date,expiry_date,certificate_url')
                   .eq('site_id', siteId)
-                  .eq('staff_id', kioskId);
+                  .eq('staff_id', user.id);  // Use actual user ID, not kiosk ID
                 if (!tr.error && tr.data) myRecords = tr.data;
               }
 
@@ -315,7 +313,7 @@
 
               // Training upload functionality
               let trainingTypes = [];
-              let currentUser = { id: kioskId, siteId, displayName, roleDetail };
+              // currentUser already has the correct user.id from authentication
 
               // Load training types for dropdown
               if (siteId) {
