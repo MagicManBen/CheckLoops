@@ -4386,9 +4386,8 @@ document.addEventListener('DOMContentLoaded', () => {
         <!-- Scheduling group inserted as requested -->
         <button class="nav-group-toggle" id="toggle-scheduling" type="button" aria-expanded="false" aria-controls="group-scheduling">Scheduling <span class="caret" aria-hidden="true"></span></button>
         <div class="nav-group collapsed" id="group-scheduling">
-          <button data-section="working-hours"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" ry="2"></rect><path d="M16 2v4"></path></svg><span class="menu-item-label">Working Hours</span></button>
+          <!-- Scheduling group: keep entitlement-management only; hide duplicate working-hours and scheduling-dashboard entries -->
           <button data-section="entitlement-management"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" ry="2"></rect><path d="M8 2v4"></path><path d="M16 2v4"></path><line x1="3" y1="10" x2="21" y2="10"></line></svg><span class="menu-item-label">Entitlement Management</span></button>
-          <button data-section="scheduling-dashboard"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3.1-6.4"></path><polyline points="22 2 12 2 12 12"></polyline></svg><span class="menu-item-label">Dashboard</span></button>
         </div>
 
         <button class="nav-group-toggle" id="toggle-config" type="button" aria-expanded="false" aria-controls="group-config">Configure <span class="caret" aria-hidden="true"></span></button>
@@ -4406,10 +4405,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         <button class="nav-group-toggle" id="toggle-settings" type="button" aria-expanded="false" aria-controls="group-settings">Settings <span class="caret" aria-hidden="true"></span></button>
         <div class="nav-group collapsed" id="group-settings">
-          <button data-section="settings"><svg class="icon" style="color: var(--muted);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9c.69 0 1.25-.56 1.25-1.25V3a2 2 0 1 1 4 0v.09c0 .69.56 1.25 1.25 1.25.37 0 .72-.15.97-.4l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06c-.25.25-.4.6-.4.97V9c0 .69.56 1.25 1.25 1.25H21a2 2 0 1 1 0 4h-.09c-.69 0-1.25.56-1.25 1.25z"/>
-          </svg><span class="menu-item-label">Site Settings</span></button>
+          <!-- Site Settings intentionally hidden from this menu per UX request -->
           <button data-section="project-management"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span class="menu-item-label">Project Management</span></button>
           <button data-section="users"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-3-3.87"/><path d="M4 21v-2a4 4 0 0 1 3-3.87"/><circle cx="12" cy="7" r="4"/></svg><span class="menu-item-label">Users</span></button>
         </div>
@@ -7662,8 +7658,8 @@ window.PIR_DEFINITIONS_DATA = [
       
       debugLog('success', 'Created site invitation record', { id: inviteRecord.id });
       
-      // Step 2: Send magic link with site information
-      debugLog('info', 'Sending magic link to user');
+      // Step 2: Create user and send magic link
+      debugLog('info', 'Creating user and sending magic link');
 
       // Build redirect URL with all necessary data
       const redirectParams = new URLSearchParams({
@@ -7678,70 +7674,152 @@ window.PIR_DEFINITIONS_DATA = [
 
       const redirectTo = `${CONFIG.passwordRedirectUrl}?${redirectParams.toString()}`;
 
-      // Send magic link using regular Supabase client
-      debugLog('info', 'Sending magic link with site data', {
-        email: formData.email,
-        site_id: formData.siteId,
-        redirectTo
-      });
+      // Create admin client with service role key
+      const adminClient = window.supabaseCreateClient(
+        window.SUPABASE_URL || 'https://unveoqnlqnobufhublyw.supabase.co',
+        serviceKey
+      );
 
-      const { data: magicLinkData, error: authError } = await supabase.auth.signInWithOtp({
-        email: formData.email,
-        options: {
-          emailRedirectTo: redirectTo,
-          data: {
+      let userId = null;
+      let userExists = false;
+
+      // Check if user already exists
+      try {
+        const { data: existingUser } = await adminClient.auth.admin.getUserByEmail(formData.email);
+        if (existingUser?.user) {
+          userId = existingUser.user.id;
+          userExists = true;
+          debugLog('info', 'User already exists, will send magic link', { userId });
+        }
+      } catch (e) {
+        debugLog('info', 'User does not exist, will create new user');
+      }
+
+      if (!userExists) {
+        // Create new user without password
+        debugLog('info', 'Creating new user');
+        const { data: newUser, error: createError } = await adminClient.auth.admin.createUser({
+          email: formData.email,
+          email_confirm: true,
+          user_metadata: {
             full_name: formData.fullName,
-            role: formData.siteRole,
             site_id: formData.siteId,
+            role: formData.siteRole,
             role_detail: formData.jobRole,
             reports_to_id: formData.teamId,
             invite_id: inviteRecord.id
           }
+        });
+
+        if (createError) {
+          debugLog('error', 'Failed to create user', createError);
+          await supabase.from('site_invites').delete().eq('id', inviteRecord.id);
+          throw new Error(`Failed to create user: ${createError.message || 'Unknown error'}`);
         }
-      });
 
-      if (authError) {
-        debugLog('error', 'Failed to send magic link', authError);
-
-        // Clean up the invitation record we created so we do not leave stale rows
-        await supabase
-          .from('site_invites')
-          .delete()
-          .eq('id', inviteRecord.id);
-
-        throw new Error(`Failed to send invite: ${authError.message || 'Unknown error'}`);
+        userId = newUser.user.id;
+        debugLog('success', 'User created successfully', { userId });
       }
 
-      debugLog('success', 'Magic link sent successfully', magicLinkData);
+      // Send magic link email
+      debugLog('info', 'Sending magic link email');
+      const { error: magicLinkError } = await supabase.auth.resetPasswordForEmail(
+        formData.email,
+        { redirectTo: redirectTo }
+      );
 
-      // Store working pattern and holiday data in the invite record for later use
-      debugLog('info', 'Storing additional invite data for profile creation');
+      if (magicLinkError) {
+        debugLog('error', 'Failed to send magic link', magicLinkError);
+        // Don't delete the user, just the invite record
+        await supabase.from('site_invites').delete().eq('id', inviteRecord.id);
+        throw new Error(`Failed to send magic link: ${magicLinkError.message || 'Unknown error'}`);
+      }
 
-      const { error: updateInviteError } = await supabase
-        .from('site_invites')
-        .update({
-          invite_data: {
-            working_pattern: formData.workingPattern,
+      debugLog('success', 'Magic link sent successfully to', formData.email);
+
+      // Step 3: Create initial profile and related data now that we have userId
+      if (userId) {
+        debugLog('info', 'Creating profile and related data for user');
+
+        // Create/update profile
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .upsert({
+            user_id: userId,
+            full_name: formData.fullName,
+            role: formData.siteRole,
+            site_id: formData.siteId,
+            nickname: formData.fullName.split(' ')[0],
             total_hours: totalHours,
             total_sessions: totalSessions,
-            holiday_entitlement: holidayEntitlement,
-            is_gp: isGP,
-            nickname: formData.fullName.split(' ')[0]
-          }
-        })
-        .eq('id', inviteRecord.id);
+            holiday_entitlement: holidayEntitlement
+          }, { onConflict: 'user_id' });
 
-      if (updateInviteError) {
-        debugLog('warning', 'Failed to store additional invite data', updateInviteError);
-      } else {
-        debugLog('success', 'Stored additional invite data for later profile creation');
+        if (profileError) {
+          debugLog('warning', 'Failed to create profile', profileError);
+        } else {
+          debugLog('success', 'Profile created/updated');
+        }
+
+        // Create staff_app_welcome entry
+        const { error: welcomeError } = await supabase
+          .from('staff_app_welcome')
+          .upsert({
+            user_id: userId,
+            site_id: formData.siteId,
+            full_name: formData.fullName,
+            nickname: formData.fullName.split(' ')[0],
+            role_detail: formData.jobRole,
+            team_id: formData.teamId || null
+          }, { onConflict: 'user_id' });
+
+        if (welcomeError) {
+          debugLog('warning', 'Failed to create welcome entry', welcomeError);
+        } else {
+          debugLog('success', 'Welcome entry created');
+        }
+
+        // Create working pattern
+        const patternData = {
+          user_id: userId,
+          site_id: formData.siteId,
+          monday_hours: Math.round(formData.workingPattern.monday_hours || 0),
+          tuesday_hours: Math.round(formData.workingPattern.tuesday_hours || 0),
+          wednesday_hours: Math.round(formData.workingPattern.wednesday_hours || 0),
+          thursday_hours: Math.round(formData.workingPattern.thursday_hours || 0),
+          friday_hours: Math.round(formData.workingPattern.friday_hours || 0),
+          saturday_hours: Math.round(formData.workingPattern.saturday_hours || 0),
+          sunday_hours: Math.round(formData.workingPattern.sunday_hours || 0),
+          monday_sessions: formData.workingPattern.monday_sessions || 0,
+          tuesday_sessions: formData.workingPattern.tuesday_sessions || 0,
+          wednesday_sessions: formData.workingPattern.wednesday_sessions || 0,
+          thursday_sessions: formData.workingPattern.thursday_sessions || 0,
+          friday_sessions: formData.workingPattern.friday_sessions || 0,
+          saturday_sessions: formData.workingPattern.saturday_sessions || 0,
+          sunday_sessions: formData.workingPattern.sunday_sessions || 0,
+          total_hours: Math.round(totalHours),
+          total_sessions: totalSessions
+        };
+
+        const { error: patternError } = await supabase
+          .from('3_staff_working_patterns')
+          .upsert(patternData, { onConflict: 'user_id' });
+
+        if (patternError) {
+          debugLog('warning', 'Failed to create working pattern', patternError);
+        } else {
+          debugLog('success', 'Working pattern created');
+        }
+
+        // Update invite record with userId
+        await supabase
+          .from('site_invites')
+          .update({ user_id: userId })
+          .eq('id', inviteRecord.id);
       }
 
-      // Note: Profile, welcome entry, working pattern, and holiday profile will be created
-      // when the user clicks the link and sets their password in simple-set-password.html
-
-      // Step 5: Create holiday profile (still create this for existing system compatibility)
-      debugLog('info', 'Step 5: Creating preliminary holiday profile');
+      // Step 4: Create holiday profile
+      debugLog('info', 'Step 4: Creating holiday profile');
 
       // First check if profile already exists for this full_name
       const { data: existingHolidayProfile } = await supabase
@@ -7761,8 +7839,8 @@ window.PIR_DEFINITIONS_DATA = [
             role: formData.jobRole,
             is_gp: isGP,
             email: formData.email,
-            site_id: ctx.site_id,
-            user_id: null, // Will be updated when user completes registration
+            site_id: formData.siteId,
+            user_id: userId,
             updated_at: new Date().toISOString()
           })
           .eq('id', existingHolidayProfile.id)
@@ -7780,7 +7858,7 @@ window.PIR_DEFINITIONS_DATA = [
             role: formData.jobRole,
             is_gp: isGP,
             email: formData.email,
-            site_id: ctx.site_id,
+            site_id: formData.siteId,
             user_id: userId,
             updated_at: new Date().toISOString()
           })
@@ -9913,9 +9991,18 @@ async function loadRooms(){
         try{ const r = await supabase.from('kiosk_users').select('id,full_name').in('id', nums); if(r && r.data) staff.push(...r.data); }catch(_e){}
       }
     }
-    (staff||[]).forEach(s => { owners[s.id] = s.full_name; });
+    (staff||[]).forEach(s => {
+      // Map by numeric id
+      if (s.id !== undefined && s.id !== null) owners[String(s.id)] = s.full_name;
+      // Also map by user_id (UUID) when present
+      if (s.user_id) owners[String(s.user_id)] = s.full_name;
+    });
   }
-  tb.innerHTML = data.map(r=>`<tr data-id="${r.id}"><td>${esc(r.name)}</td><td>${esc(owners[r.occupied_by] || "—")}</td></tr>`).join("");
+  tb.innerHTML = data.map(r=>{
+    const ownerKey = r.occupied_by !== undefined && r.occupied_by !== null ? String(r.occupied_by) : '';
+    const ownerName = owners[ownerKey] || "—";
+    return `<tr data-id="${r.id}"><td>${esc(r.name)}</td><td>${esc(ownerName)}</td></tr>`;
+  }).join("");
 }
 async function loadComplaints(){
   const tb = document.getElementById("complaints-tbody");
@@ -14453,42 +14540,11 @@ for (const f of (crudState.entity.fields || [])) {
         tbody.innerHTML = `
           <tr><td colspan="100%" class="muted">No training data available.</td></tr>
           <tr><td colspan="100%" style="text-align:center; padding: 16px;">
-            <button class="btn secondary" id="btn-use-demo-training">Use demo data to preview matrix</button>
+            <button class="btn" id="btn-load-training">Load Real Data</button>
           </td></tr>`;
 
-        const demoBtn = document.getElementById('btn-use-demo-training');
-        if (demoBtn) {
-          demoBtn.addEventListener('click', () => {
-            // Small, non-destructive demo dataset
-            trainingData.staff = [
-              { id: 1, full_name: 'Alice Example', role: 'Nurse' },
-              { id: 2, full_name: 'Bob Example', role: 'HCA' }
-            ];
-            trainingData.types = [
-              { id: 101, name: 'BLS', validity_months: 12 },
-              { id: 102, name: 'GDPR', validity_months: 24 }
-            ];
-            const now = new Date();
-            const nextYear = new Date(); nextYear.setMonth(nextYear.getMonth() + 9);
-            trainingData.records = [
-              { id: 1001, staff_id: 1, training_type_id: 101, completion_date: now.toISOString(), expiry_date: nextYear.toISOString(), provider: 'Acme Training', verified_by: 'Manager' },
-              { id: 1002, staff_id: 2, training_type_id: 102, completion_date: now.toISOString(), expiry_date: null, provider: 'Acme Training' }
-            ];
-            // Mark as demo data so we can detect it
-            trainingData.isDemoData = true;
-            renderTrainingMatrix();
-
-            // Add a button to reload real data
-            const reloadBtn = document.createElement('button');
-            reloadBtn.className = 'btn primary';
-            reloadBtn.textContent = 'Load Real Data';
-            reloadBtn.style.marginLeft = '10px';
-            reloadBtn.onclick = () => {
-              loadTrainingMatrix(); // Reload real data from database
-            };
-            demoBtn.parentElement.appendChild(reloadBtn);
-          });
-        }
+        const loadBtn = document.getElementById('btn-load-training');
+        if (loadBtn) loadBtn.addEventListener('click', () => { loadTrainingMatrix(); });
 
         return;
       }
