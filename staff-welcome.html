@@ -687,7 +687,22 @@
       try{
         const { session, profileRow } = await requireStaffSession(supabase);
         const user = session.user;
-        const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || 1; // Default to site 1 if not set
+
+        // Get site_id from multiple sources in priority order
+        const sessionSiteId = sessionStorage.getItem('userSiteId');
+        const siteId = profileRow?.site_id ||
+                      user?.user_metadata?.site_id ||
+                      user?.raw_user_meta_data?.site_id ||
+                      (sessionSiteId ? parseInt(sessionSiteId) : null) ||
+                      1; // Only default to site 1 as last resort
+
+        console.log('Site determination:', {
+          profileSite: profileRow?.site_id,
+          userMetaSite: user?.user_metadata?.site_id,
+          rawMetaSite: user?.raw_user_meta_data?.site_id,
+          sessionSite: sessionSiteId,
+          finalSite: siteId
+        });
 
         // Store globally for handlers
         window.currentUser = user;

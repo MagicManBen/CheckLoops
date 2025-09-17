@@ -7662,23 +7662,33 @@ window.PIR_DEFINITIONS_DATA = [
       
       debugLog('success', 'Created site invitation record', { id: inviteRecord.id });
       
-      // Step 2: Create user entry in auth system
-      debugLog('info', 'Creating user in authentication system');
-      
-      // Create a dedicated admin client using the service role key
-      const redirectTo = `${CONFIG.passwordRedirectUrl}?invite_email=${encodeURIComponent(formData.email)}`;
-      const adminClient = window.supabaseCreateClient(
-        window.SUPABASE_URL || 'https://unveoqnlqnobufhublyw.supabase.co',
-        serviceKey
-      );
-      
-      // Use the admin client to directly invite the user
-      debugLog('info', 'Using direct admin client to invite user');
-      
-      const { data: userData, error: authError } = await adminClient.auth.admin.inviteUserByEmail(
-        formData.email, 
-        { 
-          redirectTo,
+      // Step 2: Send magic link with site information
+      debugLog('info', 'Sending magic link to user');
+
+      // Build redirect URL with all necessary data
+      const redirectParams = new URLSearchParams({
+        invite_email: formData.email,
+        site_id: formData.siteId.toString(),
+        invite_id: inviteRecord.id,
+        full_name: formData.fullName,
+        role: formData.siteRole,
+        role_detail: formData.jobRole || '',
+        reports_to_id: formData.teamId || ''
+      });
+
+      const redirectTo = `${CONFIG.passwordRedirectUrl}?${redirectParams.toString()}`;
+
+      // Send magic link using regular Supabase client
+      debugLog('info', 'Sending magic link with site data', {
+        email: formData.email,
+        site_id: formData.siteId,
+        redirectTo
+      });
+
+      const { data: magicLinkData, error: authError } = await supabase.auth.signInWithOtp({
+        email: formData.email,
+        options: {
+          emailRedirectTo: redirectTo,
           data: {
             full_name: formData.fullName,
             role: formData.siteRole,
@@ -7688,106 +7698,50 @@ window.PIR_DEFINITIONS_DATA = [
             invite_id: inviteRecord.id
           }
         }
-      );
-      
+      });
+
       if (authError) {
-        debugLog('error', 'Admin API returned an error', authError);
+        debugLog('error', 'Failed to send magic link', authError);
 
         // Clean up the invitation record we created so we do not leave stale rows
         await supabase
           .from('site_invites')
           .delete()
           .eq('id', inviteRecord.id);
-        
-        throw new Error(`Failed to invite user: ${authError.message || 'Unknown error'}`);
+
+        throw new Error(`Failed to send invite: ${authError.message || 'Unknown error'}`);
       }
 
-      debugLog('success', 'Admin API returned successfully', userData);
+      debugLog('success', 'Magic link sent successfully', magicLinkData);
 
-      if (!userData || !userData.user || !userData.user.id) {
-        debugLog('error', 'No user data returned from admin client');
-        throw new Error('Failed to create user - no user ID returned');
-      }
-      
-      const userId = userData.user.id;
-      debugLog('success', 'User created with ID', userId);
-      
-      // Step 2: Update additional profile fields
-      debugLog('info', 'Step 2: Updating additional profile fields');
-      const { error: profileError } = await supabase
-        .from('profiles')
+      // Store working pattern and holiday data in the invite record for later use
+      debugLog('info', 'Storing additional invite data for profile creation');
+
+      const { error: updateInviteError } = await supabase
+        .from('site_invites')
         .update({
-          nickname: formData.fullName.split(' ')[0],
-          onboarding_complete: true,
-          total_hours: totalHours,
-          total_sessions: totalSessions,
-          holiday_entitlement: holidayEntitlement
+          invite_data: {
+            working_pattern: formData.workingPattern,
+            total_hours: totalHours,
+            total_sessions: totalSessions,
+            holiday_entitlement: holidayEntitlement,
+            is_gp: isGP,
+            nickname: formData.fullName.split(' ')[0]
+          }
         })
-        .eq('user_id', userId);
+        .eq('id', inviteRecord.id);
 
-      if (profileError) {
-        debugLog('warning', 'Profile update warning', profileError);
+      if (updateInviteError) {
+        debugLog('warning', 'Failed to store additional invite data', updateInviteError);
       } else {
-        debugLog('success', 'Profile updated');
+        debugLog('success', 'Stored additional invite data for later profile creation');
       }
 
-      // Step 3: Create staff_app_welcome entry
-      debugLog('info', 'Step 3: Creating staff_app_welcome entry');
-      const { error: welcomeError } = await supabase
-        .from('staff_app_welcome')
-        .upsert({
-          user_id: userId,
-          site_id: ctx.site_id,
-          full_name: formData.fullName,
-          nickname: formData.fullName.split(' ')[0],
-          role_detail: formData.jobRole,
-          team_id: formData.teamId || null
-          // Removed working_hours field as it doesn't exist in the table
-        });
+      // Note: Profile, welcome entry, working pattern, and holiday profile will be created
+      // when the user clicks the link and sets their password in simple-set-password.html
 
-      if (welcomeError) {
-        debugLog('warning', 'Welcome entry warning', welcomeError);
-      } else {
-        debugLog('success', 'Welcome entry created');
-      }
-
-      // Step 4: Create working pattern entry
-      debugLog('info', 'Step 4: Creating working pattern');
-      // Convert decimal hours to integers for database storage
-      const patternData = {
-        user_id: userId,
-        site_id: ctx.site_id,
-        monday_hours: Math.round(formData.workingPattern.monday_hours || 0),
-        tuesday_hours: Math.round(formData.workingPattern.tuesday_hours || 0),
-        wednesday_hours: Math.round(formData.workingPattern.wednesday_hours || 0),
-        thursday_hours: Math.round(formData.workingPattern.thursday_hours || 0),
-        friday_hours: Math.round(formData.workingPattern.friday_hours || 0),
-        saturday_hours: Math.round(formData.workingPattern.saturday_hours || 0),
-        sunday_hours: Math.round(formData.workingPattern.sunday_hours || 0),
-        monday_sessions: formData.workingPattern.monday_sessions || 0,
-        tuesday_sessions: formData.workingPattern.tuesday_sessions || 0,
-        wednesday_sessions: formData.workingPattern.wednesday_sessions || 0,
-        thursday_sessions: formData.workingPattern.thursday_sessions || 0,
-        friday_sessions: formData.workingPattern.friday_sessions || 0,
-        saturday_sessions: formData.workingPattern.saturday_sessions || 0,
-        sunday_sessions: formData.workingPattern.sunday_sessions || 0,
-        total_hours: Math.round(totalHours),
-        total_sessions: totalSessions,
-        updated_at: new Date().toISOString()
-      };
-
-      const { error: patternError } = await supabase
-        .from('3_staff_working_patterns')
-        .upsert(patternData);
-
-      if (patternError) {
-        debugLog('warning', 'Working pattern warning', patternError);
-      } else {
-        debugLog('success', 'Working pattern created');
-      }
-
-      // Step 5: Create holiday profile
-      debugLog('info', 'Step 5: Creating holiday profile');
+      // Step 5: Create holiday profile (still create this for existing system compatibility)
+      debugLog('info', 'Step 5: Creating preliminary holiday profile');
 
       // First check if profile already exists for this full_name
       const { data: existingHolidayProfile } = await supabase
@@ -7808,7 +7762,7 @@ window.PIR_DEFINITIONS_DATA = [
             is_gp: isGP,
             email: formData.email,
             site_id: ctx.site_id,
-            user_id: userId,
+            user_id: null, // Will be updated when user completes registration
             updated_at: new Date().toISOString()
           })
           .eq('id', existingHolidayProfile.id)
