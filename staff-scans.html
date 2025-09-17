@@ -561,32 +561,45 @@
     async function loadScans(userProfile) {
       const displayName = userProfile.display_name;
       const siteId = userProfile.site_id;
+      console.log('Loading scans for user:', {
+        user_id: userProfile.user_id,
+        display_name: displayName,
+        site_id: siteId
+      });
       try {
         let rows = [];
         
-        // Try to get detailed view first
-        if (siteId) {
-          const { data, error } = await supabase
-            .from('v_submission_detail')
-            .select('submitted_at,item_name,room,check_type,check_value,staff_name,site_id,comment')
-            .eq('site_id', siteId)
-            .eq('user_id', userProfile.user_id)
-            .order('submitted_at', { ascending: false })
-            .limit(200);
-          
-          if (!error && data) rows = data;
-        }
-        
-        // Fallback to submissions table
-        if (!rows?.length) {
-          const { data, error } = await supabase
+        // Query submissions directly (v_submission_detail might not exist or have the columns we need)
+        console.log('Querying submissions table...');
+
+          // Try submitted_by_user_id first
+          let { data, error } = await supabase
             .from('submissions')
-            .select('submitted_at, staff_name, comment')
-            .eq('user_id', userProfile.user_id)
+            .select('submitted_at, staff_name, comment, submitted_by_user_id, user_id, staff_id')
+            .eq('submitted_by_user_id', userProfile.user_id)
             .order('submitted_at', { ascending: false })
             .limit(200);
-          
-          if (!error && data) {
+
+          // If no results, try user_id
+          if (!data || data.length === 0) {
+            console.log('No results with submitted_by_user_id in submissions table, trying user_id...');
+            const result = await supabase
+              .from('submissions')
+              .select('submitted_at, staff_name, comment, submitted_by_user_id, user_id, staff_id')
+              .eq('user_id', userProfile.user_id)
+              .order('submitted_at', { ascending: false })
+              .limit(200);
+            data = result.data;
+            error = result.error;
+          }
+
+          if (error) {
+            console.error('Error querying submissions:', error);
+          } else if (data) {
+            console.log('Submissions query results:', data?.length || 0, 'rows');
+            if (data?.length > 0) {
+              console.log('First submission:', data[0]);
+            }
             rows = data.map(r => ({
               submitted_at: r.submitted_at,
               item_name: '—',

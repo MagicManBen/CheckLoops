@@ -1,204 +1,228 @@
 import { chromium } from 'playwright';
 
 async function testCompleteFlow() {
-  const browser = await chromium.launch({
-    headless: false,
-    slowMo: 300
-  });
+  console.log('=== COMPLETE CHECKLOOP FLOW TEST ===\n');
+  console.log('This test will guide you through:');
+  console.log('1. Setting up your PIN');
+  console.log('2. Authenticating with PIN');
+  console.log('3. Scanning items');
+  console.log('4. Submitting checklist\n');
 
+  const browser = await chromium.launch({ headless: false });
   const page = await browser.newPage();
 
-  // Capture console messages
+  // Enable console logging
   page.on('console', msg => {
     const text = msg.text();
-    if (text.includes('Saved') || text.includes('saved') || text.includes('SUCCESS')) {
-      console.log('[Browser]', text);
+    if (text.includes('===') || text.includes('PIN') || text.includes('Staff') || text.includes('submission')) {
+      console.log('[PAGE]:', text);
     }
   });
 
   try {
-    console.log('=== COMPLETE WELCOME FLOW TEST ===\n');
-
-    // 1. Login
-    console.log('1. Logging in...');
-    await page.goto('http://127.0.0.1:5500/Home.html');
-    await page.waitForTimeout(1000);
-    await page.fill('#email', 'benhowardmagic@hotmail.com');
-    await page.fill('input[type="password"]', 'Hello1!');
-    await page.click('button:has-text("Sign In")');
+    // Step 1: Navigate and login
+    console.log('STEP 1: Navigating to application...');
+    await page.goto('http://127.0.0.1:54907/indexIpad.html');
     await page.waitForTimeout(2000);
 
-    // Navigate to staff portal if on admin dashboard
-    const currentUrl = page.url();
-    if (currentUrl.includes('admin-dashboard.html')) {
-      console.log('   On admin dashboard, navigating to staff portal...');
-      await page.goto('http://127.0.0.1:5500/staff.html');
-      await page.waitForTimeout(1500);
+    // Check if we need to login
+    const loginEmail = page.locator('#loginEmail');
+    if (await loginEmail.isVisible()) {
+      console.log('STEP 2: Logging in as benhowardmagic@hotmail.com...');
+      await loginEmail.fill('benhowardmagic@hotmail.com');
+      await page.locator('#loginPass').fill('Hello1!');
+      await page.click('#doLogin');
+      await page.waitForTimeout(3000);
     }
 
-    // 2. Click Welcome in menu
-    console.log('\n2. Clicking Welcome in menu...');
-    await page.click('button[data-section="welcome"]');
-    await page.waitForTimeout(1500);
+    // Step 2: Set up PIN
+    const pinScreen = page.locator('#screen-pin');
+    if (await pinScreen.isVisible()) {
+      console.log('\nSTEP 3: Setting up PIN...');
+      console.log('Opening PIN setup screen (clicking + button)...');
 
-    // Verify navigation is visible
-    const navVisible = await page.isVisible('.nav.seg-nav');
-    console.log('   Navigation visible:', navVisible ? '✓' : '✗');
+      await page.click('#btnPinSetup');
+      await page.waitForTimeout(2000);
 
-    // Take screenshot
-    await page.screenshot({ path: 'test_1_welcome_with_nav.png' });
+      // Select user from dropdown
+      const userSelect = page.locator('#pinSetupUser');
+      if (await userSelect.isVisible()) {
+        const options = await userSelect.locator('option').all();
+        console.log(`Found ${options.length - 1} users available for PIN setup`);
 
-    // 3. Update nickname and start
-    console.log('\n3. Setting nickname and starting...');
-    const nicknameField = await page.locator('#nickname');
-    await nicknameField.clear();
-    await nicknameField.fill('BenjaminTest');
-    console.log('   Nickname set to: BenjaminTest');
+        // Find and select the current user
+        let userFound = false;
+        for (let i = 1; i < options.length; i++) {
+          const text = await options[i].textContent();
+          if (text.includes('Ben Howard') || text.includes('benhowardmagic')) {
+            await userSelect.selectOption({ index: i });
+            console.log(`Selected user: ${text}`);
+            userFound = true;
+            break;
+          }
+        }
 
-    await page.click('button:has-text("Get started")');
-    await page.waitForTimeout(2000);
+        if (!userFound) {
+          console.log('User not found in dropdown. Selecting first available user...');
+          if (options.length > 1) {
+            await userSelect.selectOption({ index: 1 });
+            const selectedText = await options[1].textContent();
+            console.log(`Selected: ${selectedText}`);
+          }
+        }
 
-    // 4. Check if on step 2 (role/team)
-    const step2Visible = await page.isVisible('#welcome-step2');
-    console.log('\n4. Step 2 (Role/Team) visible:', step2Visible ? '✓' : '✗');
+        // Set PIN to 5678
+        console.log('Setting PIN to 5678...');
+        await page.locator('#pinSetupNew').fill('5678');
+        await page.locator('#pinSetupConfirm').fill('5678');
 
-    if (step2Visible) {
-      // Select role
-      const roleField = await page.locator('#role');
-      if (await roleField.count() > 0) {
-        await roleField.selectOption('manager');
-        console.log('   Role set to: Manager');
+        // Save PIN
+        await page.click('#btnPinSetupSave');
+        await page.waitForTimeout(3000);
+
+        const setupMsg = await page.locator('#pinSetupMsg').textContent();
+        console.log('PIN setup result:', setupMsg || 'Success');
+
+        // Go back to PIN screen
+        if (setupMsg && setupMsg.includes('success')) {
+          await page.click('#btnPinSetupCancel');
+          await page.waitForTimeout(1000);
+        }
+      }
+    }
+
+    // Step 3: Authenticate with PIN
+    if (await pinScreen.isVisible()) {
+      console.log('\nSTEP 4: Authenticating with PIN 5678...');
+
+      // Clear any previous attempt
+      const clearBtn = page.locator('#btnClearPin');
+      if (await clearBtn.isVisible()) {
+        await clearBtn.click();
+        await page.waitForTimeout(500);
       }
 
-      // Set team
-      const teamField = await page.locator('#team');
-      if (await teamField.count() > 0) {
-        await teamField.fill('Test Team');
-        console.log('   Team set to: Test Team');
-      }
+      // Enter PIN 5678
+      await page.click('.key:has-text("5")');
+      await page.waitForTimeout(200);
+      await page.click('.key:has-text("6")');
+      await page.waitForTimeout(200);
+      await page.click('.key:has-text("7")');
+      await page.waitForTimeout(200);
+      await page.click('.key:has-text("8")');
 
-      // Click continue
-      await page.click('#to-avatar-btn');
+      // Wait for authentication
+      await page.waitForTimeout(3000);
+
+      const pinMsg = await page.locator('#pinMsg').textContent();
+      if (pinMsg && pinMsg.includes('Invalid')) {
+        console.log('PIN authentication failed:', pinMsg);
+        console.log('Please manually set your PIN using the + button and try again');
+        await page.screenshot({ path: 'pin_setup_needed.png' });
+        return;
+      }
+    }
+
+    // Step 4: Start scanning
+    const beginScreen = page.locator('#screen-begin');
+    if (await beginScreen.isVisible()) {
+      console.log('\nSTEP 5: Starting checklist...');
+      await page.click('#btnBegin');
       await page.waitForTimeout(2000);
     }
 
-    // 5. Check if on step 3 (avatar)
-    const step3Visible = await page.isVisible('#welcome-step3');
-    console.log('\n5. Step 3 (Avatar) visible:', step3Visible ? '✓' : '✗');
+    // Step 5: Add items via upload screen
+    const uploadScreen = page.locator('#screen-upload');
+    if (await uploadScreen.isVisible()) {
+      console.log('\nSTEP 6: Adding test items...');
 
-    if (step3Visible) {
-      // Click randomize to generate an avatar
-      const randomizeBtn = await page.locator('#avatar-randomize');
-      if (await randomizeBtn.count() > 0) {
-        await randomizeBtn.click();
-        console.log('   Clicked Randomize to generate avatar');
+      const uploadInput = page.locator('#uploadInput');
+      if (await uploadInput.isVisible()) {
+        // Add three test items
+        console.log('Adding item: 1234567890');
+        await uploadInput.fill('1234567890');
+        await uploadInput.press('Enter');
+        await page.waitForTimeout(1000);
+
+        console.log('Adding item: 0987654321');
+        await uploadInput.fill('0987654321');
+        await uploadInput.press('Enter');
+        await page.waitForTimeout(1000);
+
+        console.log('Adding item: 1111111111');
+        await uploadInput.fill('1111111111');
+        await uploadInput.press('Enter');
+        await page.waitForTimeout(3000);
+      }
+    }
+
+    // Step 6: Review and submit
+    const reviewScreen = page.locator('#screen-review');
+    if (await reviewScreen.isVisible()) {
+      console.log('\nSTEP 7: On review screen...');
+
+      // Take screenshot of debug panel
+      await page.screenshot({ path: 'review_with_debug.png', fullPage: true });
+      console.log('Screenshot saved: review_with_debug.png');
+
+      // Click refresh debug info
+      const refreshBtn = page.locator('button:has-text("Refresh Debug Info")');
+      if (await refreshBtn.isVisible()) {
+        await refreshBtn.click();
         await page.waitForTimeout(1000);
       }
 
-      // Take screenshot
-      await page.screenshot({ path: 'test_avatar_changed.png' });
+      // Get debug panel content
+      const debugPanel = page.locator('#debugPanel');
+      if (await debugPanel.isVisible()) {
+        const debugContent = await debugPanel.textContent();
+        console.log('\n=== DEBUG INFO ===');
+        console.log(debugContent);
+        console.log('==================\n');
+      }
 
-      // Wait for buttons to fully load (takes up to 2 seconds)
-      console.log('   Waiting for buttons to load...');
-      await page.waitForTimeout(2000);
+      // Try to submit
+      console.log('STEP 8: Attempting submission...');
+      const submitBtn = page.locator('#btnSubmit');
+      if (await submitBtn.isVisible() && !await submitBtn.isDisabled()) {
+        await submitBtn.click();
+        await page.waitForTimeout(3000);
 
-      // Scroll to the very bottom of the page where the button is
-      await page.evaluate(() => {
-        window.scrollTo(0, document.body.scrollHeight);
-      });
-      await page.waitForTimeout(500);
+        // Check submission result
+        const submitMsg = await page.locator('#submitMsg').textContent();
+        console.log('Submission result:', submitMsg);
 
-      // Look for the Continue to Working Hours button at bottom right
-      const continueBtn = await page.locator('button:has-text("Continue to Working Hours")');
-      const btnVisible = await continueBtn.isVisible();
-      console.log('   Continue button visible:', btnVisible);
+        // Get final debug panel content
+        const finalDebug = await debugPanel.textContent();
+        if (finalDebug.includes('SUCCESS')) {
+          console.log('\n✅ SUBMISSION SUCCESSFUL!');
+        } else if (finalDebug.includes('ERROR')) {
+          console.log('\n❌ SUBMISSION FAILED');
+          console.log('Debug output:', finalDebug);
+        }
 
-      if (btnVisible) {
-        await continueBtn.click();
-        console.log('   ✓ Clicked Continue to Working Hours');
-        await page.waitForTimeout(2000);
+        // Take final screenshot
+        await page.screenshot({ path: 'submission_result.png', fullPage: true });
+        console.log('Final screenshot saved: submission_result.png');
       } else {
-        // Try with ID selector as fallback
-        const altBtn = await page.locator('#finish-avatar-btn');
-        if (await altBtn.isVisible()) {
-          await altBtn.click();
-          console.log('   ✓ Clicked Continue button (by ID)');
-          await page.waitForTimeout(2000);
-        } else {
-          console.log('   ⚠️ Continue button not found');
-        }
-      }
-    }
-
-    // 6. Check if on step 4 (working hours)
-    const step4Visible = await page.isVisible('#step4');
-    console.log('\n6. Step 4 (Working Hours) visible:', step4Visible ? '✓' : '✗');
-
-    if (step4Visible) {
-      // Set working hours
-      const mondayCheck = await page.locator('input[data-day="monday"]');
-      if (await mondayCheck.count() > 0) {
-        await mondayCheck.check();
-        console.log('   Monday checked');
-      }
-
-      const fridayCheck = await page.locator('input[data-day="friday"]');
-      if (await fridayCheck.count() > 0) {
-        await fridayCheck.check();
-        console.log('   Friday checked');
-      }
-
-      // Take screenshot
-      await page.screenshot({ path: 'test_working_hours_set.png' });
-
-      // Click Finish Setup
-      console.log('\n7. Clicking Finish Setup...');
-      const finishBtn = await page.locator('#complete-setup');
-      if (await finishBtn.count() > 0) {
-        await finishBtn.click();
-        console.log('   Clicked Finish Setup');
-
-        // Wait for completion
-        await page.waitForTimeout(2000);
-
-        // Check if completion screen shows
-        const step5Visible = await page.isVisible('#step5');
-        console.log('\n8. Completion screen visible:', step5Visible ? '✓' : '✗');
-
-        if (step5Visible) {
-          console.log('   🎉 SUCCESS! All Set screen is showing!');
-
-          // Check for celebration elements
-          const confettiCount = await page.locator('.bit').count();
-          const balloonCount = await page.locator('.balloon').count();
-          console.log('   Confetti pieces:', confettiCount);
-          console.log('   Balloons:', balloonCount);
-
-          // Take screenshot
-          await page.screenshot({ path: 'test_complete_celebration.png' });
-
-          // Wait for auto-navigation (2 seconds)
-          console.log('\n9. Waiting for auto-navigation to staff.html...');
-          await page.waitForTimeout(2500);
-
-          const finalUrl = page.url();
-          if (finalUrl.includes('staff.html')) {
-            console.log('   ✅ Successfully navigated to staff dashboard!');
-            await page.screenshot({ path: 'test_complete_dashboard.png' });
-          } else {
-            console.log('   Current URL:', finalUrl);
-          }
-        }
+        console.log('Submit button not available or disabled');
       }
     }
 
   } catch (error) {
-    console.error('Test error:', error.message);
-    await page.screenshot({ path: 'test_complete_error.png' });
+    console.error('Test error:', error);
+    await page.screenshot({ path: 'error_screenshot.png', fullPage: true });
   } finally {
-    console.log('\n=== TEST COMPLETE ===');
-    await page.waitForTimeout(3000);
+    console.log('\n=== TEST SUMMARY ===');
+    console.log('1. Check review_with_debug.png to see the state before submission');
+    console.log('2. Check submission_result.png to see the final result');
+    console.log('3. If PIN authentication failed, use the + button to set your PIN to 5678');
+    console.log('4. The debug panel shows all critical information for troubleshooting');
+    console.log('====================\n');
+
+    await page.waitForTimeout(10000);
     await browser.close();
+    console.log('Test completed');
   }
 }
 
