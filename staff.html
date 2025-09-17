@@ -337,27 +337,27 @@
             <div class="panel-title">Achievements</div>
           </div>
           <div class="ach-grid">
-            <div class="ach">
-            <div class="ico" style="background:#dcfce7;"><img data-i8="confetti" alt="First Login"></div>
+            <div class="ach" data-key="first_login">
+              <div class="ico" style="background:#dcfce7;"><img data-i8="confetti" alt="First Login"></div>
               <div class="txt"><div class="name">First Login</div><div class="desc">Welcome aboard! You’re in.</div></div>
             </div>
-            <div class="ach locked">
+            <div class="ach locked" data-key="on_time_submission">
               <div class="ico" style="background:#fef3c7;"><img data-i8="clock" alt="On-Time"></div>
               <div class="txt"><div class="name">On‑Time Checker</div><div class="desc">Do today’s check before 10am.</div></div>
             </div>
-            <div class="ach locked">
+            <div class="ach locked" data-key="seven_day_streak">
               <div class="ico" style="background:#e9d5ff;"><img data-i8="fire-element" alt="7-Day Streak"></div>
               <div class="txt"><div class="name">7‑Day Streak</div><div class="desc">Complete checks 7 days in a row.</div></div>
             </div>
-            <div class="ach locked">
+            <div class="ach locked" data-key="training_complete">
               <div class="ico" style="background:#fee2e2;"><img data-i8="checkmark" alt="100% Training"></div>
               <div class="txt"><div class="name">100% Training</div><div class="desc">All mandatory training valid.</div></div>
             </div>
-            <div class="ach locked">
+            <div class="ach locked" data-key="quiz_complete">
               <div class="ico" style="background:#dbeafe;"><img data-i8="idea" alt="Quiz Master"></div>
               <div class="txt"><div class="name">Quiz Master</div><div class="desc">Complete your weekly quiz.</div></div>
             </div>
-            <div class="ach locked">
+            <div class="ach locked" data-key="quiz_perfect">
               <div class="ico" style="background:#fef3c7;"><img data-i8="trophy" alt="Perfect Score"></div>
               <div class="txt"><div class="name">Perfect Score</div><div class="desc">Get 100% on a quiz.</div></div>
             </div>
@@ -620,33 +620,53 @@
       // Get kiosk_user_id from user profile
       const kioskUserId = profileRow?.kiosk_user_id;
 
-      // Achievements: compute heuristics and upsert to DB if unlocked
+      // Achievements: reflect persisted status first, then opportunistically unlock
       try{
-        const achEls = document.querySelectorAll('.ach');
-        // index mapping: 0=first_login, 1=on_time_submission, 2=seven_day_streak, 3=training_complete, 4=quiz_complete, 5=quiz_perfect
+        const toKey = (el)=> (el?.getAttribute?.('data-key')||'').trim();
+        const achEls = Array.from(document.querySelectorAll('.ach'));
 
-        // First Login: use auth user created_at (profileRow doesn't include created_at in current select)
-        // Supabase auth user object has created_at; consider unlocked if exists and account age < 30 days OR any login occurs.
-        let firstLogin = false;
-        try {
-          const createdAt = user?.created_at ? new Date(user.created_at) : null;
-          if (createdAt) {
-            const ageDays = (Date.now() - createdAt.getTime()) / 86400000;
-            // If user has an auth record (always true here) treat as first_login achievement unlock once.
-            firstLogin = true;
-          }
-        } catch(_) { firstLogin = true; }
-        if (achEls[0]) achEls[0].classList.toggle('locked', !firstLogin);
-        if (kioskUserId && firstLogin) {
-          try { await upsertAchievement(supabase, kioskUserId, 'first_login', 'unlocked'); } catch(e) { console.error('Upsert first_login failed', e); }
-        }
+        // 1) Read existing statuses from DB and set UI immediately
+        const existing = (kioskUserId) ? (await getUserAchievements(supabase, kioskUserId)) : [];
+        const statusMap = new Map((existing||[]).map(r => [String(r.achievement_key), String(r.status||'locked')]));
+
+        const setLocked = (key, locked) => {
+          const el = achEls.find(e => toKey(e) === key);
+          if (el) el.classList.toggle('locked', !!locked);
+        };
+
+        ['first_login','on_time_submission','seven_day_streak','training_complete','quiz_complete','quiz_perfect']
+          .forEach(k => setLocked(k, (statusMap.get(k) !== 'unlocked')));
+
+        // 2) Compute new unlocks from live activity and upsert if needed
+        const ensureUnlocked = async (key, condition) => {
+          if (!kioskUserId) return;
+          const already = statusMap.get(key) === 'unlocked';
+          if (already) { setLocked(key, false); return; }
+          if (!condition) return;
+          try {
+            await upsertAchievement(supabase, kioskUserId, key, 'unlocked');
+            statusMap.set(key, 'unlocked');
+            setLocked(key, false);
+          } catch (e) { console.error('Upsert failed for', key, e); }
+        };
+
+        // First Login
+        let firstLogin = true; // Presence of auth user implies first_login is achievable
+        await ensureUnlocked('first_login', firstLogin);
 
         // On-Time Checker: any submission today before 10:00
         let onTime = false;
         try{
           const start = new Date(); start.setHours(0,0,0,0);
           const end = new Date(); end.setHours(23,59,59,999);
-          const todays = await supabase.from('v_submission_detail').select('submitted_at').eq('site_id', siteId).eq('staff_name', displayName).gte('submitted_at', start.toISOString()).lte('submitted_at', end.toISOString()).limit(50);
+          const todays = await supabase
+            .from('v_submission_detail')
+            .select('submitted_at')
+            .eq('site_id', siteId)
+            .eq('staff_name', displayName)
+            .gte('submitted_at', start.toISOString())
+            .lte('submitted_at', end.toISOString())
+            .limit(50);
           if (!todays.error && todays.data && todays.data.length){
             for (const r of todays.data){
               const d = new Date(r.submitted_at);
@@ -654,54 +674,58 @@
             }
           }
         }catch(_){ }
-        if (achEls[1]) achEls[1].classList.toggle('locked', !onTime);
-        if (kioskUserId && onTime) {
-          try { await upsertAchievement(supabase, kioskUserId, 'on_time_submission', 'unlocked'); } catch(e) { console.error('Upsert on_time failed', e); }
-        }
+        await ensureUnlocked('on_time_submission', onTime);
 
-        // 7-Day Streak: unique dates with submissions in last 7 days >=7
+        // 7-Day Streak
         let seven = false;
         try{
           const since = new Date(); since.setDate(since.getDate() - 7);
-          const recent = await supabase.from('v_submission_detail').select('submitted_at').eq('site_id', siteId).eq('staff_name', displayName).gte('submitted_at', since.toISOString()).limit(200);
+          const recent = await supabase
+            .from('v_submission_detail')
+            .select('submitted_at')
+            .eq('site_id', siteId)
+            .eq('staff_name', displayName)
+            .gte('submitted_at', since.toISOString())
+            .limit(200);
           if (!recent.error && recent.data){
             const days = new Set(recent.data.map(r => (new Date(r.submitted_at)).toISOString().slice(0,10)));
             seven = days.size >= 7;
           }
         }catch(_){ }
-        if (achEls[2]) achEls[2].classList.toggle('locked', !seven);
-        if (kioskUserId && seven) {
-          try { await upsertAchievement(supabase, kioskUserId, 'seven_day_streak', 'unlocked'); } catch(e) { console.error('Upsert seven_day failed', e); }
-        }
+        await ensureUnlocked('seven_day_streak', seven);
 
         // 100% Training: profile field or ringPct === 100
         const trainingOk = (profileRow?.training_compliance_pct != null && Number(profileRow.training_compliance_pct) >= 100) || ringPct === 100;
-        if (achEls[3]) achEls[3].classList.toggle('locked', !trainingOk);
-        if (kioskUserId && trainingOk) {
-          try { await upsertAchievement(supabase, kioskUserId, 'training_complete', 'unlocked'); } catch(e) { console.error('Upsert training failed', e); }
-        }
+        await ensureUnlocked('training_complete', trainingOk);
 
-        // Quiz Master: has completed at least one quiz
+        // Quiz Master: any non‑practice attempt
         let quizComplete = false;
         try {
-          const { data: quizData } = await supabase.from('quiz_attempts').select('id').eq('user_id', user.id).eq('is_practice', false).limit(1).maybeSingle();
+          const { data: quizData } = await supabase
+            .from('quiz_attempts')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('is_practice', false)
+            .limit(1)
+            .maybeSingle();
           quizComplete = Boolean(quizData);
         } catch(_) {}
-        if (achEls[4]) achEls[4].classList.toggle('locked', !quizComplete);
-        if (kioskUserId && quizComplete) {
-          try { await upsertAchievement(supabase, kioskUserId, 'quiz_complete', 'unlocked'); } catch(e) { console.error('Upsert quiz_complete failed', e); }
-        }
+        await ensureUnlocked('quiz_complete', quizComplete);
 
-        // Perfect Score: has gotten 100% on any quiz
+        // Perfect Score: 100%
         let perfectScore = false;
         try {
-          const { data: perfectData } = await supabase.from('quiz_attempts').select('id').eq('user_id', user.id).eq('is_practice', false).eq('score_percent', 100).limit(1).maybeSingle();
+          const { data: perfectData } = await supabase
+            .from('quiz_attempts')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('is_practice', false)
+            .eq('score_percent', 100)
+            .limit(1)
+            .maybeSingle();
           perfectScore = Boolean(perfectData);
         } catch(_) {}
-        if (achEls[5]) achEls[5].classList.toggle('locked', !perfectScore);
-        if (kioskUserId && perfectScore) {
-          try { await upsertAchievement(supabase, kioskUserId, 'quiz_perfect', 'unlocked'); } catch(e) { console.error('Upsert quiz_perfect failed', e); }
-        }
+        await ensureUnlocked('quiz_perfect', perfectScore);
 
       }catch(e){ console.error('Achievement check failed', e); }
 

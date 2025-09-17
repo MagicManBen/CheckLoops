@@ -694,11 +694,100 @@
         window.currentSiteId = siteId;
         const role = profileRow?.role || user?.raw_user_meta_data?.role || 'Staff';
         const roleDetail = role.charAt(0).toUpperCase() + role.slice(1);  // Capitalize first letter
-        // Check server state for profile completion (but don't force anything)
+
+        // Check if user already has been pre-configured by admin
+        let preConfigured = false;
+        let existingData = {};
+
+        // Check server state for profile completion
         try {
           const siteIdForCheck = siteId;
           let nickname = null, roleDetailCheck = null, teamId = null, teamName = null, avatarUrl = null;
-          if (siteIdForCheck) {
+
+          // First check site_invites for pre-configuration metadata
+          const { data: inviteData } = await supabase
+            .from('site_invites')
+            .select('metadata')
+            .eq('email', user.email)
+            .eq('site_id', siteIdForCheck)
+            .maybeSingle();
+
+          if (inviteData?.metadata) {
+            console.log('Found pre-configuration data from invitation:', inviteData.metadata);
+            existingData.inviteMetadata = inviteData.metadata;
+            preConfigured = true;
+
+            // Set pre-configured values
+            if (inviteData.metadata.job_role) {
+              roleDetailCheck = inviteData.metadata.job_role;
+              window.preConfiguredRole = inviteData.metadata.job_role;
+            }
+            if (inviteData.metadata.team_id) {
+              teamId = inviteData.metadata.team_id;
+              window.preConfiguredTeamId = inviteData.metadata.team_id;
+            }
+            if (inviteData.metadata.working_pattern) {
+              window.preConfiguredWorkingPattern = inviteData.metadata.working_pattern;
+            }
+            if (inviteData.metadata.holiday_entitlement) {
+              window.preConfiguredHolidayEntitlement = inviteData.metadata.holiday_entitlement;
+            }
+          }
+
+          // Check if user has existing data in various tables
+          const [welcomeData, workingPattern, holidayProfile] = await Promise.all([
+            supabase.from('staff_app_welcome')
+              .select('*')
+              .eq('user_id', user.id)
+              .eq('site_id', siteIdForCheck)
+              .maybeSingle(),
+            supabase.from('3_staff_working_patterns')
+              .select('*')
+              .eq('user_id', user.id)
+              .maybeSingle(),
+            supabase.from('1_staff_holiday_profiles')
+              .select('*')
+              .eq('email', user.email)
+              .maybeSingle()
+          ]);
+
+          // Store existing data for pre-population
+          if (welcomeData.data) {
+            existingData.welcome = welcomeData.data;
+            nickname = welcomeData.data.nickname;
+            roleDetailCheck = welcomeData.data.role_detail;
+            teamId = welcomeData.data.team_id;
+            teamName = welcomeData.data.team_name;
+            avatarUrl = welcomeData.data.avatar_url;
+            // If we have role and team data, user was pre-configured
+            if (roleDetailCheck && (teamId || teamName)) {
+              preConfigured = true;
+            }
+          }
+
+          if (workingPattern.data) {
+            existingData.workingPattern = workingPattern.data;
+            preConfigured = true;
+          }
+
+          if (holidayProfile.data) {
+            existingData.holidayProfile = holidayProfile.data;
+          }
+
+          // Also check user metadata for pre-configuration
+          if (user.raw_user_meta_data?.job_role || user.raw_user_meta_data?.role_detail) {
+            preConfigured = true;
+            if (!roleDetailCheck) roleDetailCheck = user.raw_user_meta_data?.job_role || user.raw_user_meta_data?.role_detail;
+          }
+
+          window.preConfiguredData = existingData;
+          window.isPreConfigured = preConfigured;
+
+          if (preConfigured) {
+            console.log('User was pre-configured by admin:', existingData);
+          }
+
+          if (siteIdForCheck && !welcomeData.data) {
             const { data: saw } = await supabase
               .from('staff_app_welcome')
               .select('nickname, role_detail, team_id, team_name, avatar_url')
@@ -2451,16 +2540,24 @@
         async function loadDetailsData(siteId, fullName){
           // Load existing welcome data (if any)
           let existing = null;
-          try {
-            let q = supabase
-              .from('staff_app_welcome')
-              .select('full_name, nickname, role_detail, team_id, team_name, avatar_url')
-              .eq('user_id', user.id)
-              .limit(1);
-            if (siteId) q = q.eq('site_id', siteId);
-            const { data: sawRow, error: sawErr } = await q.maybeSingle();
-            if (!sawErr && sawRow) existing = sawRow;
-          } catch (_) {}
+
+          // Check if we have pre-configured data from admin setup
+          if (window.preConfiguredData && window.preConfiguredData.welcome) {
+            existing = window.preConfiguredData.welcome;
+            console.log('Using pre-configured welcome data:', existing);
+          } else {
+            // Load from database
+            try {
+              let q = supabase
+                .from('staff_app_welcome')
+                .select('full_name, nickname, role_detail, team_id, team_name, avatar_url')
+                .eq('user_id', user.id)
+                .limit(1);
+              if (siteId) q = q.eq('site_id', siteId);
+              const { data: sawRow, error: sawErr } = await q.maybeSingle();
+              if (!sawErr && sawRow) existing = sawRow;
+            } catch (_) {}
+          }
 
           // Pre-fill nickname if present
           if (existing) {
@@ -2469,7 +2566,27 @@
             if (existing.avatar_url) {
               window.existingAvatarUrl = existing.avatar_url;
               window.currentSavedAvatarUrl = existing.avatar_url;
+              // Pre-populate avatar preview if exists
+              const avatarPreview = document.getElementById('avatarPreview');
+              if (avatarPreview) avatarPreview.src = existing.avatar_url;
             }
+
+            // Pre-select role and team if configured
+            if (existing.role_detail) {
+              window.selectedRole = existing.role_detail;
+            }
+            if (existing.team_id) {
+              window.selectedTeamId = existing.team_id;
+              window.selectedTeamName = existing.team_name;
+            }
+          }
+
+          // Use pre-configured values from invitation if not already set
+          if (!window.selectedRole && window.preConfiguredRole) {
+            window.selectedRole = window.preConfiguredRole;
+          }
+          if (!window.selectedTeamId && window.preConfiguredTeamId) {
+            window.selectedTeamId = window.preConfiguredTeamId;
           }
 
           // Build Roles list
@@ -2770,12 +2887,16 @@
       const isGP = (window.selectedRole || '').toLowerCase().includes('doctor') ||
                    (window.selectedRole || '').toLowerCase().includes('gp');
 
-      // Try to load existing working pattern from database
+      // Try to load existing working pattern from database or use pre-configured data
       let existingPattern = null;
       const currentUser = window.currentUser;
       const currentSiteId = window.currentSiteId || 1;
 
-      if (currentUser && globalSupabase) {
+      // First check for pre-configured working pattern from invitation
+      if (window.preConfiguredWorkingPattern) {
+        console.log('Using pre-configured working pattern from invitation');
+        existingPattern = window.preConfiguredWorkingPattern;
+      } else if (currentUser && globalSupabase) {
         try {
           console.log('Loading existing working pattern for user:', currentUser.id);
           const { data, error } = await globalSupabase
