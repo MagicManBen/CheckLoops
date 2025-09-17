@@ -560,15 +560,30 @@ Meeting Duration: ${Math.floor(file.size / 1000000)} minutes (estimated)
     const attendees = await this.getMeetingAttendees(meetingId);
     const agendaItems = await this.getAgendaItems(meetingId);
     const notes = await this.getMeetingNotes(meetingId);
+    const actionItems = await this.getActionItems(meetingId);
 
     // Format content for PDF
     const content = {
       title: meeting.title,
       date: new Date(meeting.start_time).toLocaleString(),
-      location: meeting.location,
+      location: meeting.location || 'Not specified',
       attendees: attendees.map(a => `${a.name || a.email} (${a.status})`),
       agenda: agendaItems.map(a => `• ${a.title}: ${a.description || 'No description'}`),
-      notes: notes?.content || 'No notes recorded'
+      notes: notes?.content || 'No notes recorded',
+      transcript: notes?.transcript || '',
+      actionItems: actionItems.map(a => ({
+        description: a.description,
+        assignedTo: a.assigned_to_name,
+        dueDate: a.due_date ? new Date(a.due_date).toLocaleDateString() : 'Not specified',
+        status: a.status
+      })),
+      rawData: {
+        meeting,
+        attendees,
+        agendaItems,
+        notes,
+        actionItems
+      }
     };
 
     return content;
