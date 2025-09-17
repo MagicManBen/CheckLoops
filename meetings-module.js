@@ -351,6 +351,7 @@ export class MeetingsManager {
       console.log(`File size: ${file.size} bytes`);
       console.log(`File type: ${file.type}`);
 
+      // Use the user's session token (not service key) for RLS to work properly
       const { data, error } = await this.supabase.storage
         .from('meeting-recordings')
         .upload(fileName, file, {
@@ -360,12 +361,22 @@ export class MeetingsManager {
 
       if (error) {
         console.error('Storage upload error:', error);
-        throw new Error(`Failed to upload recording: ${error.message}`);
+        
+        // Provide specific error messages for common issues
+        if (error.message.includes('row-level security')) {
+          throw new Error(`Storage permission denied. Please ensure meeting-recordings bucket has proper RLS policies for authenticated users. Error: ${error.message}`);
+        } else if (error.message.includes('not found')) {
+          throw new Error(`Storage bucket 'meeting-recordings' not found. Please check bucket configuration.`);
+        } else if (error.message.includes('exceeded')) {
+          throw new Error(`File size limit exceeded. Maximum file size allowed is 50MB.`);
+        } else {
+          throw new Error(`Failed to upload recording: ${error.message}`);
+        }
       }
 
       console.log('Upload successful:', data);
 
-      // Get public URL
+      // Get public URL (bucket is now public, so this will work)
       const { data: { publicUrl } } = this.supabase.storage
         .from('meeting-recordings')
         .getPublicUrl(fileName);

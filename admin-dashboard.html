@@ -7692,54 +7692,18 @@ window.PIR_DEFINITIONS_DATA = [
       
       if (authError) {
         debugLog('error', 'Admin API returned an error', authError);
-        
-        // If admin invite fails, try with OTP as a last resort
-        debugLog('info', 'Admin invite failed, trying OTP method as last resort');
-        try {
-          // Standard auth.signInWithOtp can be used as a fallback
-          const result = await supabase.auth.signInWithOtp({
-            email: formData.email,
-            options: {
-              emailRedirectTo: redirectTo,
-              data: {
-                full_name: formData.fullName,
-                role: formData.siteRole,
-                site_id: formData.siteId,
-                role_detail: formData.jobRole,
-                reports_to_id: formData.teamId,
-                invite_id: inviteRecord.id
-              }
-            }
-          });
-          
-          if (result.error) {
-            throw result.error;
-          }
-          
-          // For OTP method, we need to manually create a user record
-          // This will be completed when they set their password
-          debugLog('success', 'OTP method successful');
-          userData = { user: { id: `pending_${Date.now()}` } };
-        } catch (otpErr) {
-          debugLog('error', 'OTP method failed', otpErr);
-          throw new Error(`Failed to invite user after all attempts: ${otpErr.message || authError.message}`);
-        }
-      } else {
-        debugLog('success', 'Admin API returned successfully', userData);
-      }
-      
-      if (authError) {
-        debugLog('error', 'Authentication error after all fallbacks', authError);
-        
-        // Clean up the invitation record we created
+
+        // Clean up the invitation record we created so we do not leave stale rows
         await supabase
           .from('site_invites')
           .delete()
           .eq('id', inviteRecord.id);
-          
+        
         throw new Error(`Failed to invite user: ${authError.message || 'Unknown error'}`);
       }
-      
+
+      debugLog('success', 'Admin API returned successfully', userData);
+
       if (!userData || !userData.user || !userData.user.id) {
         debugLog('error', 'No user data returned from admin client');
         throw new Error('Failed to create user - no user ID returned');
