@@ -4806,7 +4806,7 @@ document.addEventListener('DOMContentLoaded', () => {
               <!-- Action Buttons -->
               <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px; padding-top:20px; border-top:1px solid #e5e7eb;">
                 <button type="button" class="btn secondary" id="invite-user-cancel-btn">Cancel</button>
-                <button type="submit" class="btn" style="background:linear-gradient(135deg, #10b981, #059669);">📧 Send Invitation</button>
+                <button type="submit" class="btn" id="invite-user-submit" style="background:linear-gradient(135deg, #10b981, #059669);">📧 Send Invitation</button>
               </div>
             </form>
           </div>
@@ -7106,9 +7106,9 @@ window.PIR_DEFINITIONS_DATA = [
   // User Management System
   const inviteUserModal = document.getElementById('invite-user-modal');
   const inviteUserForm = document.getElementById('invite-user-form');
-  const inviteUserError = document.getElementById('add-user-error');
-  const inviteUserSuccess = document.getElementById('add-user-success');
   const debugConsole = document.getElementById('debug-console');
+  
+  debugLog('info', 'User Management System initialized');
 
   // Debug logging function
   function debugLog(level, message, data = null) {
@@ -7140,9 +7140,38 @@ window.PIR_DEFINITIONS_DATA = [
   // Show Invite User Modal
   function showInviteUserModal() {
     inviteUserModal.classList.add('show');
-    inviteUserError.style.display = 'none';
-    inviteUserSuccess.style.display = 'none';
-    inviteUserForm.reset();
+    
+    // Hide error and success messages
+    const errorElement = document.getElementById('add-user-error');
+    const successElement = document.getElementById('add-user-success');
+    if (errorElement) errorElement.style.display = 'none';
+    if (successElement) successElement.style.display = 'none';
+    
+    // Make sure we have valid references to all elements
+    const form = document.getElementById('invite-user-form');
+    const submitBtn = document.getElementById('invite-user-submit');
+    
+    if (!form) {
+      debugLog('error', 'Invite user form not found!');
+      console.error('Invite user form element not found!');
+    }
+    
+    if (!submitBtn) {
+      debugLog('error', 'Invite user submit button not found!');
+      console.error('Submit button not found!');
+    } else {
+      // Ensure button is enabled
+      submitBtn.disabled = false;
+      submitBtn.textContent = '📧 Send Invitation';
+    }
+    
+    if (form) {
+      form.reset();
+      
+      // Re-attach the submit event listener to be safe
+      form.removeEventListener('submit', handleInviteUserFormSubmit);
+      form.addEventListener('submit', handleInviteUserFormSubmit);
+    }
 
     // Load teams for dropdown
     loadTeamsForDropdown();
@@ -7160,6 +7189,26 @@ window.PIR_DEFINITIONS_DATA = [
   document.getElementById('btn-invite-user')?.addEventListener('click', showInviteUserModal);
   document.getElementById('invite-user-modal-close')?.addEventListener('click', closeInviteUserModal);
   document.getElementById('invite-user-cancel-btn')?.addEventListener('click', closeInviteUserModal);
+  
+  // Add a direct click handler for the submit button as a fallback
+  document.addEventListener('DOMContentLoaded', () => {
+    const submitBtn = document.getElementById('invite-user-submit');
+    if (submitBtn) {
+      debugLog('info', 'Adding backup click handler to invite-user-submit button');
+      submitBtn.addEventListener('click', (e) => {
+        debugLog('info', 'Submit button clicked directly');
+        // Ensure the form is submitted properly even if the normal submit event isn't working
+        const form = submitBtn.closest('form');
+        if (form) {
+          e.preventDefault(); // Prevent double submission
+          debugLog('info', 'Manually submitting the form');
+          form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+        }
+      });
+    } else {
+      debugLog('error', 'Could not find invite-user-submit button for backup handler');
+    }
+  });
 
   // Load teams from teams table
   async function loadTeamsForDropdown() {
@@ -7487,16 +7536,29 @@ window.PIR_DEFINITIONS_DATA = [
   // Training types modal event listeners
   document.getElementById('training-types-close')?.addEventListener('click', closeTrainingTypesModal);
 
-  // Invite User Form Submission Handler
-  inviteUserForm?.addEventListener('submit', async (e) => {
+  // Invite User Form Submission Handler - Define as a named function so it can be re-attached
+  async function handleInviteUserFormSubmit(e) {
+    debugLog('info', 'Invite user form submitted');
     e.preventDefault();
-    inviteUserError.style.display = 'none';
-    inviteUserSuccess.style.display = 'none';
+    
+    // Get error and success elements
+    const errorElement = document.getElementById('add-user-error');
+    const successElement = document.getElementById('add-user-success');
+    
+    // Hide error and success messages
+    if (errorElement) errorElement.style.display = 'none';
+    if (successElement) successElement.style.display = 'none';
+
+    // Show loading state
+    const submitBtn = document.getElementById('invite-user-submit');
+    const originalBtnText = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Inviting...';
 
     // Collect form data
     const formData = {
       fullName: document.getElementById('add-user-name').value.trim(),
-      email: document.getElementById('add-user-email').value.trim(),
+      email: document.getElementById('add-user-email').value.trim().toLowerCase(),
       siteRole: document.getElementById('add-user-access').value,
       jobRole: document.getElementById('add-user-role').value,
       teamId: document.getElementById('add-user-team').value || null,
@@ -7510,10 +7572,24 @@ window.PIR_DEFINITIONS_DATA = [
     let totalHours = 0;
     let totalSessions = 0;
 
+    debugLog('info', 'Processing working pattern', {
+      isGP,
+      days,
+      formData
+    });
+
     for (const day of days) {
       const input = document.getElementById(`${day}-input`);
+      
+      if (!input) {
+        debugLog('warning', `Input element not found for ${day}`);
+        continue;
+      }
+      
+      debugLog('info', `Processing ${day}`, { value: input.value });
+      
       if (isGP) {
-        const sessions = parseInt(input.value);
+        const sessions = parseInt(input.value) || 0;
         formData.workingPattern[`${day}_sessions`] = sessions;
         formData.workingPattern[`${day}_hours`] = 0;
         totalSessions += sessions;
@@ -7527,10 +7603,10 @@ window.PIR_DEFINITIONS_DATA = [
       }
     }
 
-    debugLog('info', 'Creating complete user account', formData);
+    debugLog('info', 'Creating user account', formData);
 
     try {
-      // Calculate holiday entitlement first
+      // Calculate holiday entitlement
       const holidayEntitlement = isGP ? Math.round(totalSessions * 2) : Math.round((totalHours / 37.5) * 25);
 
       // Get the current user's session for authentication
@@ -7539,57 +7615,88 @@ window.PIR_DEFINITIONS_DATA = [
         throw new Error('You must be logged in to create users');
       }
 
-      // Generate a secure temporary password
-      const tempPassword = 'Welcome' + Math.random().toString(36).substring(2, 10) + '!';
-
-      // Call the Edge Function to create the user
-      debugLog('info', 'Calling Edge Function to create user');
-
-      const { data: userData, error: createError } = await supabase.functions.invoke('create-user', {
-        body: {
+      // Call the simple-invite Edge Function - this is more reliable
+      debugLog('info', 'Calling simple-invite Edge Function', {
+        email: formData.email,
+        name: formData.fullName,
+        role: formData.siteRole,
+        role_detail: formData.jobRole,
+        reports_to_id: formData.teamId || null,
+        token: session.access_token ? session.access_token.slice(0, 10) + '...' : 'missing'
+      });
+      
+      // Ensure we have a valid authorization token
+      if (!session.access_token) {
+        throw new Error('Missing access token. Please try logging out and back in.');
+      }
+      
+      const { data: userData, error: createError } = await supabase.functions.invoke('simple-invite', {
+        body: JSON.stringify({
           email: formData.email,
-          password: tempPassword,
-          fullName: formData.fullName,
-          siteId: ctx.site_id,
+          name: formData.fullName,
           role: formData.siteRole,
-          totalHours: totalHours,
-          totalSessions: totalSessions,
-          mondayHours: mondayHours,
-          tuesdayHours: tuesdayHours,
-          wednesdayHours: wednesdayHours,
-          thursdayHours: thursdayHours,
-          fridayHours: fridayHours,
-          holidayEntitlement: holidayEntitlement
+          role_detail: formData.jobRole,
+          reports_to_id: formData.teamId || null
+        }),
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'x-redirect-url': `${window.location.origin}/simple-set-password.html`,
+          'Content-Type': 'application/json'
         }
       });
-
+      
       if (createError) {
-        debugLog('error', 'Edge Function error', createError);
-        throw new Error(createError.message || 'Failed to create user');
+        console.error('Edge function error:', createError);
+        debugLog('error', 'Invitation function error', {
+          error: createError.message,
+          details: createError,
+          status: createError.status || 'unknown'
+        });
+        throw new Error(`Invitation failed: ${createError.message || 'Unknown error'}`);
       }
-
-      if (!userData || !userData.success) {
-        throw new Error('Failed to create user - no data returned');
+      
+      if (!userData) {
+        debugLog('error', 'No response data from invitation function');
+        throw new Error('Invitation failed - no response data returned');
       }
-
-      debugLog('success', 'User created successfully', userData);
-      const userId = userData.user.id;
-
-      // The Edge Function handles profile creation, but we may need to update additional fields
-      // Step 2: Update any additional profile fields if needed
+      
+      if (userData.error) {
+        debugLog('error', 'Error in response from invitation function', userData.error);
+        throw new Error(`Invitation failed: ${userData.error}`);
+      }
+      
+      if (!userData.success) {
+        debugLog('error', 'Invalid response from invitation function', userData);
+        throw new Error('Invitation failed - no success response returned');
+      }
+      
+      debugLog('success', 'User invited successfully', userData);
+      const userId = userData.user_id;
+      
+      // Step 2: Update additional profile fields
       debugLog('info', 'Step 2: Updating additional profile fields');
       const { error: profileError } = await supabase
         .from('profiles')
         .update({
           nickname: formData.fullName.split(' ')[0],
-          onboarding_complete: true
+          onboarding_complete: true,
+          total_hours: totalHours,
+          total_sessions: totalSessions,
+          monday_hours: formData.workingPattern.monday_hours,
+          tuesday_hours: formData.workingPattern.tuesday_hours,
+          wednesday_hours: formData.workingPattern.wednesday_hours,
+          thursday_hours: formData.workingPattern.thursday_hours,
+          friday_hours: formData.workingPattern.friday_hours,
+          saturday_hours: formData.workingPattern.saturday_hours,
+          sunday_hours: formData.workingPattern.sunday_hours,
+          holiday_entitlement: holidayEntitlement
         })
         .eq('user_id', userId);
 
       if (profileError) {
-        debugLog('warning', 'Profile creation warning', profileError);
+        debugLog('warning', 'Profile update warning', profileError);
       } else {
-        debugLog('success', 'Profile created');
+        debugLog('success', 'Profile updated');
       }
 
       // Step 3: Create staff_app_welcome entry
@@ -7604,13 +7711,13 @@ window.PIR_DEFINITIONS_DATA = [
           role_detail: formData.jobRole,
           team_id: formData.teamId || null,
           working_hours: {
-            monday: isGP ? formData.workingPattern.monday_sessions : '07:30',
-            tuesday: isGP ? formData.workingPattern.tuesday_sessions : '07:30',
-            wednesday: isGP ? formData.workingPattern.wednesday_sessions : '07:30',
-            thursday: isGP ? formData.workingPattern.thursday_sessions : '07:30',
-            friday: isGP ? formData.workingPattern.friday_sessions : '07:30',
-            saturday: isGP ? formData.workingPattern.saturday_sessions : '00:00',
-            sunday: isGP ? formData.workingPattern.sunday_sessions : '00:00',
+            monday: isGP ? formData.workingPattern.monday_sessions : `${Math.floor(formData.workingPattern.monday_hours)}:${Math.round((formData.workingPattern.monday_hours % 1) * 60).toString().padStart(2, '0')}`,
+            tuesday: isGP ? formData.workingPattern.tuesday_sessions : `${Math.floor(formData.workingPattern.tuesday_hours)}:${Math.round((formData.workingPattern.tuesday_hours % 1) * 60).toString().padStart(2, '0')}`,
+            wednesday: isGP ? formData.workingPattern.wednesday_sessions : `${Math.floor(formData.workingPattern.wednesday_hours)}:${Math.round((formData.workingPattern.wednesday_hours % 1) * 60).toString().padStart(2, '0')}`,
+            thursday: isGP ? formData.workingPattern.thursday_sessions : `${Math.floor(formData.workingPattern.thursday_hours)}:${Math.round((formData.workingPattern.thursday_hours % 1) * 60).toString().padStart(2, '0')}`,
+            friday: isGP ? formData.workingPattern.friday_sessions : `${Math.floor(formData.workingPattern.friday_hours)}:${Math.round((formData.workingPattern.friday_hours % 1) * 60).toString().padStart(2, '0')}`,
+            saturday: isGP ? formData.workingPattern.saturday_sessions : `${Math.floor(formData.workingPattern.saturday_hours)}:${Math.round((formData.workingPattern.saturday_hours % 1) * 60).toString().padStart(2, '0')}`,
+            sunday: isGP ? formData.workingPattern.sunday_sessions : `${Math.floor(formData.workingPattern.sunday_hours)}:${Math.round((formData.workingPattern.sunday_hours % 1) * 60).toString().padStart(2, '0')}`,
             isGP: isGP
           }
         });
@@ -7687,28 +7794,26 @@ window.PIR_DEFINITIONS_DATA = [
         }
       }
 
-      // Step 7: Create or update site_invites entry to mark as completed
-      debugLog('info', 'Step 7: Updating invitation status');
-      const { error: inviteError } = await supabase
-        .from('site_invites')
-        .upsert({
-          email: formData.email,
-          site_id: ctx.site_id,
-          role: formData.siteRole || 'staff',
-          status: 'accepted',
-          full_name: formData.fullName,
-          role_detail: formData.jobRole,
-          accepted_at: new Date().toISOString()
-        });
-
-      if (inviteError) {
-        debugLog('warning', 'Invite update warning', inviteError);
-      }
-
       // Success!
-      inviteUserSuccess.textContent = `User ${formData.email} has been completely set up! They can login immediately with password: ${tempPassword || '(already exists)'}`;
-      inviteUserSuccess.style.display = 'block';
-      debugLog('success', 'User fully created!', { email: formData.email, userId, tempPassword });
+      const successElement = document.getElementById('add-user-success');
+      if (successElement) {
+        successElement.textContent = `User ${formData.email} has been invited successfully! They will receive an email with instructions to set their password.`;
+        successElement.style.display = 'block';
+      }
+      debugLog('success', 'User fully created!', { email: formData.email, userId });
+
+      // Reset form fields
+      document.getElementById('add-user-name').value = '';
+      document.getElementById('add-user-email').value = '';
+      // Don't reset role selects as they're likely to invite multiple users with same roles
+      
+      // Reset working pattern inputs
+      for (const day of days) {
+        const input = document.getElementById(`${day}-input`);
+        if (input) {
+          input.value = isGP ? '0' : '00:00';
+        }
+      }
 
       // Refresh user list and close modal after delay
       setTimeout(() => {
@@ -7719,15 +7824,35 @@ window.PIR_DEFINITIONS_DATA = [
     } catch (err) {
       console.error('Failed to create user - full error:', err);
       const errorMessage = err.message || err.toString() || 'Failed to create user';
-      inviteUserError.textContent = errorMessage;
-      inviteUserError.style.display = 'block';
+      
+      const errorElement = document.getElementById('add-user-error');
+      if (errorElement) {
+        errorElement.textContent = errorMessage;
+        errorElement.style.display = 'block';
+      }
+      
       debugLog('error', 'User creation failed', {
         message: errorMessage,
         error: err,
         stack: err.stack
       });
+    } finally {
+      // Reset button state
+      const submitBtn = document.getElementById('invite-user-submit');
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '📧 Send Invitation';
+      }
     }
-  });
+  }
+  
+  // Initial attachment of the form submit handler
+  if (inviteUserForm) {
+    inviteUserForm.addEventListener('submit', handleInviteUserFormSubmit);
+  } else {
+    debugLog('error', 'Invite user form element not found! Form submission will not work.');
+    console.error('Invite user form element not found!', { id: 'invite-user-form' });
+  }
 
   async function loadPracticeUsers() {
     const tbody = document.getElementById('practice-users-tbody');
