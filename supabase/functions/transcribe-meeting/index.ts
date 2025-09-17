@@ -65,22 +65,26 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: `You are a professional meeting minutes formatter. Convert the following transcript into well-structured meeting minutes with:
-1. Meeting title and date
-2. Attendees (if mentioned)
-3. Main discussion points with clear headers
-4. Action items with owners and deadlines
-5. Key decisions made
-6. Next steps
+            content: `You are a professional meeting minutes formatter. Convert the following transcript into well-structured meeting minutes.
 
-Format it professionally like the sample: "08-13_Meeting_ARTP_Spirometry_Appointment_Management_PCN_Structure"`
+IMPORTANT: Include ALL discussion points, decisions, and conversations from the transcript. Do not summarize or shorten - provide the FULL detailed minutes.
+
+Structure the output with:
+1. Meeting Title and Date
+2. Attendees Present (list all mentioned)
+3. Main Discussion Points (include ALL topics discussed with full details)
+4. Action Items (with owners and deadlines if mentioned)
+5. Key Decisions Made (all decisions, no matter how small)
+6. Next Steps
+
+Be thorough and comprehensive. Include every topic discussed, every decision made, and every action item mentioned. The output should be a complete record of the meeting.`
           },
           {
             role: 'user',
             content: `Meeting ID: ${meeting_id}\nFilename: ${filename}\nTranscript:\n${transcript}`
           }
         ],
-        max_tokens: 2000,
+        max_tokens: 4000,
         temperature: 0.3
       })
     })

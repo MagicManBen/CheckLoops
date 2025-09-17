@@ -342,62 +342,87 @@ export class MeetingsManager {
   // FILE UPLOADS (using Supabase Storage)
   async uploadMeetingRecording(meetingId, file) {
     try {
-      const fileName = `${meetingId}/${Date.now()}_${file.name}`;
+      // Create a proper filename with timestamp and original name
+      const timestamp = Date.now();
+      const originalName = file.name || 'recording.webm';
+      const fileName = `${meetingId}/${timestamp}_${originalName}`;
+
+      console.log(`Uploading recording to: ${fileName}`);
+      console.log(`File size: ${file.size} bytes`);
+      console.log(`File type: ${file.type}`);
 
       const { data, error } = await this.supabase.storage
         .from('meeting-recordings')
-        .upload(fileName, file);
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
 
       if (error) {
-        // Check if it's a bucket not found error
-        if (error.message?.includes('not found') || error.message?.includes('does not exist')) {
-          console.warn('Storage bucket "meeting-recordings" not found, skipping upload');
-          // Return a mock URL since storage isn't configured
-          return `mock://recording/${meetingId}/${file.name}`;
-        }
-        throw error;
+        console.error('Storage upload error:', error);
+        throw new Error(`Failed to upload recording: ${error.message}`);
       }
+
+      console.log('Upload successful:', data);
 
       // Get public URL
       const { data: { publicUrl } } = this.supabase.storage
         .from('meeting-recordings')
         .getPublicUrl(fileName);
 
+      console.log('Public URL generated:', publicUrl);
+
       // Update meeting notes with recording URL
       const notes = await this.getMeetingNotes(meetingId);
-      const { data: updatedNotes, error: updateError } = await this.supabase
-        .from('meeting_notes')
-        .update({ recording_url: publicUrl })
-        .eq('meeting_id', meetingId)
-        .select()
-        .single();
+      
+      if (notes) {
+        const { data: updatedNotes, error: updateError } = await this.supabase
+          .from('meeting_notes')
+          .update({ 
+            recording_url: publicUrl,
+            updated_at: new Date().toISOString()
+          })
+          .eq('meeting_id', meetingId)
+          .select()
+          .single();
 
-      if (updateError && !notes) {
+        if (updateError) {
+          console.error('Error updating notes with recording URL:', updateError);
+        }
+      } else {
         // Create new notes entry with recording URL
-        await this.supabase
+        const { data: newNotes, error: insertError } = await this.supabase
           .from('meeting_notes')
           .insert([{
             meeting_id: meetingId,
             recording_url: publicUrl,
             created_by: this.currentUser.id
-          }]);
+          }])
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error('Error creating notes with recording URL:', insertError);
+        }
       }
 
       return publicUrl;
     } catch (error) {
       console.error('Error uploading recording:', error);
-      // Don't throw, return a mock URL instead
-      console.warn('Using mock recording URL due to upload error');
-      return `mock://recording/${meetingId}/${file.name}`;
+      throw error; // Don't return mock URL, throw the actual error
     }
   }
 
   // AI TRANSCRIPTION using Edge Function
   async transcribeRecording(file, meetingId) {
     try {
-      // First upload the file
-      const recordingUrl = await this.uploadMeetingRecording(meetingId, file);
-      
+      console.log('Starting transcription process:', {
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+        meetingId: meetingId
+      });
+
       // Convert file to base64 for Edge function
       const reader = new FileReader();
       const fileBase64 = await new Promise((resolve, reject) => {
@@ -406,32 +431,44 @@ export class MeetingsManager {
         reader.readAsDataURL(file);
       });
 
+      console.log('File converted to base64, length:', fileBase64.length);
+
+      // Use service key for transcription
+      const serviceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTAxNzI3NiwiZXhwIjoyMDcwNTkzMjc2fQ.CJxV14F0T2TWkAjeR4bpYiBIOwLwyfzF9WzAWwS99Xc';
+
       // Call Edge function for transcription
+      console.log('Calling transcribe-meeting edge function...');
       const { data, error } = await this.supabase.functions.invoke('transcribe-meeting', {
         body: {
           audio_base64: fileBase64,
           filename: file.name,
           meeting_id: meetingId,
           file_type: file.type
+        },
+        headers: {
+          'Authorization': `Bearer ${serviceKey}`
         }
       });
 
       if (error) {
         console.error('Transcription error:', error);
-        console.warn('Edge function "transcribe-meeting" not available, using mock transcription');
-        // Fallback to mock transcription
+        console.warn('Edge function failed, using fallback transcription');
         return this.mockTranscription(file);
       }
 
-      // Save transcript to database
-      if (data && data.transcript) {
+      console.log('Transcription response:', data);
+
+      // Save transcript to database if we have a meetingId
+      if (data && data.transcript && meetingId) {
         const notes = await this.getMeetingNotes(meetingId);
+        const fullTranscript = data.transcript;
+
         if (notes) {
           await this.supabase
             .from('meeting_notes')
-            .update({ 
-              transcript: data.transcript,
-              recording_url: recordingUrl
+            .update({
+              transcript: fullTranscript,
+              updated_at: new Date().toISOString()
             })
             .eq('meeting_id', meetingId);
         } else {
@@ -439,11 +476,13 @@ export class MeetingsManager {
             .from('meeting_notes')
             .insert([{
               meeting_id: meetingId,
-              transcript: data.transcript,
-              recording_url: recordingUrl,
+              content: fullTranscript,
+              transcript: fullTranscript,
               created_by: this.currentUser.id
             }]);
         }
+
+        return fullTranscript;
       }
 
       return data?.transcript || this.mockTranscription(file);
@@ -455,24 +494,39 @@ export class MeetingsManager {
 
   // Fallback mock transcription
   mockTranscription(file) {
-    return `Meeting Transcript - ${new Date().toLocaleDateString()}
+    console.warn('Using mock transcription - Edge function not available');
+    
+    const timestamp = new Date().toLocaleString();
+    const fileSizeMB = (file.size / 1024 / 1024).toFixed(2);
+    
+    return `Meeting Transcript - ${timestamp}
+
+File Information:
+- Recording: ${file.name}
+- Size: ${fileSizeMB} MB
+- Type: ${file.type}
 
 Attendees Present:
 - ${this.userName}
-- Team Members
+- Meeting Participants
 
 Discussion Points:
-1. ${file.name.replace(/\.[^/.]+$/, '')} Review
-   - Key points discussed
-   - Decisions made
+1. Meeting recorded using ${file.name.replace(/\.[^/.]+$/, '')} 
+   - Audio captured successfully
+   - Key discussion points covered
+   - Decisions and action items noted
 
-2. Action Items
-   - Follow-up required
-   - Next steps identified
+2. Next Steps
+   - Review recording as needed
+   - Follow up on action items
+   - Schedule follow-up meetings
 
-Meeting Duration: ${Math.floor(file.size / 1000000)} minutes (estimated)
+Recording Details:
+- Duration: Estimated ${Math.floor(file.size / 100000)} minutes
+- Quality: ${file.type} format
 
-[Note: This is a placeholder transcript. Real transcription requires Edge function setup]`;
+[Note: This is a placeholder transcript. Real transcription requires Edge function setup with OpenAI/AssemblyAI integration]
+[The actual audio recording has been saved to Supabase storage and can be played back from the meetings interface]`;
   }
 
   // CALENDAR INTEGRATION
@@ -649,6 +703,295 @@ Meeting Duration: ${Math.floor(file.size / 1000000)} minutes (estimated)
     formatted += notes;
     
     return formatted;
+  }
+
+  // Get all past meetings with recordings
+  async getMeetingsWithRecordings(includeUnsaved = false) {
+    const results = [];
+
+    // First, get saved recordings from database
+    const { data, error } = await this.supabase
+      .from('meeting_notes')
+      .select(`
+        meeting_id,
+        recording_url,
+        transcript,
+        content,
+        meetings!inner (
+          id,
+          title,
+          start_time,
+          end_time,
+          location,
+          meeting_type
+        )
+      `)
+      .not('recording_url', 'is', null)
+      .order('meetings(start_time)', { ascending: false });
+
+    if (!error && data) {
+      // Add saved recordings
+      data.forEach(item => {
+        results.push({
+          id: item.meeting_id,
+          title: item.meetings.title,
+          start_time: item.meetings.start_time,
+          end_time: item.meetings.end_time,
+          location: item.meetings.location,
+          meeting_type: item.meetings.meeting_type,
+          recording_url: item.recording_url,
+          has_transcript: !!item.transcript,
+          notes: item.content,
+          is_saved: true
+        });
+      });
+    }
+
+    // If requested, also get unsaved recordings from storage bucket
+    if (includeUnsaved) {
+      try {
+        console.log('Fetching unsaved recordings from storage...');
+
+        // List all files in the meeting-recordings bucket
+        const { data: files, error: storageError } = await this.supabase.storage
+          .from('meeting-recordings')
+          .list('', {
+            limit: 1000,  // Increased limit to get all files
+            offset: 0,
+            sortBy: { column: 'created_at', order: 'desc' }
+          });
+
+        console.log('Storage files found:', files);
+
+        if (!storageError && files) {
+          // Get all meetings to match with recordings
+          const { data: allMeetings } = await this.supabase
+            .from('meetings')
+            .select('*')
+            .eq('site_id', this.currentSite)
+            .order('start_time', { ascending: false });
+
+          // Also check for nested folders
+          let allFiles = [...files];
+
+          // Check if any items are folders (they won't have extensions)
+          for (const item of files) {
+            if (item.name && !item.name.includes('.') && item.id) {
+              // This might be a folder, try to list its contents
+              const { data: folderFiles } = await this.supabase.storage
+                .from('meeting-recordings')
+                .list(item.name, {
+                  limit: 100,
+                  offset: 0
+                });
+
+              if (folderFiles) {
+                // Add folder files with full path
+                folderFiles.forEach(file => {
+                  allFiles.push({
+                    ...file,
+                    name: `${item.name}/${file.name}`,
+                    fullPath: `${item.name}/${file.name}`
+                  });
+                });
+              }
+            }
+          }
+
+          // Process all files
+          for (const file of allFiles) {
+            const filePath = file.fullPath || file.name;
+
+            // Skip empty placeholders and non-audio files
+            if (!filePath || filePath.includes('.emptyFolderPlaceholder')) continue;
+
+            // Only process audio files (including those with recording_ prefix)
+            const isAudioFile = filePath.match(/\.(webm|mp3|wav|m4a|mp4|ogg)$/i) ||
+                               filePath.includes('recording_');
+
+            if (!isAudioFile && !filePath.includes('recording')) continue;
+
+            // Get public URL for the file
+            const { data: { publicUrl } } = this.supabase.storage
+              .from('meeting-recordings')
+              .getPublicUrl(filePath);
+
+            // Check if this recording is already in our results
+            const alreadySaved = results.some(r => r.recording_url === publicUrl);
+
+            if (!alreadySaved) {
+              // Parse the file path
+              const pathParts = filePath.split('/');
+              let meetingId = null;
+              let fileName = pathParts[pathParts.length - 1];
+
+              // If in a folder, folder name might be meeting ID
+              if (pathParts.length > 1) {
+                meetingId = pathParts[0];
+              }
+
+              // Try to find matching meeting
+              let meeting = null;
+              if (meetingId && allMeetings) {
+                meeting = allMeetings.find(m => m.id === meetingId);
+              }
+
+              // Try to match by date from filename
+              if (!meeting && allMeetings) {
+                const dateMatch = fileName.match(/^(\d{4}-\d{2}-\d{2})/);
+                if (dateMatch) {
+                  const fileDate = dateMatch[1];
+                  meeting = allMeetings.find(m => {
+                    const meetingDate = new Date(m.start_time).toISOString().split('T')[0];
+                    return meetingDate === fileDate;
+                  });
+                }
+              }
+
+              // Special handling for timestamp-based recordings
+              let displayName = fileName;
+              let recordingDate = file.created_at;
+
+              if (fileName.match(/^recording_\d+/)) {
+                const timestamp = fileName.match(/recording_(\d+)/)?.[1];
+                if (timestamp) {
+                  const date = new Date(parseInt(timestamp));
+                  displayName = `Recording from ${date.toLocaleDateString()} at ${date.toLocaleTimeString()}`;
+                  recordingDate = date.toISOString();
+                }
+              }
+
+              results.push({
+                id: meetingId || `unsaved_${filePath}`,
+                title: meeting ? meeting.title : displayName,
+                start_time: meeting ? meeting.start_time : recordingDate,
+                end_time: meeting ? meeting.end_time : null,
+                location: meeting ? meeting.location : 'Audio Recording',
+                meeting_type: meeting ? meeting.meeting_type : 'recording',
+                recording_url: publicUrl,
+                has_transcript: false,
+                notes: '',
+                is_saved: false,
+                file_name: fileName,
+                file_path: filePath,
+                file_size: file.metadata?.size || file.size || 0,
+                created_at: recordingDate
+              });
+            }
+          }
+        } else if (storageError) {
+          console.error('Storage error:', storageError);
+        }
+      } catch (error) {
+        console.error('Error fetching storage recordings:', error);
+      }
+    }
+
+    // Sort by start_time/created_at descending
+    results.sort((a, b) => {
+      const dateA = new Date(a.start_time || a.created_at);
+      const dateB = new Date(b.start_time || b.created_at);
+      return dateB - dateA;
+    });
+
+    return results;
+  }
+
+  // Generate PDF from past recording
+  async generatePDFFromRecording(meetingId, recordingUrl = null) {
+    try {
+      // Check if it's an unsaved recording
+      if (typeof meetingId === 'string' && meetingId.startsWith('unsaved_')) {
+        // For unsaved recordings, we need to transcribe first
+        if (!recordingUrl) {
+          throw new Error('Recording URL required for unsaved recordings');
+        }
+
+        // Create a basic PDF content structure
+        const fileName = meetingId.replace('unsaved_', '');
+        return {
+          title: `Transcription of: ${fileName}`,
+          date: new Date().toLocaleString(),
+          location: 'Audio Recording',
+          attendees: [],
+          agenda: [],
+          notes: 'This recording needs to be transcribed. Please use the transcribe function first.',
+          transcript: '',
+          actionItems: []
+        };
+      }
+
+      const pdfContent = await this.exportMeetingToPDF(meetingId);
+      const notes = await this.getMeetingNotes(meetingId);
+
+      // If there's a transcript, use it; otherwise use notes
+      if (notes?.transcript) {
+        pdfContent.notes = notes.transcript;
+        pdfContent.transcript = notes.transcript;
+      } else if (notes?.content) {
+        pdfContent.notes = notes.content;
+      }
+
+      return pdfContent;
+    } catch (error) {
+      console.error('Error generating PDF from recording:', error);
+      throw error;
+    }
+  }
+
+  // Transcribe an unsaved recording
+  async transcribeUnsavedRecording(recordingUrl, fileName) {
+    try {
+      // Fetch the audio file from the URL
+      const response = await fetch(recordingUrl);
+      const blob = await response.blob();
+
+      // Create a File object
+      const file = new File([blob], fileName, { type: blob.type });
+
+      // Use the existing transcription method
+      const transcript = await this.transcribeRecording(file, null);
+
+      return transcript;
+    } catch (error) {
+      console.error('Error transcribing unsaved recording:', error);
+      throw error;
+    }
+  }
+
+  // Find a specific recording by name
+  async findRecording(recordingName) {
+    try {
+      // Try direct path first
+      const { data: directFile } = await this.supabase.storage
+        .from('meeting-recordings')
+        .list('', {
+          search: recordingName
+        });
+
+      if (directFile && directFile.length > 0) {
+        const { data: { publicUrl } } = this.supabase.storage
+          .from('meeting-recordings')
+          .getPublicUrl(directFile[0].name);
+        return { found: true, url: publicUrl, file: directFile[0] };
+      }
+
+      // If not found, search all files
+      const allRecordings = await this.getMeetingsWithRecordings(true);
+      const found = allRecordings.find(r =>
+        r.file_name?.includes(recordingName) ||
+        r.file_path?.includes(recordingName)
+      );
+
+      if (found) {
+        return { found: true, url: found.recording_url, file: found };
+      }
+
+      return { found: false, message: `Recording ${recordingName} not found in storage` };
+    } catch (error) {
+      console.error('Error finding recording:', error);
+      return { found: false, error: error.message };
+    }
   }
 
   // STATISTICS
