@@ -129,7 +129,27 @@
       function applyAIResult(data){ const map = new Map([['eyes','opt-eyes'],['mouth','opt-mouth'],['eyebrows','opt-eyebrows'],['glasses','opt-glasses'],['glassesProbability','opt-glassesProbability'],['earrings','opt-earrings'],['earringsProbability','opt-earringsProbability'],['featuresProbability','opt-featuresProbability'],['hair','opt-hair'],['hairColor','opt-hairColor'],['hairProbability','opt-hairProbability'],['skinColor','opt-skinColor']]); for(const [k,id] of map.entries()){ if(data[k]!=null){ const el=document.getElementById(id); if(el) el.value=String(data[k]); } } if(Array.isArray(data.features)){ const feats=document.getElementById('opt-features'); if(feats){ Array.from(feats.options).forEach(o=> o.selected = data.features.includes(o.value)); } } if (data.seed) window.aiSeed = String(data.seed); updateAvatar(); }
       async function persistRoleTeam(role, teamIdNum, teamName){ try { const nicknameVal = nicknameInput.value.trim()||null; if (siteId){ await supabase.from('staff_app_welcome').upsert({ user_id:user.id, site_id:siteId, full_name:fullName, nickname:nicknameVal, role_detail:role||null, team_id:teamIdNum||null, team_name:teamName||null }); } await supabase.from('profiles').update({ role_detail:role||null, team_id:teamIdNum||null, team_name:teamName||null }).eq('user_id', user.id); } catch(e){ console.warn('persistRoleTeam failed', e); } }
       document.getElementById('avatar-back').addEventListener('click', ()=> step(3));
-      document.getElementById('avatar-next').addEventListener('click', async ()=> { if (window.avatarDirty){ const ok = await saveAvatar(); if(!ok) return; } step(5); renderWorkingPattern(); });
+      document.getElementById('avatar-next').addEventListener('click', async ()=> { 
+        if (window.avatarDirty){ 
+          const ok = await saveAvatar(); 
+          if(!ok) return; 
+        } 
+        
+        // Check if user was pre-configured by admin
+        const preConfigured = sessionStorage.getItem('preConfigured') === 'true';
+        if (preConfigured) {
+          // Skip working pattern step - go directly to completion
+          step(6); 
+          setTimeout(()=>{ 
+            sessionStorage.removeItem('forceOnboarding'); 
+            window.location.href='staff.html'; 
+          }, 800); 
+        } else {
+          // Normal flow - show working pattern setup
+          step(5); 
+          renderWorkingPattern(); 
+        }
+      });
       function renderWorkingPattern(){ const c=document.getElementById('working-form'); c.innerHTML=''; const days=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']; const isGP = (window.selectedRole||'').toLowerCase().includes('doctor') || (window.selectedRole||'').toLowerCase().includes('gp'); c.insertAdjacentHTML('beforeend', `<div class="tiny-note">${isGP ? 'Enter number of sessions (0-2) per day.' : 'Enter hours (HH:MM) — defaults Mon-Fri 7.5h.'}</div>`); days.forEach((d,i)=>{ const id=d.toLowerCase(); const defaultVal = isGP ? '' : (i<5 ? '07:30' : ''); c.insertAdjacentHTML('beforeend', `<div class="working-hour-card"><label for="${id}-val">${d}</label>${isGP ? `<select id="${id}-val"><option value="0">0</option><option value="1">1</option><option value="2" ${i<5?'selected':''}>2</option></select><span class="tiny-note">sessions</span>` : `<input type="time" id="${id}-val" value="${defaultVal}" step="1800" max="12:00"><span class="tiny-note">hours</span>`}</div>`); }); }
       document.getElementById('working-back').addEventListener('click', ()=> step(4));
       document.getElementById('complete-setup').addEventListener('click', async ()=> { 
