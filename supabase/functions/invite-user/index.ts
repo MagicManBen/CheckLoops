@@ -113,12 +113,8 @@ serve(async (req) => {
 
     if (inviteRecordError) throw new Error(`Failed to create invite record: ${inviteRecordError.message}`)
 
-    // Determine redirect URL based on environment or allow override
-    const origin = req.headers.get('origin') || ''
-    const isProduction = origin.includes('checkloops.co.uk')
-    const defaultRedirect = isProduction
-      ? 'https://checkloops.co.uk/set-password.html'
-      : 'http://127.0.0.1:5500/set-password.html'
+    // Always use production URL for invitations regardless of where the request comes from
+    const defaultRedirect = 'https://checkloops.co.uk/set-password.html'
     const redirectTo = requestBody.redirect_to || defaultRedirect
 
     // Now send the actual invitation email using Supabase Auth
