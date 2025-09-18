@@ -4791,17 +4791,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
               </div>
 
-              <!-- Working Pattern -->
-              <div style="background:#f0fdf4; border-radius:12px; padding:16px; margin-bottom:20px;">
-                <h4 style="margin-top:0; color:#16a34a;">Working Pattern</h4>
-                <p style="color:#64748b; font-size:14px; margin-top:0;" id="working-pattern-hint">Configure the weekly schedule</p>
-
-                <div id="working-pattern-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:12px; margin-top:16px;">
-                  <!-- Dynamically populated based on role -->
-                </div>
-
-              </div>
-
               <!-- Status Messages -->
               <div class="error" id="add-user-error" style="display:none; padding:12px; border-radius:8px; background:#fee2e2; color:#991b1b; border:1px solid #fecaca;"></div>
               <div class="success" id="add-user-success" style="display:none; padding:12px; border-radius:8px; background:#dcfce7; color:#166534; border:1px solid #86efac;"></div>
@@ -7243,9 +7232,6 @@ window.PIR_DEFINITIONS_DATA = [
     // Load teams for dropdown
     loadTeamsForDropdown();
 
-    // Initialize working pattern based on default role
-    updateWorkingPatternUI();
-
   console.log('Invite User modal opened');
   }
 
@@ -7334,50 +7320,10 @@ window.PIR_DEFINITIONS_DATA = [
     }
   }
 
-  // Update working pattern UI based on role
-  function updateWorkingPatternUI() {
-    const role = document.getElementById('add-user-role').value;
-    const isGP = role === 'GP';
-    const grid = document.getElementById('working-pattern-grid');
-    const hint = document.getElementById('working-pattern-hint');
-
-    hint.textContent = isGP ?
-      'Enter number of sessions (0-2) per day' :
-      'Enter working hours (HH:MM format) per day';
-
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-
-    grid.innerHTML = days.map(day => {
-      const id = day.toLowerCase();
-      const isWeekday = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].includes(day);
-
-      if (isGP) {
-        return `
-          <div class="working-day-input">
-            <label for="${id}-input">${day}</label>
-            <select id="${id}-input" name="${id}">
-              <option value="0">0 sessions</option>
-              <option value="1">1 session</option>
-              <option value="2" ${isWeekday ? 'selected' : ''}>2 sessions</option>
-            </select>
-          </div>
-        `;
-      } else {
-        const defaultHours = isWeekday ? '07:30' : '00:00';
-        return `
-          <div class="working-day-input">
-            <label for="${id}-input">${day}</label>
-            <input type="time" id="${id}-input" name="${id}" value="${defaultHours}" step="900" max="12:00">
-          </div>
-        `;
-      }
-    }).join('');
-
-    // Holiday entitlement is now calculated based on working pattern, not set directly
-  }
-
-  // Role change handler
-  document.getElementById('add-user-role')?.addEventListener('change', updateWorkingPatternUI);
+  // Role change handler - working pattern removed, staff will set during welcome
+  document.getElementById('add-user-role')?.addEventListener('change', function() {
+    console.log('Role changed to:', this.value);
+  });
 
   // Training stub functions
   function openTrainingTypesModal() {
@@ -7628,49 +7574,12 @@ window.PIR_DEFINITIONS_DATA = [
       siteRole: document.getElementById('add-user-access').value,
       jobRole: document.getElementById('add-user-role').value,
       teamId: document.getElementById('add-user-team').value || null,
-      workingPattern: {},
       siteId: ctx.site_id
     };
 
-    // Collect working pattern data
-    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-    const isGP = formData.jobRole === 'GP';
-    let totalHours = 0;
-    let totalSessions = 0;
-
-    console.log('Processing working pattern', { isGP, days, formData });
-
-    for (const day of days) {
-      const input = document.getElementById(`${day}-input`);
-      
-      if (!input) {
-          console.warn(`Input element not found for ${day}`);
-        continue;
-      }
-      
-  console.log(`Processing ${day}`, { value: input.value });
-      
-      if (isGP) {
-        const sessions = parseInt(input.value) || 0;
-        formData.workingPattern[`${day}_sessions`] = sessions;
-        formData.workingPattern[`${day}_hours`] = 0;
-        totalSessions += sessions;
-      } else {
-        const timeValue = input.value || '00:00';
-        const [h, m] = timeValue.split(':').map(Number);
-        const decimal = h + (m / 60);
-        formData.workingPattern[`${day}_hours`] = decimal;
-        formData.workingPattern[`${day}_sessions`] = 0;
-        totalHours += decimal;
-      }
-    }
-
-  console.log('Creating user account', formData);
+    console.log('Creating user account', formData);
 
     try {
-      // Calculate holiday entitlement
-      const holidayEntitlement = isGP ? Math.round(totalSessions * 2) : Math.round((totalHours / 37.5) * 25);
-
       // Get the current user's session for authentication
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -7724,51 +7633,6 @@ window.PIR_DEFINITIONS_DATA = [
 
       console.log('Invitation sent successfully', otpData);
 
-      // Create holiday profile for the invited user
-  console.log('Creating holiday profile for invited user');
-
-      // Create holiday profile
-      const { data: holidayProfile, error: holidayError } = await supabase
-        .from('1_staff_holiday_profiles')
-        .insert({
-          full_name: formData.fullName,
-          role: formData.jobRole,
-          is_gp: isGP,
-          email: formData.email,
-          site_id: formData.siteId,
-          user_id: null, // Will be set when user completes signup
-          updated_at: new Date().toISOString()
-        })
-        .select()
-        .single();
-
-      if (holidayError) {
-        console.warn('Holiday profile creation failed', holidayError);
-      } else {
-        debugLog('success', 'Holiday profile created', { id: holidayProfile?.id });
-        
-        // Create entitlements if holiday profile was created
-  if (holidayProfile?.id) {
-          const currentYear = new Date().getFullYear();
-          const { error: entitlementError } = await supabase
-            .from('2_staff_entitlements')
-            .upsert({
-              staff_id: holidayProfile.id,
-              year: currentYear,
-              weekly_hours: isGP ? null : totalHours,
-              weekly_sessions: isGP ? totalSessions : null,
-              multiplier: 6, // Default multiplier
-              updated_at: new Date().toISOString()
-            });
-
-          if (entitlementError) {
-            console.warn('Entitlements creation failed', entitlementError);
-          } else {
-            console.log('Entitlements created');
-          }
-        }
-      }
-
       // Success!
       const successElement = document.getElementById('add-user-success');
       if (successElement) {
@@ -7787,14 +7651,6 @@ window.PIR_DEFINITIONS_DATA = [
       document.getElementById('add-user-name').value = '';
       document.getElementById('add-user-email').value = '';
       // Don't reset role selects as they're likely to invite multiple users with same roles
-      
-      // Reset working pattern inputs
-      for (const day of days) {
-        const input = document.getElementById(`${day}-input`);
-        if (input) {
-          input.value = isGP ? '0' : '00:00';
-        }
-      }
 
       // Refresh user list and close modal after delay
       setTimeout(() => {
@@ -10581,44 +10437,15 @@ function applySchedulesFilters() {
           role_detail: staff.role_detail
         });
         
-        let workingPatternSummary = 'Not set';
-        let scheduleClass = 'schedule-clickable';
-        let chipClass = '';
-        
-        if (pattern) {
-          if (isGP) {
-            // Count total sessions per week
-            const totalSessions = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-              .reduce((sum, day) => sum + (pattern[`${day}_sessions`] || 0), 0);
-            if (totalSessions > 0) {
-              workingPatternSummary = `${totalSessions} sessions/week`;
-              chipClass = 'success';
-              scheduleClass += ' chip success';
-            } else {
-              scheduleClass += ' chip';
-            }
-          } else {
-            // Count total hours per week
-            const totalHours = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-              .reduce((sum, day) => sum + (pattern[`${day}_hours`] || 0), 0);
-            if (totalHours > 0) {
-              workingPatternSummary = `${totalHours.toFixed(1)} hours/week`;
-              chipClass = 'success';
-              scheduleClass += ' chip success';
-            } else {
-              scheduleClass += ' chip';
-            }
-          }
-        } else {
-          scheduleClass += ' chip';
-        }
+        let workingPatternSummary = 'Staff will set during welcome';
+        let scheduleClass = 'chip info';
         
         return `<tr data-id="${staff.user_id}">
           <td><strong>${esc(staff.full_name)}</strong></td>
           <td>${esc(staff.role_detail || '—')}</td>
           <td>${esc(staff.team_name || '—')}</td>
           <td>
-            <span class="${scheduleClass}" onclick="openWorkingPatternModal('${staff.user_id}', '${esc(staff.full_name)}', '${esc(staff.role_detail || '')}')">
+            <span class="${scheduleClass}">
               ${workingPatternSummary}
             </span>
           </td>
