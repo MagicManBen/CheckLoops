@@ -14,6 +14,81 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <style>
+    /* --- Glass overlay for approval gate --- */
+    .glass-overlay {
+      position: fixed;
+      inset: 0;
+      display: none;               /* toggled to flex in JS */
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      backdrop-filter: blur(12px) saturate(140%);
+      -webkit-backdrop-filter: blur(12px) saturate(140%);
+      background: rgba(8, 12, 24, 0.55);
+    }
+    .glass-card {
+      width: min(640px, 92vw);
+      border-radius: 18px;
+      padding: 22px;
+      background: linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04));
+      border: 1px solid rgba(255,255,255,0.16);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.1);
+      color: var(--white);
+      text-align: left;
+    }
+    .glass-card .title {
+      font-size: 22px;
+      font-weight: 900;
+      letter-spacing: .2px;
+      margin: 0 0 6px 0;
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+    .glass-card .title .emoji {
+      font-size: 26px;
+      line-height: 1;
+      filter: drop-shadow(0 2px 6px rgba(0,0,0,0.25));
+    }
+    .glass-card .subtitle {
+      color: var(--muted);
+      margin: 0 0 12px 0;
+    }
+    .glass-card .badge {
+      display:inline-block;
+      padding:6px 10px;
+      border-radius:999px;
+      font-weight:700;
+      font-size:12px;
+      color:#e7f9ff;
+      background: linear-gradient(90deg, rgba(59,130,246,.25), rgba(14,165,233,.25));
+      border:1px solid rgba(59,130,246,.45);
+      margin-bottom:12px;
+    }
+    .glass-actions {
+      display:flex;
+      gap:10px;
+      margin-top:16px;
+      flex-wrap:wrap;
+    }
+    .btn-solid {
+      padding:10px 16px;
+      border-radius:12px;
+      font-weight:700;
+      border:1px solid rgba(255,255,255,0.2);
+      background: linear-gradient(135deg, #4338ca, #3b82f6);
+      color:white;
+      cursor:pointer;
+    }
+    .btn-ghost {
+      padding:10px 16px;
+      border-radius:12px;
+      font-weight:700;
+      border:1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.06);
+      color:white;
+      cursor:pointer;
+    }
     /* Holiday-specific overrides while maintaining staff.css base */
     .progress-bar {
       width: 100%;
@@ -206,6 +281,22 @@
   <div class="mesh"><div class="m1"></div><div class="m2"></div><div class="m3"></div></div>
 
   <main class="content">
+    <!-- Holiday approval gate overlay -->
+    <div id="approval-overlay" class="glass-overlay">
+      <div class="glass-card">
+        <div class="badge">Access pending</div>
+        <div class="title"><span class="emoji">🛂</span> Holiday access awaiting approval</div>
+        <p class="subtitle">Your manager needs to approve your holiday entitlement before you can request time off.</p>
+        <ul style="margin:0 0 10px 18px; color:var(--muted);">
+          <li>Once approved, your allowance will appear here automatically.</li>
+          <li>You can still browse, but requesting time off is disabled.</li>
+        </ul>
+        <div class="glass-actions">
+          <button id="approval-refresh" class="btn-solid">Refresh status</button>
+          <button id="approval-home" class="btn-ghost">Back to Home</button>
+        </div>
+      </div>
+    </div>
     <div class="topbar panel" style="position:relative;">
       <div class="halo"></div>
       <div class="nav seg-nav">
@@ -353,8 +444,37 @@
         }
 
         if (!userData || userData.holiday_approved !== true) {
-          alert('Your holiday entitlement is awaiting admin approval. Please check back later or contact your admin.');
-          window.location.href = 'staff.html';
+          // Show glass overlay and block the page behind it.
+          const overlay = document.getElementById('approval-overlay');
+          overlay.style.display = 'flex';
+
+          // Wire actions
+          const refreshBtn = document.getElementById('approval-refresh');
+          const homeBtn = document.getElementById('approval-home');
+
+          refreshBtn?.addEventListener('click', async () => {
+            // Recheck approval flag
+            const { data: reUser } = await supabase
+              .from('master_users')
+              .select('holiday_approved')
+              .eq('auth_user_id', user.id)
+              .single();
+            if (reUser?.holiday_approved === true) {
+              overlay.style.display = 'none';
+              // Proceed with normal load
+              // (do nothing here; page continues)
+            } else {
+              // cute nudge
+              refreshBtn.textContent = 'Still pending...';
+              setTimeout(() => (refreshBtn.textContent = 'Refresh status'), 1200);
+            }
+          });
+
+          homeBtn?.addEventListener('click', () => {
+            window.location.href = 'staff.html';
+          });
+
+          // Stop further loading on this page (keep overlay visible)
           return;
         }
 
