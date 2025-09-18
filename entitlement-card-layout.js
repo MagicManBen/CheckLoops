@@ -49,14 +49,15 @@ async function loadStaffEntitlementCards() {
   try {
     console.log('Loading staff entitlement cards...');
 
-    // First, get all staff profiles
+    // Load staff from master_users table (the single source of truth)
     const { data: profiles, error: profileError } = await window.supabase
-      .from('1_staff_holiday_profiles')
+      .from('master_users')
       .select('*')
+      .eq('active', true)  // Only active users
       .order('full_name');
 
     if (profileError) {
-      console.error('Error loading profiles:', profileError);
+      console.error('Error loading master_users:', profileError);
       container.innerHTML = `<div class="error-message">Error loading staff profiles: ${profileError.message}</div>`;
       return;
     }
@@ -66,7 +67,21 @@ async function loadStaffEntitlementCards() {
       return;
     }
 
-    // Get all entitlements for current year
+    console.log('=== DEBUGGING: Loaded profiles ===');
+    console.log('Number of profiles:', profiles.length);
+    profiles.forEach((profile, index) => {
+      console.log(`Profile ${index + 1}:`, {
+        id: profile.id,
+        name: profile.full_name,
+        email: profile.email,
+        site_id: profile.site_id,
+        active: profile.active,
+        access_type: profile.access_type
+      });
+    });
+    console.log('=== END DEBUGGING ===');
+
+    // Get all entitlements for current year - now keyed by master_users ID
     const currentYear = new Date().getFullYear();
     const { data: entitlements, error: entError } = await window.supabase
       .from('2_staff_entitlements')
@@ -77,7 +92,7 @@ async function loadStaffEntitlementCards() {
       console.error('Error loading entitlements:', entError);
     }
 
-    // Get all working patterns
+    // Get all working patterns - using auth_user_id from master_users
     const { data: workingPatterns, error: patternError } = await window.supabase
       .from('3_staff_working_patterns')
       .select('*');
@@ -86,13 +101,14 @@ async function loadStaffEntitlementCards() {
       console.error('Error loading working patterns:', patternError);
     }
 
-    // Get approval status from kiosk_users
-    const { data: kioskUsers, error: kioskError } = await window.supabase
-      .from('kiosk_users')
-      .select('user_id, holiday_approved');
+    // Get approval status from master_users (holiday_approved column)
+    const { data: approvalData, error: approvalError } = await window.supabase
+      .from('master_users')
+      .select('auth_user_id, holiday_approved')
+      .eq('active', true);
 
-    if (kioskError) {
-      console.error('Error loading kiosk users:', kioskError);
+    if (approvalError) {
+      console.error('Error loading approval status:', approvalError);
     }
 
     // Create maps for easier lookup
@@ -102,19 +118,19 @@ async function loadStaffEntitlementCards() {
 
     if (entitlements) {
       entitlements.forEach(ent => {
-        entitlementMap[ent.staff_id] = ent;
+        entitlementMap[ent.staff_id] = ent;  // staff_id should match master_users.id
       });
     }
 
     if (workingPatterns) {
       workingPatterns.forEach(pattern => {
-        patternMap[pattern.user_id] = pattern;
+        patternMap[pattern.user_id] = pattern;  // user_id should match master_users.auth_user_id
       });
     }
 
-    if (kioskUsers) {
-      kioskUsers.forEach(user => {
-        approvalMap[user.user_id] = user.holiday_approved || false;
+    if (approvalData) {
+      approvalData.forEach(user => {
+        approvalMap[user.auth_user_id] = user.holiday_approved || false;
       });
     }
     
@@ -130,7 +146,9 @@ async function loadStaffEntitlementCards() {
     const roles = new Set();
     const teams = new Set();
     profiles.forEach(profile => {
-      if (profile.role) roles.add(profile.role);
+      // Use access_type (admin/staff) from master_users, fallback to role_detail
+      const role = profile.access_type || profile.role_detail || 'Staff';
+      roles.add(role);
       if (profile.team_name) teams.add(profile.team_name);
     });
 
@@ -160,8 +178,8 @@ async function loadStaffEntitlementCards() {
       <div class="staff-cards-grid" id="staff-cards-grid">
         ${profiles.map(profile => {
           const ent = entitlementMap[profile.id] || {};
-          const pattern = patternMap[profile.user_id] || {};
-          const isApproved = approvalMap[profile.user_id] || false;
+          const pattern = patternMap[profile.auth_user_id] || {};  // Use auth_user_id from master_users
+          const isApproved = approvalMap[profile.auth_user_id] || false;  // Use auth_user_id from master_users
           const isGP = profile.is_gp;
           const unit = isGP ? 'sessions' : 'hrs';
 
@@ -212,20 +230,23 @@ async function loadStaffEntitlementCards() {
             return `${hours}:${String(minutes).padStart(2, '0')}`;
           };
 
+          // Get display role from master_users
+          const displayRole = profile.access_type || profile.role_detail || 'Staff';
+
           return `
             <div class="staff-card" 
                  data-staff-id="${profile.id}" 
-                 data-user-id="${profile.user_id}" 
+                 data-user-id="${profile.auth_user_id}" 
                  data-is-gp="${isGP}"
-                 data-role="${profile.role || ''}"
+                 data-role="${displayRole}"
                  data-team="${profile.team_name || ''}"
                  data-name="${profile.full_name || ''}">
               <div class="staff-card-header">
                 <h3 class="staff-name">${profile.full_name || 'Unknown'}</h3>
-                <span class="staff-type ${isGP ? 'gp' : 'staff'}">${isGP ? 'GP' : 'Staff'}</span>
+                <span class="staff-type ${isGP ? 'gp' : displayRole.toLowerCase()}">${isGP ? 'GP' : displayRole}</span>
               </div>
               <div class="staff-details">
-                <div class="staff-role">${profile.role || 'No role'}</div>
+                <div class="staff-role">${displayRole}</div>
                 <div class="staff-team">${profile.team_name || 'No team'}</div>
               </div>
               <div class="entitlement-details">
@@ -251,7 +272,7 @@ async function loadStaffEntitlementCards() {
                 </div>
               </div>
               <div class="staff-card-footer">
-                <button class="edit-staff-btn" onclick="showStaffDetailModal('${profile.id}', '${profile.user_id}', ${isGP})">
+                <button class="edit-staff-btn" onclick="showStaffDetailModal('${profile.id}', '${profile.auth_user_id}', ${isGP})">
                   Edit Details
                 </button>
                 ${isApproved ? `
@@ -339,9 +360,9 @@ async function showStaffDetailModal(staffId, userId, isGP) {
   modal.classList.add('show');
 
   try {
-    // Get profile, entitlement, and working pattern
+    // Get profile from master_users instead of holiday profiles
     const { data: profile } = await supabase
-      .from('1_staff_holiday_profiles')
+      .from('master_users')
       .select('*')
       .eq('id', staffId)
       .single();
@@ -363,22 +384,12 @@ async function showStaffDetailModal(staffId, userId, isGP) {
       throw new Error('Staff profile not found');
     }
 
-    // Get approval status from kiosk_users
-    const { data: kioskUser, error: kioskError } = await supabase
-      .from('kiosk_users')
-      .select('user_id, holiday_approved')
-      .eq('user_id', userId)
-      .maybeSingle();
+    // Get approval status from master_users
+    const isApproved = profile.holiday_approved || false;
 
-    if (kioskError && !kioskError.message.includes('column')) {
-      console.error('Error loading kiosk user:', kioskError);
-    }
-
-    const isApproved = kioskUser?.holiday_approved || false;
-
-    // Get necessary values
+    // Get necessary values from master_users
     const name = profile.full_name || 'Unknown';
-    const role = profile.role || 'No role';
+    const role = profile.access_type || profile.role_detail || 'Staff';
     const team = profile.team_name || 'No team';
     const isGPStaff = profile.is_gp;
     const unit = isGPStaff ? 'sessions' : 'hours';
@@ -1055,11 +1066,11 @@ async function approveHolidaysFromModal(userId, staffName) {
     const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
     const serviceSupabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-    // First check if the column exists by trying to query it
+    // First check if the user exists in master_users
     const { data: testData, error: testError } = await serviceSupabase
-      .from('kiosk_users')
+      .from('master_users')
       .select('holiday_approved')
-      .eq('user_id', userId)
+      .eq('auth_user_id', userId)
       .maybeSingle();
 
     if (testError && testError.message.includes('column')) {
@@ -1067,7 +1078,7 @@ async function approveHolidaysFromModal(userId, staffName) {
       console.log('Holiday approval column not found, adding it...');
 
       // Since we can't alter table directly, we'll update the data differently
-      alert('The holiday approval feature is not yet enabled in the database. Please contact your system administrator to add the "holiday_approved" column to the kiosk_users table.');
+      alert('The holiday approval feature is not yet enabled in the database. Please contact your system administrator to add the "holiday_approved" column to the master_users table.');
       
       if (approveBtn) {
         approveBtn.textContent = originalText;
@@ -1077,11 +1088,11 @@ async function approveHolidaysFromModal(userId, staffName) {
       return;
     }
 
-    // Update the approval status
+    // Update the approval status in master_users
     const { data, error } = await serviceSupabase
-      .from('kiosk_users')
+      .from('master_users')
       .update({ holiday_approved: true })
-      .eq('user_id', userId);
+      .eq('auth_user_id', userId);
 
     if (error) {
       console.error('Error approving holidays:', error);
@@ -1147,11 +1158,11 @@ async function approveHolidays(userId, staffName) {
     const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
     const serviceSupabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-    // First check if the column exists by trying to query it
+    // First check if the user exists in master_users
     const { data: testData, error: testError } = await serviceSupabase
-      .from('kiosk_users')
+      .from('master_users')
       .select('holiday_approved')
-      .eq('user_id', userId)
+      .eq('auth_user_id', userId)
       .maybeSingle();
 
     if (testError && testError.message.includes('column')) {
@@ -1159,15 +1170,15 @@ async function approveHolidays(userId, staffName) {
       console.log('Holiday approval column not found, adding it...');
 
       // Since we can't alter table directly, we'll update the data differently
-      alert('The holiday approval feature is not yet enabled in the database. Please contact your system administrator to add the "holiday_approved" column to the kiosk_users table.');
+      alert('The holiday approval feature is not yet enabled in the database. Please contact your system administrator to add the "holiday_approved" column to the master_users table.');
       return;
     }
 
-    // Update the approval status
+    // Update the approval status in master_users
     const { data, error } = await serviceSupabase
-      .from('kiosk_users')
+      .from('master_users')
       .update({ holiday_approved: true })
-      .eq('user_id', userId);
+      .eq('auth_user_id', userId);
 
     if (error) {
       console.error('Error approving holidays:', error);
