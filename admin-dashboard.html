@@ -7963,12 +7963,19 @@ window.PIR_DEFINITIONS_DATA = [
         // Get user profile data first for proper cleanup
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
-          .select('full_name, user_id')
+          .select('full_name, user_id, email')
           .eq('user_id', id)
           .single();
 
         if (profileError && profileError.code !== 'PGRST116') {
           debugLog('warning', 'Could not fetch profile for cleanup', profileError);
+        }
+
+        // Also try to get user email from auth.users
+        let userEmail = profile?.email;
+        if (!userEmail) {
+          const { data: authUser } = await supabase.auth.admin.getUserById(id);
+          userEmail = authUser?.user?.email;
         }
 
         // Get holiday profile data for staff_id relationships
@@ -8010,22 +8017,29 @@ window.PIR_DEFINITIONS_DATA = [
             condition: { created_by: id },
             description: 'quiz questions created by user'
           },
+          // Legacy tables - delete for cleanup (if migration hasn't been run yet)
           {
             table: '2_staff_entitlements',
             condition: holidayProfile ? { staff_id: holidayProfile.id } : null,
-            description: 'staff entitlements'
+            description: 'staff entitlements (legacy)'
           },
           {
             table: '3_staff_working_patterns',
             condition: { user_id: id },
-            description: 'working patterns'
+            description: 'working patterns (legacy)'
           },
-          // Core user profile tables
           {
             table: '1_staff_holiday_profiles',
             condition: profile?.full_name ? { full_name: profile.full_name } : { user_id: id },
-            description: 'holiday profiles'
+            description: 'holiday profiles (legacy)'
           },
+          // Master users table - the new consolidated table
+          {
+            table: 'master_users',
+            condition: { auth_user_id: id },
+            description: 'master user data'
+          },
+          // Other core tables
           {
             table: 'staff_app_welcome',
             condition: { user_id: id },
@@ -8038,7 +8052,7 @@ window.PIR_DEFINITIONS_DATA = [
           },
           {
             table: 'site_invites',
-            condition: profile ? { email: profile.email } : { user_id: id },
+            condition: userEmail ? { email: userEmail } : { user_id: id },
             description: 'site invitations'
           },
           {
@@ -8080,6 +8094,30 @@ window.PIR_DEFINITIONS_DATA = [
           } catch (tableError) {
             debugLog('warning', `Exception deleting from ${step.table}:`, tableError);
             errorTables.push(`${step.table}: ${tableError.message}`);
+          }
+        }
+
+        // Additional cleanup: Try to delete from master_users by email as fallback
+        if (userEmail) {
+          try {
+            debugLog('info', 'Attempting master_users cleanup by email');
+            const { error: masterUserEmailError, count: emailCount } = await supabase
+              .from('master_users')
+              .delete({ count: 'exact' })
+              .eq('email', userEmail);
+
+            if (masterUserEmailError) {
+              if (masterUserEmailError.code !== 'PGRST116') {
+                debugLog('warning', 'Error deleting master_users by email:', masterUserEmailError);
+              }
+            } else if (emailCount > 0) {
+              debugLog('info', `Deleted ${emailCount} record(s) from master_users by email`);
+              if (!deletedTables.some(t => t.startsWith('master_users'))) {
+                deletedTables.push(`master_users by email (${emailCount})`);
+              }
+            }
+          } catch (emailError) {
+            debugLog('warning', 'Exception deleting master_users by email:', emailError);
           }
         }
 
