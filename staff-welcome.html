@@ -927,29 +927,21 @@
             console.warn('[persistRoleTeam] auth.updateUser failed', e);
           }
 
-          // 2) profiles (main user profile)
+          // 2) profiles table is no longer used - master_users is the primary source
+          // Commenting out profiles update to prevent confusion
+          /*
           try {
             const profileData = {
               user_id: user.id,
               site_id: siteId || null,
               nickname: nickVal || null
-              // Note: profiles table doesn't have team_id or team_name columns
             };
-
-            // Handle role assignment for profiles table
-            if (isAdmin) {
-              profileData.role = 'admin'; // Keep admin role in profiles
-              console.log('[persistRoleTeam] Setting admin role in profiles');
-            } else {
-              profileData.role = finalRole ? finalRole.toLowerCase() : 'staff';
-              console.log('[persistRoleTeam] Setting role in profiles:', profileData.role);
-            }
-
             const { error: profileErr } = await supabase.from('profiles').upsert(profileData);
             if (profileErr) console.warn('[persistRoleTeam] profiles upsert error', profileErr);
           } catch (e) {
             console.warn('[persistRoleTeam] profiles upsert failed', e);
           }
+          */
 
           // 3) staff_app_welcome (onboarding snapshot)
           try {
@@ -2597,48 +2589,15 @@
               await loadDetailsData(siteId, fullName);
               return;
             } else {
-              console.log('Master users table not available, falling back to profiles');
+              console.error('Master users save failed:', masterError);
+              msg.textContent = `Error saving nickname: ${masterError.message || 'Please try again.'}`;
+              return;
             }
           } catch(e) {
-            console.log('Master users save failed, trying profiles table:', e);
+            console.error('Master users save failed:', e);
+            msg.textContent = 'Error saving nickname. Please try again or contact support.';
+            return;
           }
-
-          // Fall back to profiles table if master_users doesn't exist
-          if (nicknameColumnExists) {
-            try{
-              // Use upsert instead of update to handle case where profile doesn't exist yet
-              const profileData = {
-                user_id: user.id,
-                nickname: val,
-                full_name: fullName || user?.email?.split('@')[0] || 'Staff',
-                role: 'staff' // Required field for profiles table
-              };
-              if (siteId) profileData.site_id = siteId;
-
-              const { error } = await supabase.from('profiles').upsert(profileData);
-
-              if (error && (String(error.code) === '42703' || /column .*nickname/i.test(String(error.message)))) {
-                nicknameColumnExists = false; // fall through to guidance
-              } else if (error) {
-                msg.textContent = 'Could not save nickname. Please try again.';
-                console.error('[staff-welcome] upsert error', error);
-                return;
-              } else {
-                msg.textContent = 'Saved!';
-                // Move to step 2
-                document.getElementById('welcome-step1').style.display = 'none';
-                document.getElementById('welcome-step2').style.display = '';
-                await loadDetailsData(siteId, fullName);
-                return;
-              }
-            } catch(e){ nicknameColumnExists = false; }
-          }
-
-          // If we reach here, the column likely doesn't exist — provide SQL guidance
-          msg.innerHTML = `
-            It looks like the <code>nickname</code> column isn't in <code>profiles</code> yet.<br>
-            Add it in Supabase, then tap Save again:
-            <pre style="text-align:left; background:#f9fafb; border:1px solid var(--border-color); border-radius:8px; padding:10px; overflow:auto;">ALTER TABLE public.profiles ADD COLUMN nickname text;</pre>`;
         }
 
         const saveBtn = document.getElementById('save-btn');
@@ -2868,23 +2827,24 @@
                 if (msgEl) msgEl.textContent = 'Saving to profiles…';
               }
 
-              // 2) Also upsert profiles so existing views stay in sync
+              // 2) profiles table is no longer used - master_users is the primary source
+              // Commenting out profiles update to prevent confusion
+              /*
               try {
                 const profileData = {
                   user_id: user.id,
                   full_name: fullName,
                   nickname: String(document.getElementById('nickname')?.value || '').trim() || null,
-                  role: (role || 'staff').toLowerCase(),  // Ensure valid role for constraint
+                  role: (role || 'staff').toLowerCase(),
                   onboarding_complete: true
-                  // Note: profiles table doesn't have role_detail, team_id, or team_name columns
                 };
                 if (siteId) profileData.site_id = siteId;
-
                 const { error: pErr } = await supabase.from('profiles').upsert(profileData);
                 if (pErr) { console.warn('[welcome] profiles upsert failed', pErr); }
               } catch (e2) {
                 console.warn('[welcome] profiles upsert exception', e2);
               }
+              */
               if (msgEl) msgEl.textContent = 'Saved!';
             } catch (e) {
               console.warn('[welcome] persist selections failed', e);
@@ -3433,11 +3393,8 @@
               .eq('auth_user_id', currentUser.id);
 
             if (masterError) {
-              // Fall back to profiles
-              await globalSupabase.from('profiles').update({
-                onboarding_complete: true,
-                role: 'staff' // Ensure role is maintained
-              }).eq('user_id', currentUser.id);
+              // Log error but don't fail the completion
+              console.error('Failed to update master_users onboarding_complete:', masterError);
             }
           } catch (e) {
             console.warn('completion meta update failed', e);
