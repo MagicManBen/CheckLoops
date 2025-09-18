@@ -669,7 +669,10 @@
   </main>
 
   <script type="module">
-    import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, attachLogout } from './staff-common.js';
+  import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, attachLogout } from './staff-common.js';
+
+  // Simple HTML escaper used when rendering dynamic labels/values
+  function esc(s){ return (s ?? "").toString().replace(/[&<>\"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
     
     // Make supabase globally available for AI generation
     let globalSupabase;
@@ -2639,25 +2642,63 @@
             window.selectedTeamId = window.preConfiguredTeamId;
           }
 
-          // Build Roles list
+          // Build Roles list (value/label pairs) and prefer canonical admin order
+          const canonicalRoles = [
+            { value: 'GP', label: 'GP (Doctor)' },
+            { value: 'Nurse', label: 'Nurse' },
+            { value: 'Practice Manager', label: 'Practice Manager' },
+            { value: 'Admin Assistant', label: 'Admin Assistant' },
+            { value: 'Receptionist', label: 'Receptionist' },
+            { value: 'Healthcare Assistant', label: 'Healthcare Assistant' },
+            { value: 'Pharmacist', label: 'Pharmacist' },
+            { value: 'Other', label: 'Other' }
+          ];
+
           let roles = [];
           try {
             const { data, error } = await supabase.from('kiosk_roles').select('role');
-            if (!error && Array.isArray(data) && data.length) roles = data.map(r => r.role);
+            if (!error && Array.isArray(data) && data.length) {
+              // Map DB roles to value/label pairs, preserving order from canonical when possible
+              const dbRoles = data.map(r => String(r.role));
+              const added = new Set();
+              // First add canonical roles that exist in DB (or always keep canonical order)
+              canonicalRoles.forEach(cr => {
+                if (dbRoles.includes(cr.value) || dbRoles.includes(cr.label) || true) {
+                  roles.push({ value: cr.value, label: cr.label });
+                  added.add(cr.value);
+                }
+              });
+              // Then append any DB-only roles not already present
+              dbRoles.forEach(r => {
+                const v = String(r);
+                if (!added.has(v)) {
+                  roles.push({ value: v, label: v });
+                  added.add(v);
+                }
+              });
+            }
           } catch(_) {}
-          if (!roles.length) roles = ['Doctor','Nurse','Pharmacist','Reception','Manager'];
-          // Ensure existing role appears in list
-          if (existing && existing.role_detail && !roles.includes(existing.role_detail)) {
-            roles = [existing.role_detail, ...roles];
+
+          if (!roles.length) roles = canonicalRoles.slice();
+
+          // Ensure existing role appears in list (handle raw saved values)
+          if (existing && existing.role_detail) {
+            const exists = roles.some(rr => rr.value === existing.role_detail || rr.label === existing.role_detail);
+            if (!exists) roles = [{ value: existing.role_detail, label: existing.role_detail }, ...roles];
           }
+
           const rg = document.getElementById('role-grid');
           // expose helper to set fallback src when onerror fires
           window.__roleIconFallback = function(el, role){
             try{ el.onerror = null; el.src = ROLE_ICON_FALLBACK(role); }catch(e){}
           };
           rg.innerHTML = roles.map((r,i)=>{
-            const checked = existing && existing.role_detail ? (existing.role_detail === r) : (i===0);
-            return `<label class=\"option-pill white-pill\">\n              <input type=\"radio\" name=\"role\" value=\"${r}\" ${checked?'checked':''} />\n              <img src=\"${ROLE_ICON(r)}\" alt=\"${r}\" style=\"width:32px;height:32px;object-fit:contain;\" onerror=\"window.__roleIconFallback(this,'${r}')\"/>\n              <span>${r}</span>\n            </label>`;
+            // Determine a pre-selected value from existing data or preconfigured invite
+            const pre = window.selectedRole || window.preConfiguredRole || (existing && existing.role_detail) || null;
+            const checked = pre ? (pre === r.value || pre === r.label) : (i===0);
+            const val = esc(String(r.value || r.label));
+            const lbl = esc(String(r.label || r.value));
+            return `<label class=\"option-pill white-pill\">\n              <input type=\"radio\" name=\"role\" value=\"${val}\" ${checked?'checked':''} />\n              <img src=\"${ROLE_ICON(lbl)}\" alt=\"${lbl}\" style=\"width:32px;height:32px;object-fit:contain;\" onerror=\"window.__roleIconFallback(this,'${lbl}')\"/\>\n              <span>${lbl}</span>\n            </label>`;
           }).join('');
 
           // Load teams by site (button grid like roles)
@@ -2681,14 +2722,13 @@
               }
             }
 
-            // Always provide fallback teams if none loaded
+            // Always provide fallback teams if none loaded (match admin-dashboard defaults)
             if (!teams.length) {
               teams = [
-                { id: 1, name: 'Managers' },
-                { id: 2, name: 'Reception' },
-                { id: 3, name: 'Nursing' },
-                { id: 4, name: 'GPs' },
-                { id: 5, name: 'Pharmacy' },
+                { id: 1, name: 'Clinical Team' },
+                { id: 2, name: 'Admin Team' },
+                { id: 3, name: 'Reception' },
+                { id: 4, name: 'Management' }
               ];
             }
 
