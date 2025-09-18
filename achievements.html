@@ -288,17 +288,34 @@
       const siteId = userProfile.site_id;
 
       try{
-        // Try a view/RPC if present, else fallback to simple queries
-        const { data, error } = await supabase.rpc('get_achievements_with_user', { p_kiosk_user_id: kioskUserId });
-        let rows = null;
-        if (error) {
-          // Fallback
-          const { data: ach } = await supabase.from('achievements').select('*').order('key');
-          const userRows = kioskUserId ? (await supabase.from('user_achievements').select('*').eq('kiosk_user_id', kioskUserId)).data : [];
-          rows = (ach||[]).map(a => ({ ...a, user: (userRows||[]).find(u => u.achievement_key === a.key) || null }));
-        } else {
-          rows = data || [];
+        // Try to get achievements using auth_user_id first (new system)
+        let userRows = [];
+
+        // First try with auth_user_id
+        const { data: authUserAch, error: authUserError } = await supabase
+          .from('user_achievements')
+          .select('*')
+          .eq('auth_user_id', user.id);
+
+        if (!authUserError && authUserAch && authUserAch.length > 0) {
+          userRows = authUserAch;
+          console.log('Loaded achievements with auth_user_id');
+        } else if (kioskUserId) {
+          // Fallback to kiosk_user_id if no achievements with auth_user_id
+          const { data: kioskAch } = await supabase
+            .from('user_achievements')
+            .select('*')
+            .eq('kiosk_user_id', kioskUserId);
+          userRows = kioskAch || [];
+          console.log('Loaded achievements with kiosk_user_id');
         }
+
+        // Get all available achievements
+        const { data: ach } = await supabase.from('achievements').select('*').order('key');
+        const rows = (ach||[]).map(a => ({
+          ...a,
+          user: userRows.find(u => u.achievement_key === a.key) || null
+        }));
 
         loading.style.display='none';
         if (!rows || !rows.length){ empty.style.display='block'; return; }
