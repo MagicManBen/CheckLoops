@@ -7904,7 +7904,31 @@ window.PIR_DEFINITIONS_DATA = [
   // Send invitation email with magic link for password setup
   console.log('Sending invitation email');
 
-      // Send magic link that goes to password setup first
+      // First, create an entry in site_invites table (let database auto-generate ID)
+      const inviteInsertData = {
+        site_id: formData.siteId,
+        email: formData.email,
+        full_name: formData.fullName,
+        role: formData.siteRole,
+        role_detail: formData.jobRole,
+        status: 'pending'
+      };
+
+      // Only add reports_to_id if it exists and convert to integer
+      if (formData.teamId) {
+        inviteInsertData.reports_to_id = parseInt(formData.teamId);
+      }
+
+      const { error: inviteError } = await supabase
+        .from('site_invites')
+        .insert(inviteInsertData);
+
+      if (inviteError) {
+        console.error('Failed to create invite record:', inviteError);
+        throw new Error('Failed to create invite record: ' + inviteError.message);
+      }
+
+      // Send magic link that goes to password setup with all necessary parameters
       const { data: otpData, error: otpError } = await supabase.auth.signInWithOtp({
         email: formData.email,
         options: {
@@ -7917,8 +7941,8 @@ window.PIR_DEFINITIONS_DATA = [
             invited: true,
             is_new_user: true
           },
-          // Send to password setup page (use simple-set-password.html if it exists, otherwise set-password.html)
-          emailRedirectTo: `https://checkloop.co.uk/simple-set-password.html?email=${encodeURIComponent(formData.email)}&invited=true`
+          // Include all parameters in the redirect URL for fallback
+          emailRedirectTo: `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(formData.email)}&site_id=${formData.siteId}&full_name=${encodeURIComponent(formData.fullName)}&role=${formData.siteRole}&role_detail=${encodeURIComponent(formData.jobRole || '')}&reports_to_id=${formData.teamId || ''}`
         }
       });
 
@@ -8209,19 +8233,44 @@ window.PIR_DEFINITIONS_DATA = [
         throw new Error('You must be logged in to resend invitations');
       }
 
-      // Call the Edge Function to resend invitation
-      debugLog('info', 'Calling Edge Function to resend invitation');
-      const { data, error } = await supabase.functions.invoke('resend-invitation', {
-        body: { email }
-      });
+      // Get the invite details from site_invites table
+      const { data: inviteData, error: inviteError } = await supabase
+        .from('site_invites')
+        .select('*')
+        .eq('email', email)
+        .eq('status', 'pending')
+        .single();
 
-      if (error) {
-        debugLog('error', 'Edge Function error', error);
-        throw new Error(error.message || 'Failed to resend invitation');
-      }
+      if (inviteError || !inviteData) {
+        console.error('Could not find invite details:', inviteError);
+        // Fall back to simple resend without full details
+        const { error } = await supabase.auth.signInWithOtp({
+          email: email,
+          options: {
+            emailRedirectTo: `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(email)}`
+          }
+        });
 
-      if (!data || !data.success) {
-        throw new Error('Failed to resend invitation - no success response');
+        if (error) throw error;
+      } else {
+        // Resend with full invite details
+        const { error } = await supabase.auth.signInWithOtp({
+          email: email,
+          options: {
+            data: {
+              full_name: inviteData.full_name,
+              role: inviteData.role,
+              role_detail: inviteData.role_detail,
+              reports_to_id: inviteData.reports_to_id,
+              site_id: inviteData.site_id,
+              invited: true,
+              is_new_user: true
+            },
+            emailRedirectTo: `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(email)}&site_id=${inviteData.site_id}&full_name=${encodeURIComponent(inviteData.full_name || '')}&role=${inviteData.role || ''}&role_detail=${encodeURIComponent(inviteData.role_detail || '')}&reports_to_id=${inviteData.reports_to_id || ''}`
+          }
+        });
+
+        if (error) throw error;
       }
 
       debugLog('success', 'Invitation resent successfully', { email });

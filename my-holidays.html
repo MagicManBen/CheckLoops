@@ -10,6 +10,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
   <script src="config.js"></script>
   <link rel="stylesheet" href="staff.css">
+  <!-- Flatpickr modern date picker -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <style>
     /* Holiday-specific overrides while maintaining staff.css base */
     .progress-bar {
@@ -130,6 +133,72 @@
       border-radius: 16px;
       box-shadow: var(--shadow);
     }
+
+    /* --- Calculation card styles --- */
+    #calculation-result.calc-card {
+      display: grid;
+      gap: 12px;
+      border-radius: 14px;
+      padding: 14px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+      border: 1px solid var(--border-color);
+      box-shadow: var(--shadow);
+    }
+    .calc-header {
+      font-weight: 800;
+      letter-spacing: .2px;
+      color: var(--white);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .calc-header::before{
+      content: "🗓️";
+      font-size: 18px;
+    }
+    .calc-list{
+      max-height: 220px;
+      overflow: auto;
+      border: 1px dashed rgba(255,255,255,0.15);
+      border-radius: 10px;
+      padding: 8px;
+      background: rgba(255,255,255,0.03);
+    }
+    .calc-row{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:8px 10px;
+      border-radius:8px;
+      transition:.2s ease;
+      border:1px solid rgba(255,255,255,0.06);
+      background: rgba(255,255,255,0.02);
+      margin:6px 0;
+    }
+    .calc-row:hover{ background: rgba(255,255,255,0.06); }
+    .calc-date{ color: var(--white); font-weight:600; }
+    .calc-badge{
+      font-weight:700;
+      font-size:12px;
+      padding:6px 10px;
+      border-radius:999px;
+      background: rgba(59,130,246,.15);
+      border:1px solid rgba(59,130,246,.35);
+      color:#e6f0ff;
+      white-space:nowrap;
+    }
+    .calc-total{
+      margin-top: 4px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      background: rgba(77, 220, 159, 0.10);
+      border:1px solid rgba(77, 220, 159, 0.35);
+      padding:10px 12px;
+      border-radius:10px;
+    }
+    .calc-total-label{ color: var(--white); font-weight:800; }
+    .calc-total-value{ color: var(--white); font-weight:900; font-size:18px; }
   </style>
 </head>
 <body>
@@ -187,6 +256,10 @@
             <div class="progress-bar">
               <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
             </div>
+            <div class="muted" id="pending-line" style="font-size:12px; margin-top:6px; display:none;">
+              Pending: <span id="pending-amount">0</span> <span id="pending-unit">sessions</span>
+              • After pending: <span id="remaining-after-pending">0</span> <span id="remaining-after-unit">sessions</span>
+            </div>
           </div>
         </div>
       </div>
@@ -199,24 +272,20 @@
         </div>
 
         <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">From Date</label>
-            <input type="date" id="from-date" class="form-input" />
+          <div class="form-group" style="grid-column: 1 / span 2;">
+            <label class="form-label">Date Range</label>
+            <input id="holiday-range" class="form-input" placeholder="Select holiday dates…" />
+            <div class="muted" style="font-size:12px; margin-top:6px;">Click start date, then end date (click once for a single day).</div>
           </div>
-
-          <div class="form-group">
-            <label class="form-label">To Date</label>
-            <input type="date" id="to-date" class="form-input" />
-          </div>
-
           <button class="btn" id="calculate-btn" style="padding:10px 20px;">Calculate</button>
         </div>
 
-        <div id="calculation-result" style="display:none; margin:16px 0; padding:16px; background:rgba(255,255,255,0.05); border:1px solid var(--border-color); border-radius:10px;">
-          <div style="font-weight:600; margin-bottom:8px; color:var(--white);">Time Off Calculation:</div>
-          <div id="calc-details" style="color:var(--muted); font-size:14px;"></div>
-          <div style="margin-top:12px; font-size:18px; font-weight:700; color:var(--white);">
-            Total: <span id="calc-total">0</span> <span id="calc-unit">hours</span>
+        <div id="calculation-result" class="calc-card" style="display:none; margin:16px 0;">
+          <div class="calc-header">Time Off Calculation</div>
+          <div id="calc-list" class="calc-list"></div>
+          <div class="calc-total">
+            <span class="calc-total-label">Total</span>
+            <span class="calc-total-value"><span id="calc-total">0</span> <span id="calc-unit">hours</span></span>
           </div>
         </div>
 
@@ -254,6 +323,16 @@
       handleAuthState(supabase);
       navActivate('holidays');
       attachLogout(supabase);
+
+      // Setup Flatpickr for range selection
+      const rangePicker = flatpickr("#holiday-range", {
+        mode: "range",
+        dateFormat: "Y-m-d",
+        altInput: true,
+        altFormat: "D, j M Y",
+        weekNumbers: true
+      });
+      window.rangePicker = rangePicker;
 
       try {
         const { session, profileRow } = await requireStaffSession(supabase);
@@ -348,19 +427,50 @@
           const isGP = holidaySummary.is_gp;
           console.log('[my-holidays] Updating display - isGP:', isGP, 'summary:', holidaySummary);
 
-          let totalAllowance, usedAmount, remaining;
+          // Compute totals and used amount
+          let totalAllowance = 0;
+          let usedAmount = 0;
+          let remaining = 0;
+
+          // Derive "used" from approved holiday requests within the selected holiday year
+          const year = holidaySummary.holiday_year || new Date().getFullYear();
+          const { data: approvedRows, error: usedErr } = await supabase
+            .from('4_holiday_requests')
+            .select('total_days, start_date, status')
+            .eq('user_id', user.id)
+            .eq('status', 'approved')
+            .gte('start_date', `${year}-01-01`)
+            .lte('start_date', `${year}-12-31`);
+
+          if (usedErr) {
+            console.warn('[my-holidays] Could not load used holidays:', usedErr);
+          }
+
+          usedAmount = (approvedRows || []).reduce((sum, r) => sum + (parseFloat(r.total_days) || 0), 0);
+
+          // Also get pending requests to preview impact
+          const { data: pendingRows, error: pendingErr } = await supabase
+            .from('4_holiday_requests')
+            .select('total_days, start_date, status')
+            .eq('user_id', user.id)
+            .eq('status', 'pending')
+            .gte('start_date', `${year}-01-01`)
+            .lte('start_date', `${year}-12-31`);
+          if (pendingErr) {
+            console.warn('[my-holidays] Could not load pending holidays:', pendingErr);
+          }
+          const pendingAmount = (pendingRows || []).reduce((sum, r) => sum + (parseFloat(r.total_days) || 0), 0);
 
           if (window.isGP) {
-            // GP uses sessions - get from master_users final_annual_sessions
-            totalAllowance = holidaySummary.final_annual_sessions || 0;
-            usedAmount = holidaySummary.holidays_used_sessions || 0;
-            remaining = totalAllowance - usedAmount;
+            // GP uses sessions - from master_users final_annual_sessions
+            totalAllowance = parseFloat(holidaySummary.final_annual_sessions || 0);
           } else {
-            // Non-GP uses hours - get from master_users final_annual_hours  
-            totalAllowance = holidaySummary.final_annual_hours || 0;
-            usedAmount = holidaySummary.holidays_used_hours || 0;
-            remaining = totalAllowance - usedAmount;
+            // Non-GP uses hours - from master_users final_annual_hours
+            totalAllowance = parseFloat(holidaySummary.final_annual_hours || 0);
           }
+
+          remaining = totalAllowance - usedAmount;
+          const remainingAfterPending = remaining - pendingAmount;
 
           if (window.isGP) {
             // GP uses sessions
@@ -376,6 +486,18 @@
             const percentage = totalAllowance > 0 ? Math.min(100, Math.max(0, (usedAmount / totalAllowance) * 100)) : 0;
             document.getElementById('progress-fill').style.width = percentage + '%';
 
+            // Set pending preview line
+            const pendingLine = document.getElementById('pending-line');
+            if (pendingAmount > 0) {
+              document.getElementById('pending-amount').textContent = pendingAmount;
+              document.getElementById('remaining-after-pending').textContent = remainingAfterPending;
+              document.getElementById('pending-unit').textContent = 'sessions';
+              document.getElementById('remaining-after-unit').textContent = 'sessions';
+              pendingLine.style.display = 'block';
+            } else {
+              pendingLine.style.display = 'none';
+            }
+
             console.log('[my-holidays] GP display updated - Total:', totalAllowance, 'Used:', usedAmount, 'Remaining:', remaining);
           } else {
             // Non-GP uses hours
@@ -389,6 +511,18 @@
             // Update progress bar
             const percentage = totalAllowance > 0 ? Math.min(100, Math.max(0, (usedAmount / totalAllowance) * 100)) : 0;
             document.getElementById('progress-fill').style.width = percentage + '%';
+
+            // Set pending preview line
+            const pendingLine = document.getElementById('pending-line');
+            if (pendingAmount > 0) {
+              document.getElementById('pending-amount').textContent = formatHours(pendingAmount);
+              document.getElementById('remaining-after-pending').textContent = formatHours(remainingAfterPending);
+              document.getElementById('pending-unit').textContent = '';
+              document.getElementById('remaining-after-unit').textContent = '';
+              pendingLine.style.display = 'block';
+            } else {
+              pendingLine.style.display = 'none';
+            }
 
             console.log('[my-holidays] Staff display updated - Total:', formatHours(totalAllowance), 'Used:', formatHours(usedAmount), 'Remaining:', formatHours(remaining));
           }
@@ -447,11 +581,12 @@
 
         // Calculate time off
         document.getElementById('calculate-btn').addEventListener('click', () => {
-          const fromDate = new Date(document.getElementById('from-date').value);
-          const toDate = new Date(document.getElementById('to-date').value);
+          const dates = (window.rangePicker && window.rangePicker.selectedDates) || [];
+          const fromDate = dates[0] ? new Date(dates[0]) : null;
+          const toDate = dates[1] ? new Date(dates[1]) : (dates[0] ? new Date(dates[0]) : null);
 
-          if (!fromDate || !toDate || isNaN(fromDate) || isNaN(toDate)) {
-            alert('Please select valid dates');
+          if (!fromDate || !toDate) {
+            alert('Please select a date or range');
             return;
           }
 
@@ -469,7 +604,7 @@
           let totalHours = 0;
           let totalSessions = 0;
           let totalMinutes = 0;
-          let details = [];
+          let rows = [];
 
           // Loop through each day
           const currentDate = new Date(fromDate);
@@ -481,7 +616,9 @@
               const sessions = parseFloat(pattern[`${dayName}_sessions`] || 0);
               if (sessions > 0) {
                 totalSessions += sessions;
-                details.push(`${dateStr}: ${sessions} ${sessions === 1 ? 'session' : 'sessions'}`);
+                rows.push(
+                  `<div class="calc-row"><div class="calc-date">${dateStr}</div><div class="calc-badge">${sessions} ${sessions === 1 ? 'session' : 'sessions'}</div></div>`
+                );
               }
             } else {
               const hours = parseFloat(pattern[`${dayName}_hours`] || 0);
@@ -490,10 +627,10 @@
                 totalMinutes += Math.round((hours % 1) * 60);
                 const displayHours = Math.floor(hours);
                 const displayMinutes = Math.round((hours % 1) * 60);
-                const timeStr = displayMinutes > 0 ?
-                  `${displayHours}h ${displayMinutes}m` :
-                  `${displayHours}h`;
-                details.push(`${dateStr}: ${timeStr}`);
+                const timeStr = displayMinutes > 0 ? `${displayHours}h ${displayMinutes}m` : `${displayHours}h`;
+                rows.push(
+                  `<div class="calc-row"><div class="calc-date">${dateStr}</div><div class="calc-badge">${timeStr}</div></div>`
+                );
               }
             }
 
@@ -510,7 +647,7 @@
           // Display result
           const resultDiv = document.getElementById('calculation-result');
           resultDiv.style.display = 'block';
-          document.getElementById('calc-details').innerHTML = details.join('<br>');
+          document.getElementById('calc-list').innerHTML = rows.join('');
 
           if (window.isGP) {
             document.getElementById('calc-total').textContent = totalSessions;
@@ -532,8 +669,9 @@
 
         // Submit request
         document.getElementById('submit-request').addEventListener('click', async () => {
-          const fromDate = document.getElementById('from-date').value;
-          const toDate = document.getElementById('to-date').value;
+          const sDates = (window.rangePicker && window.rangePicker.selectedDates) || [];
+          const fromDate = sDates[0] ? window.rangePicker.formatDate(sDates[0], "Y-m-d") : '';
+          const toDate = sDates[1] ? window.rangePicker.formatDate(sDates[1], "Y-m-d") : (sDates[0] ? window.rangePicker.formatDate(sDates[0], "Y-m-d") : '');
           const reason = document.getElementById('reason').value;
           const total = window.holidayRequestTotal || 0;
 
@@ -572,8 +710,7 @@
             document.getElementById('request-msg').style.color = '#059669';
 
             // Clear form
-            document.getElementById('from-date').value = '';
-            document.getElementById('to-date').value = '';
+            if (window.rangePicker) window.rangePicker.clear();
             document.getElementById('reason').value = '';
             document.getElementById('calculation-result').style.display = 'none';
             document.getElementById('submit-request').style.display = 'none';
