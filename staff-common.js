@@ -389,12 +389,34 @@ export function computeCompliance(requiredTypes = [], records = [], now = new Da
 }
 
 export async function getUserAchievements(supabase, kioskUserId) {
-  const { data, error } = await supabase.from('user_achievements').select('achievement_key, status, progress_percent').eq('kiosk_user_id', kioskUserId);
-  if (error) throw error;
+  const { data, error } = await supabase
+    .from('user_achievements')
+    .select('achievement_key, status, progress_percent, unlocked_at')
+    .eq('kiosk_user_id', kioskUserId);
+
+  if (error) {
+    console.error('Error loading achievements:', error);
+    return [];
+  }
   return data || [];
 }
 
-export async function upsertAchievement(supabase, kioskUserId, key, status, progress = 0) {
-  const { error } = await supabase.rpc('upsert_user_achievement', { p_kiosk_user_id: kioskUserId, p_achievement_key: key, p_status: status, p_progress_percent: progress });
-  if (error) throw error;
+export async function upsertAchievement(supabase, kioskUserId, key, status, progress = 100) {
+  // Direct upsert to user_achievements table
+  const { error } = await supabase
+    .from('user_achievements')
+    .upsert({
+      kiosk_user_id: kioskUserId,
+      achievement_key: key,
+      status: status,
+      progress_percent: progress,
+      unlocked_at: status === 'unlocked' ? new Date().toISOString() : null
+    }, {
+      onConflict: 'kiosk_user_id,achievement_key'
+    });
+
+  if (error) {
+    console.error('Error upserting achievement:', error);
+    throw error;
+  }
 }
