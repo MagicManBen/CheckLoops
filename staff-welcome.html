@@ -2060,10 +2060,19 @@
               // Save to master_users table (primary source of truth)
               try {
                 // Get the original access_type from user metadata (set during invitation)
-                const originalAccessType = user?.user_metadata?.role ||
+                const originalRole = user?.user_metadata?.role ||
                                          user?.raw_user_meta_data?.role ||
                                          user?.app_metadata?.role ||
-                                         'staff';
+                                         'Staff';
+
+                // Map roles to valid access_types
+                let accessType = 'staff'; // Default to staff
+                if (originalRole?.toLowerCase() === 'admin') {
+                  accessType = 'admin';
+                } else if (originalRole?.toLowerCase() === 'owner') {
+                  accessType = 'owner';
+                }
+                // GP role maps to 'staff' access_type with role_detail='GP'
 
                 // Get the original full_name from invitation data
                 const originalFullName = user?.user_metadata?.full_name ||
@@ -2077,21 +2086,47 @@
                   nickname: nickVal,
                   full_name: originalFullName,  // Use original full_name from invitation
                   role_detail: window.selectedRole || user?.raw_user_meta_data?.role_detail || null,
-                  access_type: originalAccessType,  // Preserve original access_type from invitation
+                  access_type: accessType,  // Use properly mapped access_type
                   site_id: siteId,
                   team_id: window.selectedTeamId || null,
                   team_name: window.selectedTeamName || null,
                   updated_at: new Date().toISOString()
                 };
 
-                console.log('[saveAvatarToSupabase] Upserting to master_users:', masterData);
-                const { data: masterResult, error: masterErr } = await supabase
+                console.log('[saveAvatarToSupabase] Checking for existing master_users record');
+
+                // Check if record exists first
+                const { data: existingRecord, error: checkErr } = await supabase
                   .from('master_users')
-                  .upsert(masterData, {
-                    onConflict: 'auth_user_id',
-                    ignoreDuplicates: false
-                  })
-                  .select();
+                  .select('id')
+                  .eq('auth_user_id', user.id)
+                  .eq('site_id', siteId || 1)
+                  .maybeSingle();
+
+                let masterResult, masterErr;
+
+                if (existingRecord) {
+                  // Update existing record
+                  console.log('[saveAvatarToSupabase] Updating existing master_users record');
+                  const { data, error } = await supabase
+                    .from('master_users')
+                    .update(masterData)
+                    .eq('auth_user_id', user.id)
+                    .eq('site_id', siteId || 1)
+                    .select();
+                  masterResult = data;
+                  masterErr = error;
+                } else {
+                  // Insert new record
+                  console.log('[saveAvatarToSupabase] Inserting new master_users record');
+                  masterData.created_at = new Date().toISOString();
+                  const { data, error } = await supabase
+                    .from('master_users')
+                    .insert(masterData)
+                    .select();
+                  masterResult = data;
+                  masterErr = error;
+                }
 
                 if (masterErr) {
                   console.error('[saveAvatarToSupabase] Master users update error:', masterErr);
@@ -2551,15 +2586,23 @@
           const val = String(input.value || '').trim();
           if (!val) { msg.textContent = 'Please enter a name to continue.'; return; }
 
-          // First, try to save to master_users table - only update nickname
+          // First, try to save to master_users table - update nickname and role if selected
           try {
-            // Only update the nickname field, nothing else
+            // Update nickname and role_detail if set
+            const updateData = {
+              nickname: val,
+              updated_at: new Date().toISOString()
+            };
+
+            // Include role if it has been selected
+            if (window.selectedRole) {
+              updateData.role_detail = window.selectedRole;
+              console.log('Saving role_detail to master_users:', window.selectedRole);
+            }
+
             const { error: masterError } = await supabase
               .from('master_users')
-              .update({
-                nickname: val,
-                updated_at: new Date().toISOString()
-              })
+              .update(updateData)
               .eq('auth_user_id', user.id)
               .eq('site_id', siteId);
 
@@ -2618,17 +2661,36 @@
             existing = window.preConfiguredData.welcome;
             console.log('Using pre-configured welcome data:', existing);
           } else {
-            // Load from database
+            // Load from master_users first (primary source of truth)
             try {
-              let q = supabase
-                .from('staff_app_welcome')
+              const { data: masterData, error: masterError } = await supabase
+                .from('master_users')
                 .select('full_name, nickname, role_detail, team_id, team_name, avatar_url')
-                .eq('user_id', user.id)
-                .limit(1);
-              if (siteId) q = q.eq('site_id', siteId);
-              const { data: sawRow, error: sawErr } = await q.maybeSingle();
-              if (!sawErr && sawRow) existing = sawRow;
-            } catch (_) {}
+                .eq('auth_user_id', user.id)
+                .eq('site_id', siteId)
+                .maybeSingle();
+              
+              if (!masterError && masterData) {
+                existing = masterData;
+                console.log('Using master_users data:', existing);
+              } else {
+                // Fallback to staff_app_welcome table
+                console.log('No master_users data found, checking staff_app_welcome');
+                let q = supabase
+                  .from('staff_app_welcome')
+                  .select('full_name, nickname, role_detail, team_id, team_name, avatar_url')
+                  .eq('user_id', user.id)
+                  .limit(1);
+                if (siteId) q = q.eq('site_id', siteId);
+                const { data: sawRow, error: sawErr } = await q.maybeSingle();
+                if (!sawErr && sawRow) {
+                  existing = sawRow;
+                  console.log('Using staff_app_welcome data:', existing);
+                }
+              }
+            } catch (e) {
+              console.warn('Error loading user details:', e);
+            }
           }
 
           // Pre-fill nickname if present
@@ -2725,15 +2787,16 @@
           tg.innerHTML = '<div style="opacity:.7; padding:8px 0;">Loading teams…</div>';
           try{
             let teams = [];
-            // Try to load teams from database, but use fallback if there's any error
+            // Try to load teams from database
             if (siteId){
               try {
-                const { data, error } = await supabase.from('teams').select('id,name').eq('site_id', siteId);
+                const { data, error } = await supabase.from('teams').select('id,name').eq('site_id', siteId).order('name');
                 if (error) {
                   console.warn('teams load error (using fallback)', error);
                   teams = [];
                 } else {
-                  teams = (data||[]);
+                  teams = (data||[]).map(team => ({ id: team.id, name: team.name }));
+                  console.log('Loaded teams from database:', teams);
                 }
               } catch (e) {
                 console.warn('teams query exception (using fallback)', e);
@@ -2743,6 +2806,7 @@
 
             // Always provide fallback teams if none loaded (match admin-dashboard defaults)
             if (!teams.length) {
+              console.log('Using fallback teams');
               teams = [
                 { id: 1, name: 'Clinical Team' },
                 { id: 2, name: 'Admin Team' },
@@ -2997,7 +3061,7 @@
       const isGP = (window.selectedRole || '').toLowerCase().includes('doctor') ||
                    (window.selectedRole || '').toLowerCase().includes('gp');
 
-      // Try to load existing working pattern from database or use pre-configured data
+      // Try to load existing working pattern from master_users first, then legacy table
       let existingPattern = null;
       const currentUser = window.currentUser;
       const currentSiteId = window.currentSiteId || 1;
@@ -3009,19 +3073,41 @@
       } else if (currentUser && globalSupabase) {
         try {
           console.log('Loading existing working pattern for user:', currentUser.id);
-          const { data, error } = await globalSupabase
-            .from('3_staff_working_patterns')
-            .select('*')
-            .eq('user_id', currentUser.id)
+          
+          // First try to load from master_users (primary source of truth)
+          const { data: masterData, error: masterError } = await globalSupabase
+            .from('master_users')
+            .select('monday_sessions, tuesday_sessions, wednesday_sessions, thursday_sessions, friday_sessions, saturday_sessions, sunday_sessions, monday_hours, tuesday_hours, wednesday_hours, thursday_hours, friday_hours, saturday_hours, sunday_hours, role_detail')
+            .eq('auth_user_id', currentUser.id)
+            .eq('site_id', currentSiteId)
             .maybeSingle();
 
-          if (data) {
-            existingPattern = data;
-            console.log('Found existing working pattern:', existingPattern);
-          } else if (error) {
-            console.warn('Error loading working pattern:', error);
+          if (masterData && !masterError) {
+            console.log('Found existing working pattern in master_users:', masterData);
+            existingPattern = masterData;
+
+            // Also set the role from master_users if it exists
+            if (masterData.role_detail) {
+              window.selectedRole = masterData.role_detail;
+              console.log('Setting role from master_users:', masterData.role_detail);
+            }
           } else {
-            console.log('No existing working pattern found');
+            // Fallback to legacy table
+            console.log('No master_users pattern found, checking legacy table');
+            const { data, error } = await globalSupabase
+              .from('3_staff_working_patterns')
+              .select('*')
+              .eq('user_id', currentUser.id)
+              .maybeSingle();
+
+            if (data) {
+              existingPattern = data;
+              console.log('Found existing working pattern in legacy table:', existingPattern);
+            } else if (error) {
+              console.warn('Error loading working pattern:', error);
+            } else {
+              console.log('No existing working pattern found');
+            }
           }
         } catch (e) {
           console.warn('Failed to load working pattern:', e);
@@ -3108,8 +3194,11 @@
         document.getElementById('welcome-step3').style.display = '';
       });
       
-      // Complete Setup Handler
-      document.getElementById('complete-setup')?.addEventListener('click', async () => {
+      // Complete Setup Handler - ensure only one listener
+      const completeSetupBtn = document.getElementById('complete-setup');
+      if (completeSetupBtn && !completeSetupBtn.hasAttribute('data-handler-attached')) {
+        completeSetupBtn.setAttribute('data-handler-attached', 'true');
+        completeSetupBtn.addEventListener('click', async () => {
         const msg = document.getElementById('working-msg');
         if (msg) msg.textContent = 'Saving your working hours...';
 
@@ -3148,6 +3237,7 @@
         for (const day of days) {
           if (isGP) {
             const inputEl = document.getElementById(`${day}-val`);
+            console.log(`Looking for element: ${day}-val, found:`, inputEl);
             if (!inputEl) {
               console.warn(`Input element for ${day} not found`);
               patternData[`${day}_sessions`] = 0;
@@ -3156,6 +3246,7 @@
             }
 
             const sessions = parseInt(inputEl.value || '0');
+            console.log(`${day} input value: "${inputEl.value}", parsed sessions: ${sessions}`);
             patternData[`${day}_sessions`] = sessions;
             patternData[`${day}_hours`] = null;  // NULL for GP staff
             totalSessions += sessions;
@@ -3196,7 +3287,113 @@
         console.log('Is GP?:', isGP, 'Total Sessions:', totalSessions, 'Total Hours:', totalHours);
         
         try {
-          // Save working pattern
+          // Helper function to convert HH:MM to decimal hours
+          function convertTimeToDecimal(timeStr) {
+            if (!timeStr || timeStr === 'null') return 0;
+            const parts = timeStr.split(':');
+            const hours = parseInt(parts[0] || 0);
+            const minutes = parseInt(parts[1] || 0);
+            return hours + (minutes / 60);
+          }
+
+          // NEW: Save working hours to master_users table (primary source of truth)
+          const displayName = document.getElementById('nickname')?.value?.trim() ||
+                              currentUser?.raw_user_meta_data?.full_name ||
+                              currentUser?.email?.split('@')[0] || 'Staff';
+
+          // Get current avatar URL
+          const avatarUrl = window.currentSavedAvatarUrl ||
+                          document.getElementById('avatarPreview')?.src ||
+                          currentUser?.raw_user_meta_data?.avatar_url || null;
+
+          const masterUserData = {
+            auth_user_id: currentUser.id,
+            site_id: currentSiteId,
+            email: currentUser.email,
+            full_name: displayName,
+            nickname: displayName,
+            role_detail: window.selectedRole || 'Staff',
+            access_type: (window.selectedRole === 'GP') ? 'staff' : (window.selectedRole?.toLowerCase() === 'admin' ? 'admin' : 'staff'),
+            team_name: window.selectedTeamName || null,
+            team_id: window.selectedTeamId || null,
+            avatar_url: avatarUrl,
+            is_gp: isGP,
+            // Daily hours - convert HH:MM to decimal
+            monday_hours: isGP ? null : convertTimeToDecimal(patternData.monday_hours),
+            tuesday_hours: isGP ? null : convertTimeToDecimal(patternData.tuesday_hours),
+            wednesday_hours: isGP ? null : convertTimeToDecimal(patternData.wednesday_hours),
+            thursday_hours: isGP ? null : convertTimeToDecimal(patternData.thursday_hours),
+            friday_hours: isGP ? null : convertTimeToDecimal(patternData.friday_hours),
+            saturday_hours: isGP ? null : convertTimeToDecimal(patternData.saturday_hours),
+            sunday_hours: isGP ? null : convertTimeToDecimal(patternData.sunday_hours),
+            // Daily sessions  
+            monday_sessions: isGP ? patternData.monday_sessions : 0,
+            tuesday_sessions: isGP ? patternData.tuesday_sessions : 0,
+            wednesday_sessions: isGP ? patternData.wednesday_sessions : 0,
+            thursday_sessions: isGP ? patternData.thursday_sessions : 0,
+            friday_sessions: isGP ? patternData.friday_sessions : 0,
+            saturday_sessions: isGP ? patternData.saturday_sessions : 0,
+            sunday_sessions: isGP ? patternData.sunday_sessions : 0,
+            // Totals
+            total_hours: totalHours,
+            total_sessions: totalSessions,
+            weekly_hours: isGP ? null : totalHours,
+            weekly_sessions: isGP ? totalSessions : null,
+            // Calculate entitlements
+            holiday_multiplier: 6, // Default multiplier
+            calculated_hours: isGP ? 0 : totalHours * 6,
+            calculated_sessions: isGP ? totalSessions * 6 : 0,
+            final_annual_hours: isGP ? 0 : totalHours * 6,
+            final_annual_sessions: isGP ? totalSessions * 6 : 0,
+            onboarding_complete: true,
+            updated_at: new Date().toISOString()
+          };
+
+          console.log('Saving to master_users:', masterUserData);
+          console.log('Total Sessions for GP:', totalSessions);
+          console.log('Is GP:', isGP);
+
+          // First check if record exists in master_users
+          const { data: existingUser, error: checkError } = await globalSupabase
+            .from('master_users')
+            .select('id')
+            .eq('auth_user_id', currentUser.id)
+            .eq('site_id', currentSiteId)
+            .maybeSingle();
+
+          let masterResult, masterError;
+
+          if (existingUser) {
+            // Update existing record
+            console.log('Updating existing master_users record');
+            const { data, error } = await globalSupabase
+              .from('master_users')
+              .update(masterUserData)
+              .eq('auth_user_id', currentUser.id)
+              .eq('site_id', currentSiteId)
+              .select();
+            masterResult = data;
+            masterError = error;
+          } else {
+            // Insert new record
+            console.log('Inserting new master_users record');
+            masterUserData.created_at = new Date().toISOString();
+            const { data, error } = await globalSupabase
+              .from('master_users')
+              .insert(masterUserData)
+              .select();
+            masterResult = data;
+            masterError = error;
+          }
+
+          if (masterError) {
+            console.error('Error saving to master_users:', masterError);
+            throw masterError;
+          }
+
+          console.log('Working hours saved to master_users:', masterResult);
+
+          // LEGACY: Also save working pattern to legacy table for backward compatibility during transition
           const { data: savedPattern, error: patternError } = await globalSupabase
             .from('3_staff_working_patterns')
             .upsert(patternData, {
@@ -3206,8 +3403,8 @@
             .select();
 
           if (patternError) {
-            console.error('Error saving working pattern:', patternError);
-            throw patternError;
+            console.warn('Error saving to legacy working patterns table:', patternError);
+            // Don't throw error - legacy table is optional during transition
           }
 
           console.log('Working pattern saved:', savedPattern);
@@ -3430,8 +3627,8 @@
           }
 
           // Success - show completion step with animations
-          console.log('Working hours saved successfully');
-          if (msg) msg.textContent = 'Saved!';
+          console.log('Working hours saved successfully to master_users');
+          if (msg) msg.textContent = '✅ Profile and working hours saved to your account!';
 
           // Hide working hours step
           document.getElementById('step4').style.display = 'none';
@@ -3489,6 +3686,7 @@
           }, 2000);
         }
       });
+      }
     };
     
     // Call the setup function after everything is loaded
