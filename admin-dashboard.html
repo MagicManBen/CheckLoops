@@ -55,14 +55,16 @@ document.addEventListener('DOMContentLoaded', () => {
       showHelp(viewId);
     });
 
-    // If the header uses a light panel background, give the badge a light variant
+    // Choose a contrasting theme for the badge based on header background
+    // Default to light theme (dark text) which works on white headers
+    let themeClass = 'light';
     const panelBg = getComputedStyle(header).backgroundColor || '';
-    // crude check for very light backgrounds
     if (panelBg.startsWith('rgb(')) {
       const nums = panelBg.replace(/[rgba\(\) ]/g, '').split(',').map(n=>parseFloat(n));
       const avg = (nums[0] + nums[1] + nums[2]) / 3;
-      if (avg > 220) badge.classList.add('light');
+      themeClass = avg > 200 ? 'light' : 'dark';
     }
+    badge.classList.add(themeClass);
 
     // Insert badge into the page title wrapper so it sits right of the title
     const titleWrapper = header.querySelector('.page-title-wrapper');
@@ -76,18 +78,19 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.remove();
   });
 
-  // Remove "Working Hours" button from the left sidebar menu
+  // Remove unwanted buttons from the left sidebar menu
   try {
+    const labelsToRemove = ['working hours', 'dashboard'];
     const navButtons = document.querySelectorAll('#sidebar .nav button');
     navButtons.forEach((btn) => {
       const labelEl = btn.querySelector('.menu-item-label');
       const text = (labelEl?.textContent || btn.textContent || '').trim().toLowerCase();
-      if (text === 'working hours') {
+      if (labelsToRemove.includes(text)) {
         btn.remove();
       }
     });
   } catch (e) {
-    console.warn('Could not remove Working Hours button:', e);
+    console.warn('Could not remove some sidebar buttons:', e);
   }
 });
 </script>
@@ -465,14 +468,60 @@ document.addEventListener('DOMContentLoaded', () => {
   .h1{ font-size:32px; font-weight:900; letter-spacing:.2px; margin:6px 0 8px; }
   .muted{ color:var(--muted) }
 
-  table{ width:100%; border-collapse:separate; border-spacing:0; }
-  th, td{ text-align:left; padding:14px 16px; font-size:14px; }
-  thead th{ position:sticky; top:0; background: linear-gradient(145deg, #1a4297, #11366f); backdrop-filter: blur(10px); z-index:1; font-weight:600; color:var(--white); border-bottom:1px solid var(--border-color); text-shadow: 0 1px 3px rgba(0,0,0,0.3); }
-  tbody tr{ transition: all 0.3s ease; background: rgba(255, 255, 255, 0.03); }
-  tbody tr:nth-child(even){ background: rgba(255, 255, 255, 0.06); }
-  tbody tr:hover{ background: linear-gradient(90deg, rgba(118, 167, 255, 0.15), rgba(118, 167, 255, 0.08)) !important; transform: translateX(4px); box-shadow: 0 4px 12px rgba(118, 167, 255, 0.2); }
-  td { border-bottom:1px solid var(--border-color); color:var(--white); }
-  tbody tr:last-child td { border-bottom: none; }
+  /* Modern clean global table styles */
+  table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: #ffffff;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    font-size: 0.95rem;
+    transition: all 0.3s ease;
+  }
+
+  table thead {
+    background: linear-gradient(90deg, #4f46e5, #6366f1);
+    color: #fff;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  table thead th {
+    padding: 14px 16px;
+    text-align: left;
+  }
+
+  table tbody tr {
+    background: #fff;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  table tbody tr:nth-child(even) {
+    background: #f9fafb;
+  }
+  table tbody tr:hover {
+    transform: scale(1.01);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    background: #f3f4f6;
+  }
+  table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid #e5e7eb;
+    color: #111827;
+  }
+
+  table tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  table tbody {
+    animation: fadeInUp 0.4s ease;
+  }
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
   .table-wrap{ overflow:auto; max-height:420px; background: rgba(19, 59, 138, 0.4); border-radius: 12px; padding: 4px; backdrop-filter: blur(10px); box-shadow: inset 0 0 20px rgba(255,255,255,0.05); }
   .chip{ padding:4px 8px; background:#ffffff20; border-radius:999px; font-size:12px; display:inline-block }
   .chip.success { background: var(--stat-2-bg); color: var(--stat-2-color); }
@@ -1055,7 +1104,6 @@ document.addEventListener('DOMContentLoaded', () => {
   .cal-metric.danger { color: var(--danger); }
   
   /* Row hover/selected across all tables */
-  tbody tr:hover{ background:#ffffff12 !important; }
   tbody tr.selected{ background:#ffffff1e !important; }
   tbody[data-entity] tr{ cursor:pointer; }
   #subs-tbody tr { cursor: pointer; }
@@ -1573,41 +1621,56 @@ document.addEventListener('DOMContentLoaded', () => {
     transform: scale(1.1);
   }
 
-  /* Page help badge: inline eye button placed just to the right of the page title */
+  /* Page help badge: inline eye/info button placed just to the right of the page title */
   .page-header { position: relative; }
-
+  
   .page-help-badge {
     display: inline-grid;
     place-items: center;
     margin-left: 8px;
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
     border-radius: 50%;
+    font-weight: 800;
+    font-size: 12px;
+    cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+    position: relative;
+    /* tiny pulse ring for interest */
+  }
+  
+  /* Light theme (for light headers): darker text on light glass */
+  .page-help-badge.light {
+    background: linear-gradient(135deg, #ffffff, #f3f6fb);
+    color: #0f1b3d;
+    border: 1px solid rgba(0,0,0,0.08);
+    box-shadow: 0 6px 18px rgba(16,24,40,0.08);
+  }
+  
+  /* Dark theme (for dark headers): light text on dark glass */
+  .page-help-badge.dark {
     background: linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.08));
     border: 1px solid rgba(255,255,255,0.2);
-    color: rgba(255,255,255,0.9);
-    font-weight: 600;
-    font-size: 11px;
-    cursor: pointer;
+    color: rgba(255,255,255,0.95);
     box-shadow: 0 2px 8px rgba(2,6,23,0.15);
-    transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
-    flex-shrink: 0;
-    opacity: 1;
   }
-
+  
+  .page-help-badge::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 999px;
+    box-shadow: 0 0 0 0 rgba(118,167,255,0.35);
+    opacity: 0.0;
+    transition: box-shadow .2s ease, opacity .2s ease;
+  }
+  
   .page-help-badge:hover { 
     transform: translateY(-1px) scale(1.05); 
-    box-shadow: 0 4px 12px rgba(2,6,23,0.2); 
-    opacity: 1;
-    color: var(--white);
   }
-
-  /* Variant for light panels (when --panel-bg is light) */
-  .page-help-badge.light {
-    background: linear-gradient(135deg, #fff, #f3f6fb);
-    color: var(--ink);
-    border-color: rgba(0,0,0,0.06);
-    box-shadow: 0 6px 18px rgba(16,24,40,0.08);
+  .page-help-badge:hover::after {
+    opacity: 1;
+    box-shadow: 0 0 0 6px rgba(118,167,255,0.18);
   }
   
   /* Help modal styles */
