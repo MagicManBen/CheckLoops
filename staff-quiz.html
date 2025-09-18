@@ -1122,49 +1122,37 @@
                 try {
                   console.log('🏆 First practice quiz detected! Unlocking achievement...');
 
-                  // Try to unlock with auth_user_id first (new system)
-                  const { error: authUserError } = await supabase
-                    .from('user_achievements')
-                    .upsert({
-                      auth_user_id: currentUser.id,
-                      achievement_key: 'first_practice_quiz',
-                      status: 'unlocked',
-                      progress_percent: 100,
-                      unlocked_at: new Date().toISOString()
-                    }, {
-                      onConflict: 'auth_user_id,achievement_key'
-                    });
+                  // Get kiosk_user_id first
+                  const { data: profileData } = await supabase
+                    .from('profiles')
+                    .select('kiosk_user_id')
+                    .eq('user_id', currentUser.id)
+                    .single();
 
-                  if (!authUserError) {
-                    console.log('✅ First Practice Quiz achievement unlocked with auth_user_id!');
-                    // Show a toast notification
-                    showToast('🏆 Achievement Unlocked: Practice Makes Perfect!');
-                  } else {
-                    // Fall back to kiosk_user_id system if auth_user_id column doesn't exist
-                    const { data: profileData } = await supabase
-                      .from('profiles')
-                      .select('kiosk_user_id')
-                      .eq('user_id', currentUser.id)
-                      .single();
+                  if (profileData && profileData.kiosk_user_id) {
+                    // Use kiosk_user_id which has the unique constraint
+                    const { error: achievementError } = await supabase
+                      .from('user_achievements')
+                      .upsert({
+                        kiosk_user_id: profileData.kiosk_user_id,
+                        user_id: currentUser.id,
+                        achievement_key: 'first_practice_quiz',
+                        status: 'unlocked',
+                        progress_percent: 100,
+                        unlocked_at: new Date().toISOString()
+                      }, {
+                        onConflict: 'kiosk_user_id,achievement_key'
+                      });
 
-                    if (profileData && profileData.kiosk_user_id) {
-                      await supabase
-                        .from('user_achievements')
-                        .upsert({
-                          kiosk_user_id: profileData.kiosk_user_id,
-                          achievement_key: 'first_practice_quiz',
-                          status: 'unlocked',
-                          progress_percent: 100,
-                          unlocked_at: new Date().toISOString()
-                        }, {
-                          onConflict: 'kiosk_user_id,achievement_key'
-                        });
-                      console.log('✅ First Practice Quiz achievement unlocked with kiosk_user_id!');
+                    if (!achievementError) {
+                      console.log('✅ First Practice Quiz achievement unlocked!');
                       // Show a toast notification
                       showToast('🏆 Achievement Unlocked: Practice Makes Perfect!');
                     } else {
-                      console.log('Could not unlock achievement - no kiosk_user_id');
+                      console.error('Failed to unlock achievement:', achievementError);
                     }
+                  } else {
+                    console.log('Could not unlock achievement - no kiosk_user_id found');
                   }
                 } catch (achievementError) {
                   console.warn('Failed to check/unlock practice quiz achievement:', achievementError);
