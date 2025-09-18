@@ -7928,53 +7928,60 @@ window.PIR_DEFINITIONS_DATA = [
         throw new Error('Failed to create invite record: ' + inviteError.message);
       }
 
-      // First, create the user account with a temporary password
-      const tempPassword = crypto.randomUUID();
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: tempPassword,
-        options: {
-          data: {
+      // Create admin client with service role key for user creation
+      const adminSupabase = createClient(CONFIG.SUPABASE_URL, serviceKey);
+
+      // First check if user already exists
+      const { data: existingUser } = await adminSupabase.auth.admin.listUsers();
+      const userExists = existingUser?.users?.some(u => u.email === formData.email);
+
+      if (!userExists) {
+        // Create the user with admin API
+        const tempPassword = crypto.randomUUID();
+        const { error: createError } = await adminSupabase.auth.admin.createUser({
+          email: formData.email,
+          password: tempPassword,
+          email_confirm: true, // Auto-confirm the email
+          user_metadata: {
             full_name: formData.fullName,
             role: formData.siteRole,
             role_detail: formData.jobRole,
             reports_to_id: formData.teamId,
             site_id: formData.siteId,
-            invited: true,
-            temp_password: true
-          },
-          emailRedirectTo: `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(formData.email)}&site_id=${formData.siteId}&full_name=${encodeURIComponent(formData.fullName)}&role=${formData.siteRole}&role_detail=${encodeURIComponent(formData.jobRole || '')}&reports_to_id=${formData.teamId || ''}`
-        }
-      });
-
-      if (signUpError) {
-        // If user already exists, send a password reset instead
-        if (signUpError.message?.includes('already registered')) {
-          const { error: resetError } = await supabase.auth.resetPasswordForEmail(formData.email, {
-            redirectTo: `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(formData.email)}&site_id=${formData.siteId}&full_name=${encodeURIComponent(formData.fullName)}&role=${formData.siteRole}&role_detail=${encodeURIComponent(formData.jobRole || '')}&reports_to_id=${formData.teamId || ''}`
-          });
-
-          if (resetError) {
-            console.error('Failed to send password reset:', resetError);
-            throw new Error(`Failed to send invitation: ${resetError.message || 'Unknown error'}`);
+            invited: true
           }
-        } else {
-          console.error('Failed to create user:', signUpError);
-          throw new Error(`Failed to create user: ${signUpError.message || 'Unknown error'}`);
+        });
+
+        if (createError) {
+          console.error('Failed to create user:', createError);
+          throw new Error(`Failed to create user: ${createError.message || 'Unknown error'}`);
         }
+        console.log('User account created successfully');
+      } else {
+        console.log('User already exists, will send password reset');
       }
 
-      console.log('User account created and invitation sent successfully');
+      // Now send password reset email for the user to set their password
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(formData.email, {
+        redirectTo: `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(formData.email)}&site_id=${formData.siteId}&full_name=${encodeURIComponent(formData.fullName)}&role=${formData.siteRole}&role_detail=${encodeURIComponent(formData.jobRole || '')}&reports_to_id=${formData.teamId || ''}`
+      });
+
+      if (resetError) {
+        console.error('Failed to send password reset:', resetError);
+        throw new Error(`Failed to send invitation email: ${resetError.message || 'Unknown error'}`);
+      }
+
+      console.log('Password reset email sent successfully');
 
       // Success!
       const successElement = document.getElementById('add-user-success');
       if (successElement) {
         successElement.innerHTML = `
-          <strong>Success!</strong> User ${formData.email} has been invited successfully! 
+          <strong>Success!</strong> User ${formData.email} has been invited successfully!
           <br><br>
-          They will receive an email with a magic link to complete their registration.
+          They will receive an email to set their password and complete registration.
           <br><br>
-          <em>Note: It may take a few minutes for the invitation email to arrive.</em>
+          <em>Note: The email may take a few minutes to arrive. Check spam folder if not received.</em>
         `;
         successElement.style.display = 'block';
       }
