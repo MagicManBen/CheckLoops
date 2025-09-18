@@ -7681,7 +7681,7 @@ window.PIR_DEFINITIONS_DATA = [
       // Create a temporary Supabase client with the service role key for admin operations
       const serviceKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTAxNzI3NiwiZXhwIjoyMDcwNTkzMjc2fQ.CJxV14F0T2TWkAjeR4bpYiBIOwLwyfzF9WzAWwS99Xc";
       
-      // First, check if this email already exists in site_invites
+      // Check for existing invitations
       const { data: existingInvites, error: existingInviteError } = await supabase
         .from('site_invites')
         .select('id, email')
@@ -7695,182 +7695,78 @@ window.PIR_DEFINITIONS_DATA = [
         throw new Error(`An invitation for ${formData.email} already exists`);
       }
       
-      // Step 1: Create an invitation record in site_invites table
-      debugLog('info', 'Creating site invitation record');
-      const { data: inviteRecord, error: inviteRecordError } = await supabase
-        .from('site_invites')
-        .insert({
+      // Send invitation using the proper edge function
+      debugLog('info', 'Sending invitation email via edge function');
+
+      // Use the invite-user edge function which properly handles invitations
+      const { data: { session: userSession } } = await supabase.auth.getSession();
+      const inviteResponse = await fetch(`${supabase.supabaseUrl}/functions/v1/invite-user`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${userSession.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           email: formData.email,
-          full_name: formData.fullName,
+          name: formData.fullName,
           role: formData.siteRole,
           role_detail: formData.jobRole,
-          reports_to_id: formData.teamId ? parseInt(formData.teamId, 10) : null,
+          reports_to_id: formData.teamId,
+          redirect_to: `${CONFIG.passwordRedirectUrl}?invite_email=${formData.email}&site_id=${formData.siteId}`
+        })
+      });
+
+      if (!inviteResponse.ok) {
+        const error = await inviteResponse.json();
+        debugLog('error', 'Failed to send invitation', error);
+        throw new Error(`Failed to send invitation: ${error.error || 'Unknown error'}`);
+      }
+
+      const inviteResult = await inviteResponse.json();
+      debugLog('success', 'Invitation sent successfully', inviteResult);
+
+      // Create holiday profile for the invited user
+      debugLog('info', 'Creating holiday profile for invited user');
+
+      // Create holiday profile
+      const { data: holidayProfile, error: holidayError } = await supabase
+        .from('1_staff_holiday_profiles')
+        .insert({
+          full_name: formData.fullName,
+          role: formData.jobRole,
+          is_gp: isGP,
+          email: formData.email,
           site_id: formData.siteId,
-          status: 'pending',
-          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-          invited_by: session.user.id
+          user_id: null, // Will be set when user completes signup
+          updated_at: new Date().toISOString()
         })
         .select()
         .single();
 
-      if (inviteRecordError) {
-        debugLog('error', 'Failed to create site invitation record', inviteRecordError);
-        throw new Error(`Failed to create site invitation: ${inviteRecordError.message}`);
-      }
-      
-      debugLog('success', 'Created site invitation record', { id: inviteRecord.id });
-      
-      // Step 2: Create user and send magic link
-      debugLog('info', 'Creating user and sending magic link');
-
-      // Build redirect URL with all necessary data
-      const redirectParams = new URLSearchParams({
-        invite_email: formData.email,
-        site_id: formData.siteId.toString(),
-        invite_id: inviteRecord.id,
-        full_name: formData.fullName,
-        role: formData.siteRole,
-        role_detail: formData.jobRole || '',
-        reports_to_id: formData.teamId || ''
-      });
-
-      const redirectTo = `${CONFIG.passwordRedirectUrl}?${redirectParams.toString()}`;
-
-      // Send magic link email - this will create the user if they don't exist
-      debugLog('info', 'Sending magic link email');
-      const { error: magicLinkError } = await supabase.auth.signInWithOtp({
-        email: formData.email,
-        options: {
-          emailRedirectTo: redirectTo,
-          shouldCreateUser: true, // This will create the user if they don't exist
-          data: {
-            full_name: formData.fullName,
-            site_id: formData.siteId,
-            role: formData.siteRole,
-            role_detail: formData.jobRole,
-            reports_to_id: formData.teamId,
-            invite_id: inviteRecord.id
-          }
-        }
-      });
-
-      let userId = null; // User will be created when they click the magic link
-
-      if (magicLinkError) {
-        debugLog('error', 'Failed to send magic link', magicLinkError);
-        // Don't delete the user, just the invite record
-        await supabase.from('site_invites').delete().eq('id', inviteRecord.id);
-        throw new Error(`Failed to send magic link: ${magicLinkError.message || 'Unknown error'}`);
-      }
-
-      debugLog('success', 'Magic link sent successfully to', formData.email);
-
-      // Step 3: Store all the data in the invite record for later processing
-      debugLog('info', 'Storing invite data for profile creation when user signs in');
-
-      const inviteData = {
-        working_pattern: formData.workingPattern,
-        total_hours: totalHours,
-        total_sessions: totalSessions,
-        holiday_entitlement: holidayEntitlement,
-        is_gp: isGP,
-        nickname: formData.fullName.split(' ')[0]
-      };
-
-      const { error: updateInviteError } = await supabase
-        .from('site_invites')
-        .update({
-          invite_data: inviteData,
-          metadata: {
-            job_role: formData.jobRole,
-            team_id: formData.teamId,
-            working_pattern: formData.workingPattern
-          }
-        })
-        .eq('id', inviteRecord.id);
-
-      if (updateInviteError) {
-        debugLog('warning', 'Failed to store invite data', updateInviteError);
-      } else {
-        debugLog('success', 'Invite data stored for later profile creation');
-      }
-
-      // Step 4: Create holiday profile
-      debugLog('info', 'Step 4: Creating holiday profile');
-
-      // First check if profile already exists for this full_name
-      const { data: existingHolidayProfile } = await supabase
-        .from('1_staff_holiday_profiles')
-        .select('id')
-        .eq('full_name', formData.fullName)
-        .single();
-
-      let holidayProfile, holidayError;
-
-      if (existingHolidayProfile) {
-        // Update existing profile
-        debugLog('info', 'Updating existing holiday profile');
-        const { data, error } = await supabase
-          .from('1_staff_holiday_profiles')
-          .update({
-            role: formData.jobRole,
-            is_gp: isGP,
-            email: formData.email,
-            site_id: formData.siteId,
-            user_id: null, // Will be set when user completes signup
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', existingHolidayProfile.id)
-          .select()
-          .single();
-        holidayProfile = data;
-        holidayError = error;
-      } else {
-        // Create new profile
-        debugLog('info', 'Creating new holiday profile');
-        const { data, error } = await supabase
-          .from('1_staff_holiday_profiles')
-          .insert({
-            full_name: formData.fullName,
-            role: formData.jobRole,
-            is_gp: isGP,
-            email: formData.email,
-            site_id: formData.siteId,
-            user_id: null, // Will be set when user completes signup
-            updated_at: new Date().toISOString()
-          })
-          .select()
-          .single();
-        holidayProfile = data;
-        holidayError = error;
-      }
-
       if (holidayError) {
-        debugLog('warning', 'Holiday profile warning', holidayError);
+        debugLog('warning', 'Holiday profile creation failed', holidayError);
       } else {
         debugLog('success', 'Holiday profile created', { id: holidayProfile?.id });
-      }
+        
+        // Create entitlements if holiday profile was created
+        if (holidayProfile?.id) {
+          const currentYear = new Date().getFullYear();
+          const { error: entitlementError } = await supabase
+            .from('2_staff_entitlements')
+            .upsert({
+              staff_id: holidayProfile.id,
+              year: currentYear,
+              weekly_hours: isGP ? null : totalHours,
+              weekly_sessions: isGP ? totalSessions : null,
+              multiplier: 6, // Default multiplier
+              updated_at: new Date().toISOString()
+            });
 
-      // Step 6: Create entitlements if holiday profile was created
-      if (holidayProfile?.id) {
-        debugLog('info', 'Step 6: Creating entitlements');
-        const currentYear = new Date().getFullYear();
-
-        const { error: entitlementError } = await supabase
-          .from('2_staff_entitlements')
-          .upsert({
-            staff_id: holidayProfile.id,
-            year: currentYear,
-            weekly_hours: isGP ? null : totalHours,
-            weekly_sessions: isGP ? totalSessions : null,
-            multiplier: 6, // Default multiplier
-            updated_at: new Date().toISOString()
-          });
-
-        if (entitlementError) {
-          debugLog('warning', 'Entitlements warning', entitlementError);
-        } else {
-          debugLog('success', 'Entitlements created');
+          if (entitlementError) {
+            debugLog('warning', 'Entitlements creation failed', entitlementError);
+          } else {
+            debugLog('success', 'Entitlements created');
+          }
         }
       }
 
@@ -7880,13 +7776,13 @@ window.PIR_DEFINITIONS_DATA = [
         successElement.innerHTML = `
           <strong>Success!</strong> User ${formData.email} has been invited successfully! 
           <br><br>
-          They will receive an email with instructions to set their password.
+          They will receive an email with a magic link to complete their registration.
           <br><br>
           <em>Note: It may take a few minutes for the invitation email to arrive.</em>
         `;
         successElement.style.display = 'block';
       }
-      debugLog('success', 'User fully created!', { email: formData.email, userId });
+      debugLog('success', 'User invitation completed successfully!', { email: formData.email });
 
       // Reset form fields
       document.getElementById('add-user-name').value = '';
@@ -18897,5 +18793,8 @@ window.refreshStaffData = refreshStaffData;
 </script>
 
 
+
+    <!-- Debug Console - Persistent across all pages -->
+    <script src="debug-console.js"></script>
 </body>
 </html>
