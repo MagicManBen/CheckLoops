@@ -1026,6 +1026,13 @@ async function approveHolidaysFromModal(userId, staffName) {
     return;
   }
 
+  // Validate userId - ensure it's not null, undefined, or the string 'null'
+  if (!userId || userId === 'null' || userId === 'undefined') {
+    console.error('Invalid user ID provided:', userId);
+    alert('Error: Invalid user ID. Cannot approve holidays.');
+    return;
+  }
+
   if (!confirm(`Are you sure you want to approve holidays for ${staffName}? This will allow them to view and manage their holiday entitlements.`)) {
     return;
   }
