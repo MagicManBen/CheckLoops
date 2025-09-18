@@ -7928,9 +7928,11 @@ window.PIR_DEFINITIONS_DATA = [
         throw new Error('Failed to create invite record: ' + inviteError.message);
       }
 
-      // Send magic link that goes to password setup with all necessary parameters
-      const { data: otpData, error: otpError } = await supabase.auth.signInWithOtp({
+      // First, create the user account with a temporary password
+      const tempPassword = crypto.randomUUID();
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: formData.email,
+        password: tempPassword,
         options: {
           data: {
             full_name: formData.fullName,
@@ -7939,19 +7941,30 @@ window.PIR_DEFINITIONS_DATA = [
             reports_to_id: formData.teamId,
             site_id: formData.siteId,
             invited: true,
-            is_new_user: true
+            temp_password: true
           },
-          // Include all parameters in the redirect URL for fallback
           emailRedirectTo: `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(formData.email)}&site_id=${formData.siteId}&full_name=${encodeURIComponent(formData.fullName)}&role=${formData.siteRole}&role_detail=${encodeURIComponent(formData.jobRole || '')}&reports_to_id=${formData.teamId || ''}`
         }
       });
 
-      if (otpError) {
-        console.error('Failed to send invitation:', otpError);
-        throw new Error(`Failed to send invitation: ${otpError.message || 'Unknown error'}`);
+      if (signUpError) {
+        // If user already exists, send a password reset instead
+        if (signUpError.message?.includes('already registered')) {
+          const { error: resetError } = await supabase.auth.resetPasswordForEmail(formData.email, {
+            redirectTo: `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(formData.email)}&site_id=${formData.siteId}&full_name=${encodeURIComponent(formData.fullName)}&role=${formData.siteRole}&role_detail=${encodeURIComponent(formData.jobRole || '')}&reports_to_id=${formData.teamId || ''}`
+          });
+
+          if (resetError) {
+            console.error('Failed to send password reset:', resetError);
+            throw new Error(`Failed to send invitation: ${resetError.message || 'Unknown error'}`);
+          }
+        } else {
+          console.error('Failed to create user:', signUpError);
+          throw new Error(`Failed to create user: ${signUpError.message || 'Unknown error'}`);
+        }
       }
 
-      console.log('Invitation sent successfully', otpData);
+      console.log('User account created and invitation sent successfully');
 
       // Success!
       const successElement = document.getElementById('add-user-success');
@@ -8241,37 +8254,16 @@ window.PIR_DEFINITIONS_DATA = [
         .eq('status', 'pending')
         .single();
 
-      if (inviteError || !inviteData) {
-        console.error('Could not find invite details:', inviteError);
-        // Fall back to simple resend without full details
-        const { error } = await supabase.auth.signInWithOtp({
-          email: email,
-          options: {
-            emailRedirectTo: `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(email)}`
-          }
-        });
+      // Always use password reset for resending invitations
+      const redirectUrl = inviteData ?
+        `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(email)}&site_id=${inviteData.site_id}&full_name=${encodeURIComponent(inviteData.full_name || '')}&role=${inviteData.role || ''}&role_detail=${encodeURIComponent(inviteData.role_detail || '')}&reports_to_id=${inviteData.reports_to_id || ''}` :
+        `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(email)}`;
 
-        if (error) throw error;
-      } else {
-        // Resend with full invite details
-        const { error } = await supabase.auth.signInWithOtp({
-          email: email,
-          options: {
-            data: {
-              full_name: inviteData.full_name,
-              role: inviteData.role,
-              role_detail: inviteData.role_detail,
-              reports_to_id: inviteData.reports_to_id,
-              site_id: inviteData.site_id,
-              invited: true,
-              is_new_user: true
-            },
-            emailRedirectTo: `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(email)}&site_id=${inviteData.site_id}&full_name=${encodeURIComponent(inviteData.full_name || '')}&role=${inviteData.role || ''}&role_detail=${encodeURIComponent(inviteData.role_detail || '')}&reports_to_id=${inviteData.reports_to_id || ''}`
-          }
-        });
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: redirectUrl
+      });
 
-        if (error) throw error;
-      }
+      if (error) throw error;
 
       debugLog('success', 'Invitation resent successfully', { email });
 
