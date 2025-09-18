@@ -139,7 +139,8 @@
       margin-bottom: 12px;
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: flex-start;
+      gap: 16px;
       transition: all 0.3s ease;
     }
 
@@ -274,6 +275,34 @@
     }
     .calc-total-label{ color: var(--white); font-weight:800; }
     .calc-total-value{ color: var(--white); font-weight:900; font-size:18px; }
+
+    /* Holiday image thumbnail styles */
+    .holiday-image-card {
+      margin-top: 8px;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--border-color);
+      background: rgba(255,255,255,0.03);
+      max-width: 200px;
+    }
+    .holiday-image-thumb {
+      width: 100%;
+      height: auto;
+      display: block;
+      cursor: pointer;
+      transition: transform 0.3s ease;
+    }
+    .holiday-image-thumb:hover {
+      transform: scale(1.05);
+    }
+    .holiday-image-caption {
+      padding: 8px;
+      font-size: 11px;
+      color: var(--muted);
+      text-align: center;
+      font-weight: 600;
+      background: rgba(0,0,0,0.2);
+    }
   </style>
 </head>
 <body>
@@ -687,11 +716,24 @@
 
             return `
               <div class="booking-item">
-                <div>
+                <div style="flex: 1;">
                   <div class="booking-dates">${startDate} - ${endDate}</div>
                   <div class="hours-display">${amount}</div>
                   ${booking.reason ? `<div style="color:#6b7280; font-size:13px; margin-top:4px;"><strong>Reason:</strong> ${booking.reason}</div>` : ''}
                   ${booking.status === 'rejected' && booking.notes ? `<div style="color:#dc2626; font-size:13px; margin-top:4px; font-weight:600;"><strong>Rejected:</strong> ${booking.notes}</div>` : ''}
+                  ${booking.holiday_image_url ? `
+                    <div class="holiday-image-card">
+                      <img
+                        src="${booking.holiday_image_url}"
+                        alt="Holiday at ${booking.reason || 'destination'}"
+                        class="holiday-image-thumb"
+                        onclick="window.open('${booking.holiday_image_url}', '_blank')"
+                        loading="lazy"
+                        onerror="this.parentElement.style.display='none'"
+                      />
+                      <div class="holiday-image-caption">🌴 Your avatar on holiday!</div>
+                    </div>
+                  ` : ''}
                 </div>
                 <span class="booking-status status-${booking.status}">${booking.status}</span>
               </div>
@@ -816,9 +858,11 @@
           document.getElementById('request-msg').textContent = 'Submitting...';
           document.getElementById('request-msg').style.color = '#6b7280';
 
-          const { error } = await supabase
+          const { data: insertedRequest, error } = await supabase
             .from('4_holiday_requests')
-            .insert(requestData);
+            .insert(requestData)
+            .select()
+            .single();
 
           if (error) {
             console.error('Request error:', error);
@@ -826,8 +870,40 @@
             document.getElementById('request-msg').style.color = '#dc2626';
             document.getElementById('submit-request').disabled = false;
           } else {
-            document.getElementById('request-msg').textContent = 'Request submitted successfully!';
+            document.getElementById('request-msg').textContent = 'Request submitted successfully! Generating holiday image...';
             document.getElementById('request-msg').style.color = '#059669';
+
+            // Trigger image generation if a reason/destination was provided
+            if (reason && insertedRequest && insertedRequest.id) {
+              try {
+                // Get user's avatar URL from master_users
+                const { data: userData } = await supabase
+                  .from('master_users')
+                  .select('avatar_url')
+                  .eq('auth_user_id', user.id)
+                  .single();
+
+                // Call the Edge Function to generate holiday image
+                const { data: imageData, error: imageError } = await supabase.functions.invoke('generate-holiday-avatar', {
+                  body: {
+                    destination: reason,
+                    avatarUrl: userData?.avatar_url || null,
+                    requestId: insertedRequest.id
+                  }
+                });
+
+                if (imageError) {
+                  console.error('Image generation error:', imageError);
+                  // Don't show error to user - image is optional enhancement
+                } else if (imageData?.imageUrl) {
+                  console.log('Holiday image generated successfully:', imageData);
+                  document.getElementById('request-msg').textContent = 'Request submitted with holiday image!';
+                }
+              } catch (imgErr) {
+                console.error('Error generating holiday image:', imgErr);
+                // Continue without image - it's an optional enhancement
+              }
+            }
 
             // Clear form
             if (window.rangePicker) window.rangePicker.clear();

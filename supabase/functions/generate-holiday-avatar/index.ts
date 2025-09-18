@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { destination, avatarUrl } = await req.json()
+    const { destination, avatarUrl, requestId } = await req.json()
 
     // Get the OpenAI API key from environment variables
     const openaiApiKey = Deno.env.get('CheckLoopsAI')
@@ -20,10 +20,62 @@ serve(async (req) => {
       throw new Error('CheckLoopsAI key not configured')
     }
 
-    // Create a prompt for DALL-E to generate a holiday avatar
-    const prompt = `Create a fun, cartoon-style image of a person on holiday in ${destination}. The person should be happy and relaxed, wearing holiday attire appropriate for ${destination}. Include recognizable landmarks or scenery from ${destination} in the background. Style: friendly, colorful, vacation vibes, digital illustration.`
+    // Parse destination from the reason text
+    // Handle various formats: "Going to Spain", "Trip to Paris", "Italy vacation", "Beach holiday in Bali"
+    let location = destination || 'tropical paradise'
+    if (destination) {
+      // Extract location from common patterns
+      const patterns = [
+        /(?:going to|trip to|visiting|heading to|flying to)\s+([^,\.]+)/i,
+        /([^,\.]+)\s+(?:vacation|holiday|trip|travel)/i,
+        /(?:holiday|vacation|trip)\s+(?:in|at|to)\s+([^,\.]+)/i
+      ]
 
-    // Call OpenAI DALL-E API
+      for (const pattern of patterns) {
+        const match = destination.match(pattern)
+        if (match && match[1]) {
+          location = match[1].trim()
+          break
+        }
+      }
+
+      // If no pattern matched but destination has text, use it as-is
+      if (location === destination && destination.length > 30) {
+        // Take first few words if it's a long sentence
+        location = destination.split(' ').slice(0, 3).join(' ')
+      }
+    }
+
+    // Parse Dicebear avatar details if available
+    let avatarDescription = "a friendly cartoon character"
+
+    if (avatarUrl) {
+      // Check if it's a Dicebear URL and extract style
+      const dicebearMatch = avatarUrl.match(/dicebear\.com.*\/(\w+)\//);
+      const avatarStyle = dicebearMatch ? dicebearMatch[1] : null;
+
+      if (avatarStyle === 'adventurer' || avatarStyle === 'adventurer-neutral') {
+        // Adventurer style: minimalist, geometric faces with simple features
+        avatarDescription = "a minimalist cartoon character with simple geometric features, round face, and stylized hair (keep original hairstyle and any accessories like sunglasses if present)"
+      } else if (avatarStyle === 'avataaars') {
+        // Avataaars style: more detailed, modern avatar style
+        avatarDescription = "a modern cartoon avatar with detailed features and contemporary style"
+      } else if (avatarStyle === 'bottts') {
+        // Bottts: robot avatars
+        avatarDescription = "a friendly robot character with geometric shapes"
+      } else if (avatarStyle === 'big-ears' || avatarStyle === 'big-smile') {
+        // Fun, exaggerated features
+        avatarDescription = "a cheerful cartoon character with exaggerated, playful features"
+      } else {
+        // Generic but more specific than before
+        avatarDescription = "a cartoon character in the style of modern avatar illustrations, maintaining their distinctive features like hairstyle, glasses, and facial characteristics"
+      }
+    }
+
+    // Create an optimized prompt for DALL-E 2
+    const prompt = `Cartoon illustration of ${avatarDescription} on vacation in ${location}. The character should be wearing casual vacation clothes suitable for ${location} (but keep any distinctive features like sunglasses or hairstyle). Show them happy and relaxed with famous ${location} landmarks or typical scenery in the background. Style: Simple, geometric, flat design, bright colors, modern illustration style similar to Dicebear avatars.`
+
+    // Call OpenAI DALL-E API with DALL-E-2 (cheaper model)
     const openaiResponse = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
       headers: {
@@ -31,12 +83,10 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: "dall-e-3",
+        model: "dall-e-2",  // Using DALL-E-2 for cost efficiency
         prompt: prompt,
         n: 1,
-        size: "1024x1024",
-        quality: "standard",
-        style: "vivid"
+        size: "512x512",    // Smaller size for thumbnails and cost savings
       })
     })
 
@@ -54,15 +104,47 @@ serve(async (req) => {
 
     const imageUrl = openaiData.data[0].url
 
+    // If a requestId was provided, update the database with the image URL
+    if (requestId) {
+      try {
+        // Import Supabase client
+        const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2')
+
+        // Get Supabase configuration
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')
+        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+
+        if (supabaseUrl && supabaseServiceKey) {
+          const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
+          // Update the holiday request with the generated image URL
+          const { error: updateError } = await supabase
+            .from('4_holiday_requests')
+            .update({ holiday_image_url: imageUrl })
+            .eq('id', requestId)
+
+          if (updateError) {
+            console.error('Error updating holiday request with image URL:', updateError)
+          } else {
+            console.log(`Successfully updated holiday request ${requestId} with image URL`)
+          }
+        }
+      } catch (dbError) {
+        console.error('Error updating database:', dbError)
+        // Continue even if DB update fails - we still return the image URL
+      }
+    }
+
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         imageUrl: imageUrl,
-        prompt: prompt 
+        prompt: prompt,
+        location: location
       }),
       {
-        headers: { 
-          ...corsHeaders, 
-          'Content-Type': 'application/json' 
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
         },
         status: 200,
       }
