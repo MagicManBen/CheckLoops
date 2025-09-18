@@ -7996,7 +7996,7 @@ window.PIR_DEFINITIONS_DATA = [
         successElement.innerHTML = `
           <strong>Success!</strong> User ${formData.email} has been invited successfully!
           <br><br>
-          They will receive an email to set their password and complete registration.
+          They will receive a magic link email to sign in and set their password.
           <br><br>
           <em>Note: The email may take a few minutes to arrive. Check spam folder if not received.</em>
         `;
@@ -8278,13 +8278,25 @@ window.PIR_DEFINITIONS_DATA = [
         .eq('status', 'pending')
         .single();
 
-      // Always use password reset for resending invitations
+      // Use magic link for resending invitations (consistent with initial invite)
       const redirectUrl = inviteData ?
         `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(email)}&site_id=${inviteData.site_id}&full_name=${encodeURIComponent(inviteData.full_name || '')}&role=${inviteData.role || ''}&role_detail=${encodeURIComponent(inviteData.role_detail || '')}&reports_to_id=${inviteData.reports_to_id || ''}` :
         `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(email)}`;
 
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: redirectUrl
+      const { error } = await supabase.auth.signInWithOtp({
+        email: email,
+        options: {
+          shouldCreateUser: false, // User should already exist
+          emailRedirectTo: redirectUrl,
+          data: inviteData ? {
+            full_name: inviteData.full_name,
+            role: inviteData.role,
+            role_detail: inviteData.role_detail,
+            reports_to_id: inviteData.reports_to_id,
+            site_id: inviteData.site_id,
+            invited: true
+          } : {}
+        }
       });
 
       if (error) throw error;
@@ -8297,7 +8309,7 @@ window.PIR_DEFINITIONS_DATA = [
       alertDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 16px; background: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 8px; z-index: 10000; max-width: 400px;';
       alertDiv.innerHTML = `
         <strong>Invitation resent to ${email}</strong><br>
-        <small>A password reset email has been sent to the user</small>
+        <small>A magic link email has been sent to the user</small>
       `;
       document.body.appendChild(alertDiv);
 
