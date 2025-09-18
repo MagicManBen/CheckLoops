@@ -1,686 +1,10 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CheckLoop — Welcome</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
-  <script src="config.js"></script>
-  <link rel="stylesheet" href="staff.css">
-  <style>
-    /* Gamified welcome vibe */
-    .welcome-wrap{ position:relative; }
-    .spark-bg{ position:absolute; inset:-40px; pointer-events:none; filter: blur(40px); opacity:.6; }
-    .spark-bg::before{ content:""; position:absolute; inset:0; background:
-      radial-gradient(400px 300px at 15% 20%, #8b5cf61a, transparent),
-      radial-gradient(380px 260px at 85% 30%, #22c55e1a, transparent),
-      radial-gradient(500px 320px at 50% 80%, #3b82f61a, transparent);
-    }
-  .hero-card{ position:relative; background:#fff; border:1px solid rgba(15,23,42,0.06); border-radius:20px; padding:22px; box-shadow: 0 18px 48px rgba(2,6,23,0.12), inset 0 1px 0 rgba(255,255,255,0.6); overflow:hidden; }
-  .hero-card::after{ content: ''; position: absolute; inset: 0; border-radius: 20px; pointer-events: none; box-shadow: 0 0 0 1px rgba(59,130,246,0.04) inset; }
-    .hero-top{ display:flex; align-items:center; gap:16px; justify-content:center; margin-bottom:8px; }
-    .avatar{ width:64px; height:64px; border-radius:16px; display:grid; place-items:center; background:linear-gradient(180deg,#f5f3ff,#eef2ff); box-shadow: inset 0 0 0 2px #e5e7eb; font-size:30px; }
-    .title{ font-size:24px; font-weight:900; letter-spacing:.2px; color:var(--ink); }
-    .subtitle{ color:#64748b; font-weight:600; }
-    .big-input{ display:flex; gap:10px; align-items:center; justify-content:center; margin-top:14px; }
-  .big-input input{ flex:1; min-width:220px; max-width:360px; padding:14px 16px; border-radius:12px; border:1px solid rgba(15,23,42,0.06); font-size:15px; background: #fbfdff; }
-    .meta-note{ color:#6b7280; font-size:12px; margin-top:8px; }
-
-    /* selection helpers for role + avatar grid */
-    .opt-selected{ outline: 2px solid var(--accent); box-shadow: 0 4px 12px #3b82f61a; }
-    .avatar-grid-item{ transition: transform .12s ease, box-shadow .12s ease, outline-color .12s ease; }
-    .avatar-grid-item:hover{ transform: translateY(-2px); box-shadow: 0 8px 18px rgba(2,6,23,.10); }
-
-    .progress{ height:10px; border-radius:999px; background:#eef2ff; overflow:hidden; border:1px solid var(--border-color); }
-    .progress > .bar{ height:100%; width:25%; background:linear-gradient(90deg,#60a5fa,#a78bfa); }
-
-    /* Advanced Particle System */
-    .confetti{ position:absolute; inset:0; pointer-events:none; overflow:hidden; z-index:20; }
-
-    /* Particle Types */
-    .particle{ position:absolute; will-change: transform, opacity; pointer-events:none; }
-
-    /* Explosion Particles */
-    .explosion-particle{
-      width:8px; height:8px; border-radius:50%;
-      animation: explode 2s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
-    }
-
-    /* Sparkle Particles */
-    .sparkle-particle{
-      width:6px; height:6px;
-      clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
-      animation: sparkle 1.8s ease-out forwards;
-    }
-
-    /* Burst Particles */
-    .burst-particle{
-      width:12px; height:4px; border-radius:6px;
-      animation: burst 1.5s ease-out forwards;
-    }
-
-    /* Glow Particles */
-    .glow-particle{
-      width:14px; height:14px; border-radius:50%;
-      filter: blur(2px); opacity:0.8;
-      animation: glow 2.5s ease-out forwards;
-    }
-
-    /* Ring Particles */
-    .ring-particle{
-      width:20px; height:20px; border-radius:50%;
-      border:2px solid; background:transparent;
-      animation: ring-expand 2s ease-out forwards;
-    }
-
-    @keyframes explode{
-      0%{ transform: translate(0,0) scale(1) rotate(0deg); opacity:1; }
-      20%{ opacity:1; }
-      100%{ transform: translate(var(--dx), var(--dy)) scale(0.3) rotate(var(--rotation)); opacity:0; }
-    }
-
-    @keyframes sparkle{
-      0%{ transform: translate(0,0) scale(0) rotate(0deg); opacity:1; }
-      15%{ transform: translate(calc(var(--dx)*0.15), calc(var(--dy)*0.15)) scale(1.2) rotate(72deg); opacity:1; }
-      100%{ transform: translate(var(--dx), var(--dy)) scale(0) rotate(var(--rotation)); opacity:0; }
-    }
-
-    @keyframes burst{
-      0%{ transform: translate(0,0) scale(1) rotate(var(--start-rotation)); opacity:1; }
-      30%{ opacity:1; }
-      100%{ transform: translate(var(--dx), var(--dy)) scale(0.5) rotate(calc(var(--start-rotation) + 180deg)); opacity:0; }
-    }
-
-    @keyframes glow{
-      0%{ transform: translate(0,0) scale(0.5); opacity:0.8; filter: blur(2px); }
-      25%{ transform: translate(calc(var(--dx)*0.3), calc(var(--dy)*0.3)) scale(1.5); opacity:1; filter: blur(1px); }
-      100%{ transform: translate(var(--dx), var(--dy)) scale(0); opacity:0; filter: blur(4px); }
-    }
-
-    @keyframes ring-expand{
-      0%{ transform: translate(0,0) scale(0.1); opacity:1; border-width:3px; }
-      50%{ transform: translate(calc(var(--dx)*0.5), calc(var(--dy)*0.5)) scale(1.5); opacity:0.6; border-width:2px; }
-      100%{ transform: translate(var(--dx), var(--dy)) scale(2.5); opacity:0; border-width:1px; }
-    }
-
-    /* Balloon animation */
-    @keyframes floatUp {
-      0% { transform: translateY(0) rotate(-5deg); opacity: 1; }
-      100% { transform: translateY(-600px) rotate(5deg); opacity: 0; }
-    }
-
-    /* Enhanced completion banner animation */
-    @keyframes dynamicEntrance {
-      0% {
-        transform: translateY(50px) scale(0.8);
-        opacity: 0;
-        filter: blur(10px);
-      }
-      50% {
-        transform: translateY(-10px) scale(1.05);
-        opacity: 1;
-        filter: blur(0px);
-      }
-      70% {
-        transform: translateY(5px) scale(0.98);
-      }
-      100% {
-        transform: translateY(0) scale(1);
-        opacity: 1;
-        filter: blur(0px);
-      }
-    }
-    
-    /* Avatar save pulse animation */
-    @keyframes pulse{ 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
-  /* Modern App-like Avatar Sections */
-  .avatar-control-group{ 
-    grid-column:1 / -1; 
-    padding:20px; 
-    margin-top:16px; 
-    border-radius:20px; 
-    background:linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); 
-    box-shadow:0 8px 25px rgba(15,23,42,0.08), 0 3px 6px rgba(15,23,42,0.03); 
-    border:1px solid rgba(148,163,184,0.12);
-    position:relative;
-    overflow:hidden;
-    transition: all 0.3s ease;
-  }
-  .avatar-control-group::before{
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: linear-gradient(90deg, #3b82f6, #8b5cf6, #06b6d4);
-    border-radius: 20px 20px 0 0;
-  }
-  .avatar-control-group:hover{ 
-    transform: translateY(-2px); 
-    box-shadow:0 12px 35px rgba(15,23,42,0.12), 0 5px 15px rgba(15,23,42,0.06); 
-  }
-  .avatar-control-group + .avatar-control-group{ margin-top:20px; }
-  .avatar-control-group .group-header{ 
-    display:flex; 
-    align-items:center; 
-    justify-content:space-between; 
-    gap:12px; 
-    margin-bottom:12px;
-  }
-  .avatar-control-group .group-title{ 
-    font-weight:800; 
-    color:#1e293b; 
-    margin:0; 
-    font-size:18px; 
-    display:flex;
-    align-items:center;
-    gap:8px;
-  }
-  .avatar-control-group .group-title::before{
-    content: attr(data-icon);
-    font-size: 20px;
-    opacity: 0.8;
-  }
-  .avatar-control-group .group-help{ 
-    color:#64748b; 
-    font-size:14px; 
-    margin:0 0 16px 0; 
-    padding:12px 16px;
-    background:rgba(59,130,246,0.05);
-    border-radius:12px;
-    border-left:3px solid #3b82f6;
-    font-weight:500;
-  }
-  .avatar-control-group .group-grid{ 
-    display:grid; 
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); 
-    gap:16px; 
-    align-items:start; 
-    transition: all .35s cubic-bezier(0.4, 0, 0.2, 1); 
-    max-height:2000px; 
-    overflow:hidden; 
-  }
-  .avatar-control-group.collapsed .group-grid{ 
-    max-height:0; 
-    opacity:0; 
-    pointer-events:none; 
-    margin-top:0;
-    padding-top:0;
-  }
-  .avatar-control-group.collapsed .group-help{ display:none; }
-  .group-toggle{ 
-    background:linear-gradient(135deg, #f1f5f9, #e2e8f0); 
-    border:1px solid rgba(148,163,184,0.2); 
-    padding:8px 16px; 
-    border-radius:12px; 
-    cursor:pointer; 
-    font-weight:600; 
-    color:#475569; 
-    font-size:12px;
-    text-transform:uppercase;
-    letter-spacing:0.5px;
-    transition: all 0.2s ease;
-  }
-  .group-toggle:hover{
-    background:linear-gradient(135deg, #e2e8f0, #cbd5e1);
-    transform:translateY(-1px);
-    box-shadow:0 4px 12px rgba(15,23,42,0.1);
-  }
-  .group-toggle:active{ transform:translateY(0); }
-  .avatar-control-group.collapsed .group-toggle{
-    background:linear-gradient(135deg, #dbeafe, #bfdbfe);
-    color:#1d4ed8;
-  }
-
-  /* Enhanced form controls */
-  .avatar-control-group label{
-    display:flex; 
-    flex-direction:column; 
-    gap:8px;
-    padding:16px;
-    background:rgba(255,255,255,0.7);
-    border-radius:12px;
-    border:1px solid rgba(148,163,184,0.1);
-    transition: all 0.2s ease;
-  }
-  .avatar-control-group label:hover{
-    background:rgba(255,255,255,0.9);
-    border-color:rgba(59,130,246,0.2);
-    transform:translateY(-1px);
-    box-shadow:0 4px 12px rgba(15,23,42,0.05);
-  }
-  .avatar-control-group label span{
-    font-weight:600; 
-    color:#334155; 
-    font-size:13px;
-    text-transform:uppercase;
-    letter-spacing:0.5px;
-  }
-  .avatar-control-group select{
-    padding:12px 16px; 
-    border-radius:10px; 
-    border:1px solid rgba(148,163,184,0.2);
-    background:white;
-    font-size:14px;
-    font-weight:500;
-    color:#1e293b;
-    transition: all 0.2s ease;
-  }
-  .avatar-control-group select:focus{
-    outline:none;
-    border-color:#3b82f6;
-    box-shadow:0 0 0 3px rgba(59,130,246,0.1);
-  }
-
-  /* Option pills for role/team items */
-  .option-pill{ display:flex; gap:10px; align-items:center; border-radius:12px; padding:10px; cursor:pointer; background:transparent; border:1px solid rgba(148,163,184,0.08); transition: all .12s ease; }
-  .option-pill img{ width:32px; height:32px; object-fit:contain; }
-  .option-pill input{ margin:0 8px 0 0; }
-  .option-pill span{ font-weight:800; color: inherit; }
-  .white-pill{ background:#fff; color:#0f172a; border-color: rgba(15,23,42,0.06); box-shadow: 0 6px 18px rgba(2,6,23,0.04); }
-
-  /* New: replace bland selects with larger icon/button grids for better UX */
-  .option-buttons{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
-  .option-btn{ display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:8px 10px; border-radius:10px; background:#fff; border:1px solid rgba(148,163,184,0.12); cursor:pointer; font-weight:700; color:#0f172a; min-width:56px; height:44px; box-shadow:0 6px 18px rgba(2,6,23,.04); transition:all .15s ease; }
-  .option-btn:hover{ transform:translateY(-3px); box-shadow:0 10px 26px rgba(2,6,23,.08); }
-  .option-btn.selected{ background:linear-gradient(90deg,#60a5fa,#a78bfa); color:white; border-color:transparent; }
-  .option-swatch{ width:28px; height:28px; border-radius:6px; border:1px solid rgba(15,23,42,0.06); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06); }
-  .select-hidden{ display:none !important; }
-
-  /* Enhanced section styling */
-  #group-face::before { background: linear-gradient(90deg, #f59e0b, #f97316); }
-  #group-accessories::before { background: linear-gradient(90deg, #8b5cf6, #a855f7); }
-  #group-hair::before { background: linear-gradient(90deg, #06b6d4, #0891b2); }
-
-  /* Mobile responsiveness */
-  @media (max-width: 768px) {
-    .avatar-control-group .group-grid {
-      grid-template-columns: 1fr;
-    }
-    .avatar-control-group {
-      padding: 16px;
-    }
-  }
-  </style>
-</head>
-<body>
-  <div class="bg"><div class="wave"></div><div class="wave wave2"></div></div>
-  <main class="content">
-    <div class="topbar panel" style="position:relative;">
-      <div class="halo"></div>
-      <div class="nav seg-nav">
-        <!-- Navigation will be rendered by staff-common.js -->
-      </div>
-      <div class="spacer"></div>
-      <div class="pill" id="site-pill">Site: —</div>
-      <div class="pill" id="email-pill">—</div>
-      <div class="pill" id="role-pill">—</div>
-      <button class="btn" id="logout-btn">Sign Out</button>
-    </div>
-
-    <!-- Welcome setup content -->
-    <section id="welcome-step1" class="panel g-12 welcome-wrap" style="margin:0; display:flex; align-items:center; justify-content:center; min-height: 62vh;">
-      <div class="spark-bg"></div>
-      <div style="max-width:760px; width:100%;">
-  <div class="hero-card panel light-panel">
-          <div class="hero-top">
-            <div class="avatar" aria-hidden="true"><img src="Icons/icons8-medical-mobile-app-100.png" alt="Welcome" style="width:42px;height:42px;object-fit:contain"></div>
-            <div>
-              <div class="subtitle" id="site-subtitle">Welcome</div>
-              <div class="title" id="welcome-title">Welcome</div>
-            </div>
-          </div>
-
-          <div style="text-align:center; margin-top:8px;">
-            <div style="font-weight:800;">What should we call you?</div>
-            <div class="meta-note">Pick a name, others will see this.</div>
-            <div class="big-input">
-              <input id="nickname" placeholder="e.g. Ben" />
-              <button class="btn" id="save-btn" style="padding:12px 20px; border-radius:14px; background:linear-gradient(135deg,#6495ff,#7b6bff); box-shadow:0 10px 30px rgba(101,137,255,0.24);">Get started</button>
-            </div>
-            <div id="save-msg" class="meta-note"></div>
-          </div>
-
-        </div>
-      </div>
-      <div class="confetti" id="confetti"></div>
-    </section>
-
-    <!-- Auto-hide any panels/controls that contain the literal text 'Change' on the avatar page -->
-    <script>
-      document.addEventListener('DOMContentLoaded', function(){
-        // Scope to the avatar builder area when present
-        const scope = document.getElementById('welcome-step3') || document.getElementById('welcome-step1') || document;
-        if (!scope) return;
-        try {
-          // Search common clickable/label elements only inside the scope
-          const candidates = Array.from(scope.querySelectorAll('button, a, span, div, label'));
-          const changeEls = candidates.filter(el => {
-            const txt = (el.textContent || '').trim();
-            if (!txt) return false;
-            // quick check for the word change, case-insensitive
-            if (!/\bchange\b/i.test(txt)) return false;
-            // ensure element is visible (handles display:none, detached nodes, etc.)
-            const visible = (el.offsetWidth || el.offsetHeight || el.getClientRects().length);
-            return !!visible;
-          });
-          changeEls.forEach(el => {
-            // prefer to hide a sensible container so UI spacing collapses nicely
-            const panel = el.closest('.avatar-control-group') || el.closest('.panel') || el.closest('section') || el.parentElement;
-            if (panel) panel.style.display = 'none';
-            else el.style.display = 'none';
-          });
-        } catch(e) {
-          console.warn('hide-change-panels error', e);
-        }
-      });
-    </script>
-
-    <!-- Step 2 (details) -->
-    <section id="welcome-step2" class="panel g-12" style="display:none; margin:0;">
-      <div class="panel-header" style="gap:10px; align-items:center;">
-        <div class="illus-circle"><img data-i8="settings" data-i8-size="56" alt="Profile"></div>
-        <div class="panel-title" style="font-size:20px;">Tell us about you</div>
-      </div>
-
-      <div class="grid" style="gap:16px;">
-        <div class="g-6">
-          <div class="panel" style="padding:16px;">
-            <div class="panel-header" style="gap:10px; align-items:center;">
-              <div class="illus-circle" style="width:64px;height:64px;"><img data-i8="id-verified" data-i8-size="56" alt="Role"></div>
-              <div class="panel-title">Your role</div>
-            </div>
-            <div id="role-grid" style="display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:10px;"></div>
-            <div class="meta-note" id="role-msg"></div>
-          </div>
-        </div>
-        <div class="g-6">
-          <div class="panel" style="padding:16px;">
-            <div class="panel-header" style="gap:10px; align-items:center;">
-              <div class="illus-circle" style="width:64px;height:64px;"><img data-i8="group" data-i8-size="56" alt="Team"></div>
-              <div class="panel-title">Your team</div>
-            </div>
-            <div id="team-grid" style="display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:10px;"></div>
-            <div class="meta-note" id="team-msg" style="margin-top:8px;">Choose the team you work with.</div>
-          </div>
-        </div>
-
-        <!-- Avatar moved to Step 3 (builder) -->
-      </div>
-
-      <div style="display:flex; justify-content:center; margin-top:12px;">
-        <button class="btn" id="to-avatar-btn">Continue — Create your avatar</button>
-      </div>
-      <div id="finish-msg" class="meta-note" style="text-align:center; margin-top:10px;"></div>
-    </section>
-
-    <!-- Step 3 (avatar builder) -->
-      <section id="welcome-step3" class="panel g-12" style="display:none; margin:0;">
-      <div class="panel-header" style="gap:10px; align-items:center;">
-        <div class="illus-circle" style="width:64px;height:64px;"><img src="Icons/icons8-avatar-100.png" alt="Avatar"></div>
-        <div class="panel-title">Create your avatar</div>
-      </div>
-
-      <div class="grid" style="gap:16px; align-items:start;">
-        <div class="g-4" style="position: sticky; top: 20px; align-self: start;">
-          <div class="panel" style="padding:16px;">
-            <!-- Live preview header removed per user request -->
-            <div style="display:grid; place-items:center;">
-              <div id="avatar-preview-frame" style="width:240px; height:240px; border-radius:16px; border:1px solid rgba(2,6,23,0.06); background:#ffffff; display:grid; place-items:center; overflow:hidden; box-shadow:0 6px 18px rgba(2,6,23,0.08); position:relative;">
-                <img id="avatarPreview" alt="Avatar preview" style="width:220px; height:220px; border-radius:12px; object-fit:contain; background:#fff; transition: all 0.3s ease;" />
-              </div>
-              <div style="display:flex; gap:12px; margin-top:20px;">
-                <button class="btn btn-secondary" id="avatar-randomize" style="padding:12px 20px; border-radius:12px; font-weight:600; background:linear-gradient(135deg, #8b5cf6, #7c3aed); color:white; border:none;">🎲 Randomize</button>
-                <button class="btn" id="avatar-save-manual" style="padding:12px 20px; border-radius:12px; font-weight:600; background:linear-gradient(135deg, #22c55e, #16a34a); color:white; border:none;">💾 Save Avatar</button>
-              </div>
-              <div class="meta-note" id="avatar-save-msg" style="margin-top:12px; text-align:center; font-weight:500;"></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="g-8">
-          <div class="panel" style="padding:24px; border:3px solid #3b82f6; border-radius:20px; background:linear-gradient(135deg, #dbeafe 0%, #bfdbfe 50%, #93c5fd 100%); position:relative; overflow:hidden;">
-            <div style="position:absolute; top:0; left:0; right:0; height:6px; background:linear-gradient(90deg, #3b82f6, #8b5cf6, #06b6d4);"></div>
-            <div style="font-weight:900; margin-bottom:12px; font-size:20px; color:#1e293b; display:flex; align-items:center; gap:10px;">
-              🤖 AI Avatar Generator
-            </div>
-            <div style="background:rgba(255,255,255,0.8); border-radius:16px; padding:20px; margin-bottom:16px;">
-              <div style="display:flex; gap:12px; align-items:flex-start;">
-                <textarea id="avatarPrompt" rows="3" placeholder="🎨 Describe your perfect avatar: 'Friendly nurse with green scrubs, freckles, long brown hair, round glasses, colorful background'" style="flex:1; padding:14px 18px; border-radius:12px; border:2px solid rgba(59,130,246,0.2); font-size:14px; font-weight:500; resize:vertical; background:white;"></textarea>
-                <button class="btn" id="avatar-ai-generate" style="white-space:nowrap; padding:14px 24px; background:linear-gradient(135deg, #10b981, #059669); color:white; border:none; border-radius:12px; font-weight:700; box-shadow:0 4px 12px rgba(16,185,129,0.3);">✨ Generate</button>
-              </div>
-              <div class="meta-note" id="avatar-ai-msg" style="margin-top:8px; font-weight:500;"></div>
-            </div>
-          </div>
-
-          <div class="panel" style="padding:24px; margin-top:16px; border-radius:20px; background:linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); box-shadow:0 8px 25px rgba(15,23,42,0.08);">
-            <div style="font-weight:900; margin-bottom:16px; color:#1e293b; font-size:18px; display:flex; align-items:center; gap:8px;">
-              ⚙️ Manual Controls
-            </div>
-            <div class="grid" style="gap:10px; grid-template-columns: repeat(2, minmax(0,1fr));">
-              <!-- General -->
-              <div id="layout-controls" style="display:none">
-                <div style="grid-column:1 / -1; font-weight:700; color:var(--ink); padding-top:4px;">Layout</div>
-                <label style="display:flex; flex-direction:column; gap:6px;">
-                  <span style="font-weight:700; color:var(--ink);">Background Type</span>
-                  <select id="opt-backgroundType" style="padding:10px 12px; border-radius:10px; border:1px solid var(--border-color);">
-                    <option value="">Default</option>
-                    <option value="solid">Solid</option>
-                    <option value="gradientLinear">Gradient</option>
-                  </select>
-                </label>
-                <label style="display:flex; flex-direction:column; gap:6px;">
-                  <span style="font-weight:700; color:var(--ink);">Background Color</span>
-                  <select id="opt-backgroundColor" style="padding:10px 12px; border-radius:10px; border:1px solid var(--border-color);">
-                    <option value="">Default</option>
-                    <option value="transparent">Transparent</option>
-                    <option value="f2d3b1">Peach (f2d3b1)</option>
-                    <option value="ecad80">Light Orange (ecad80)</option>
-                    <option value="9e5622">Brown (9e5622)</option>
-                    <option value="763900">Dark Brown (763900)</option>
-                    <option value="ffffff">White (ffffff)</option>
-                    <option value="f3f4f6">Gray (f3f4f6)</option>
-                    <option value="93c5fd">Blue (93c5fd)</option>
-                    <option value="a78bfa">Purple (a78bfa)</option>
-                    <option value="22c55e">Green (22c55e)</option>
-                    <option value="fca5a5">Pink (fca5a5)</option>
-                  </select>
-                </label>
-                <label style="display:flex; flex-direction:column; gap:6px;">
-                  <span style="font-weight:700; color:var(--ink);">Background Rotation</span>
-                  <select id="opt-backgroundRotation" style="padding:10px 12px; border-radius:10px; border:1px solid var(--border-color);"></select>
-                </label>
-                <label style="display:flex; flex-direction:column; gap:6px;">
-                  <span style="font-weight:700; color:var(--ink);">Radius</span>
-                  <select id="opt-radius" style="padding:10px 12px; border-radius:10px; border:1px solid var(--border-color);"></select>
-                </label>
-                <label style="display:flex; flex-direction:column; gap:6px;">
-                  <span style="font-weight:700; color:var(--ink);">Rotate</span>
-                  <select id="opt-rotate" style="padding:10px 12px; border-radius:10px; border:1px solid var(--border-color);"></select>
-                </label>
-                <label style="display:flex; flex-direction:column; gap:6px;">
-                  <span style="font-weight:700; color:var(--ink);">Scale</span>
-                  <select id="opt-scale" style="padding:10px 12px; border-radius:10px; border:1px solid var(--border-color);">
-                    <option value="50">50</option>
-                    <option value="75">75</option>
-                    <option value="100" selected>100</option>
-                    <option value="125">125</option>
-                    <option value="150">150</option>
-                    <option value="175">175</option>
-                    <option value="200">200</option>
-                  </select>
-                </label>
-                <label style="display:flex; flex-direction:column; gap:6px;">
-                  <span style="font-weight:700; color:var(--ink);">Flip</span>
-                  <select id="opt-flip" style="padding:10px 12px; border-radius:10px; border:1px solid var(--border-color);">
-                    <option value="">Default</option>
-                    <option value="true">Yes</option>
-                    <option value="false">No</option>
-                  </select>
-                </label>
-                <label style="display:flex; flex-direction:column; gap:6px;">
-                  <span style="font-weight:700; color:var(--ink);">Clip to Bounds</span>
-                  <select id="opt-clip" style="padding:10px 12px; border-radius:10px; border:1px solid var(--border-color);">
-                    <option value="">Default</option>
-                    <option value="true">Yes</option>
-                    <option value="false">No</option>
-                  </select>
-                </label>
-                <label style="display:flex; flex-direction:column; gap:6px;">
-                  <span style="font-weight:700; color:var(--ink);">Translate X</span>
-                  <select id="opt-translateX" style="padding:10px 12px; border-radius:10px; border:1px solid var(--border-color);"></select>
-                </label>
-                <label style="display:flex; flex-direction:column; gap:6px;">
-                  <span style="font-weight:700; color:var(--ink);">Translate Y</span>
-                  <select id="opt-translateY" style="padding:10px 12px; border-radius:10px; border:1px solid var(--border-color);"></select>
-                </label>
-              </div>
-
-              <div class="avatar-control-group" id="group-face">
-                <div class="group-header">
-                  <h4 class="group-title" data-icon="👤">Face & Expression</h4>
-                  <button class="group-toggle" data-target="#group-face">Hide</button>
-                </div>
-                <div class="group-help">✨ Choose your facial features — eyes, mouth, and skin tone to create your unique look</div>
-                <div class="group-grid">
-                  <label>
-                    <span>👁️ Eyes Style</span>
-                    <select id="opt-eyes"></select>
-                  </label>
-                  <label>
-                    <span>😊 Mouth Expression</span>
-                    <select id="opt-mouth"></select>
-                  </label>
-                  <label>
-                    <span>🤨 Eyebrows Shape</span>
-                    <select id="opt-eyebrows"></select>
-                  </label>
-                  <label>
-                    <span>🎨 Skin Tone</span>
-                    <select id="opt-skinColor"></select>
-                  </label>
-                </div>
-              </div>
-              <div class="avatar-control-group" id="group-accessories">
-                <div class="group-header">
-                  <h4 class="group-title" data-icon="👓">Accessories & Features</h4>
-                  <button class="group-toggle" data-target="#group-accessories">Hide</button>
-                </div>
-                <div class="group-help">💎 Add personality with glasses, earrings, and distinctive features</div>
-                <div class="group-grid">
-                  <label>
-                    <span>👓 Glasses Style</span>
-                    <select id="opt-glasses">
-                      <option value="">None</option>
-                    </select>
-                  </label>
-                  <label style="display: none;">
-                    <span>📊 Glasses Chance</span>
-                    <select id="opt-glassesProbability"></select>
-                  </label>
-                  <label>
-                    <span>💎 Earrings Type</span>
-                    <select id="opt-earrings">
-                      <option value="">None</option>
-                    </select>
-                  </label>
-                  <label style="display: none;">
-                    <span>📊 Earrings Chance</span>
-                    <select id="opt-earringsProbability"></select>
-                  </label>
-
-                  <label style="grid-column:1 / -1;">
-                    <span>✨ Special Features</span>
-                    <select id="opt-features" multiple size="4"></select>
-                  </label>
-                  <label style="display: none;">
-                    <span>📊 Features Chance</span>
-                    <select id="opt-featuresProbability"></select>
-                  </label>
-                </div>
-              </div>
-              <div class="avatar-control-group" id="group-hair">
-                <div class="group-header">
-                  <h4 class="group-title" data-icon="💇">Hair & Style</h4>
-                  <button class="group-toggle" data-target="#group-hair">Hide</button>
-                </div>
-                <div class="group-help">💅 Express yourself with different hairstyles and bold colors</div>
-                <div class="group-grid">
-                  <label>
-                    <span>✂️ Hairstyle</span>
-                    <select id="opt-hair"></select>
-                  </label>
-                  <label>
-                    <span>🎨 Hair Color</span>
-                    <select id="opt-hairColor"></select>
-                  </label>
-                  <label style="display: none;">
-                    <span>📊 Hair Chance</span>
-                    <select id="opt-hairProbability"></select>
-                  </label>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:20px;">
-        <button class="btn btn-secondary" id="back-to-step2" style="padding:12px 24px; border-radius:12px; background:linear-gradient(135deg, #f1f5f9, #e2e8f0); color:#475569; border:none; font-weight:600;">← Back</button>
-        <div style="display:flex; align-items:center; gap:12px;">
-          <button class="btn" id="finish-avatar-btn" style="background:linear-gradient(135deg, #3b82f6, #1d4ed8); color:white; padding:12px 24px; border-radius:12px; font-weight:700; border:none; box-shadow:0 4px 12px rgba(59,130,246,0.3);">Continue to Working Hours →</button>
-        </div>
-      </div>
-      <div id="finish-avatar-msg" class="meta-note" style="text-align:center; margin-top:10px;"></div>
-    </section>
-    
-    <!-- Step 4: Working Hours -->
-    <section id="step4" class="panel g-12" style="display:none; margin:0;">
-      <div class="panel-header" style="gap:10px; align-items:center;">
-        <div class="illus-circle" style="width:64px;height:64px;"><img src="Icons/icons8-clock-100.png" alt="Working Hours"></div>
-        <div class="panel-title" style="font-size:20px;">Working pattern</div>
-      </div>
-      <div class="step-sub">Set the hours or sessions you typically work.</div>
-      <div id="working-form" style="display:flex; flex-direction:column; gap:14px; max-width:640px;"></div>
-      <div id="working-msg" class="meta-note" style="min-height:20px;"></div>
-      <div style="display:flex; justify-content:space-between; margin-top:24px;">
-        <button class="btn btn-secondary" id="working-back">← Back</button>
-        <button class="btn" id="complete-setup">🎉 Finish Setup</button>
-      </div>
-    </section>
-    
-    <!-- Step 5: Completion -->
-    <section id="step5" class="panel g-12" style="display:none; margin:0; position:relative; min-height:400px;">
-      <div id="confetti-container" class="confetti"></div>
-      <div style="position:relative; z-index:10; padding:40px; text-align:center;">
-        <div style="font-size:80px; margin-bottom:20px;">🎉🎈🎊</div>
-        <div class="complete-banner" style="background:linear-gradient(90deg,#22c55e,#16a34a); color:#fff; padding:20px 30px; border-radius:20px; font-weight:800; font-size:24px; display:inline-flex; align-items:center; gap:12px; justify-content:center; box-shadow:0 10px 28px rgba(22,163,74,0.30); animation: dynamicEntrance 1.2s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;">
-          All Set! You're Amazing!
-        </div>
-        <div style="margin-top:20px; font-size:18px; color:#64748b; font-weight:600;">
-          Great job completing your profile!
-        </div>
-        <div class="meta-note center" style="margin-top:14px;">Redirecting to your dashboard in a moment...</div>
-      </div>
-    </section>
-  </main>
-
-  <script type="module">
-  import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, attachLogout } from './staff-common.js';
-
-  // Simple HTML escaper used when rendering dynamic labels/values
-  function esc(s){ return (s ?? "").toString().replace(/[&<>\"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+    import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, attachLogout } from './staff-common.js';
     
     // Make supabase globally available for AI generation
     let globalSupabase;
     
     (async function(){
       const supabase = await initSupabase();
-      // Make supabase available globally for Admin Portal button
-      window.supabase = supabase;
       globalSupabase = supabase; // Store in global variable
       handleAuthState(supabase);
       // Always show navigation for welcome page
@@ -692,122 +16,18 @@
       try{
         const { session, profileRow } = await requireStaffSession(supabase);
         const user = session.user;
-
-        // Get site_id from multiple sources in priority order
-        const sessionSiteId = sessionStorage.getItem('userSiteId');
-        const siteId = profileRow?.site_id ||
-                      user?.user_metadata?.site_id ||
-                      user?.raw_user_meta_data?.site_id ||
-                      (sessionSiteId ? parseInt(sessionSiteId) : null) ||
-                      1; // Only default to site 1 as last resort
-
-        console.log('Site determination:', {
-          profileSite: profileRow?.site_id,
-          userMetaSite: user?.user_metadata?.site_id,
-          rawMetaSite: user?.raw_user_meta_data?.site_id,
-          sessionSite: sessionSiteId,
-          finalSite: siteId
-        });
+        const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || 1; // Default to site 1 if not set
 
         // Store globally for handlers
         window.currentUser = user;
         window.currentSiteId = siteId;
         const role = profileRow?.role || user?.raw_user_meta_data?.role || 'Staff';
         const roleDetail = role.charAt(0).toUpperCase() + role.slice(1);  // Capitalize first letter
-
-        // Check if user already has been pre-configured by admin
-        let preConfigured = false;
-        let existingData = {};
-
-        // Check server state for profile completion
+        // Check server state for profile completion (but don't force anything)
         try {
           const siteIdForCheck = siteId;
           let nickname = null, roleDetailCheck = null, teamId = null, teamName = null, avatarUrl = null;
-
-          // First check site_invites for pre-configuration metadata
-          const { data: inviteData } = await supabase
-            .from('site_invites')
-            .select('metadata')
-            .eq('email', user.email)
-            .eq('site_id', siteIdForCheck)
-            .maybeSingle();
-
-          if (inviteData?.metadata) {
-            console.log('Found pre-configuration data from invitation:', inviteData.metadata);
-            existingData.inviteMetadata = inviteData.metadata;
-            preConfigured = true;
-
-            // Set pre-configured values
-            if (inviteData.metadata.job_role) {
-              roleDetailCheck = inviteData.metadata.job_role;
-              window.preConfiguredRole = inviteData.metadata.job_role;
-            }
-            if (inviteData.metadata.team_id) {
-              teamId = inviteData.metadata.team_id;
-              window.preConfiguredTeamId = inviteData.metadata.team_id;
-            }
-            if (inviteData.metadata.working_pattern) {
-              window.preConfiguredWorkingPattern = inviteData.metadata.working_pattern;
-            }
-            if (inviteData.metadata.holiday_entitlement) {
-              window.preConfiguredHolidayEntitlement = inviteData.metadata.holiday_entitlement;
-            }
-          }
-
-          // Check if user has existing data in various tables
-          const [welcomeData, workingPattern, holidayProfile] = await Promise.all([
-            supabase.from('staff_app_welcome')
-              .select('*')
-              .eq('user_id', user.id)
-              .eq('site_id', siteIdForCheck)
-              .maybeSingle(),
-            supabase.from('3_staff_working_patterns')
-              .select('*')
-              .eq('user_id', user.id)
-              .maybeSingle(),
-            supabase.from('1_staff_holiday_profiles')
-              .select('*')
-              .eq('email', user.email)
-              .maybeSingle()
-          ]);
-
-          // Store existing data for pre-population
-          if (welcomeData.data) {
-            existingData.welcome = welcomeData.data;
-            nickname = welcomeData.data.nickname;
-            roleDetailCheck = welcomeData.data.role_detail;
-            teamId = welcomeData.data.team_id;
-            teamName = welcomeData.data.team_name;
-            avatarUrl = welcomeData.data.avatar_url;
-            // If we have role and team data, user was pre-configured
-            if (roleDetailCheck && (teamId || teamName)) {
-              preConfigured = true;
-            }
-          }
-
-          if (workingPattern.data) {
-            existingData.workingPattern = workingPattern.data;
-            preConfigured = true;
-          }
-
-          if (holidayProfile.data) {
-            existingData.holidayProfile = holidayProfile.data;
-          }
-
-          // Also check user metadata for pre-configuration
-          if (user.raw_user_meta_data?.job_role || user.raw_user_meta_data?.role_detail) {
-            preConfigured = true;
-            if (!roleDetailCheck) roleDetailCheck = user.raw_user_meta_data?.job_role || user.raw_user_meta_data?.role_detail;
-          }
-
-          window.preConfiguredData = existingData;
-          window.isPreConfigured = preConfigured;
-
-          if (preConfigured) {
-            console.log('User was pre-configured by admin:', existingData);
-          }
-
-          if (siteIdForCheck && !welcomeData.data) {
+          if (siteIdForCheck) {
             const { data: saw } = await supabase
               .from('staff_app_welcome')
               .select('nickname, role_detail, team_id, team_name, avatar_url')
@@ -899,70 +119,45 @@
           const finalTeamName = (typeof teamNameIn !== 'undefined' ? teamNameIn : teamName);
           const nickVal = String(document.getElementById('nickname')?.value || '').trim() || null;
 
-          // ADMIN PROTECTION: Check if user has admin access before overwriting role
-          const isAdmin = user?.user_metadata?.admin_access === true;
-          console.log('[persistRoleTeam] Admin check:', { isAdmin, currentRole: user?.user_metadata?.role, finalRole });
-
           // 1) auth metadata
           try {
-            const updateData = {
-              team_id: finalTeamId || null,
-              team_name: finalTeamName || null,
-              nickname: nickVal || null
-            };
-
-            // If user is admin, preserve admin role but store job role separately
-            if (isAdmin) {
-              updateData.role = 'admin'; // Keep admin role
-              updateData.role_detail = 'Admin'; // Keep admin display
-              updateData.job_role = finalRole; // Store their clinical role separately
-              console.log('[persistRoleTeam] Preserving admin role, storing job role:', finalRole);
-            } else {
-              updateData.role_detail = finalRole;
-              console.log('[persistRoleTeam] Setting role for non-admin:', finalRole);
-            }
-
-            await supabase.auth.updateUser({ data: updateData });
+            await supabase.auth.updateUser({
+              data: {
+                role_detail: finalRole,
+                team_id: finalTeamId || null,
+                team_name: finalTeamName || null,
+                nickname: nickVal || null
+              }
+            });
           } catch (e) {
             console.warn('[persistRoleTeam] auth.updateUser failed', e);
           }
 
-          // 2) profiles table is no longer used - master_users is the primary source
-          // Commenting out profiles update to prevent confusion
-          /*
+          // 2) profiles (main user profile)
           try {
             const profileData = {
               user_id: user.id,
               site_id: siteId || null,
+              role: finalRole ? finalRole.toLowerCase() : 'staff', // profiles table uses 'role', not 'role_detail'
               nickname: nickVal || null
+              // Note: profiles table doesn't have team_id or team_name columns
             };
             const { error: profileErr } = await supabase.from('profiles').upsert(profileData);
             if (profileErr) console.warn('[persistRoleTeam] profiles upsert error', profileErr);
           } catch (e) {
             console.warn('[persistRoleTeam] profiles upsert failed', e);
           }
-          */
 
           // 3) staff_app_welcome (onboarding snapshot)
           try {
             const sawData = {
               user_id: user.id,
               site_id: siteId || null,
+              role_detail: finalRole,
               team_id: finalTeamId || null,
               team_name: finalTeamName || null,
               nickname: nickVal || null
             };
-
-            // Handle role assignment for staff_app_welcome
-            if (isAdmin) {
-              sawData.role_detail = 'Admin'; // Keep admin display
-              sawData.job_role = finalRole; // Store clinical role separately
-              console.log('[persistRoleTeam] Setting admin in staff_app_welcome, job_role:', finalRole);
-            } else {
-              sawData.role_detail = finalRole;
-              console.log('[persistRoleTeam] Setting role_detail in staff_app_welcome:', finalRole);
-            }
-
             const { error: sawErr } = await supabase.from('staff_app_welcome').upsert(sawData);
             if (sawErr) console.warn('[persistRoleTeam] staff_app_welcome upsert error', sawErr);
           } catch (e) {
@@ -1089,8 +284,8 @@
         // This runs when the user taps "🎉 Finish Setup" after entering working hours.
         // It ensures a row exists in 2_staff_entitlements for the current year.
 
-        // Helper: fetch the current working pattern row and derive weekly hours and sessions
-        async function fetchWeeklyTotalsFromWorkingPattern(userId, siteId) {
+        // Helper: fetch the current working pattern row and derive weekly hours
+        async function fetchWeeklyHoursFromWorkingPattern(userId, siteId) {
           // Pull whatever columns exist for hours/sessions; we will sum by day.
           const { data: wp, error } = await supabase
             .from('3_staff_working_patterns')
@@ -1101,37 +296,29 @@
 
           if (error) {
             console.warn('[entitlement] working_patterns select error', error);
-            return { weeklyHours: 0, weeklySessions: 0 };
+            return 0;
           }
-          if (!wp) return { weeklyHours: 0, weeklySessions: 0 };
+          if (!wp) return 0;
 
-          // Use the pre-calculated totals if available
-          if (wp.total_hours !== undefined && wp.total_sessions !== undefined) {
-            console.log('[entitlement] Using pre-calculated totals - hours:', wp.total_hours, 'sessions:', wp.total_sessions);
-            return { weeklyHours: wp.total_hours || 0, weeklySessions: wp.total_sessions || 0 };
-          }
+          const dows = ['mon','tue','wed','thu','fri','sat','sun'];
 
-          // Fallback: calculate from individual days
-          const days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+          // Prefer explicit *_hours columns (non‑GP). If absent, fall back to *_sessions (GP) × 4 hours.
           let hoursSum = 0;
           let sessionsSum = 0;
 
-          for (const day of days) {
-            const h = wp[`${day}_hours`];
-            const s = wp[`${day}_sessions`];
+          for (const d of dows) {
+            const h = wp[`${d}_hours`] ?? wp[`${d}day_hours`]; // very defensive; handles alternate naming
+            const s = wp[`${d}_sessions`];
 
-            // Handle HH:MM format for hours
-            if (h && typeof h === 'string' && h.includes(':')) {
-              const [hours, minutes] = h.split(':').map(Number);
-              hoursSum += hours + (minutes / 60);
-            } else if (typeof h === 'number') {
-              hoursSum += h;
-            }
-
+            if (typeof h === 'number' && !Number.isNaN(h)) hoursSum += h;
             if (typeof s === 'number' && !Number.isNaN(s)) sessionsSum += s;
           }
 
-          return { weeklyHours: hoursSum, weeklySessions: sessionsSum };
+          if (hoursSum > 0) return hoursSum;
+
+          // Fallback conversion for GP-style sessions. Adjust if your org uses a different value per session.
+          const HOURS_PER_SESSION = 4;
+          return sessionsSum * HOURS_PER_SESSION;
         }
 
         // Helper: resolve staff_profile_id for the current user
@@ -1160,29 +347,26 @@
           return null;
         }
 
-        // Main: ensure there is a current-year entitlement row with the new structure
-        async function ensureEntitlementForUser(user, siteId, totals, isGP) {
+        // Main: ensure there is a current-year entitlement row with the multiplier/result columns populated
+        async function ensureEntitlementForUser(user, siteId, weeklyHours) {
           const staffProfileId = await resolveStaffProfileId(user);
           if (!staffProfileId) return;
 
           const year = new Date().getFullYear();
 
-          // Default multiplier as requested
-          const defaultMultiplier = 6;
+          // You can make this site-configurable later; for now default to 6 as requested.
+          const calcMultiplier = 6;
 
           const payload = {
-            staff_id: staffProfileId,
+            staff_profile_id: staffProfileId,
             year: year,
-            weekly_hours: isGP ? null : totals.weeklyHours,
-            weekly_sessions: isGP ? totals.weeklySessions : null,
-            multiplier: defaultMultiplier
+            calc_multiplier: calcMultiplier,
+            calc_output_hours: Number((Number(weeklyHours || 0) * calcMultiplier).toFixed(2))
           };
-
-          console.log('[entitlement] Creating entitlement - isGP:', isGP, 'totals:', totals, 'payload:', payload);
 
           const { error: upErr } = await supabase
             .from('2_staff_entitlements')
-            .upsert(payload, { onConflict: 'staff_id,year' });
+            .upsert(payload, { onConflict: 'staff_profile_id,year' });
 
           if (upErr) {
             console.warn('[entitlement] upsert error', upErr);
@@ -1200,15 +384,8 @@
             try {
               // Give the existing working-hours save a moment to complete
               await new Promise(r => setTimeout(r, 800));
-              const totals = await fetchWeeklyTotalsFromWorkingPattern(user.id, siteId);
-
-              // Check if user is a GP based on their role selection
-              const roleSelect = document.getElementById('role');
-              const roleValue = roleSelect ? roleSelect.value : window.selectedRole;
-              const isGP = roleValue && (roleValue.toLowerCase().includes('doctor') || roleValue.toLowerCase().includes('gp'));
-              console.log('[entitlement] Role check - roleValue:', roleValue, 'isGP:', isGP);
-
-              await ensureEntitlementForUser(user, siteId, totals, isGP);
+              const weeklyHours = await fetchWeeklyHoursFromWorkingPattern(user.id, siteId);
+              await ensureEntitlementForUser(user, siteId, weeklyHours);
             } catch (e) {
               console.warn('[entitlement] post-setup routine failed', e);
             }
@@ -1412,11 +589,13 @@
 
             console.log('Successfully generated avatar data:', data);
             applyAiResult(data);
-            // Preview updated, but not saved until user clicks Continue
+            // Auto-save after applying AI result (guard if helper not yet bound)
             updateAvatarPreview();
-            // REMOVED: Auto-save after AI generation - only save when user clicks Continue
+            if (window.saveAvatarToSupabase) {
+              await window.saveAvatarToSupabase(window.currentAvatarUrl || buildAvatarUrlFromControls());
+            }
             const msg = document.getElementById('avatar-ai-msg');
-            if (msg) msg.innerHTML = '✅ Avatar generated successfully. You can fine-tune below or click Continue to save.';
+            if (msg) msg.innerHTML = '✅ Avatar generated and saved automatically. You can fine-tune below.';
             return data;
           } catch (supabaseError) {
             // Log error for console only
@@ -1985,66 +1164,23 @@
               const opt = Array.from(fEl.options).find(o=>o.value===val); if (opt) opt.selected = true;
             }
             updateAvatarPreview();
-            markManualChange(); // Show that changes were made
+            markManualChange(); // Show the save button after randomizing
 
-            // REMOVED: Auto-save after randomization - only save when user clicks Continue
-            const saveMsg = document.getElementById('avatar-save-msg');
-            if (saveMsg) {
-              saveMsg.textContent = '✅ Avatar randomized! Click Continue to save.';
-            }
+            // Auto-save the randomized avatar
+            setTimeout(async () => {
+              const avatarUrl = buildAvatarUrlFromControls();
+              await saveAvatarToSupabase(avatarUrl);
+            }, 500); // Small delay to ensure preview is updated
           }); rnd.dataset.bound='1'; }
-
-          // Manual save button
-          const manualSaveBtn = document.getElementById('avatar-save-manual');
-          if (manualSaveBtn && !manualSaveBtn.dataset.bound) {
-            manualSaveBtn.addEventListener('click', async () => {
-              const saveMsg = document.getElementById('avatar-save-msg');
-              try {
-                const avatarUrl = buildAvatarUrlFromControls();
-                console.log('Manual save: Avatar URL:', avatarUrl);
-
-                if (saveMsg) saveMsg.textContent = 'Saving avatar...';
-
-                const saveFunction = (typeof saveAvatarToSupabase !== 'undefined') ? saveAvatarToSupabase : window.saveAvatarToSupabase;
-                if (saveFunction) {
-                  const result = await saveFunction(avatarUrl);
-                  if (result !== false) {
-                    if (saveMsg) saveMsg.textContent = '✅ Avatar saved successfully! You can now see it on the homepage.';
-                    window.avatarDirty = false;
-
-                    // Force refresh the homepage avatar by clearing any cached data
-                    try {
-                      // Update the session to get fresh data next time
-                      const { data: { user: refreshedUser } } = await supabase.auth.getUser();
-                      console.log('User session refreshed after avatar save');
-                    } catch(e) {
-                      console.warn('Could not refresh user session:', e);
-                    }
-                  } else {
-                    if (saveMsg) saveMsg.textContent = '❌ Failed to save avatar';
-                  }
-                } else {
-                  console.error('saveAvatarToSupabase function not found');
-                  if (saveMsg) saveMsg.textContent = '❌ Save function not available';
-                }
-              } catch (error) {
-                console.error('Manual save error:', error);
-                if (saveMsg) saveMsg.textContent = '❌ Error: ' + error.message;
-              }
-            });
-            manualSaveBtn.dataset.bound = '1';
-          }
 
           // Save helper used by both AI auto-save and finish/save flow
           // CONSOLIDATED Avatar Save Function - saves to all necessary tables
           async function saveAvatarToSupabase(avatarUrl){
             const saveMsg = document.getElementById('avatar-save-msg');
-            console.log('[saveAvatarToSupabase] Starting save with URL:', avatarUrl);
             try {
               const nickVal = String(document.getElementById('nickname')?.value || '').trim() || null;
               const displayName = nickVal || fullName || user?.email?.split('@')[0] || 'Staff';
               if (saveMsg) { saveMsg.textContent = 'Saving avatar...'; }
-              console.log('[saveAvatarToSupabase] Nickname:', nickVal, 'Display name:', displayName);
 
               // Save avatar URL to user metadata
               await supabase.auth.updateUser({
@@ -2057,81 +1193,22 @@
                 }
               });
 
-              // Save to master_users table (primary source of truth)
+              // Save to profiles table (main storage)
               try {
-                // Get the original access_type from user metadata (set during invitation)
-                const originalAccessType = user?.user_metadata?.role ||
-                                         user?.raw_user_meta_data?.role ||
-                                         user?.app_metadata?.role ||
-                                         'staff';
-
-                // Get the original full_name from invitation data
-                const originalFullName = user?.user_metadata?.full_name ||
-                                       user?.raw_user_meta_data?.full_name ||
-                                       fullName || displayName;
-
-                const masterData = {
-                  auth_user_id: user.id,
-                  email: user.email,
+                const profileData = {
+                  user_id: user.id,
                   avatar_url: avatarUrl,
                   nickname: nickVal,
-                  full_name: originalFullName,  // Use original full_name from invitation
-                  role_detail: window.selectedRole || user?.raw_user_meta_data?.role_detail || null,
-                  access_type: originalAccessType,  // Preserve original access_type from invitation
-                  site_id: siteId,
-                  team_id: window.selectedTeamId || null,
-                  team_name: window.selectedTeamName || null,
-                  updated_at: new Date().toISOString()
+                  full_name: fullName || displayName,
+                  role: window.selectedRole ? window.selectedRole.toLowerCase() : 'staff'
+                  // Note: profiles table doesn't have role_detail, team_id or team_name columns
                 };
+                if (siteId) profileData.site_id = siteId;
 
-                console.log('[saveAvatarToSupabase] Upserting to master_users:', masterData);
-                const { data: masterResult, error: masterErr } = await supabase
-                  .from('master_users')
-                  .upsert(masterData, {
-                    onConflict: 'auth_user_id',
-                    ignoreDuplicates: false
-                  })
-                  .select();
-
-                if (masterErr) {
-                  console.error('[saveAvatarToSupabase] Master users update error:', masterErr);
-                  // Fall back to profiles table if master_users doesn't exist
-                  const userRole = window.selectedRole ? window.selectedRole.toLowerCase() : 'staff';
-                  let normalizedRole = 'staff';
-                  if (userRole === 'admin') {
-                    normalizedRole = 'admin';
-                  }
-
-                  const profileData = {
-                    user_id: user.id,
-                    avatar_url: avatarUrl,
-                    nickname: nickVal,
-                    full_name: fullName || displayName,
-                    role: normalizedRole
-                  };
-                  if (siteId) profileData.site_id = siteId;
-
-                  const { data: profileResult, error: profileErr } = await supabase
-                    .from('profiles')
-                    .upsert(profileData, {
-                      onConflict: 'user_id',
-                      ignoreDuplicates: false
-                    })
-                    .select();
-
-                  if (profileErr) {
-                    console.error('[saveAvatarToSupabase] Profile update error:', profileErr);
-                    throw profileErr;
-                  } else {
-                    console.log('[saveAvatarToSupabase] Profile updated successfully:', profileResult);
-                  }
-                } else {
-                  console.log('[saveAvatarToSupabase] Master users updated successfully:', masterResult);
-                }
-                window.currentSavedAvatarUrl = avatarUrl; // Track that avatar was saved
+                const { error: profileErr } = await supabase.from('profiles').upsert(profileData);
+                if (profileErr) console.warn('Profile update error:', profileErr);
               } catch (e) {
-                console.error('[saveAvatarToSupabase] Save exception:', e);
-                throw e; // Re-throw to handle upstream
+                console.warn('Profile save error:', e);
               }
 
               // Save to staff_app_welcome
@@ -2218,7 +1295,7 @@
             
             try{
               const result = await aiGenerateFromDescription();
-              msg.innerHTML = `✅ Success! Adjust with settings below or click Continue to save.`;
+              msg.innerHTML = `✅ Success! Adjust with settings below.`;
               
               // Auto-focus on preview to draw attention to the result
               const preview = document.getElementById('avatarPreview');
@@ -2432,96 +1509,28 @@
           updateAvatarPreview();
         }
 
-        // Advanced Particle Explosion System
-        window.createParticleExplosion = function createParticleExplosion(centerX, centerY, intensity = 1) {
+        window.burstConfetti = function burstConfetti(){
           const conf = document.getElementById('confetti-container') || document.getElementById('confetti');
           if (!conf) return;
+          const colors = ['#60a5fa','#a78bfa','#34d399','#f472b6','#fbbf24','#ef4444','#10b981'];
 
-          const colors = [
-            '#3b82f6', '#8b5cf6', '#06d6a0', '#f72585', '#ffb703',
-            '#fb8500', '#219ebc', '#023047', '#e63946', '#2a9d8f'
-          ];
-
-          const particleTypes = ['explosion', 'sparkle', 'burst', 'glow', 'ring'];
-          const numParticles = Math.floor(40 * intensity);
-
-          for (let i = 0; i < numParticles; i++) {
-            const type = particleTypes[Math.floor(Math.random() * particleTypes.length)];
-            const particle = document.createElement('div');
-            particle.className = `particle ${type}-particle`;
-
-            // Random direction and distance
-            const angle = (Math.PI * 2 * i) / numParticles + (Math.random() - 0.5) * 0.8;
-            const distance = 80 + Math.random() * 200 * intensity;
-            const dx = Math.cos(angle) * distance;
-            const dy = Math.sin(angle) * distance;
-            const rotation = Math.random() * 720 - 360;
-
-            // Position at explosion center
-            particle.style.left = centerX + 'px';
-            particle.style.top = centerY + 'px';
-            particle.style.background = colors[Math.floor(Math.random() * colors.length)];
-            particle.style.setProperty('--dx', dx + 'px');
-            particle.style.setProperty('--dy', dy + 'px');
-            particle.style.setProperty('--rotation', rotation + 'deg');
-            particle.style.setProperty('--start-rotation', Math.random() * 360 + 'deg');
-            particle.style.animationDelay = Math.random() * 0.3 + 's';
-
-            // Special properties for different types
-            if (type === 'ring') {
-              particle.style.borderColor = colors[Math.floor(Math.random() * colors.length)];
-            }
-
-            conf.appendChild(particle);
-
-            // Clean up
-            setTimeout(() => {
-              if (particle.parentNode) particle.remove();
-            }, 3000);
+          // Create more confetti for a better effect
+          for (let i=0;i<50;i++){
+            const bit = document.createElement('div');
+            bit.className = 'bit';
+            const size = 8 + Math.floor(Math.random()*12);
+            bit.style.width = size+'px';
+            bit.style.height = size+'px';
+            bit.style.left = Math.random()*100 + '%';
+            bit.style.top = '-20px';
+            bit.style.background = colors[Math.floor(Math.random()*colors.length)];
+            bit.style.animationDelay = (Math.random()*200) + 'ms';
+            bit.style.position = 'absolute';
+            bit.style.borderRadius = Math.random() > 0.5 ? '50%' : '10%';
+            bit.style.transform = 'rotate(' + Math.random()*360 + 'deg)';
+            conf.appendChild(bit);
+            setTimeout(()=> bit.remove(), 3000);
           }
-        }
-
-        window.createTextBurstEffect = function createTextBurstEffect() {
-          const banner = document.querySelector('.complete-banner');
-          if (!banner) return;
-
-          const rect = banner.getBoundingClientRect();
-          const centerX = rect.left + rect.width / 2;
-          const centerY = rect.top + rect.height / 2;
-
-          // Create multiple explosion points around the banner
-          const explosionPoints = [
-            { x: centerX - 100, y: centerY, intensity: 0.8 },
-            { x: centerX + 100, y: centerY, intensity: 0.8 },
-            { x: centerX, y: centerY - 50, intensity: 1.2 },
-            { x: centerX - 50, y: centerY + 30, intensity: 0.6 },
-            { x: centerX + 50, y: centerY + 30, intensity: 0.6 }
-          ];
-
-          explosionPoints.forEach((point, index) => {
-            setTimeout(() => {
-              createParticleExplosion(point.x, point.y, point.intensity);
-            }, index * 150);
-          });
-        }
-
-        window.burstConfetti = function burstConfetti() {
-          // Create explosion at random points
-          const conf = document.getElementById('confetti-container') || document.getElementById('confetti');
-          if (!conf) return;
-
-          const containerRect = conf.getBoundingClientRect();
-          const explosions = [
-            { x: containerRect.width * 0.2, y: containerRect.height * 0.3, intensity: 1.0 },
-            { x: containerRect.width * 0.8, y: containerRect.height * 0.3, intensity: 1.0 },
-            { x: containerRect.width * 0.5, y: containerRect.height * 0.6, intensity: 1.3 }
-          ];
-
-          explosions.forEach((explosion, index) => {
-            setTimeout(() => {
-              createParticleExplosion(explosion.x, explosion.y, explosion.intensity);
-            }, index * 200);
-          });
         }
 
         window.showBalloons = function showBalloons(){
@@ -2551,35 +1560,41 @@
           const val = String(input.value || '').trim();
           if (!val) { msg.textContent = 'Please enter a name to continue.'; return; }
 
-          // First, try to save to master_users table - only update nickname
-          try {
-            // Only update the nickname field, nothing else
-            const { error: masterError } = await supabase
-              .from('master_users')
-              .update({
+          if (nicknameColumnExists) {
+            try{
+              // Use upsert instead of update to handle case where profile doesn't exist yet
+              const profileData = {
+                user_id: user.id,
                 nickname: val,
-                updated_at: new Date().toISOString()
-              })
-              .eq('auth_user_id', user.id)
-              .eq('site_id', siteId);
+                full_name: fullName || user?.email?.split('@')[0] || 'Staff',
+                role: 'staff' // Required field for profiles table
+              };
+              if (siteId) profileData.site_id = siteId;
 
-            if (!masterError) {
-              msg.textContent = 'Saved!';
-              // Move to step 2
-              document.getElementById('welcome-step1').style.display = 'none';
-              document.getElementById('welcome-step2').style.display = '';
-              await loadDetailsData(siteId, fullName);
-              return;
-            } else {
-              console.error('Master users save failed:', masterError);
-              msg.textContent = `Error saving nickname: ${masterError.message || 'Please try again.'}`;
-              return;
-            }
-          } catch(e) {
-            console.error('Master users save failed:', e);
-            msg.textContent = 'Error saving nickname. Please try again or contact support.';
-            return;
+              const { error } = await supabase.from('profiles').upsert(profileData);
+
+              if (error && (String(error.code) === '42703' || /column .*nickname/i.test(String(error.message)))) {
+                nicknameColumnExists = false; // fall through to guidance
+              } else if (error) {
+                msg.textContent = 'Could not save nickname. Please try again.';
+                console.error('[staff-welcome] upsert error', error);
+                return;
+              } else {
+                msg.textContent = 'Saved!';
+                // Move to step 2
+                document.getElementById('welcome-step1').style.display = 'none';
+                document.getElementById('welcome-step2').style.display = '';
+                await loadDetailsData(siteId, fullName);
+                return;
+              }
+            } catch(e){ nicknameColumnExists = false; }
           }
+
+          // If we reach here, the column likely doesn’t exist — provide SQL guidance
+          msg.innerHTML = `
+            It looks like the <code>nickname</code> column isn’t in <code>profiles</code> yet.<br>
+            Add it in Supabase, then tap Save again:
+            <pre style="text-align:left; background:#f9fafb; border:1px solid var(--border-color); border-radius:8px; padding:10px; overflow:auto;">ALTER TABLE public.profiles ADD COLUMN nickname text;</pre>`;
         }
 
         const saveBtn = document.getElementById('save-btn');
@@ -2612,24 +1627,16 @@
         async function loadDetailsData(siteId, fullName){
           // Load existing welcome data (if any)
           let existing = null;
-
-          // Check if we have pre-configured data from admin setup
-          if (window.preConfiguredData && window.preConfiguredData.welcome) {
-            existing = window.preConfiguredData.welcome;
-            console.log('Using pre-configured welcome data:', existing);
-          } else {
-            // Load from database
-            try {
-              let q = supabase
-                .from('staff_app_welcome')
-                .select('full_name, nickname, role_detail, team_id, team_name, avatar_url')
-                .eq('user_id', user.id)
-                .limit(1);
-              if (siteId) q = q.eq('site_id', siteId);
-              const { data: sawRow, error: sawErr } = await q.maybeSingle();
-              if (!sawErr && sawRow) existing = sawRow;
-            } catch (_) {}
-          }
+          try {
+            let q = supabase
+              .from('staff_app_welcome')
+              .select('full_name, nickname, role_detail, team_id, team_name, avatar_url')
+              .eq('user_id', user.id)
+              .limit(1);
+            if (siteId) q = q.eq('site_id', siteId);
+            const { data: sawRow, error: sawErr } = await q.maybeSingle();
+            if (!sawErr && sawRow) existing = sawRow;
+          } catch (_) {}
 
           // Pre-fill nickname if present
           if (existing) {
@@ -2638,86 +1645,28 @@
             if (existing.avatar_url) {
               window.existingAvatarUrl = existing.avatar_url;
               window.currentSavedAvatarUrl = existing.avatar_url;
-              // Pre-populate avatar preview if exists
-              const avatarPreview = document.getElementById('avatarPreview');
-              if (avatarPreview) avatarPreview.src = existing.avatar_url;
-            }
-
-            // Pre-select role and team if configured
-            if (existing.role_detail) {
-              window.selectedRole = existing.role_detail;
-            }
-            if (existing.team_id) {
-              window.selectedTeamId = existing.team_id;
-              window.selectedTeamName = existing.team_name;
             }
           }
 
-          // Use pre-configured values from invitation if not already set
-          if (!window.selectedRole && window.preConfiguredRole) {
-            window.selectedRole = window.preConfiguredRole;
-          }
-          if (!window.selectedTeamId && window.preConfiguredTeamId) {
-            window.selectedTeamId = window.preConfiguredTeamId;
-          }
-
-          // Build Roles list (value/label pairs) and prefer canonical admin order
-          const canonicalRoles = [
-            { value: 'GP', label: 'GP (Doctor)' },
-            { value: 'Nurse', label: 'Nurse' },
-            { value: 'Practice Manager', label: 'Practice Manager' },
-            { value: 'Admin Assistant', label: 'Admin Assistant' },
-            { value: 'Receptionist', label: 'Receptionist' },
-            { value: 'Healthcare Assistant', label: 'Healthcare Assistant' },
-            { value: 'Pharmacist', label: 'Pharmacist' },
-            { value: 'Other', label: 'Other' }
-          ];
-
+          // Build Roles list
           let roles = [];
           try {
             const { data, error } = await supabase.from('kiosk_roles').select('role');
-            if (!error && Array.isArray(data) && data.length) {
-              // Map DB roles to value/label pairs, preserving order from canonical when possible
-              const dbRoles = data.map(r => String(r.role));
-              const added = new Set();
-              // First add canonical roles that exist in DB (or always keep canonical order)
-              canonicalRoles.forEach(cr => {
-                if (dbRoles.includes(cr.value) || dbRoles.includes(cr.label) || true) {
-                  roles.push({ value: cr.value, label: cr.label });
-                  added.add(cr.value);
-                }
-              });
-              // Then append any DB-only roles not already present
-              dbRoles.forEach(r => {
-                const v = String(r);
-                if (!added.has(v)) {
-                  roles.push({ value: v, label: v });
-                  added.add(v);
-                }
-              });
-            }
+            if (!error && Array.isArray(data) && data.length) roles = data.map(r => r.role);
           } catch(_) {}
-
-          if (!roles.length) roles = canonicalRoles.slice();
-
-          // Ensure existing role appears in list (handle raw saved values)
-          if (existing && existing.role_detail) {
-            const exists = roles.some(rr => rr.value === existing.role_detail || rr.label === existing.role_detail);
-            if (!exists) roles = [{ value: existing.role_detail, label: existing.role_detail }, ...roles];
+          if (!roles.length) roles = ['Doctor','Nurse','Pharmacist','Reception','Manager'];
+          // Ensure existing role appears in list
+          if (existing && existing.role_detail && !roles.includes(existing.role_detail)) {
+            roles = [existing.role_detail, ...roles];
           }
-
           const rg = document.getElementById('role-grid');
           // expose helper to set fallback src when onerror fires
           window.__roleIconFallback = function(el, role){
             try{ el.onerror = null; el.src = ROLE_ICON_FALLBACK(role); }catch(e){}
           };
           rg.innerHTML = roles.map((r,i)=>{
-            // Determine a pre-selected value from existing data or preconfigured invite
-            const pre = window.selectedRole || window.preConfiguredRole || (existing && existing.role_detail) || null;
-            const checked = pre ? (pre === r.value || pre === r.label) : (i===0);
-            const val = esc(String(r.value || r.label));
-            const lbl = esc(String(r.label || r.value));
-            return `<label class=\"option-pill white-pill\">\n              <input type=\"radio\" name=\"role\" value=\"${val}\" ${checked?'checked':''} />\n              <img src=\"${ROLE_ICON(lbl)}\" alt=\"${lbl}\" style=\"width:32px;height:32px;object-fit:contain;\" onerror=\"window.__roleIconFallback(this,'${lbl}')\"/\>\n              <span>${lbl}</span>\n            </label>`;
+            const checked = existing && existing.role_detail ? (existing.role_detail === r) : (i===0);
+            return `<label class=\"option-pill white-pill\">\n              <input type=\"radio\" name=\"role\" value=\"${r}\" ${checked?'checked':''} />\n              <img src=\"${ROLE_ICON(r)}\" alt=\"${r}\" style=\"width:32px;height:32px;object-fit:contain;\" onerror=\"window.__roleIconFallback(this,'${r}')\"/>\n              <span>${r}</span>\n            </label>`;
           }).join('');
 
           // Load teams by site (button grid like roles)
@@ -2741,13 +1690,14 @@
               }
             }
 
-            // Always provide fallback teams if none loaded (match admin-dashboard defaults)
+            // Always provide fallback teams if none loaded
             if (!teams.length) {
               teams = [
-                { id: 1, name: 'Clinical Team' },
-                { id: 2, name: 'Admin Team' },
-                { id: 3, name: 'Reception' },
-                { id: 4, name: 'Management' }
+                { id: 1, name: 'Managers' },
+                { id: 2, name: 'Reception' },
+                { id: 3, name: 'Nursing' },
+                { id: 4, name: 'GPs' },
+                { id: 5, name: 'Pharmacy' },
               ];
             }
 
@@ -2809,24 +1759,23 @@
                 if (msgEl) msgEl.textContent = 'Saving to profiles…';
               }
 
-              // 2) profiles table is no longer used - master_users is the primary source
-              // Commenting out profiles update to prevent confusion
-              /*
+              // 2) Also upsert profiles so existing views stay in sync
               try {
                 const profileData = {
                   user_id: user.id,
                   full_name: fullName,
                   nickname: String(document.getElementById('nickname')?.value || '').trim() || null,
-                  role: (role || 'staff').toLowerCase(),
+                  role: (role || 'staff').toLowerCase(),  // Ensure valid role for constraint
                   onboarding_complete: true
+                  // Note: profiles table doesn't have role_detail, team_id, or team_name columns
                 };
                 if (siteId) profileData.site_id = siteId;
+
                 const { error: pErr } = await supabase.from('profiles').upsert(profileData);
                 if (pErr) { console.warn('[welcome] profiles upsert failed', pErr); }
               } catch (e2) {
                 console.warn('[welcome] profiles upsert exception', e2);
               }
-              */
               if (msgEl) msgEl.textContent = 'Saved!';
             } catch (e) {
               console.warn('[welcome] persist selections failed', e);
@@ -2997,16 +1946,12 @@
       const isGP = (window.selectedRole || '').toLowerCase().includes('doctor') ||
                    (window.selectedRole || '').toLowerCase().includes('gp');
 
-      // Try to load existing working pattern from database or use pre-configured data
+      // Try to load existing working pattern from database
       let existingPattern = null;
       const currentUser = window.currentUser;
       const currentSiteId = window.currentSiteId || 1;
 
-      // First check for pre-configured working pattern from invitation
-      if (window.preConfiguredWorkingPattern) {
-        console.log('Using pre-configured working pattern from invitation');
-        existingPattern = window.preConfiguredWorkingPattern;
-      } else if (currentUser && globalSupabase) {
+      if (currentUser && globalSupabase) {
         try {
           console.log('Loading existing working pattern for user:', currentUser.id);
           const { data, error } = await globalSupabase
@@ -3031,66 +1976,47 @@
       container.insertAdjacentHTML('beforeend',
         `<div class="tiny-note" style="color:#6b7280; font-size:12px; margin-bottom:10px;">${isGP ?
           'Enter number of sessions (0-2) per day.' :
-          'Select hours and minutes per day — defaults Mon-Fri 7:30.'}</div>`
+          'Enter hours (HH:MM) — defaults Mon-Fri 7.5h.'}</div>`
       );
 
       days.forEach((day, i) => {
         const id = day.toLowerCase();
-        let defaultHours = 0;
-        let defaultMinutes = 0;
-        let defaultSessionVal = '0';
+        let defaultVal;
 
         if (existingPattern) {
           // Use saved values if they exist
           if (isGP) {
-            defaultSessionVal = String(existingPattern[`${id}_sessions`] || '0');
+            defaultVal = existingPattern[`${id}_sessions`] || '0';
           } else {
             const hours = parseFloat(existingPattern[`${id}_hours`] || 0);
             if (hours > 0) {
-              defaultHours = Math.floor(hours);
-              defaultMinutes = Math.round((hours - defaultHours) * 60);
-              // Round minutes to nearest 15-minute increment
-              defaultMinutes = Math.round(defaultMinutes / 15) * 15;
-              if (defaultMinutes >= 60) {
-                defaultHours += Math.floor(defaultMinutes / 60);
-                defaultMinutes = defaultMinutes % 60;
-              }
+              const h = Math.floor(hours);
+              const m = Math.round((hours - h) * 60);
+              defaultVal = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+            } else {
+              defaultVal = '00:00';
             }
           }
         } else {
           // Use defaults for new users
-          if (isGP) {
-            defaultSessionVal = i < 5 ? '2' : '0';
-          } else {
-            defaultHours = i < 5 ? 7 : 0;
-            defaultMinutes = i < 5 ? 30 : 0;
-          }
+          defaultVal = isGP ? (i < 5 ? '2' : '0') : (i < 5 ? '07:30' : '00:00');
         }
 
         container.insertAdjacentHTML('beforeend',
           `<div class="working-hour-card" style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:#fff; border:1px solid rgba(15,23,42,0.06); border-radius:14px;">
-            <label for="${id}-hours" style="font-weight:600; font-size:13px; color:#334155;">${day}</label>
+            <label for="${id}-val" style="font-weight:600; font-size:13px; color:#334155;">${day}</label>
             ${isGP ?
               `<div style="display:flex; align-items:center; gap:8px;">
                 <select id="${id}-val" style="padding:6px 10px; border:1px solid rgba(15,23,42,0.12); border-radius:8px;">
-                  <option value="0" ${defaultSessionVal === '0' ? 'selected' : ''}>0</option>
-                  <option value="1" ${defaultSessionVal === '1' ? 'selected' : ''}>1</option>
-                  <option value="2" ${defaultSessionVal === '2' ? 'selected' : ''}>2</option>
+                  <option value="0" ${defaultVal === '0' || defaultVal === 0 ? 'selected' : ''}>0</option>
+                  <option value="1" ${defaultVal === '1' || defaultVal === 1 ? 'selected' : ''}>1</option>
+                  <option value="2" ${defaultVal === '2' || defaultVal === 2 ? 'selected' : ''}>2</option>
                 </select>
                 <span class="tiny-note" style="color:#6b7280; font-size:11px;">sessions</span>
               </div>` :
-              `<div style="display:flex; align-items:center; gap:6px;">
-                <select id="${id}-hours" style="padding:6px 10px; border:1px solid rgba(15,23,42,0.12); border-radius:8px;">
-                  ${Array.from({length: 13}, (_, i) => `<option value="${i}" ${i === defaultHours ? 'selected' : ''}>${i}</option>`).join('')}
-                </select>
-                <span style="color:#334155; font-weight:500;">h</span>
-                <select id="${id}-minutes" style="padding:6px 10px; border:1px solid rgba(15,23,42,0.12); border-radius:8px;">
-                  <option value="0" ${defaultMinutes === 0 ? 'selected' : ''}>00</option>
-                  <option value="15" ${defaultMinutes === 15 ? 'selected' : ''}>15</option>
-                  <option value="30" ${defaultMinutes === 30 ? 'selected' : ''}>30</option>
-                  <option value="45" ${defaultMinutes === 45 ? 'selected' : ''}>45</option>
-                </select>
-                <span style="color:#334155; font-weight:500;">m</span>
+              `<div style="display:flex; align-items:center; gap:8px;">
+                <input type="time" id="${id}-val" value="${defaultVal}" step="1800" style="padding:6px 10px; border:1px solid rgba(15,23,42,0.12); border-radius:8px;">
+                <span class="tiny-note" style="color:#6b7280; font-size:11px;">hours</span>
               </div>`
             }
           </div>`
@@ -3146,54 +2072,53 @@
         let totalSessions = 0;
         
         for (const day of days) {
-          if (isGP) {
-            const inputEl = document.getElementById(`${day}-val`);
-            if (!inputEl) {
-              console.warn(`Input element for ${day} not found`);
-              patternData[`${day}_sessions`] = 0;
-              patternData[`${day}_hours`] = null;
-              continue;
-            }
+          const inputEl = document.getElementById(`${day}-val`);
+          if (!inputEl) {
+            console.warn(`Input element for ${day} not found`);
+            // Set defaults
+            patternData[`${day}_hours`] = 0;
+            patternData[`${day}_sessions`] = 0;
+            continue;
+          }
 
+          if (isGP) {
             const sessions = parseInt(inputEl.value || '0');
             patternData[`${day}_sessions`] = sessions;
-            patternData[`${day}_hours`] = null;  // NULL for GP staff
+            patternData[`${day}_hours`] = 0;
             totalSessions += sessions;
             console.log(`${day}: ${sessions} sessions`);
           } else {
-            // Handle dropdown structure for non-GP staff
-            const hoursEl = document.getElementById(`${day}-hours`);
-            const minutesEl = document.getElementById(`${day}-minutes`);
-            
-            if (!hoursEl || !minutesEl) {
-              console.warn(`Dropdown elements for ${day} not found`);
-              patternData[`${day}_hours`] = null;
-              patternData[`${day}_sessions`] = 0;
-              continue;
-            }
-
-            const hours = parseInt(hoursEl.value || '0');
-            const minutes = parseInt(minutesEl.value || '0');
-            
-            // Convert to HH:MM format for storage
-            const timeValue = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-            
-            patternData[`${day}_hours`] = (hours === 0 && minutes === 0) ? null : timeValue;
+            const timeValue = inputEl.value || '00:00';
+            const [h, m] = timeValue.split(':').map(Number);
+            const decimal = h + (m / 60);
+            patternData[`${day}_hours`] = parseFloat(decimal.toFixed(2));
             patternData[`${day}_sessions`] = 0;
-
-            // Calculate total hours (decimal format for calculations)
-            const decimal = hours + (minutes / 60);
             totalHours += decimal;
-            console.log(`${day}: ${hours}h ${minutes}m = ${timeValue} (decimal: ${decimal})`);
+            console.log(`${day}: ${timeValue} = ${decimal.toFixed(2)} hours`);
           }
         }
         
-        // Add totals to pattern data
-        patternData.total_hours = totalHours;
-        patternData.total_sessions = totalSessions;
+        // Check if we need to preserve existing values
+        let existingData = null;
+        try {
+          const { data: existing } = await globalSupabase
+            .from('3_staff_working_patterns')
+            .select('total_holiday_entitlement, approved_holidays_used, holiday_year_start')
+            .eq('user_id', currentUser.id)
+            .maybeSingle();
+          existingData = existing;
+        } catch (e) {
+          console.warn('Could not check existing data:', e);
+        }
+
+        // Preserve existing values or set defaults
+        patternData.total_holiday_entitlement = existingData?.total_holiday_entitlement || (isGP ? 20 : 25);
+        patternData.approved_holidays_used = existingData?.approved_holidays_used || 0;
+        if (existingData?.holiday_year_start) {
+          patternData.holiday_year_start = existingData.holiday_year_start;
+        }
 
         console.log('Pattern data to save:', patternData);
-        console.log('Is GP?:', isGP, 'Total Sessions:', totalSessions, 'Total Hours:', totalHours);
         
         try {
           // Save working pattern
@@ -3215,13 +2140,13 @@
           // Also save working hours summary to staff_app_welcome
           try {
             const workingHoursData = {
-              monday: isGP ? patternData.monday_sessions : (patternData.monday_hours || '00:00'),
-              tuesday: isGP ? patternData.tuesday_sessions : (patternData.tuesday_hours || '00:00'),
-              wednesday: isGP ? patternData.wednesday_sessions : (patternData.wednesday_hours || '00:00'),
-              thursday: isGP ? patternData.thursday_sessions : (patternData.thursday_hours || '00:00'),
-              friday: isGP ? patternData.friday_sessions : (patternData.friday_hours || '00:00'),
-              saturday: isGP ? patternData.saturday_sessions : (patternData.saturday_hours || '00:00'),
-              sunday: isGP ? patternData.sunday_sessions : (patternData.sunday_hours || '00:00'),
+              monday: patternData.monday_hours || patternData.monday_sessions || 0,
+              tuesday: patternData.tuesday_hours || patternData.tuesday_sessions || 0,
+              wednesday: patternData.wednesday_hours || patternData.wednesday_sessions || 0,
+              thursday: patternData.thursday_hours || patternData.thursday_sessions || 0,
+              friday: patternData.friday_hours || patternData.friday_sessions || 0,
+              saturday: patternData.saturday_hours || patternData.saturday_sessions || 0,
+              sunday: patternData.sunday_hours || patternData.sunday_sessions || 0,
               isGP: isGP
             };
 
@@ -3257,7 +2182,6 @@
               team_name: window.selectedTeamName || null,
               avatar_url: avatarUrl,
               site_id: currentSiteId,
-              user_id: currentUser.id,
               updated_at: new Date().toISOString()
             };
 
@@ -3278,63 +2202,63 @@
               const profileId = profileData[0].id;
               const currentYear = new Date().getFullYear();
 
-              // Use the already calculated totals
-              const weeklyHours = isGP ? null : totalHours;
-              const weeklySessions = isGP ? totalSessions : null;
+              // Calculate weekly totals
+              const weeklyHours = isGP ? 0 : totalHours;
+              const weeklySessions = isGP ? totalSessions : 0;
 
-              // Check for existing entitlement to preserve override
+              // Check for existing entitlement to preserve manual override
               const { data: existingEntitlement } = await globalSupabase
                 .from('2_staff_entitlements')
-                .select('override, multiplier')
-                .eq('staff_id', profileId)
+                .select('manual_override, manual_entitlement_hours, manual_entitlement_sessions, holiday_multiplier')
+                .eq('staff_profile_id', profileId)
                 .eq('year', currentYear)
                 .maybeSingle();
 
-              // Use existing multiplier or default
-              let multiplier = existingEntitlement?.multiplier;
-              if (!multiplier || isNaN(multiplier)) {
-                // Try to read from localStorage (set by admin-dashboard)
-                const saved = localStorage.getItem('default-holiday-multiplier');
-                multiplier = saved && !isNaN(saved) ? parseFloat(saved) : 6;
+              // Default multiplier is 10 if not set
+              const multiplier = existingEntitlement?.holiday_multiplier || 10;
+
+              // Calculate entitlements
+              let calculatedHours = null;
+              let calculatedSessions = null;
+              let finalHours = null;
+              let finalSessions = null;
+
+              if (isGP) {
+                calculatedSessions = weeklySessions * multiplier;
+                finalSessions = existingEntitlement?.manual_override ?
+                              existingEntitlement.manual_entitlement_sessions : calculatedSessions;
+              } else {
+                calculatedHours = weeklyHours * multiplier;
+                finalHours = existingEntitlement?.manual_override ?
+                           existingEntitlement.manual_entitlement_hours : calculatedHours;
               }
 
               const entitlement = {
-                staff_id: profileId,
+                staff_profile_id: profileId,
                 year: currentYear,
-                weekly_hours: isGP ? null : totalHours,
-                weekly_sessions: isGP ? totalSessions : null,
-                multiplier: multiplier,
-                override: existingEntitlement?.override || null,
+                weekly_hours: weeklyHours,
+                weekly_sessions: weeklySessions,
+                holiday_multiplier: multiplier,
+                calculated_hours: calculatedHours,
+                calculated_sessions: calculatedSessions,
+                annual_hours: finalHours,
+                annual_sessions: finalSessions,
+                annual_education_sessions: isGP ? 10 : null,
+                manual_override: existingEntitlement?.manual_override || false,
+                manual_entitlement_hours: existingEntitlement?.manual_entitlement_hours || null,
+                manual_entitlement_sessions: existingEntitlement?.manual_entitlement_sessions || null,
                 updated_at: new Date().toISOString()
               };
-
-              console.log('[staff-welcome] Creating entitlement - isGP:', isGP, 'totalSessions:', totalSessions, 'totalHours:', totalHours, 'entitlement:', entitlement);
 
               const { error: entitlementError } = await globalSupabase
                 .from('2_staff_entitlements')
                 .upsert(entitlement, {
-                  onConflict: 'staff_id,year',
+                  onConflict: 'staff_profile_id,year',
                   ignoreDuplicates: false
                 });
 
               if (entitlementError) {
                 console.error('Entitlement error:', entitlementError);
-              }
-
-              // Call the calculate_holiday_summary function to populate calculated fields
-              try {
-                const { error: calcError } = await globalSupabase.rpc('calculate_holiday_summary', {
-                  p_profile_id: profileId,
-                  p_target_year: currentYear
-                });
-
-                if (calcError) {
-                  console.warn('Holiday calculation warning:', calcError);
-                } else {
-                  console.log('[staff-welcome] Holiday summary calculated successfully');
-                }
-              } catch (calcErr) {
-                console.warn('Could not calculate holiday summary:', calcErr);
               }
 
               // Create/Update link in 5_staff_profile_user_links
@@ -3365,70 +2289,14 @@
               }
             });
             
-            // First try master_users
-            const { error: masterError } = await globalSupabase
-              .from('master_users')
-              .update({
-                onboarding_complete: true,
-                updated_at: new Date().toISOString()
-              })
-              .eq('auth_user_id', currentUser.id);
-
-            if (masterError) {
-              // Log error but don't fail the completion
-              console.error('Failed to update master_users onboarding_complete:', masterError);
-            }
+            await globalSupabase.from('profiles').update({
+              onboarding_complete: true,
+              role: 'staff' // Ensure role is maintained
+            }).eq('user_id', currentUser.id);
           } catch (e) {
             console.warn('completion meta update failed', e);
           }
-
-          // Unlock the Onboarding Completion achievement
-          try {
-            // Try to unlock with auth_user_id first (new system)
-            const { error: authUserError } = await globalSupabase
-              .from('user_achievements')
-              .upsert({
-                auth_user_id: currentUser.id,
-                achievement_key: 'onboarding_completion',
-                status: 'unlocked',
-                progress_percent: 100,
-                unlocked_at: new Date().toISOString()
-              }, {
-                onConflict: 'auth_user_id,achievement_key'
-              });
-
-            if (!authUserError) {
-              console.log('✅ Onboarding Completion achievement unlocked with auth_user_id!');
-            } else {
-              // Fall back to kiosk_user_id system if auth_user_id column doesn't exist
-              const { data: profileData } = await globalSupabase
-                .from('profiles')
-                .select('kiosk_user_id')
-                .eq('user_id', currentUser.id)
-                .single();
-
-              if (profileData && profileData.kiosk_user_id) {
-                await globalSupabase
-                  .from('user_achievements')
-                  .upsert({
-                    kiosk_user_id: profileData.kiosk_user_id,
-                    achievement_key: 'onboarding_completion',
-                    status: 'unlocked',
-                    progress_percent: 100,
-                    unlocked_at: new Date().toISOString()
-                  }, {
-                    onConflict: 'kiosk_user_id,achievement_key'
-                  });
-                console.log('✅ Onboarding Completion achievement unlocked with kiosk_user_id!');
-              } else {
-                console.log('Could not unlock achievement - no kiosk_user_id');
-              }
-            }
-          } catch (achievementError) {
-            console.warn('Failed to unlock achievement:', achievementError);
-            // Don't block onboarding completion if achievement fails
-          }
-
+          
           // Success - show completion step with animations
           console.log('Working hours saved successfully');
           if (msg) msg.textContent = 'Saved!';
@@ -3441,16 +2309,15 @@
           if (step5) {
             step5.style.display = 'block';
 
-            // Trigger spectacular particle show
+            // Trigger confetti and balloons
             setTimeout(() => {
-              createTextBurstEffect();
+              burstConfetti();
               showBalloons();
-            }, 200);
+            }, 100);
 
-            // Create cascading explosions
-            setTimeout(() => burstConfetti(), 600);
-            setTimeout(() => createTextBurstEffect(), 1200);
-            setTimeout(() => burstConfetti(), 1800);
+            // Add more confetti bursts
+            setTimeout(() => burstConfetti(), 500);
+            setTimeout(() => burstConfetti(), 1000);
           }
 
           // Redirect to dashboard after delay
@@ -3495,9 +2362,3 @@
     if (window.setupWorkingHoursHandlers) {
       window.setupWorkingHoursHandlers(window.currentUser, window.currentSiteId);
     }
-  </script>
-
-    <!-- Debug Console - Persistent across all pages -->
-    <script src="debug-console.js"></script>
-</body>
-</html>
