@@ -7606,35 +7606,31 @@ window.PIR_DEFINITIONS_DATA = [
         throw new Error(`An invitation for ${formData.email} already exists`);
       }
       
-  // Send invitation using the proper edge function
-  console.log('Sending invitation email via edge function');
+  // Send magic link invitation
+  console.log('Sending magic link invitation email');
 
-      // Use the invite-user edge function which properly handles invitations
-      const { data: { session: userSession } } = await supabase.auth.getSession();
-      const inviteResponse = await fetch(`${supabase.supabaseUrl}/functions/v1/invite-user`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${userSession.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: formData.email,
-          name: formData.fullName,
-          role: formData.siteRole,
-          role_detail: formData.jobRole,
-          reports_to_id: formData.teamId,
-          redirect_to: `${CONFIG.passwordRedirectUrl}?invite_email=${formData.email}&site_id=${formData.siteId}`
-        })
+      // Use Supabase's signInWithOtp to send a magic link
+      const { data: otpData, error: otpError } = await supabase.auth.signInWithOtp({
+        email: formData.email,
+        options: {
+          data: {
+            full_name: formData.fullName,
+            role: formData.siteRole,
+            role_detail: formData.jobRole,
+            reports_to_id: formData.teamId,
+            site_id: formData.siteId,
+            invited: true
+          },
+          emailRedirectTo: `https://checkloop.co.uk/staff-welcome.html?email=${encodeURIComponent(formData.email)}&site_id=${formData.siteId}`
+        }
       });
 
-      if (!inviteResponse.ok) {
-        const error = await inviteResponse.json();
-        console.error('Failed to send invitation', error);
-        throw new Error(`Failed to send invitation: ${error.error || 'Unknown error'}`);
+      if (otpError) {
+        console.error('Failed to send magic link:', otpError);
+        throw new Error(`Failed to send magic link: ${otpError.message || 'Unknown error'}`);
       }
 
-      const inviteResult = await inviteResponse.json();
-  console.log('Invitation sent successfully', inviteResult);
+      console.log('Magic link sent successfully', otpData);
 
       // Create holiday profile for the invited user
   console.log('Creating holiday profile for invited user');

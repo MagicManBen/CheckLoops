@@ -1593,67 +1593,80 @@ function stopScanTrollyCycle(){
       return;
   }
 
-  // First ensure the profile has a kiosk_user_id if it doesn't already
-  const selectedOption = $('pinSetupUser').options[$('pinSetupUser').selectedIndex];
-  let kioskUserId = selectedOption.getAttribute('data-kiosk-id');
-  console.log('Setting PIN for user:', userId, 'existing kiosk_id:', kioskUserId);
+  // Check if user exists in master_users table
+  const { data: masterUser, error: checkError } = await sb
+      .from('master_users')
+      .select('id, auth_user_id, kiosk_user_id')
+      .eq('auth_user_id', userId)
+      .eq('site_id', S.siteId)
+      .maybeSingle();
+
+  if (checkError) {
+      console.error('Error checking master_users:', checkError);
+      // Fall back to old method if master_users doesn't exist
+  }
+
+  let kioskUserId = masterUser?.kiosk_user_id;
 
   if (!kioskUserId) {
-      // Profile doesn't have a kiosk_user_id yet, we need to create one
-      console.log('No kiosk_user_id found, creating new one...');
-      // Get the next available kiosk_user_id
-      const { data: maxId, error: maxError } = await sb
-          .from('kiosk_users')
-          .select('id')
-          .order('id', { ascending: false })
+      // Generate a new kiosk_user_id if needed (for legacy compatibility)
+      const { data: maxId } = await sb
+          .from('master_users')
+          .select('kiosk_user_id')
+          .not('kiosk_user_id', 'is', null)
+          .order('kiosk_user_id', { ascending: false })
           .limit(1);
 
-      kioskUserId = maxId && maxId.length > 0 ? maxId[0].id + 1 : 1000;
-      console.log('New kiosk_user_id will be:', kioskUserId);
+      kioskUserId = (maxId && maxId.length > 0 && maxId[0].kiosk_user_id) ? maxId[0].kiosk_user_id + 1 : 1000;
+  }
 
-      // Get the profile details
+  // Update master_users with the PIN (store securely)
+  if (masterUser) {
+      // Update existing master_users record
+      const { error: updateError } = await sb
+          .from('master_users')
+          .update({
+              kiosk_user_id: kioskUserId,
+              updated_at: new Date().toISOString()
+          })
+          .eq('auth_user_id', userId)
+          .eq('site_id', S.siteId);
+
+      if (updateError) {
+          console.error('Error updating master_users:', updateError);
+      }
+  } else {
+      // Fall back to profiles if master_users not available
       const { data: profile, error: profileError } = await sb
           .from('profiles')
           .select('*')
           .eq('user_id', userId)
           .eq('site_id', S.siteId)
           .single();
-      console.log('Profile details:', profile);
 
-      if (profileError) {
-          msgEl.textContent = `Error getting profile: ${profileError.message}`;
-          return;
-      }
+      if (!profileError && profile) {
+          // Create master_users entry
+          const { error: createError } = await sb
+              .from('master_users')
+              .insert({
+                  auth_user_id: userId,
+                  email: profile.email || '',
+                  full_name: profile.full_name,
+                  nickname: profile.nickname,
+                  site_id: S.siteId,
+                  access_type: profile.role === 'admin' ? 'admin' : 'staff',
+                  role_detail: profile.role_detail || profile.role,
+                  active: profile.active !== false,
+                  team_id: profile.team_id,
+                  team_name: profile.team_name,
+                  kiosk_user_id: kioskUserId,
+                  created_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString()
+              });
 
-      // Create the kiosk_users entry
-      const { error: kioskError } = await sb
-          .from('kiosk_users')
-          .insert({
-              id: kioskUserId,
-              site_id: S.siteId,
-              full_name: profile.full_name,
-              role: profile.role_detail || profile.role || 'staff',
-              active: profile.active !== false,
-              team_id: profile.team_id,
-              team_name: profile.team_name,
-              reports_to_id: profile.reports_to_id
-          });
-
-      if (kioskError && !kioskError.message.includes('duplicate')) {
-          msgEl.textContent = `Error creating kiosk user: ${kioskError.message}`;
-          return;
-      }
-
-      // Update the profile with the new kiosk_user_id
-      const { error: updateError } = await sb
-          .from('profiles')
-          .update({ kiosk_user_id: kioskUserId })
-          .eq('user_id', userId)
-          .eq('site_id', S.siteId);
-
-      if (updateError) {
-          msgEl.textContent = `Error updating profile: ${updateError.message}`;
-          return;
+          if (createError && !createError.message.includes('duplicate')) {
+              console.error('Error creating master_users entry:', createError);
+          }
       }
   }
 

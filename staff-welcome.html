@@ -2065,47 +2065,69 @@
                 }
               });
 
-              // Save to profiles table (main storage) - CRITICAL FOR HOMEPAGE DISPLAY
+              // Save to master_users table (primary source of truth)
               try {
-                // First, ensure we have the correct role
-                const userRole = window.selectedRole ? window.selectedRole.toLowerCase() : 'staff';
-
-                // Normalize roles to match database constraint
-                // Database only allows: admin, staff (other specific roles should default to 'staff')
-                let normalizedRole = 'staff';
-                if (userRole === 'admin') {
-                  normalizedRole = 'admin';
-                }
-                // All other roles (doctor, nurse, gp, receptionist, etc.) map to 'staff'
-
-                const profileData = {
-                  user_id: user.id,
+                const masterData = {
+                  auth_user_id: user.id,
+                  email: user.email,
                   avatar_url: avatarUrl,
                   nickname: nickVal,
                   full_name: fullName || displayName,
-                  role: normalizedRole
-                  // Note: profiles table doesn't have updated_at column
+                  role_detail: window.selectedRole || user?.raw_user_meta_data?.role_detail || null,
+                  access_type: 'staff',
+                  site_id: siteId,
+                  team_id: window.selectedTeamId || null,
+                  team_name: window.selectedTeamName || null,
+                  updated_at: new Date().toISOString()
                 };
-                if (siteId) profileData.site_id = siteId;
 
-                console.log('[saveAvatarToSupabase] Upserting to profiles:', profileData);
-                const { data: profileResult, error: profileErr } = await supabase
-                  .from('profiles')
-                  .upsert(profileData, {
-                    onConflict: 'user_id',
+                console.log('[saveAvatarToSupabase] Upserting to master_users:', masterData);
+                const { data: masterResult, error: masterErr } = await supabase
+                  .from('master_users')
+                  .upsert(masterData, {
+                    onConflict: 'auth_user_id',
                     ignoreDuplicates: false
                   })
                   .select();
 
-                if (profileErr) {
-                  console.error('[saveAvatarToSupabase] Profile update error:', profileErr);
-                  throw profileErr;
+                if (masterErr) {
+                  console.error('[saveAvatarToSupabase] Master users update error:', masterErr);
+                  // Fall back to profiles table if master_users doesn't exist
+                  const userRole = window.selectedRole ? window.selectedRole.toLowerCase() : 'staff';
+                  let normalizedRole = 'staff';
+                  if (userRole === 'admin') {
+                    normalizedRole = 'admin';
+                  }
+
+                  const profileData = {
+                    user_id: user.id,
+                    avatar_url: avatarUrl,
+                    nickname: nickVal,
+                    full_name: fullName || displayName,
+                    role: normalizedRole
+                  };
+                  if (siteId) profileData.site_id = siteId;
+
+                  const { data: profileResult, error: profileErr } = await supabase
+                    .from('profiles')
+                    .upsert(profileData, {
+                      onConflict: 'user_id',
+                      ignoreDuplicates: false
+                    })
+                    .select();
+
+                  if (profileErr) {
+                    console.error('[saveAvatarToSupabase] Profile update error:', profileErr);
+                    throw profileErr;
+                  } else {
+                    console.log('[saveAvatarToSupabase] Profile updated successfully:', profileResult);
+                  }
                 } else {
-                  console.log('[saveAvatarToSupabase] Profile updated successfully:', profileResult);
-                  window.currentSavedAvatarUrl = avatarUrl; // Track that avatar was saved
+                  console.log('[saveAvatarToSupabase] Master users updated successfully:', masterResult);
                 }
+                window.currentSavedAvatarUrl = avatarUrl; // Track that avatar was saved
               } catch (e) {
-                console.error('[saveAvatarToSupabase] Profile save exception:', e);
+                console.error('[saveAvatarToSupabase] Save exception:', e);
                 throw e; // Re-throw to handle upstream
               }
 
@@ -2526,6 +2548,40 @@
           const val = String(input.value || '').trim();
           if (!val) { msg.textContent = 'Please enter a name to continue.'; return; }
 
+          // First, try to save to master_users table
+          try {
+            const masterData = {
+              auth_user_id: user.id,
+              email: user.email,
+              nickname: val,
+              full_name: fullName || user?.email?.split('@')[0] || 'Staff',
+              site_id: siteId,
+              access_type: 'staff',
+              updated_at: new Date().toISOString()
+            };
+
+            const { error: masterError } = await supabase
+              .from('master_users')
+              .upsert(masterData, {
+                onConflict: 'auth_user_id',
+                ignoreDuplicates: false
+              });
+
+            if (!masterError) {
+              msg.textContent = 'Saved!';
+              // Move to step 2
+              document.getElementById('welcome-step1').style.display = 'none';
+              document.getElementById('welcome-step2').style.display = '';
+              await loadDetailsData(siteId, fullName);
+              return;
+            } else {
+              console.log('Master users table not available, falling back to profiles');
+            }
+          } catch(e) {
+            console.log('Master users save failed, trying profiles table:', e);
+          }
+
+          // Fall back to profiles table if master_users doesn't exist
           if (nicknameColumnExists) {
             try{
               // Use upsert instead of update to handle case where profile doesn't exist yet
@@ -2556,9 +2612,9 @@
             } catch(e){ nicknameColumnExists = false; }
           }
 
-          // If we reach here, the column likely doesn’t exist — provide SQL guidance
+          // If we reach here, the column likely doesn't exist — provide SQL guidance
           msg.innerHTML = `
-            It looks like the <code>nickname</code> column isn’t in <code>profiles</code> yet.<br>
+            It looks like the <code>nickname</code> column isn't in <code>profiles</code> yet.<br>
             Add it in Supabase, then tap Save again:
             <pre style="text-align:left; background:#f9fafb; border:1px solid var(--border-color); border-radius:8px; padding:10px; overflow:auto;">ALTER TABLE public.profiles ADD COLUMN nickname text;</pre>`;
         }
@@ -3345,37 +3401,56 @@
               }
             });
             
-            await globalSupabase.from('profiles').update({
-              onboarding_complete: true,
-              role: 'staff' // Ensure role is maintained
-            }).eq('user_id', currentUser.id);
+            // First try master_users
+            const { error: masterError } = await globalSupabase
+              .from('master_users')
+              .update({
+                onboarding_complete: true,
+                updated_at: new Date().toISOString()
+              })
+              .eq('auth_user_id', currentUser.id);
+
+            if (masterError) {
+              // Fall back to profiles
+              await globalSupabase.from('profiles').update({
+                onboarding_complete: true,
+                role: 'staff' // Ensure role is maintained
+              }).eq('user_id', currentUser.id);
+            }
           } catch (e) {
             console.warn('completion meta update failed', e);
           }
 
           // Unlock the Onboarding Completion achievement
           try {
-            // Get user profile to get kiosk_user_id
-            const { data: profileData } = await globalSupabase
-              .from('profiles')
-              .select('*')
-              .eq('user_id', currentUser.id)
-              .single();
+            // Try to unlock with auth_user_id first (new system)
+            const { error: authUserError } = await globalSupabase
+              .from('user_achievements')
+              .upsert({
+                auth_user_id: currentUser.id,
+                achievement_key: 'onboarding_completion',
+                status: 'unlocked',
+                progress_percent: 100,
+                unlocked_at: new Date().toISOString()
+              }, {
+                onConflict: 'auth_user_id,achievement_key'
+              });
 
-            if (profileData) {
-              // Use kiosk_user_id from profile if available, otherwise try to get/create
-              let kioskUserId = profileData.kiosk_user_id;
+            if (!authUserError) {
+              console.log('✅ Onboarding Completion achievement unlocked with auth_user_id!');
+            } else {
+              // Fall back to kiosk_user_id system if auth_user_id column doesn't exist
+              const { data: profileData } = await globalSupabase
+                .from('profiles')
+                .select('kiosk_user_id')
+                .eq('user_id', currentUser.id)
+                .single();
 
-              if (!kioskUserId) {
-                console.log('No kiosk_user_id in profile, will skip achievement unlock');
-              }
-
-              if (kioskUserId) {
-                // Unlock the achievement
+              if (profileData && profileData.kiosk_user_id) {
                 await globalSupabase
                   .from('user_achievements')
                   .upsert({
-                    kiosk_user_id: kioskUserId,
+                    kiosk_user_id: profileData.kiosk_user_id,
                     achievement_key: 'onboarding_completion',
                     status: 'unlocked',
                     progress_percent: 100,
@@ -3383,7 +3458,9 @@
                   }, {
                     onConflict: 'kiosk_user_id,achievement_key'
                   });
-                console.log('✅ Onboarding Completion achievement unlocked!');
+                console.log('✅ Onboarding Completion achievement unlocked with kiosk_user_id!');
+              } else {
+                console.log('Could not unlock achievement - no kiosk_user_id');
               }
             }
           } catch (achievementError) {
