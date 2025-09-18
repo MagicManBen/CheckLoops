@@ -117,22 +117,25 @@ serve(async (req) => {
     const defaultRedirect = 'https://checkloops.co.uk/set-password.html'
     const redirectTo = requestBody.redirect_to || defaultRedirect
 
-    // Now send the actual invitation email using Supabase Auth
-    const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-      email,
-      {
-        data: {
-          full_name: name,
-          role: role,
-          role_detail: role_detail,
-          site_id: site_id,
-          invite_token: inviteToken,
-        },
-        redirectTo: redirectTo,
-      }
-    )
+    // Send a passwordless magic-link (OTP) email via the Supabase Auth REST endpoint.
+    // Using the admin/service key server-side is safe and this will trigger the
+    // 'Your Magic Link' email template instead of the default invite template.
+    const otpUrl = `${supabaseUrl.replace(/\/$/, '')}/auth/v1/otp?provider=email`
 
-    if (inviteError) throw new Error(`Invite error: ${inviteError.message}`)
+    const otpResp = await fetch(otpUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: supabaseServiceKey,
+        Authorization: `Bearer ${supabaseServiceKey}`,
+      },
+      body: JSON.stringify({ email, redirect_to: redirectTo })
+    })
+
+    if (!otpResp.ok) {
+      const body = await otpResp.text().catch(() => '')
+      throw new Error(`Failed to send magic link (OTP). Status: ${otpResp.status} ${otpResp.statusText} - ${body}`)
+    }
 
     // The database triggers will handle creating the profile when the user confirms their email
     return new Response(JSON.stringify({ 
