@@ -7961,17 +7961,34 @@ window.PIR_DEFINITIONS_DATA = [
         console.log('User already exists, will send password reset');
       }
 
-      // Now send password reset email for the user to set their password
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(formData.email, {
-        redirectTo: `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(formData.email)}&site_id=${formData.siteId}&full_name=${encodeURIComponent(formData.fullName)}&role=${formData.siteRole}&role_detail=${encodeURIComponent(formData.jobRole || '')}&reports_to_id=${formData.teamId || ''}`
+      // APPROACH HISTORY:
+      // Previous approach (works but says "Reset Password"):
+      // await supabase.auth.resetPasswordForEmail(formData.email, { redirectTo: '...' })
+      // This worked reliably but showed "Reset your password" in the email which was confusing for new users
+
+      // Current approach: Use magic link (shows "Sign in to CheckLoop")
+      const { error: magicLinkError } = await supabase.auth.signInWithOtp({
+        email: formData.email,
+        options: {
+          shouldCreateUser: false, // User already exists from admin.createUser above
+          emailRedirectTo: `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(formData.email)}&site_id=${formData.siteId}&full_name=${encodeURIComponent(formData.fullName)}&role=${formData.siteRole}&role_detail=${encodeURIComponent(formData.jobRole || '')}&reports_to_id=${formData.teamId || ''}`,
+          data: {
+            full_name: formData.fullName,
+            role: formData.siteRole,
+            role_detail: formData.jobRole,
+            reports_to_id: formData.teamId,
+            site_id: formData.siteId,
+            invited: true
+          }
+        }
       });
 
-      if (resetError) {
-        console.error('Failed to send password reset:', resetError);
-        throw new Error(`Failed to send invitation email: ${resetError.message || 'Unknown error'}`);
+      if (magicLinkError) {
+        console.error('Failed to send magic link:', magicLinkError);
+        throw new Error(`Failed to send invitation email: ${magicLinkError.message || 'Unknown error'}`);
       }
 
-      console.log('Password reset email sent successfully');
+      console.log('Magic link email sent successfully');
 
       // Success!
       const successElement = document.getElementById('add-user-success');
