@@ -901,12 +901,32 @@
         const ensureUnlocked = async (key, condition) => {
           if (!kioskUserId) return;
           const already = statusMap.get(key) === 'unlocked';
-          if (already) { setLocked(key, false); return; }
+          if (already) {
+            // Achievement already unlocked
+            return;
+          }
           if (!condition) return;
           try {
-            await upsertAchievement(supabase, kioskUserId, key, 'unlocked');
-            statusMap.set(key, 'unlocked');
-            setLocked(key, false);
+            // Directly upsert to user_achievements table
+            const { error } = await supabase
+              .from('user_achievements')
+              .upsert({
+                kiosk_user_id: kioskUserId,
+                achievement_key: key,
+                status: 'unlocked',
+                progress_percent: 100,
+                unlocked_at: new Date().toISOString()
+              }, {
+                onConflict: 'kiosk_user_id,achievement_key'
+              });
+
+            if (!error) {
+              statusMap.set(key, 'unlocked');
+              console.log('Achievement unlocked:', key);
+
+              // Reload achievements display
+              location.reload();
+            }
           } catch (e) { console.error('Upsert failed for', key, e); }
         };
 
