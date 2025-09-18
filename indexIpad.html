@@ -944,7 +944,7 @@
         'Site ID': S.siteId || 'Not set',
         'Staff Authenticated': S.staff ? 'YES' : 'NO',
         'Staff Name': S.staff?.name || 'N/A',
-        'Staff kiosk_user_id': S.staff?.kiosk_user_id || 'N/A',
+        'Staff master_user_id': S.staff?.master_user_id || 'N/A',
         'Staff user_id': S.staff?.user_id || 'N/A',
         'Items Scanned': S.scans.length,
         'Scan IDs': S.scans.join(', ') || 'None'
@@ -1390,51 +1390,20 @@ function stopScanTrollyCycle(){
       console.log(`Current user: ${S.user?.email}`);
 
       try {
-        // First, let's check if this user has a PIN set up
-        console.log('Checking for existing PIN setup...');
-        const { data: profileCheck, error: profileError } = await sb
-          .from('profiles')
-          .select('user_id, kiosk_user_id, full_name, site_id')
-          .eq('user_id', S.user.id)
+        // Direct authentication using master_users table
+        console.log('Attempting PIN authentication with master_users...');
+        const { data, error } = await sb
+          .from('master_users')
+          .select('id, auth_user_id, full_name, access_type, role_detail, pin_hash')
           .eq('site_id', S.siteId)
+          .eq('pin_hash', p)  // Direct PIN comparison (consider proper hashing in production)
+          .eq('active', true)  // Only active users
           .single();
 
-        console.log('Profile check:', { profileCheck, profileError });
+        console.log('master_users PIN check response:', { data, error });
 
-        if (!profileCheck || !profileCheck.kiosk_user_id) {
-          console.log('No PIN set up for this user');
-          $('pinMsg').textContent = 'No PIN set up. Please ask admin to set your PIN.';
-          await glowPinError(1000);
-          pin='';
-          pinDots(0);
-          return;
-        }
-
-        // Now try to authenticate with the PIN
-        console.log('Attempting PIN authentication RPC...');
-        const { data, error } = await sb
-          .rpc('authenticate_kiosk_user_with_profiles', {
-            p_site_id: S.siteId,
-            p_pin: p
-          });
-
-        console.log('RPC Response:', { data, error });
-
-        if (error) {
-          console.error('RPC Error:', error);
-          if (error.message.includes('Invalid PIN')) {
-            $('pinMsg').textContent = 'Invalid PIN';
-          } else {
-            $('pinMsg').textContent = `Error: ${error.message}`;
-          }
-          await glowPinError(500);
-          pin='';
-          pinDots(0);
-          return;
-        }
-
-        if (!data || !data.length) {
-          console.log('Invalid PIN - no data returned');
+        if (error || !data) {
+          console.log('Invalid PIN - no matching user found');
           $('pinMsg').textContent = 'Invalid PIN. Click + to reset.';
           await glowPinError(500);
           pin='';
@@ -1442,19 +1411,16 @@ function stopScanTrollyCycle(){
           return;
         }
 
-        // Store the complete staff information including IDs
+        // Store the complete staff information
         console.log('Authentication successful, storing staff data...');
         S.staff = {
-          name: data[0].full_name,
-          role: data[0].role || 'staff',
-          kiosk_user_id: data[0].id,  // The function returns kiosk_user_id as 'id'
-          user_id: data[0].user_id
+          name: data.full_name,
+          role: data.access_type || 'staff',
+          master_user_id: data.id,  // Store the master_users ID instead of kiosk_user_id
+          user_id: data.auth_user_id  // The actual auth user ID
         };
 
         console.log('Staff authenticated:', S.staff);
-
-        // Skip the extra verification since the RPC already validated
-        // The RPC only returns data if the kiosk_user exists and PIN is correct
 
         $('footerWho').textContent = S.staff.name;
         $('pinMsg').textContent = '';
@@ -1465,6 +1431,7 @@ function stopScanTrollyCycle(){
         pinDots(0);
         // glowPinSuccess will navigate after showing the welcome popup
       } catch (e) {
+        console.error('PIN authentication error:', e);
         $('pinMsg').textContent = e.message || String(e);
         await glowPinError(500);
         pin=''; pinDots(0);
@@ -1527,18 +1494,19 @@ function stopScanTrollyCycle(){
       return;
   }
   
-  // Get ALL profiles for this site (not just those with kiosk_user_id)
-  console.log('Loading profiles for site:', S.siteId);
+  // Get ALL staff from master_users for this site
+  console.log('Loading staff from master_users for site:', S.siteId);
   const { data: users, error } = await readClient()
-      .from('profiles')
-      .select('user_id, kiosk_user_id, full_name')
+      .from('master_users')
+      .select('auth_user_id, full_name, email')
       .eq('site_id', S.siteId)
-      .not('full_name', 'is', null)  // Only get profiles with names
+      .not('full_name', 'is', null)  // Only get users with names
+      .eq('active', true)  // Only active users
       .order('full_name');
 
-  console.log('Loaded profiles:', users);
+  console.log('Loaded master_users:', users);
   if (error) {
-      console.error('Error loading profiles:', error);
+      console.error('Error loading master_users:', error);
       $('pinSetupMsg').textContent = 'Could not load staff list.';
       return;
   }
@@ -1546,13 +1514,8 @@ function stopScanTrollyCycle(){
   if (users && users.length > 0) {
       users.forEach(user => {
           const option = document.createElement('option');
-          // Use user_id as the value (since all profiles have this)
-          option.value = user.user_id;
+          option.value = user.auth_user_id;  // Use auth_user_id as the identifier
           option.textContent = user.full_name;
-          // Store kiosk_user_id as data attribute if it exists
-          if (user.kiosk_user_id) {
-              option.setAttribute('data-kiosk-id', user.kiosk_user_id);
-          }
           selectEl.appendChild(option);
       });
   } else {
@@ -1576,7 +1539,7 @@ function stopScanTrollyCycle(){
     $('btnPinSetupSave').addEventListener('click', async () => {
   const msgEl = $('pinSetupMsg');
   msgEl.textContent = 'Saving...';
-  const userId = $('pinSetupUser').value;  // This is now the user_id
+  const userId = $('pinSetupUser').value;  // This is the auth_user_id from master_users
   const newPin = $('pinSetupNew').value;
   const confirmPin = $('pinSetupConfirm').value;
 
@@ -1593,98 +1556,13 @@ function stopScanTrollyCycle(){
       return;
   }
 
-  // Check if user exists in master_users table
-  const { data: masterUser, error: checkError } = await sb
-      .from('master_users')
-      .select('id, auth_user_id, kiosk_user_id')
-      .eq('auth_user_id', userId)
-      .eq('site_id', S.siteId)
-      .maybeSingle();
-
-  if (checkError) {
-      console.error('Error checking master_users:', checkError);
-      // Fall back to old method if master_users doesn't exist
-  }
-
-  let kioskUserId = masterUser?.kiosk_user_id;
-
-  if (!kioskUserId) {
-      // Generate a new kiosk_user_id if needed (for legacy compatibility)
-      const { data: maxId } = await sb
-          .from('master_users')
-          .select('kiosk_user_id')
-          .not('kiosk_user_id', 'is', null)
-          .order('kiosk_user_id', { ascending: false })
-          .limit(1);
-
-      kioskUserId = (maxId && maxId.length > 0 && maxId[0].kiosk_user_id) ? maxId[0].kiosk_user_id + 1 : 1000;
-  }
-
-  // Update master_users with the PIN (store securely)
-  if (masterUser) {
-      // Update existing master_users record
-      const { error: updateError } = await sb
-          .from('master_users')
-          .update({
-              kiosk_user_id: kioskUserId,
-              updated_at: new Date().toISOString()
-          })
-          .eq('auth_user_id', userId)
-          .eq('site_id', S.siteId);
-
-      if (updateError) {
-          console.error('Error updating master_users:', updateError);
-      }
-  } else {
-      // Fall back to profiles if master_users not available
-      const { data: profile, error: profileError } = await sb
-          .from('profiles')
-          .select('*')
-          .eq('user_id', userId)
-          .eq('site_id', S.siteId)
-          .single();
-
-      if (!profileError && profile) {
-          // Create master_users entry
-          const { error: createError } = await sb
-              .from('master_users')
-              .insert({
-                  auth_user_id: userId,
-                  email: profile.email || '',
-                  full_name: profile.full_name,
-                  nickname: profile.nickname,
-                  site_id: S.siteId,
-                  access_type: profile.role === 'admin' ? 'admin' : 'staff',
-                  role_detail: profile.role_detail || profile.role,
-                  active: profile.active !== false,
-                  team_id: profile.team_id,
-                  team_name: profile.team_name,
-                  kiosk_user_id: kioskUserId,
-                  created_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString()
-              });
-
-          if (createError && !createError.message.includes('duplicate')) {
-              console.error('Error creating master_users entry:', createError);
-          }
-      }
-  }
-
-  // Update the master_users table with the PIN directly
-  const pinUpdateData = {
-      kiosk_pin: newPin,
-      kiosk_pin_hash: newPin,  // Store both columns as requested
-      updated_at: new Date().toISOString()
-  };
-
-  // If kiosk_user_id was just set, include it in the update
-  if (kioskUserId && !masterUser?.kiosk_user_id) {
-      pinUpdateData.kiosk_user_id = kioskUserId;
-  }
-
+  // Update the PIN directly in master_users table
   const { error: pinError } = await sb
       .from('master_users')
-      .update(pinUpdateData)
+      .update({
+          pin_hash: newPin,  // Store PIN in pin_hash column (consider hashing in production)
+          updated_at: new Date().toISOString()
+      })
       .eq('auth_user_id', userId)
       .eq('site_id', S.siteId);
 
@@ -1692,7 +1570,7 @@ function stopScanTrollyCycle(){
       console.error('PIN save error:', pinError);
       msgEl.textContent = `Error: ${pinError.message}`;
   } else {
-      console.log('PIN saved successfully for user:', userId, 'with kiosk_id:', kioskUserId);
+      console.log('PIN saved successfully for user:', userId);
       msgEl.textContent = 'PIN updated successfully!';
       toast('PIN Saved!');
       setTimeout(() => {
@@ -1852,35 +1730,17 @@ function stopScanTrollyCycle(){
       debugLog('Initial submission data', submissionData);
 
       // Handle staff_id and user_id based on PIN authentication
-      if (S.staff && S.staff.kiosk_user_id) {
-        debugLog('Staff object found, checking validity', S.staff);
+      if (S.staff && S.staff.master_user_id) {
+        debugLog('Staff object found with master_user_id', S.staff);
 
-        // CRITICAL: Verify the kiosk_user still exists before using it
-        const { data: verifyKiosk, error: verifyError } = await sb
-          .from('kiosk_users')
-          .select('id')
-          .eq('id', S.staff.kiosk_user_id)
-          .eq('site_id', S.siteId)
-          .single();
+        // Since we're using master_users as single source of truth, we can trust the ID
+        // The master_user_id can be used directly as staff_id in submissions
+        submissionData.staff_id = S.staff.master_user_id;
+        debugLog(`Staff ID set from master_users: ${S.staff.master_user_id}`);
 
-        debugLog('Kiosk user verification before submission', { verifyKiosk, verifyError });
-
-        if (!verifyError && verifyKiosk && verifyKiosk.id) {
-          // Valid kiosk_user found, use it
-          submissionData.staff_id = verifyKiosk.id;
-          debugLog(`Staff ID verified and set: ${verifyKiosk.id}`);
-
-          if (S.staff.user_id) {
-            submissionData.user_id = S.staff.user_id;
-            debugLog(`User ID from staff set: ${S.staff.user_id}`);
-          }
-        } else {
-          debugLog('WARNING: Kiosk user not found or invalid, NOT setting staff_id', {
-            error: verifyError,
-            kiosk_user_id: S.staff.kiosk_user_id,
-            site_id: S.siteId
-          });
-          // Don't set staff_id at all - let it be NULL in database
+        if (S.staff.user_id) {
+          submissionData.user_id = S.staff.user_id;
+          debugLog(`User ID from staff set: ${S.staff.user_id}`);
         }
       } else {
         debugLog('No staff authenticated via PIN, staff_id will be NULL');
