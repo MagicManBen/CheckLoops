@@ -2,6 +2,9 @@
 
 // Load and display staff cards with entitlement data
 async function loadStaffEntitlementCards() {
+  console.log('=== Loading Staff Entitlement Cards (v2.1) ===');
+  console.log('Current context:', window.ctx);
+  
   if (!window.supabase) return;
 
   const container = document.getElementById('entitlements-cards-container');
@@ -50,11 +53,21 @@ async function loadStaffEntitlementCards() {
     console.log('Loading staff entitlement cards...');
 
     // Load staff from master_users table (the single source of truth)
-    const { data: profiles, error: profileError } = await window.supabase
+    // Add site filtering based on current user context if available
+    let query = window.supabase
       .from('master_users')
       .select('*')
-      .eq('active', true)  // Only active users
-      .order('full_name');
+      .eq('active', true);  // Only active users
+    
+    // Apply site filtering if context is available
+    if (window.ctx && window.ctx.site_id) {
+      console.log('Filtering by site_id:', window.ctx.site_id);
+      query = query.eq('site_id', window.ctx.site_id);
+    } else {
+      console.log('No site context found, loading all active users');
+    }
+    
+    const { data: profiles, error: profileError } = await query.order('full_name');
 
     if (profileError) {
       console.error('Error loading master_users:', profileError);
@@ -81,68 +94,34 @@ async function loadStaffEntitlementCards() {
     });
     console.log('=== END DEBUGGING ===');
 
-    // Get all entitlements for current year - now keyed by master_users ID
+    // Get all entitlements and working patterns from master_users - single source of truth
     const currentYear = new Date().getFullYear();
-    const { data: entitlements, error: entError } = await window.supabase
-      .from('2_staff_entitlements')
-      .select('*')
-      .eq('year', currentYear);
+    
+    console.log('=== MASTER USERS DATA LOADING ===');
+    console.log('All profile data now comes from master_users table only');
 
-    if (entError) {
-      console.error('Error loading entitlements:', entError);
-    }
-
-    // Get all working patterns - using auth_user_id from master_users
-    const { data: workingPatterns, error: patternError } = await window.supabase
-      .from('3_staff_working_patterns')
-      .select('*');
-
-    if (patternError) {
-      console.error('Error loading working patterns:', patternError);
-    }
-
-    // Get approval status from master_users (holiday_approved column)
-    const { data: approvalData, error: approvalError } = await window.supabase
-      .from('master_users')
-      .select('auth_user_id, holiday_approved')
-      .eq('active', true);
-
-    if (approvalError) {
-      console.error('Error loading approval status:', approvalError);
-    }
-
-    // Create maps for easier lookup
+    // No need to query separate entitlement or working pattern tables
+    // All data is now in master_users table after migration
+    const entitlements = null;
+    const workingPatterns = null;
     const entitlementMap = {};
     const patternMap = {};
     const approvalMap = {};
 
-    if (entitlements) {
-      entitlements.forEach(ent => {
-        entitlementMap[ent.staff_id] = ent;  // staff_id should match master_users.id
-      });
-    }
-
-    if (workingPatterns) {
-      workingPatterns.forEach(pattern => {
-        patternMap[pattern.user_id] = pattern;  // user_id should match master_users.auth_user_id
-      });
-    }
-
-    if (approvalData) {
-      approvalData.forEach(user => {
-        approvalMap[user.auth_user_id] = user.holiday_approved || false;
+    // Create approval map from master_users (holiday_approved column)
+    if (profiles) {
+      profiles.forEach(profile => {
+        approvalMap[profile.auth_user_id] = profile.holiday_approved || false;
       });
     }
     
     // Make sure we're showing the most recent data
-    console.log('Entitlement data:', entitlements);
-    console.log('Working patterns data:', workingPatterns);
+    console.log('Master users profiles loaded:', profiles.length);
+    console.log('All holiday data now consolidated in master_users table');
 
     console.log('Loaded profiles:', profiles.length);
-    console.log('Loaded entitlements:', entitlements?.length || 0);
-    console.log('Loaded patterns:', workingPatterns?.length || 0);
 
-    // Populate role and team filters
+    // Populate role and team filters from master_users data
     const roles = new Set();
     const teams = new Set();
     profiles.forEach(profile => {
@@ -177,49 +156,38 @@ async function loadStaffEntitlementCards() {
     const cardsHTML = `
       <div class="staff-cards-grid" id="staff-cards-grid">
         ${profiles.map(profile => {
-          const ent = entitlementMap[profile.id] || {};
-          const pattern = patternMap[profile.auth_user_id] || {};  // Use auth_user_id from master_users
-          const isApproved = approvalMap[profile.auth_user_id] || false;  // Use auth_user_id from master_users
+          // All data now comes directly from master_users table
+          const isApproved = profile.holiday_approved || false;
           const isGP = profile.is_gp;
           const unit = isGP ? 'sessions' : 'hrs';
 
-          // Get weekly totals - first try from the entitlements table
+          // Get weekly totals directly from master_users
           let weeklyTotal = 0;
           
-          // First check if we have weekly values in the entitlements table
-          if (ent) {
-            if (isGP && ent.weekly_sessions !== null && ent.weekly_sessions !== undefined) {
-              weeklyTotal = parseFloat(ent.weekly_sessions || 0);
-            } else if (!isGP && ent.weekly_hours !== null && ent.weekly_hours !== undefined) {
-              weeklyTotal = parseFloat(ent.weekly_hours || 0);
-            }
+          if (isGP) {
+            weeklyTotal = parseFloat(profile.weekly_sessions || profile.total_sessions || 0);
+          } else {
+            weeklyTotal = parseFloat(profile.weekly_hours || profile.total_hours || 0);
           }
           
-          // If no value in entitlements, calculate from working patterns
-          if (weeklyTotal === 0 && pattern) {
+          // If no weekly total, calculate from daily values in master_users
+          if (weeklyTotal === 0) {
             const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
             days.forEach(day => {
               const fieldName = isGP ? `${day}_sessions` : `${day}_hours`;
-              weeklyTotal += parseFloat(pattern[fieldName] || 0);
+              weeklyTotal += parseFloat(profile[fieldName] || 0);
             });
-            
-            // Use total_hours or total_sessions if available
-            if (isGP && pattern.total_sessions !== null && pattern.total_sessions !== undefined) {
-              weeklyTotal = parseFloat(pattern.total_sessions);
-            } else if (!isGP && pattern.total_hours !== null && pattern.total_hours !== undefined) {
-              weeklyTotal = parseFloat(pattern.total_hours);
-            }
           }
 
-          // Get entitlement values
-          const multiplier = ent?.multiplier || 10;
-          const calculated = isGP ? ent?.calculated_sessions : ent?.calculated_hours;
-          const override = ent?.override;
+          // Get entitlement values directly from master_users
+          const multiplier = profile.holiday_multiplier || 6;
+          const calculated = isGP ? profile.calculated_sessions : profile.calculated_hours;
+          const override = profile.manual_override ? (isGP ? profile.override_sessions : profile.override_hours) : null;
           const final = override !== null ? override : (calculated || 0);
           
-          // For staff, get booked and remaining values
-          const booked = isGP ? profile.total_booked_sessions || 0 : profile.total_booked_hours || 0;
-          const remaining = isGP ? profile.remaining_sessions || 0 : profile.remaining_hours || 0;
+          // Get usage and remaining from master_users
+          const booked = isGP ? profile.holidays_used_sessions || 0 : profile.holidays_used_hours || 0;
+          const remaining = final - booked;
 
           // Format hours as HH:MM for display
           const formatHours = (val) => {
@@ -367,18 +335,9 @@ async function showStaffDetailModal(staffId, userId, isGP) {
       .eq('id', staffId)
       .single();
 
-    const { data: entitlement } = await supabase
-      .from('2_staff_entitlements')
-      .select('*')
-      .eq('staff_id', staffId)
-      .eq('year', new Date().getFullYear())
-      .maybeSingle();
-
-    const { data: workingPattern } = await supabase
-      .from('3_staff_working_patterns')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
+    // All data is now in master_users - no need for separate queries
+    const entitlement = profile; // Use profile data directly
+    const workingPattern = profile; // Use profile data directly
 
     if (!profile) {
       throw new Error('Staff profile not found');
@@ -753,40 +712,32 @@ async function saveWorkingPatternFromModal(userId, isGP) {
       payload.total_sessions = 0; // Staff don't track sessions
     }
     
-    console.log('Saving working pattern from modal:', payload);
+    console.log('Saving working pattern to master_users:', payload);
     
-    // Save to database
+    // Save to master_users instead of separate table
     const { error } = await supabase
-      .from('3_staff_working_patterns')
-      .upsert(payload, { onConflict: 'user_id' });
+      .from('master_users')
+      .update(payload)
+      .eq('auth_user_id', userId);
     
     if (error) {
       throw error;
     }
     
-    // Now update the staff entitlement weekly values
-    const { data: staffProfile } = await supabase
-      .from('1_staff_holiday_profiles')
-      .select('id')
-      .eq('user_id', userId)
+    // Update entitlement values in master_users as well
+    const currentYear = new Date().getFullYear();
+    
+    // Get current user data from master_users
+    const { data: currentUser } = await supabase
+      .from('master_users')
+      .select('*')
+      .eq('auth_user_id', userId)
       .single();
       
-    if (staffProfile) {
-      staffId = staffProfile.id;
-      const currentYear = new Date().getFullYear();
-      
-      // Get the current entitlement record
-      const { data: entitlement } = await supabase
-        .from('2_staff_entitlements')
-        .select('*')
-        .eq('staff_id', staffId)
-        .eq('year', currentYear)
-        .maybeSingle();
-      
+    if (currentUser) {
       // Update or create entitlement record with new weekly values
       const entitlementPayload = {
-        staff_id: staffId,
-        year: currentYear,
+        holiday_year: currentYear,
         updated_at: new Date().toISOString()
       };
       
@@ -798,30 +749,29 @@ async function saveWorkingPatternFromModal(userId, isGP) {
       }
       
       // Keep existing multiplier and override if present
-      if (entitlement) {
-        entitlementPayload.multiplier = entitlement.multiplier || 10;
-        if (entitlement.override !== null) {
-          entitlementPayload.override = entitlement.override;
-        }
+      entitlementPayload.holiday_multiplier = currentUser.holiday_multiplier || 10;
+      if (currentUser.manual_override !== null) {
+        entitlementPayload.manual_override = currentUser.manual_override;
       }
       
       // Calculate the new entitlement if there's no override
-      const multiplier = entitlementPayload.multiplier || 10;
+      const multiplier = entitlementPayload.holiday_multiplier || 10;
       if (isGP) {
         entitlementPayload.calculated_sessions = total * multiplier;
       } else {
         entitlementPayload.calculated_hours = total * multiplier;
       }
       
-      console.log('Updating entitlement with payload:', entitlementPayload);
+      console.log('Updating master_users with entitlement payload:', entitlementPayload);
       
-      // Update the entitlement record
+      // Update the master_users record
       const { error: entError } = await supabase
-        .from('2_staff_entitlements')
-        .upsert(entitlementPayload, { onConflict: 'staff_id,year' });
+        .from('master_users')
+        .update(entitlementPayload)
+        .eq('auth_user_id', userId);
       
       if (entError) {
-        console.error('Error updating entitlement record:', entError);
+        console.error('Error updating master_users entitlement:', entError);
       }
     }
     
@@ -829,15 +779,13 @@ async function saveWorkingPatternFromModal(userId, isGP) {
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     // Refresh the data in the modal
-    if (staffId) {
-      // Get the updated entitlement record
-      const currentYear = new Date().getFullYear();
+    if (currentUser) {
+      // Get the updated entitlement record from master_users
       const { data: updatedEntitlement } = await supabase
-        .from('2_staff_entitlements')
+        .from('master_users')
         .select('*')
-        .eq('staff_id', staffId)
-        .eq('year', currentYear)
-        .maybeSingle();
+        .eq('auth_user_id', userId)
+        .single();
         
       // Update the calculated entitlement display in the modal
       const calculatedEl = document.getElementById('calculated-entitlement');
@@ -928,45 +876,43 @@ async function saveEntitlementFromModal(staffId, isGP) {
       }
     }
     
-    // Get weekly values from database
-    const { data: currentEntitlement } = await supabase
-      .from('2_staff_entitlements')
-      .select('weekly_hours, weekly_sessions')
-      .eq('staff_id', staffId)
-      .eq('year', new Date().getFullYear())
-      .maybeSingle();
+    // Get weekly values from master_users
+    const { data: currentUser } = await supabase
+      .from('master_users')
+      .select('weekly_hours, weekly_sessions, auth_user_id')
+      .eq('id', staffId)
+      .single();
       
     const entitlementData = {
-      staff_id: parseInt(staffId),
-      year: new Date().getFullYear(),
-      multiplier: multiplier,
-      override: override,
+      holiday_multiplier: multiplier,
+      manual_override: override,
       updated_at: new Date().toISOString()
     };
     
-    // Keep existing weekly values
-    if (currentEntitlement) {
-      if (isGP && currentEntitlement.weekly_sessions !== null) {
-        entitlementData.weekly_sessions = currentEntitlement.weekly_sessions;
+    // Keep existing weekly values and calculate new entitlement
+    if (currentUser) {
+      if (isGP && currentUser.weekly_sessions !== null) {
+        entitlementData.weekly_sessions = currentUser.weekly_sessions;
         // Calculate new value if no override
         if (override === null) {
-          entitlementData.calculated_sessions = currentEntitlement.weekly_sessions * multiplier;
+          entitlementData.calculated_sessions = currentUser.weekly_sessions * multiplier;
         }
-      } else if (!isGP && currentEntitlement.weekly_hours !== null) {
-        entitlementData.weekly_hours = currentEntitlement.weekly_hours;
+      } else if (!isGP && currentUser.weekly_hours !== null) {
+        entitlementData.weekly_hours = currentUser.weekly_hours;
         // Calculate new value if no override
         if (override === null) {
-          entitlementData.calculated_hours = currentEntitlement.weekly_hours * multiplier;
+          entitlementData.calculated_hours = currentUser.weekly_hours * multiplier;
         }
       }
     }
     
-    console.log('Saving entitlement from modal:', entitlementData);
+    console.log('Saving entitlement to master_users:', entitlementData);
     
-    // Save to database
+    // Save to master_users
     const { error } = await supabase
-      .from('2_staff_entitlements')
-      .upsert(entitlementData, { onConflict: 'staff_id,year' });
+      .from('master_users')
+      .update(entitlementData)
+      .eq('id', staffId);
     
     if (error) {
       throw error;
@@ -977,11 +923,10 @@ async function saveEntitlementFromModal(staffId, isGP) {
     
     // Refresh the data in the modal
     const { data: updatedEntitlement } = await supabase
-      .from('2_staff_entitlements')
+      .from('master_users')
       .select('*')
-      .eq('staff_id', staffId)
-      .eq('year', new Date().getFullYear())
-      .maybeSingle();
+      .eq('id', staffId)
+      .single();
       
     // Update the calculated entitlement display in the modal
     if (calculatedEl && updatedEntitlement) {

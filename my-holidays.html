@@ -289,40 +289,18 @@
           role: roleDetail.charAt(0).toUpperCase() + roleDetail.slice(1)
         });
 
-        // Load holiday data from holiday_summary view
+        // Load holiday data from master_users (single source of truth)
         async function loadHolidayData() {
           console.log('[my-holidays] Loading holiday data for user:', user.email);
 
-          // Get data from holiday_summary view (or fallback to table if view doesn't exist)
-          let holidaySummary = null;
-          let summaryError = null;
-
-          // Try the view first
-          const viewResult = await supabase
-            .from('holiday_summary')
+          // Get all holiday data directly from master_users table
+          const { data: holidaySummary, error: summaryError } = await supabase
+            .from('master_users')
             .select('*')
-            .eq('user_id', user.id)
-            .eq('year', new Date().getFullYear())
-            .maybeSingle();
+            .eq('auth_user_id', user.id)
+            .single();
 
-          if (!viewResult.error || viewResult.error.code !== '42P01') {
-            // View exists, use its result
-            holidaySummary = viewResult.data;
-            summaryError = viewResult.error;
-            console.log('[my-holidays] Holiday summary result:', { holidaySummary, summaryError });
-          } else {
-            // View doesn't exist, fallback to direct table query
-            console.log('[my-holidays] View not found, using direct table query');
-            const { data: profileData, error: profileError } = await supabase
-              .from('1_staff_holiday_profiles')
-              .select('*')
-              .eq('user_id', user.id)
-              .eq('year', new Date().getFullYear())
-              .maybeSingle();
-
-            holidaySummary = profileData;
-            summaryError = profileError;
-          }
+          console.log('[my-holidays] Master users result:', { holidaySummary, summaryError });
 
           if (!holidaySummary) {
             document.getElementById('holidays').innerHTML = `
@@ -336,15 +314,28 @@
             return;
           }
 
-          // Get working pattern for calculations
-          const { data: workingPattern } = await supabase
-            .from('3_staff_working_patterns')
-            .select('*')
-            .eq('user_id', user.id)
-            .maybeSingle();
-
-          window.workingPattern = workingPattern;
+          // All working pattern data is now in master_users
           window.isGP = holidaySummary.is_gp;
+          
+          // Store working pattern data from master_users for calculations
+          window.workingPattern = {
+            monday_hours: holidaySummary.monday_hours || 0,
+            tuesday_hours: holidaySummary.tuesday_hours || 0,
+            wednesday_hours: holidaySummary.wednesday_hours || 0,
+            thursday_hours: holidaySummary.thursday_hours || 0,
+            friday_hours: holidaySummary.friday_hours || 0,
+            saturday_hours: holidaySummary.saturday_hours || 0,
+            sunday_hours: holidaySummary.sunday_hours || 0,
+            monday_sessions: holidaySummary.monday_sessions || 0,
+            tuesday_sessions: holidaySummary.tuesday_sessions || 0,
+            wednesday_sessions: holidaySummary.wednesday_sessions || 0,
+            thursday_sessions: holidaySummary.thursday_sessions || 0,
+            friday_sessions: holidaySummary.friday_sessions || 0,
+            saturday_sessions: holidaySummary.saturday_sessions || 0,
+            sunday_sessions: holidaySummary.sunday_sessions || 0,
+            total_hours: holidaySummary.total_hours || 0,
+            total_sessions: holidaySummary.total_sessions || 0
+          };
 
           // Helper function to format hours as HH:MM
           function formatHours(decimalHours) {
@@ -359,19 +350,19 @@
 
           let totalAllowance, usedAmount, remaining;
 
-          if (isGP) {
-            // GP uses sessions
-            totalAllowance = holidaySummary.entitlement_sessions || 0;
-            usedAmount = holidaySummary.total_booked_sessions || 0;
-            remaining = holidaySummary.remaining_sessions || 0;
+          if (window.isGP) {
+            // GP uses sessions - get from master_users final_annual_sessions
+            totalAllowance = holidaySummary.final_annual_sessions || 0;
+            usedAmount = holidaySummary.holidays_used_sessions || 0;
+            remaining = totalAllowance - usedAmount;
           } else {
-            // Non-GP uses hours
-            totalAllowance = holidaySummary.entitlement_hours || 0;
-            usedAmount = holidaySummary.total_booked_hours || 0;
-            remaining = holidaySummary.remaining_hours || 0;
+            // Non-GP uses hours - get from master_users final_annual_hours  
+            totalAllowance = holidaySummary.final_annual_hours || 0;
+            usedAmount = holidaySummary.holidays_used_hours || 0;
+            remaining = totalAllowance - usedAmount;
           }
 
-          if (isGP) {
+          if (window.isGP) {
             // GP uses sessions
 
             document.getElementById('total-allowance').textContent = totalAllowance;

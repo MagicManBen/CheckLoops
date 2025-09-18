@@ -132,7 +132,74 @@
       document.getElementById('avatar-next').addEventListener('click', async ()=> { if (window.avatarDirty){ const ok = await saveAvatar(); if(!ok) return; } step(5); renderWorkingPattern(); });
       function renderWorkingPattern(){ const c=document.getElementById('working-form'); c.innerHTML=''; const days=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']; const isGP = (window.selectedRole||'').toLowerCase().includes('doctor') || (window.selectedRole||'').toLowerCase().includes('gp'); c.insertAdjacentHTML('beforeend', `<div class="tiny-note">${isGP ? 'Enter number of sessions (0-2) per day.' : 'Enter hours (HH:MM) — defaults Mon-Fri 7.5h.'}</div>`); days.forEach((d,i)=>{ const id=d.toLowerCase(); const defaultVal = isGP ? '' : (i<5 ? '07:30' : ''); c.insertAdjacentHTML('beforeend', `<div class="working-hour-card"><label for="${id}-val">${d}</label>${isGP ? `<select id="${id}-val"><option value="0">0</option><option value="1">1</option><option value="2" ${i<5?'selected':''}>2</option></select><span class="tiny-note">sessions</span>` : `<input type="time" id="${id}-val" value="${defaultVal}" step="1800" max="12:00"><span class="tiny-note">hours</span>`}</div>`); }); }
       document.getElementById('working-back').addEventListener('click', ()=> step(4));
-      document.getElementById('complete-setup').addEventListener('click', async ()=> { const msg=document.getElementById('working-msg'); msg.textContent='Saving...'; const isGP = (window.selectedRole||'').toLowerCase().includes('doctor') || (window.selectedRole||'').toLowerCase().includes('gp'); const days=['monday','tuesday','wednesday','thursday','friday','saturday','sunday']; const patternData={ user_id:user.id, site_id: siteId }; let totalHours=0; let totalSessions=0; for(const d of days){ if(isGP){ const sessions=parseInt(document.getElementById(`${d}-val`).value||'0'); patternData[`${d}_sessions`]=sessions; patternData[`${d}_hours`]=0; totalSessions+=sessions; } else { const timeValue=document.getElementById(`${d}-val`).value||'00:00'; const [h,m]=timeValue.split(':').map(Number); const decimal=h+(m/60); patternData[`${d}_hours`]=decimal; patternData[`${d}_sessions`]=0; totalHours+=decimal; } } patternData.total_holiday_entitlement = isGP ? 20 : 25; patternData.approved_holidays_used=0; try { await supabase.from('3_staff_working_patterns').upsert(patternData, { onConflict:'user_id', ignoreDuplicates:false }); try { const fullNameSaved = fullName; const email = user.email; const holidayProfile={ user_id:user.id, full_name:fullNameSaved, role: window.selectedRole || 'Staff', is_gp: isGP, email, team_name: window.selectedTeamName || null, site_id: siteId, created_at:new Date().toISOString(), updated_at:new Date().toISOString() }; const { data: profileData } = await supabase.from('1_staff_holiday_profiles').upsert(holidayProfile, { onConflict:'email', ignoreDuplicates:false }).select(); if (profileData && profileData[0]?.id){ const currentYear=new Date().getFullYear(); const entitlement={ staff_profile_id: profileData[0].id, year: currentYear, annual_hours: isGP? null : totalHours*52, annual_sessions: isGP? totalSessions*52 : null, annual_education_sessions: isGP ? 10 : null }; await supabase.from('2_staff_entitlements').upsert(entitlement, { onConflict:'staff_profile_id,year', ignoreDuplicates:false }); } } catch(e){ console.warn('holiday profile create failed', e); } try { await supabase.auth.updateUser({ data: { welcome_completed_at: new Date().toISOString(), onboarding_required: false } }); await supabase.from('profiles').update({ onboarding_complete: true }).eq('user_id', user.id); } catch(e){ console.warn('completion meta update failed', e); } step(6); setTimeout(()=>{ sessionStorage.removeItem('forceOnboarding'); window.location.href='staff.html'; }, 800); } catch(e){ console.warn('pattern save failed', e); msg.textContent='Save failed'; }
+      document.getElementById('complete-setup').addEventListener('click', async ()=> { 
+        const msg=document.getElementById('working-msg'); 
+        msg.textContent='Saving...'; 
+        const isGP = (window.selectedRole||'').toLowerCase().includes('doctor') || (window.selectedRole||'').toLowerCase().includes('gp'); 
+        const days=['monday','tuesday','wednesday','thursday','friday','saturday','sunday']; 
+        const patternData={ 
+          auth_user_id: user.id, 
+          site_id: siteId,
+          holiday_year: new Date().getFullYear(),
+          weekly_hours: 0,
+          weekly_sessions: 0,
+          total_hours: 0,
+          total_sessions: 0
+        }; 
+        
+        let totalHours=0; 
+        let totalSessions=0; 
+        
+        for(const d of days){
+          if(isGP){
+            const sessions=parseInt(document.getElementById(`${d}-val`).value||'0'); 
+            patternData[`${d}_sessions`]=sessions; 
+            patternData[`${d}_hours`]=0; 
+            totalSessions+=sessions; 
+          } else { 
+            const timeValue=document.getElementById(`${d}-val`).value||'00:00'; 
+            const [h,m]=timeValue.split(':').map(Number); 
+            const decimal=h+(m/60); 
+            patternData[`${d}_hours`]=decimal; 
+            patternData[`${d}_sessions`]=0; 
+            totalHours+=decimal; 
+          } 
+        } 
+        
+        // Set totals
+        patternData.total_hours = totalHours;
+        patternData.total_sessions = totalSessions;
+        patternData.weekly_hours = totalHours;
+        patternData.weekly_sessions = totalSessions;
+        
+        // Set holiday entitlement
+        patternData.holiday_multiplier = 10;
+        if (isGP) {
+          patternData.calculated_sessions = totalSessions * 10;
+        } else {
+          patternData.calculated_hours = totalHours * 10;
+        }
+        
+        try { 
+          // Update master_users with working pattern and holiday data
+          await supabase.from('master_users').update(patternData).eq('auth_user_id', user.id); 
+          
+          try { 
+            await supabase.auth.updateUser({ data: { welcome_completed_at: new Date().toISOString(), onboarding_required: false } }); 
+            await supabase.from('profiles').update({ onboarding_complete: true }).eq('user_id', user.id); 
+          } catch(e){ 
+            console.warn('completion meta update failed', e); 
+          } 
+          
+          step(6); 
+          setTimeout(()=>{ 
+            sessionStorage.removeItem('forceOnboarding'); 
+            window.location.href='staff.html'; 
+          }, 800); 
+        } catch(e){ 
+          console.warn('pattern save failed', e); 
+          msg.textContent='Save failed'; 
+        }
       });
       function burstConfetti(){ const conf=document.getElementById('confetti'); if(!conf) return; const colors=['#60a5fa','#a78bfa','#34d399','#f472b6','#fbbf24']; for (let i=0;i<36;i++){ const bit=document.createElement('div'); bit.className='bit'; bit.style.left=(10+Math.random()*80)+'vw'; bit.style.top='-6px'; bit.style.background=colors[Math.floor(Math.random()*colors.length)]; bit.style.animationDelay=(Math.random()*120)+'ms'; conf.appendChild(bit); setTimeout(()=> bit.remove(), 1200); } }
     } catch(e){ if(String(e.message||'').includes('NO_SESSION')){ window.location.replace('home.html'); } else { console.warn('welcome init error', e); } }
@@ -972,20 +1039,20 @@
                 }
               }
 
-              // 4. Update 1_staff_holiday_profiles with avatar and latest info
+              // 4. Update master_users with avatar and latest info
               try {
                 // First check if profile exists
                 const { data: existingProfile } = await supabase
-                  .from('1_staff_holiday_profiles')
+                  .from('master_users')
                   .select('id')
                   .eq('email', user.email)
                   .maybeSingle();
 
                 if (existingProfile) {
                   // Update existing profile with avatar
-                  console.log('[saveAvatarToSupabase] Updating holiday profile with avatar');
+                  console.log('[saveAvatarToSupabase] Updating master_users with avatar');
                   await supabase
-                    .from('1_staff_holiday_profiles')
+                    .from('master_users')
                     .update({
                       avatar_url: avatarUrl,
                       role: window.selectedRole || user?.raw_user_meta_data?.role || 'Staff',
@@ -1234,17 +1301,17 @@
                 }
               }
               
-              // 4. Update holiday profiles table
+              // 4. Update master_users table
               try {
                 await supabase
-                  .from('1_staff_holiday_profiles')
+                  .from('master_users')
                   .update({ 
                     avatar_url: js.full_body_url,
                     updated_at: new Date().toISOString()
                   })
                   .eq('email', session.user.email);
               } catch(e) {
-                console.warn('Holiday profiles table update failed:', e);
+                console.warn('master_users table update failed:', e);
               }
               
               window.currentSavedAvatarUrl = js.full_body_url;
@@ -1520,13 +1587,11 @@
           patternData.approved_holidays_used = 0;
           
           try {
-            // Insert or update working pattern
+            // Insert or update working pattern in master_users
             const { error } = await globalSupabase
-              .from('3_staff_working_patterns')
-              .upsert(patternData, { 
-                onConflict: 'user_id',
-                ignoreDuplicates: false 
-              });
+              .from('master_users')
+              .update(patternData)
+              .eq('auth_user_id', user.id);
             
             if (error) {
               console.error('Error saving working pattern:', error);
@@ -1535,7 +1600,7 @@
             
             console.log('Working pattern saved successfully');
             
-            // Now populate the 1_staff_holiday_profiles table with all the information we have
+            // Now populate the master_users table with all the information we have
             try {
               // Get the full name from various sources
               const fullName = globalUserProfile?.full_name || 
@@ -1565,13 +1630,11 @@
               
               console.log('Creating holiday profile:', holidayProfileData);
               
-              // Insert into 1_staff_holiday_profiles table
+              // Insert into master_users table
               const { data: profileData, error: profileError } = await globalSupabase
-                .from('1_staff_holiday_profiles')
-                .upsert(holidayProfileData, {
-                  onConflict: 'email',  // Use email as unique identifier
-                  ignoreDuplicates: false
-                })
+                .from('master_users')
+                .update(holidayProfileData)
+                .eq('auth_user_id', user.id)
                 .select();
               
               if (profileError) {
@@ -1592,18 +1655,8 @@
                     annual_education_sessions: isGP ? 10 : null // Default education sessions for GPs
                   };
                   
-                  const { error: entitlementError } = await globalSupabase
-                    .from('2_staff_entitlements')
-                    .upsert(entitlementData, {
-                      onConflict: 'staff_profile_id,year',
-                      ignoreDuplicates: false
-                    });
-                  
-                  if (entitlementError) {
-                    console.error('Error creating entitlement:', entitlementError);
-                  } else {
-                    console.log('Entitlement record created successfully');
-                  }
+                  // Entitlement data is now stored directly in master_users - no separate table needed
+                  console.log('All holiday data stored in master_users successfully');
                 }
               }
             } catch (holidayError) {
