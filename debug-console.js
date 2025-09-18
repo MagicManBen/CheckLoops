@@ -9,7 +9,9 @@
     const DEBUG_ENABLED_KEY = 'checkloop_debug_enabled';
 
     let debugLogs = JSON.parse(localStorage.getItem(DEBUG_STORAGE_KEY) || '[]');
-    let isEnabled = localStorage.getItem(DEBUG_ENABLED_KEY) !== 'false';
+    // Default: disabled/off unless user starts recording
+    let isEnabled = false;
+    let recording = false;
 
     // Create debug console HTML
     const consoleHTML = `
@@ -72,9 +74,9 @@
                 ">
                     <span style="font-weight: bold;">🐛 Debug Console</span>
                     <div>
-                        <span id="debug-log-count" style="margin-right: 15px; opacity: 0.9;">
-                            0 logs
-                        </span>
+                        <span id="debug-log-count" style="margin-right: 8px; opacity: 0.9;">0 logs</span>
+                        <button id="debug-start" style="margin-right:6px;background:#10b981;border:none;padding:6px 10px;border-radius:6px;color:white;cursor:pointer;font-size:11px;">Start</button>
+                        <button id="debug-stop" style="margin-right:6px;background:#ef4444;border:none;padding:6px 10px;border-radius:6px;color:white;cursor:pointer;font-size:11px;display:none">Stop</button>
                         <button id="debug-save" style="
                             background: rgba(76, 175, 80, 0.3);
                             border: 1px solid rgba(76, 175, 80, 0.5);
@@ -181,21 +183,19 @@
         // Update log display
         updateLogDisplay();
 
-        // Log page load
-        addLog('nav', `Page loaded: ${window.location.pathname}`, {
-            url: window.location.href,
-            timestamp: new Date().toISOString()
-        });
+        // Do not automatically record on load — wait for user to Start
     }
 
     // Setup event handlers
     function setupEventHandlers() {
-        const toggle = document.getElementById('debug-toggle');
+    const toggle = document.getElementById('debug-toggle');
         const panel = document.getElementById('debug-panel');
         const close = document.getElementById('debug-close');
         const clear = document.getElementById('debug-clear');
         const copy = document.getElementById('debug-copy');
         const save = document.getElementById('debug-save');
+    const startBtn = document.getElementById('debug-start');
+    const stopBtn = document.getElementById('debug-stop');
 
         toggle.addEventListener('click', () => {
             panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
@@ -293,26 +293,40 @@ ${JSON.stringify(reportData, null, 2)}
                 checkbox.addEventListener('change', updateLogDisplay);
             }
         });
+
+        // Start/Stop recording
+        if (startBtn && stopBtn) {
+            startBtn.addEventListener('click', () => {
+                recording = true;
+                startBtn.style.display = 'none';
+                stopBtn.style.display = 'inline-block';
+                // Hook behaviors
+                interceptConsole();
+                interceptFetch();
+                interceptSupabase();
+                trackPageEvents();
+                addLog('success', 'Recording started');
+                localStorage.setItem(DEBUG_ENABLED_KEY, 'true');
+            });
+
+            stopBtn.addEventListener('click', () => {
+                recording = false;
+                stopBtn.style.display = 'none';
+                startBtn.style.display = 'inline-block';
+                // Unhook console and fetch by reloading page state (safe fallback)
+                try { window.location.reload(); } catch(e) { /* ignore */ }
+                localStorage.removeItem(DEBUG_ENABLED_KEY);
+            });
+        }
     }
 
     // Add a log entry
     function addLog(type, message, details = null) {
+        if (!recording) return; // only collect logs while user has started recording
         const timestamp = new Date().toISOString();
-        const logEntry = {
-            timestamp,
-            type,
-            message,
-            details,
-            page: window.location.pathname
-        };
-
+        const logEntry = { timestamp, type, message, details, page: window.location.pathname };
         debugLogs.push(logEntry);
-
-        // Keep only last 500 logs
-        if (debugLogs.length > 500) {
-            debugLogs = debugLogs.slice(-500);
-        }
-
+        if (debugLogs.length > 500) debugLogs = debugLogs.slice(-500);
         localStorage.setItem(DEBUG_STORAGE_KEY, JSON.stringify(debugLogs));
         updateLogDisplay();
     }
@@ -604,17 +618,20 @@ ${JSON.stringify(reportData, null, 2)}
     }
 
     function init() {
+        // Always inject UI but do not start recording automatically
         injectConsole();
-        interceptSupabase();
-        interceptConsole();
-        interceptFetch();
-        trackPageEvents();
+        updateLogDisplay();
 
-        // Log initialization
-        addLog('success', 'Debug console initialized', {
-            logsCount: debugLogs.length,
-            page: window.location.pathname
-        });
+        // If user previously enabled recording, auto-start
+        try {
+            const was = localStorage.getItem(DEBUG_ENABLED_KEY);
+            if (was === 'true') {
+                const startBtn = document.getElementById('debug-start');
+                if (startBtn) startBtn.click();
+            }
+        } catch (e) {
+            // ignore storage errors
+        }
     }
 
     // Expose debug functions globally
