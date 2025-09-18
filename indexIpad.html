@@ -1670,17 +1670,27 @@ function stopScanTrollyCycle(){
       }
   }
 
-  // Now set the PIN using the RPC function
-  const { error } = await sb
-      .rpc('set_profile_pin', {
-          p_user_id: userId,
-          p_site_id: S.siteId,
-          p_pin: newPin
-      });
+  // Update the master_users table with the PIN directly
+  const pinUpdateData = {
+      kiosk_pin: newPin,
+      kiosk_pin_hash: newPin,  // Store both columns as requested
+      updated_at: new Date().toISOString()
+  };
 
-  if (error) {
-      console.error('PIN save error:', error);
-      msgEl.textContent = `Error: ${error.message}`;
+  // If kiosk_user_id was just set, include it in the update
+  if (kioskUserId && !masterUser?.kiosk_user_id) {
+      pinUpdateData.kiosk_user_id = kioskUserId;
+  }
+
+  const { error: pinError } = await sb
+      .from('master_users')
+      .update(pinUpdateData)
+      .eq('auth_user_id', userId)
+      .eq('site_id', S.siteId);
+
+  if (pinError) {
+      console.error('PIN save error:', pinError);
+      msgEl.textContent = `Error: ${pinError.message}`;
   } else {
       console.log('PIN saved successfully for user:', userId, 'with kiosk_id:', kioskUserId);
       msgEl.textContent = 'PIN updated successfully!';
