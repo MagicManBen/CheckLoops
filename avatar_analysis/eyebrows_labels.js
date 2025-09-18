@@ -1,0 +1,17 @@
+const eyebrowsLabels = {
+  "variant01": "Eyebrows: Boldly Angled",
+  "variant02": "Eyebrows: Fiercely Slanted",
+  "variant03": "Eyebrows: Subtle Arch",
+  "variant04": "Eyebrows: Slightly Curved",
+  "variant05": "Eyebrows: Quirky Flick",
+  "variant06": "Eyebrows: Playfully Raised",
+  "variant07": "Eyebrows: Subdued Lift",
+  "variant08": "Eyebrows: Mildly Furrowed",
+  "variant09": "Eyebrows: Mildly Arched",
+  "variant10": "Eyebrows: Gently Straightened",
+  "variant11": "Eyebrows: Slightly Drooped",
+  "variant12": "Eyebrows: Softly Straightened",
+  "variant13": "Eyebrows: Style 13",
+  "variant14": "Eyebrows: Lightly Tapered",
+  "variant15": "Eyebrows: Playfully Asymmetrical"
+};
