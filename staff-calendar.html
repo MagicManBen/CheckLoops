@@ -122,7 +122,15 @@
       try{
         const { session, profileRow } = await requireStaffSession(supabase);
         const user = session.user;
-        const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
+        let siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
+        if (!siteId) {
+          const { data: meRow } = await supabase
+            .from('master_users')
+            .select('site_id')
+            .eq('auth_user_id', user.id)
+            .single();
+          siteId = meRow?.site_id || null;
+        }
         setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: (profileRow?.role || 'Staff') });
 
         // Load teams
@@ -130,53 +138,44 @@
         const teamSel = document.getElementById('team-filter');
         (teams||[]).forEach(t=>{ const o=document.createElement('option'); o.value=String(t.id); o.textContent=t.name; teamSel.appendChild(o); });
 
-        // Build staff list by site using profiles, merging master_users details
-        const { data: profileRows } = await supabase
-          .from('profiles')
-          .select('user_id, full_name, email, site_id, role')
+        // Build staff list by site using master_users only (profiles table not required)
+        const { data: muRows } = await supabase
+          .from('master_users')
+          .select(`
+            auth_user_id, full_name, email, site_id, role, team_id, team_name, avatar_url, is_gp,
+            monday_hours, tuesday_hours, wednesday_hours, thursday_hours, friday_hours, saturday_hours, sunday_hours,
+            monday_sessions, tuesday_sessions, wednesday_sessions, thursday_sessions, friday_sessions, saturday_sessions, sunday_sessions
+          `)
           .eq('site_id', siteId);
 
-        const userIds = (profileRows||[]).map(p=>p.user_id).filter(Boolean);
-        let masterById = new Map();
-        if (userIds.length) {
-          const { data: masterRows } = await supabase
-            .from('master_users')
-            .select('auth_user_id, full_name, email, team_id, team_name, avatar_url, is_gp, monday_hours, tuesday_hours, wednesday_hours, thursday_hours, friday_hours, saturday_hours, sunday_hours, monday_sessions, tuesday_sessions, wednesday_sessions, thursday_sessions, friday_sessions, saturday_sessions, sunday_sessions')
-            .in('auth_user_id', userIds);
-          (masterRows||[]).forEach(m => { if (m.auth_user_id) masterById.set(m.auth_user_id, m); });
-        }
-
-        const people = (profileRows||[]).map((p, idx)=>{
-          const m = masterById.get(p.user_id) || {};
-          return {
-            id: p.user_id,
-            key: String(p.user_id || p.email || p.full_name || `user-${idx}`),
-            name: m.full_name || p.full_name || p.email || 'Unknown',
-            email: m.email || p.email,
-            teamId: m.team_id || null,
-            teamName: m.team_name || null,
-            avatar: m.avatar_url || null,
-            isGP: !!m.is_gp,
-            wpHours: {
-              0: Number(m.sunday_hours||0),
-              1: Number(m.monday_hours||0),
-              2: Number(m.tuesday_hours||0),
-              3: Number(m.wednesday_hours||0),
-              4: Number(m.thursday_hours||0),
-              5: Number(m.friday_hours||0),
-              6: Number(m.saturday_hours||0)
-            },
-            wpSessions: {
-              0: Number(m.sunday_sessions||0),
-              1: Number(m.monday_sessions||0),
-              2: Number(m.tuesday_sessions||0),
-              3: Number(m.wednesday_sessions||0),
-              4: Number(m.thursday_sessions||0),
-              5: Number(m.friday_sessions||0),
-              6: Number(m.saturday_sessions||0)
-            }
-          };
-        });
+        const people = (muRows||[]).map((m, idx)=>({
+          id: m.auth_user_id,
+          key: String(m.auth_user_id || m.email || m.full_name || `user-${idx}`),
+          name: m.full_name || m.email || 'Unknown',
+          email: m.email,
+          teamId: m.team_id || null,
+          teamName: m.team_name || null,
+          avatar: m.avatar_url || null,
+          isGP: !!m.is_gp,
+          wpHours: {
+            0: Number(m.sunday_hours||0),
+            1: Number(m.monday_hours||0),
+            2: Number(m.tuesday_hours||0),
+            3: Number(m.wednesday_hours||0),
+            4: Number(m.thursday_hours||0),
+            5: Number(m.friday_hours||0),
+            6: Number(m.saturday_hours||0)
+          },
+          wpSessions: {
+            0: Number(m.sunday_sessions||0),
+            1: Number(m.monday_sessions||0),
+            2: Number(m.tuesday_sessions||0),
+            3: Number(m.wednesday_sessions||0),
+            4: Number(m.thursday_sessions||0),
+            5: Number(m.friday_sessions||0),
+            6: Number(m.saturday_sessions||0)
+          }
+        }));
 
         // Build people filter chips
         const peopleFilters = document.getElementById('people-filters');
@@ -298,7 +297,7 @@
             const personCol = document.createElement('div');
             personCol.className = 'person-cell';
             personCol.innerHTML = `
-              <div class="person-avatar" style="background-image:url('${p.avatar || ''}')"></div>
+              <div class="person-avatar" style="background-image:url('${p.avatar || ''}')">${p.avatar ? '' : (p.name||'?').charAt(0).toUpperCase()}</div>
               <div style="display:flex; flex-direction:column; gap:2px;">
                 <div class="person-name">${p.name}</div>
                 ${p.teamName ? `<div class="team-pill">${p.teamName}</div>` : ''}

@@ -5225,6 +5225,11 @@ document.addEventListener('DOMContentLoaded', () => {
                   title="Automatically match and transfer all records where names match exactly">
                   🎯 Auto-Match All
                 </button>
+                <button class="btn" onclick="deleteSelectedFuzzyRecords()"
+                  style="background:linear-gradient(135deg, #f97316, #dc2626); padding:8px 16px;"
+                  title="Delete all selected pending records">
+                  🗑️ Delete Selected
+                </button>
                 <button class="btn" onclick="matchSelectedRecords()"
                   style="background:linear-gradient(135deg, #667eea, #764ba2); padding:8px 16px;">
                   ✓ Match Selected
@@ -20179,6 +20184,37 @@ window.refreshStaffData = refreshStaffData;
     });
   }
 
+  async function deleteSelectedFuzzyRecords() {
+    const selectedCheckboxes = document.querySelectorAll('.fuzzy-record-checkbox:checked');
+
+    if (selectedCheckboxes.length === 0) {
+      alert('Please select records to delete');
+      return;
+    }
+
+    if (!confirm(`Delete ${selectedCheckboxes.length} selected record(s)?`)) {
+      return;
+    }
+
+    const recordIds = Array.from(selectedCheckboxes).map(cb => parseInt(cb.dataset.recordId, 10));
+
+    try {
+      const { error } = await supabase
+        .from('fuzzy_match_holidays')
+        .delete()
+        .eq('site_id', ctx.site_id)
+        .in('id', recordIds);
+
+      if (error) throw error;
+
+      await loadFuzzyStatistics();
+      await loadFuzzyRecords();
+    } catch (error) {
+      console.error('Bulk delete failed:', error);
+      alert('Failed to delete selected records: ' + error.message);
+    }
+  }
+
   function filterFuzzyRecords() {
     const searchTerm = document.getElementById('fuzzy-search').value.toLowerCase();
     const rows = document.querySelectorAll('#fuzzy-existing-tbody tr');
@@ -20397,6 +20433,7 @@ window.refreshStaffData = refreshStaffData;
   window.toggleAllCheckboxes = toggleAllCheckboxes;
   window.filterFuzzyRecords = filterFuzzyRecords;
   window.autoMatchAllPending = autoMatchAllPending;
+  window.deleteSelectedFuzzyRecords = deleteSelectedFuzzyRecords;
   window.matchSelectedRecords = matchSelectedRecords;
 
   // Training Import Functions
