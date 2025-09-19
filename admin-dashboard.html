@@ -19509,6 +19509,44 @@ window.refreshStaffData = refreshStaffData;
     }
   }
 
+  // Resolve a possibly-numeric user identifier to the auth.users UUID expected by
+  // stored procedures. If the value already looks like a UUID, return it unchanged.
+  // If it's numeric (profile id or similar), try to find the matching `user_id`
+  // from the cached `siteUsers` list. If resolution fails, return the original
+  // value so Supabase will surface the appropriate error.
+  async function resolveUserUuid(raw) {
+    if (!raw) return raw;
+    // Simple UUID v4-ish pattern check
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (uuidPattern.test(raw)) return raw;
+
+    // If it's numeric, try to find a matching profile entry via Supabase
+    if (/^\d+$/.test(String(raw))) {
+      try {
+        // Try common profile identifier columns that might contain the numeric value
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('user_id, id, kiosk_user_id')
+          .or(`id.eq.${raw},kiosk_user_id.eq.${raw}`)
+          .limit(1)
+          .maybeSingle();
+
+        if (!error && profile && profile.user_id) return profile.user_id;
+      } catch (e) {
+        console.warn('resolveUserUuid lookup failed', e);
+      }
+
+      // Fallback: try to resolve from cached siteUsers by positional index
+      const numeric = parseInt(raw, 10);
+      if (!isNaN(numeric) && siteUsers[numeric - 1] && siteUsers[numeric - 1].user_id) {
+        return siteUsers[numeric - 1].user_id;
+      }
+    }
+
+    // If we couldn't resolve, return the original value so Supabase surfaces a clear error
+    return raw;
+  }
+
   async function loadFuzzyStatistics() {
     try {
       const { data, error } = await supabase
@@ -19903,10 +19941,11 @@ window.refreshStaffData = refreshStaffData;
       if (matchError) throw matchError;
 
       // Now transfer to holiday requests using the database function
+  const resolvedUserId = await resolveUserUuid(userId);
       const { data: transferResult, error: transferError } = await supabase
         .rpc('transfer_fuzzy_match_to_request', {
           p_fuzzy_match_id: parseInt(recordId),
-          p_user_id: userId
+          p_user_id: resolvedUserId
         });
 
       if (transferError) throw transferError;
@@ -19941,10 +19980,11 @@ window.refreshStaffData = refreshStaffData;
       }
 
       // Transfer using the database function
+  const resolvedUserId = await resolveUserUuid(record.matched_user_id);
       const { data: transferResult, error: transferError } = await supabase
         .rpc('transfer_fuzzy_match_to_request', {
           p_fuzzy_match_id: parseInt(recordId),
-          p_user_id: record.matched_user_id
+          p_user_id: resolvedUserId
         });
 
       if (transferError) throw transferError;
@@ -20051,10 +20091,11 @@ window.refreshStaffData = refreshStaffData;
           if (matchError) throw matchError;
 
           // Transfer to holiday requests
+          const resolvedUserId = await resolveUserUuid(selectElement.value);
           const { error: transferError } = await supabase
             .rpc('transfer_fuzzy_match_to_request', {
               p_fuzzy_match_id: parseInt(recordId),
-              p_user_id: selectElement.value
+              p_user_id: resolvedUserId
             });
 
           if (transferError) throw transferError;
@@ -20139,7 +20180,7 @@ window.refreshStaffData = refreshStaffData;
         const { error: transferError } = await supabase
           .rpc('transfer_fuzzy_match_to_request', {
             p_fuzzy_match_id: parseInt(recordId),
-            p_user_id: userId
+            p_user_id: await resolveUserUuid(userId)
           });
 
         if (transferError) throw transferError;
@@ -20758,11 +20799,16 @@ window.refreshStaffData = refreshStaffData;
 
       if (matchError) throw matchError;
 
+      // Ensure we pass a UUID to the RPC. Some callers may provide a numeric profile id
+      // (e.g. '46') instead of the auth.users UUID. Resolve numeric values to the
+      // corresponding `user_id` from `siteUsers` where possible.
+  const resolvedUserId = await resolveUserUuid(userId);
+
       // Transfer to training_records using the database function
       const { data: transferResult, error: transferError } = await supabase
         .rpc('transfer_fuzzy_training_to_record', {
           p_fuzzy_match_id: parseInt(recordId),
-          p_user_id: userId,
+          p_user_id: resolvedUserId,
           p_training_type_id: typeId
         });
 
@@ -20904,10 +20950,12 @@ window.refreshStaffData = refreshStaffData;
           if (matchError) throw matchError;
 
           // Transfer
+          // Resolve user UUID before calling RPC
+          const resolvedUserId = await resolveUserUuid(userSelect.value);
           const { error: transferError } = await supabase
             .rpc('transfer_fuzzy_training_to_record', {
               p_fuzzy_match_id: parseInt(recordId),
-              p_user_id: userSelect.value,
+              p_user_id: resolvedUserId,
               p_training_type_id: typeSelect.value
             });
 
@@ -20992,11 +21040,12 @@ window.refreshStaffData = refreshStaffData;
 
         if (matchError) throw matchError;
 
-        // Transfer
+        // Transfer - resolve UUID if needed
+  const resolvedUserId = await resolveUserUuid(userSelect.value);
         const { error: transferError } = await supabase
           .rpc('transfer_fuzzy_training_to_record', {
             p_fuzzy_match_id: parseInt(recordId),
-            p_user_id: userSelect.value,
+            p_user_id: resolvedUserId,
             p_training_type_id: typeSelect.value
           });
 
