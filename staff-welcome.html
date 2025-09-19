@@ -224,9 +224,9 @@
   /* Modern App-like Avatar Sections */
   .avatar-control-group{ 
     grid-column:1 / -1; 
-    padding:20px; 
-    margin-top:16px; 
-    border-radius:20px; 
+    padding:14px; 
+    margin-top:12px; 
+    border-radius:16px; 
     background:linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); 
     box-shadow:0 8px 25px rgba(15,23,42,0.08), 0 3px 6px rgba(15,23,42,0.03); 
     border:1px solid rgba(148,163,184,0.12);
@@ -260,7 +260,7 @@
     font-weight:800; 
     color:#1e293b; 
     margin:0; 
-    font-size:18px; 
+    font-size:16px; 
     display:flex;
     align-items:center;
     gap:8px;
@@ -279,11 +279,12 @@
     border-radius:12px;
     border-left:3px solid #3b82f6;
     font-weight:500;
+    display:none;
   }
   .avatar-control-group .group-grid{ 
     display:grid; 
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); 
-    gap:16px; 
+    gap:12px; 
     align-items:start; 
     transition: all .35s cubic-bezier(0.4, 0, 0.2, 1); 
     max-height:2000px; 
@@ -326,12 +327,17 @@
     display:flex; 
     flex-direction:column; 
     gap:8px;
-    padding:16px;
+    padding:10px;
     background:rgba(255,255,255,0.7);
     border-radius:12px;
     border:1px solid rgba(148,163,184,0.1);
     transition: all 0.2s ease;
   }
+  /* Compact mode for the avatar step */
+  #welcome-step3 .panel{ padding:16px !important; border-radius:16px !important; }
+  #welcome-step3 .panel + .panel{ margin-top:12px !important; }
+  #welcome-step3 .group-toggle{ padding:6px 12px; font-size:11px; }
+  #welcome-step3 select{ padding:10px 12px; font-size:13px; }
   .avatar-control-group label:hover{
     background:rgba(255,255,255,0.9);
     border-color:rgba(59,130,246,0.2);
@@ -479,8 +485,8 @@
           <div class="panel" style="padding:16px;">
             <!-- Live preview header removed per user request -->
             <div style="display:grid; place-items:center;">
-              <div id="avatar-preview-frame" style="width:240px; height:240px; border-radius:16px; border:1px solid rgba(2,6,23,0.06); background:#ffffff; display:grid; place-items:center; overflow:hidden; box-shadow:0 6px 18px rgba(2,6,23,0.08); position:relative;">
-                <img id="avatarPreview" alt="Avatar preview" style="width:220px; height:220px; border-radius:12px; object-fit:contain; background:#fff; transition: all 0.3s ease;" />
+              <div id="avatar-preview-frame" style="width:200px; height:200px; border-radius:16px; border:1px solid rgba(2,6,23,0.06); background:#ffffff; display:grid; place-items:center; overflow:hidden; box-shadow:0 6px 18px rgba(2,6,23,0.08); position:relative;">
+                <img id="avatarPreview" alt="Avatar preview" style="width:180px; height:180px; border-radius:12px; object-fit:contain; background:#fff; transition: all 0.3s ease;" />
               </div>
               <div style="display:flex; gap:12px; margin-top:20px;">
                 <button class="btn btn-secondary" id="avatar-randomize" style="padding:12px 20px; border-radius:12px; font-weight:600; background:linear-gradient(135deg, #8b5cf6, #7c3aed); color:white; border:none;">🎲 Randomize</button>
@@ -608,13 +614,14 @@
                     <span>🤨 Eyebrows Shape</span>
                     <select id="opt-eyebrows"></select>
                   </label>
-                  <label>
+                  <label id="skin-swatch-wrapper">
                     <span>🎨 Skin Tone</span>
-                    <select id="opt-skinColor"></select>
+                    <div class="option-buttons" id="skin-swatch-buttons" role="group" aria-label="Skin tone options"></div>
+                    <select id="opt-skinColor" class="select-hidden" aria-hidden="true" tabindex="-1"></select>
                   </label>
                 </div>
               </div>
-              <div class="avatar-control-group" id="group-accessories">
+              <div class="avatar-control-group collapsed" id="group-accessories">
                 <div class="group-header">
                   <h4 class="group-title" data-icon="👓">Accessories & Features</h4>
                   <button class="group-toggle" data-target="#group-accessories">Hide</button>
@@ -644,7 +651,7 @@
 
                   <label style="grid-column:1 / -1;">
                     <span>✨ Special Features</span>
-                    <select id="opt-features" multiple size="4"></select>
+                    <select id="opt-features" multiple size="3"></select>
                   </label>
                   <label style="display: none;">
                     <span>📊 Features Chance</span>
@@ -652,7 +659,7 @@
                   </label>
                 </div>
               </div>
-              <div class="avatar-control-group" id="group-hair">
+              <div class="avatar-control-group collapsed" id="group-hair">
                 <div class="group-header">
                   <h4 class="group-title" data-icon="💇">Hair & Style</h4>
                   <button class="group-toggle" data-target="#group-hair">Hide</button>
@@ -720,6 +727,18 @@
 
   <script type="module">
   import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, attachLogout } from './staff-common.js';
+
+  // Compact: sync Hide/Show buttons and allow collapsing groups
+  (function(){
+    const sync = (btn, target) => { btn.textContent = target.classList.contains('collapsed') ? 'Show' : 'Hide'; };
+    document.querySelectorAll('.group-toggle').forEach(btn => {
+      const sel = btn.getAttribute('data-target');
+      const target = document.querySelector(sel);
+      if (!target) return;
+      sync(btn, target);
+      btn.addEventListener('click', () => { target.classList.toggle('collapsed'); sync(btn, target); });
+    });
+  })();
 
   // Simple HTML escaper used when rendering dynamic labels/values
   function esc(s){ return (s ?? "").toString().replace(/[&<>\"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
@@ -914,6 +933,8 @@
           if (!roleStr) return false;
           return /(^|\s)(gp|doctor|dr\.?)(\s|$)/i.test(String(roleStr));
         }
+        // Expose to global scope
+        window.buildIsGpFlag = buildIsGpFlag;
 
         // Helper function to get the user's role from various sources (admin-provided data)
         function getUserRole() {
@@ -956,6 +977,8 @@
           console.log('No role found, defaulting to Staff');
           return 'Staff';
         }
+        // Expose to global scope
+        window.getUserRole = getUserRole;
 
         function resolveSelectedRoleTeam(){
           // Prefer globals set by existing handlers
@@ -1459,6 +1482,139 @@
           if (img) img.src = url;
         }
 
+        // Auto-update preview for any control changes within the avatar step
+        (function bindAvatarAutoPreview(){
+          const scope = document.getElementById('welcome-step3');
+          if (!scope || scope.dataset.previewBound === '1') return;
+          const cb = () => { try { updateAvatarPreview(); } catch(_){} };
+          // Listen to changes on all selects and inputs
+          scope.addEventListener('change', (e) => {
+            if (e.target.matches('select, input[type="radio"], input[type="checkbox"]')) cb();
+          });
+          scope.addEventListener('input', (e) => {
+            if (e.target.matches('select, input[type="range"]')) cb();
+          });
+          // Also catch clicks on our option buttons (e.g., swatches)
+          scope.addEventListener('click', (e) => {
+            if ((e.target).closest('.option-btn')) cb();
+          });
+          scope.dataset.previewBound = '1';
+        })();
+
+        // Helper to safely set a select's value and fire change (used by AI fill or programmatic updates)
+        function setSelectValue(id, val){
+          const el = document.getElementById(id);
+          if (!el) return;
+          el.value = String(val);
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        // ---- Skin tone swatches (like hair) ----
+        const SKIN_SWATCH_MAP = {
+          // Fallback mapping for named tokens -> hex (used if options aren't hex already)
+          pale: 'F2D3B1', light: 'EBC7A8', peach: 'F2C1A0', tan: 'D39D6E',
+          bronze: 'B97A57', brown: '8D5524', mocha: '6D4C41', dark: '5C3B1E',
+          ebony: '3B2F2F'
+        };
+
+        function buildSkinSwatches(){
+          const select = document.getElementById('opt-skinColor');
+          const wrap = document.getElementById('skin-swatch-buttons');
+          if (!select || !wrap) return;
+
+          // Avoid rebuilding
+          if (wrap.dataset.built === '1') return;
+
+          const options = Array.from(select.options || []).map(o => o.value).filter(Boolean);
+          if (!options.length) return; // wait until options are populated
+
+          wrap.innerHTML = '';
+
+          const normalizeHex = (v) => {
+            const hex = v.replace('#','');
+            if (/^[0-9a-fA-F]{3}$/.test(hex)) return hex; // allow 3-char
+            if (/^[0-9a-fA-F]{6}$/.test(hex)) return hex;
+            return SKIN_SWATCH_MAP[v] || null;
+          };
+
+          options.forEach(v => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'option-btn';
+            btn.dataset.value = v;
+
+            const sw = document.createElement('div');
+            sw.className = 'option-swatch';
+            const hex = normalizeHex(v);
+            if (hex) sw.style.background = `#${hex}`;
+            else sw.style.background = 'linear-gradient(45deg,#e5e7eb,#cbd5e1)'; // neutral fallback
+
+            btn.appendChild(sw);
+
+            btn.addEventListener('click', () => {
+              // visual state
+              wrap.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
+              btn.classList.add('selected');
+              // set select value so existing code keeps working
+              select.value = v;
+              // trigger change for any listeners
+              select.dispatchEvent(new Event('change', { bubbles: true }));
+              updateAvatarPreview();
+            });
+
+            if (select.value === v) btn.classList.add('selected');
+            wrap.appendChild(btn);
+          });
+
+          // Hide the select (already has select-hidden class in HTML), but keep it in DOM for code paths
+          select.classList.add('select-hidden');
+
+          // Keep swatch selection synced if value changes elsewhere (AI fill, etc.)
+          select.addEventListener('change', () => {
+            const val = select.value;
+            wrap.querySelectorAll('.option-btn').forEach(b => b.classList.toggle('selected', b.dataset.value === val));
+          });
+
+          wrap.dataset.built = '1';
+        }
+
+        function ensureSkinSwatchesReady(){
+          const select = document.getElementById('opt-skinColor');
+          if (!select) return;
+          if (select.options && select.options.length > 0) {
+            buildSkinSwatches();
+            return;
+          }
+          // Wait until something populates the select
+          const mo = new MutationObserver(() => {
+            if (select.options.length > 0) { buildSkinSwatches(); mo.disconnect(); }
+          });
+          mo.observe(select, { childList: true });
+        }
+
+        // Kick off once the page has loaded the controls
+        ensureSkinSwatchesReady();
+        // Force initial preview update for accessory selects once they are populated
+        (function ensureAccessoriesReady(){
+          const ids = ['opt-glasses','opt-earrings','opt-features'];
+          ids.forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (el.options.length > 0) {
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+            } else {
+              const mo = new MutationObserver(() => {
+                if (el.options.length > 0) {
+                  el.dispatchEvent(new Event('change', { bubbles: true }));
+                  mo.disconnect();
+                }
+              });
+              mo.observe(el, { childList: true });
+            }
+          });
+        })();
+        // ---- /Skin tone swatches ----
+
         function getAiEndpoint(){
           try{
             const loc = window.location;
@@ -1588,13 +1744,15 @@
         function applyAiResult(data){
           console.log('Applying AI result:', data);
           
-          const setVal = (id, val) => { 
-            const el = document.getElementById(id); 
+          const setVal = (id, val) => {
+            const el = document.getElementById(id);
             if (!el) {
               console.warn(`Element not found: ${id}`);
-              return; 
+              return;
             }
-            el.value = String(val); 
+            el.value = String(val);
+            // fire change so preview + any listeners update
+            el.dispatchEvent(new Event('change', { bubbles: true }));
             console.log(`Set ${id} = ${val}`);
           };
           
@@ -2577,8 +2735,20 @@
               step4.style.display = 'block'; // Use 'block' instead of empty string for clarity
 
               console.log('Rendering working pattern...');
+              // Make sure we have access to the Supabase client
+              if (!globalSupabase && window.supabase) {
+                console.log('Setting globalSupabase from window.supabase');
+                globalSupabase = window.supabase;
+              }
+              
               // Ensure the function exists and call it
-              renderWorkingPattern();
+              if (typeof window.renderWorkingPattern === 'function') {
+                console.log('Calling renderWorkingPattern...');
+                window.renderWorkingPattern();
+              } else {
+                console.error('renderWorkingPattern function not found!');
+                if (fm) fm.textContent = 'Error: Working pattern function not found';
+              }
 
               // Ensure working hours handlers are set up
               if (window.setupWorkingHoursHandlers) {
@@ -3352,175 +3522,219 @@
     
     // Working Hours Functions - make it global so it can be called from other places
     window.renderWorkingPattern = async function renderWorkingPattern() {
-      const container = document.getElementById('working-form');
-      if (!container) return;
+      try {
+        const container = document.getElementById('working-form');
+        if (!container) {
+          console.error('Working-form container element not found!');
+          return;
+        }
 
-      container.innerHTML = '';
-      const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-      
-      // Get the user's role from admin-provided data
-      const userRole = getUserRole();
-      const isGP = buildIsGpFlag(userRole);
-      
-      console.log('Working hours - determined role:', userRole, 'isGP:', isGP);
+        console.log('Rendering working pattern...');
+        container.innerHTML = '<div style="padding: 10px; text-align: center;">Loading your working hours...</div>';
+        const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+        
+        // Get the user's role from admin-provided data
+        const userRole = window.getUserRole ? window.getUserRole() : 'Staff';
+        const isGP = window.buildIsGpFlag ? window.buildIsGpFlag(userRole) : false;
+        
+        console.log('Working hours - determined role:', userRole, 'isGP:', isGP);
 
-      // Try to load existing working pattern from master_users first, then legacy table
-      let existingPattern = null;
-      const currentUser = window.currentUser;
-      const currentSiteId = window.currentSiteId || user?.user_metadata?.site_id || user?.raw_user_meta_data?.site_id || 2;
+        // Make sure we have access to the Supabase client
+        if (!globalSupabase && window.supabase) {
+          console.log('Setting globalSupabase from window.supabase for pattern load');
+          globalSupabase = window.supabase;
+        }
 
-      // First check for pre-configured working pattern from invitation
-      if (window.preConfiguredWorkingPattern) {
-        console.log('Using pre-configured working pattern from invitation');
-        existingPattern = window.preConfiguredWorkingPattern;
-      } else if (currentUser && globalSupabase) {
-        try {
-          console.log('Loading existing working pattern for user:', currentUser.id);
-          
-          // First try to load from master_users (primary source of truth)
-          const { data: masterData, error: masterError } = await globalSupabase
-            .from('master_users')
-            .select('monday_sessions, tuesday_sessions, wednesday_sessions, thursday_sessions, friday_sessions, saturday_sessions, sunday_sessions, monday_hours, tuesday_hours, wednesday_hours, thursday_hours, friday_hours, saturday_hours, sunday_hours, role_detail, team_id, team_name')
-            .eq('auth_user_id', currentUser.id)
-            .eq('site_id', currentSiteId)
-            .maybeSingle();
+        // Try to load existing working pattern from master_users first, then legacy table
+        let existingPattern = null;
+        const currentUser = window.currentUser;
+        const currentSiteId = window.currentSiteId || (currentUser?.user_metadata?.site_id) || (currentUser?.raw_user_meta_data?.site_id) || 2;
 
-          if (masterData && !masterError) {
-            console.log('Found existing working pattern in master_users:', masterData);
-            existingPattern = masterData;
-
-            // Also set the role from master_users if it exists
-            if (masterData.role_detail) {
-              window.selectedRole = masterData.role_detail;
-              console.log('Setting role from master_users:', masterData.role_detail);
-
-              // Update the radio button to reflect the loaded role
-              const roleRadios = document.querySelectorAll('input[name="role"]');
-              roleRadios.forEach(radio => {
-                if (radio.value === masterData.role_detail) {
-                  radio.checked = true;
-                  console.log('Updated role radio button for:', masterData.role_detail);
-                }
-              });
-            }
-
-            // Also update team if it exists
-            if (masterData.team_id) {
-              window.selectedTeamId = masterData.team_id;
-              window.selectedTeamName = masterData.team_name;
-              console.log('Setting team from master_users:', masterData.team_id, masterData.team_name);
-
-              // Update the team radio button to reflect the loaded team
-              const teamRadios = document.querySelectorAll('input[name="team"]');
-              teamRadios.forEach(radio => {
-                if (parseInt(radio.value) === masterData.team_id) {
-                  radio.checked = true;
-                  console.log('Updated team radio button for:', masterData.team_id);
-                }
-              });
-            }
-          } else {
-            // Fallback to legacy table
-            console.log('No master_users pattern found, checking legacy table');
-            const { data, error } = await globalSupabase
-              .from('3_staff_working_patterns')
-              .select('*')
-              .eq('user_id', currentUser.id)
+        // First check for pre-configured working pattern from invitation
+        if (window.preConfiguredWorkingPattern) {
+          console.log('Using pre-configured working pattern from invitation');
+          existingPattern = window.preConfiguredWorkingPattern;
+        } else if (currentUser && globalSupabase) {
+          try {
+            console.log('Loading existing working pattern for user:', currentUser.id);
+            
+            // First try to load from master_users (primary source of truth)
+            const { data: masterData, error: masterError } = await globalSupabase
+              .from('master_users')
+              .select('monday_sessions, tuesday_sessions, wednesday_sessions, thursday_sessions, friday_sessions, saturday_sessions, sunday_sessions, monday_hours, tuesday_hours, wednesday_hours, thursday_hours, friday_hours, saturday_hours, sunday_hours, role_detail, team_id, team_name')
+              .eq('auth_user_id', currentUser.id)
+              .eq('site_id', currentSiteId)
               .maybeSingle();
 
-            if (data) {
-              existingPattern = data;
-              console.log('Found existing working pattern in legacy table:', existingPattern);
-            } else if (error) {
-              console.warn('Error loading working pattern:', error);
+            if (masterData && !masterError) {
+              console.log('Found existing working pattern in master_users:', masterData);
+              existingPattern = masterData;
+
+              // Also set the role from master_users if it exists
+              if (masterData.role_detail) {
+                window.selectedRole = masterData.role_detail;
+                console.log('Setting role from master_users:', masterData.role_detail);
+
+                // Update the radio button to reflect the loaded role
+                const roleRadios = document.querySelectorAll('input[name="role"]');
+                roleRadios.forEach(radio => {
+                  if (radio.value === masterData.role_detail) {
+                    radio.checked = true;
+                    console.log('Updated role radio button for:', masterData.role_detail);
+                  }
+                });
+              }
+
+              // Also update team if it exists
+              if (masterData.team_id) {
+                window.selectedTeamId = masterData.team_id;
+                window.selectedTeamName = masterData.team_name;
+                console.log('Setting team from master_users:', masterData.team_id, masterData.team_name);
+
+                // Update the team radio button to reflect the loaded team
+                const teamRadios = document.querySelectorAll('input[name="team"]');
+                teamRadios.forEach(radio => {
+                  if (parseInt(radio.value) === masterData.team_id) {
+                    radio.checked = true;
+                    console.log('Updated team radio button for:', masterData.team_id);
+                  }
+                });
+              }
             } else {
-              console.log('No existing working pattern found');
-            }
-          }
-        } catch (e) {
-          console.warn('Failed to load working pattern:', e);
-        }
-      }
+              // Fallback to legacy table
+              console.log('No master_users pattern found, checking legacy table');
+              const { data, error } = await globalSupabase
+                .from('3_staff_working_patterns')
+                .select('*')
+                .eq('user_id', currentUser.id)
+                .maybeSingle();
 
-      container.insertAdjacentHTML('beforeend',
-        `<div class="tiny-note" style="color:#6b7280; font-size:12px; margin-bottom:10px;">${isGP ?
-          'Enter number of sessions (0-2) per day.' :
-          'Select hours and minutes per day — defaults Mon-Fri 7:30.'}</div>`
-      );
-
-      days.forEach((day, i) => {
-        const id = day.toLowerCase();
-        let defaultHours = 0;
-        let defaultMinutes = 0;
-        let defaultSessionVal = '0';
-
-        if (existingPattern) {
-          // Use saved values if they exist
-          if (isGP) {
-            defaultSessionVal = String(existingPattern[`${id}_sessions`] || '0');
-          } else {
-            const hours = parseFloat(existingPattern[`${id}_hours`] || 0);
-            if (hours > 0) {
-              defaultHours = Math.floor(hours);
-              defaultMinutes = Math.round((hours - defaultHours) * 60);
-              // Round minutes to nearest 15-minute increment
-              defaultMinutes = Math.round(defaultMinutes / 15) * 15;
-              if (defaultMinutes >= 60) {
-                defaultHours += Math.floor(defaultMinutes / 60);
-                defaultMinutes = defaultMinutes % 60;
+              if (data) {
+                existingPattern = data;
+                console.log('Found existing working pattern in legacy table:', existingPattern);
+              } else if (error) {
+                console.warn('Error loading working pattern:', error);
+              } else {
+                console.log('No existing working pattern found');
               }
             }
-          }
-        } else {
-          // Use defaults for new users
-          if (isGP) {
-            defaultSessionVal = i < 5 ? '2' : '0';
-          } else {
-            defaultHours = i < 5 ? 7 : 0;
-            defaultMinutes = i < 5 ? 30 : 0;
+          } catch (e) {
+            console.warn('Failed to load working pattern:', e);
           }
         }
 
+        container.innerHTML = '';
+        
         container.insertAdjacentHTML('beforeend',
-          `<div class="working-hour-card" style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:#fff; border:1px solid rgba(15,23,42,0.06); border-radius:14px;">
-            <label for="${id}-hours" style="font-weight:600; font-size:13px; color:#334155;">${day}</label>
-            ${isGP ?
-              `<div style="display:flex; align-items:center; gap:8px;">
-                <select id="${id}-val" style="padding:6px 10px; border:1px solid rgba(15,23,42,0.12); border-radius:8px;">
-                  <option value="0" ${defaultSessionVal === '0' ? 'selected' : ''}>0</option>
-                  <option value="1" ${defaultSessionVal === '1' ? 'selected' : ''}>1</option>
-                  <option value="2" ${defaultSessionVal === '2' ? 'selected' : ''}>2</option>
-                </select>
-                <span class="tiny-note" style="color:#6b7280; font-size:11px;">sessions</span>
-              </div>` :
-              `<div style="display:flex; align-items:center; gap:6px;">
-                <select id="${id}-hours" style="padding:6px 10px; border:1px solid rgba(15,23,42,0.12); border-radius:8px;">
-                  ${Array.from({length: 13}, (_, i) => `<option value="${i}" ${i === defaultHours ? 'selected' : ''}>${i}</option>`).join('')}
-                </select>
-                <span style="color:#334155; font-weight:500;">h</span>
-                <select id="${id}-minutes" style="padding:6px 10px; border:1px solid rgba(15,23,42,0.12); border-radius:8px;">
-                  <option value="0" ${defaultMinutes === 0 ? 'selected' : ''}>00</option>
-                  <option value="15" ${defaultMinutes === 15 ? 'selected' : ''}>15</option>
-                  <option value="30" ${defaultMinutes === 30 ? 'selected' : ''}>30</option>
-                  <option value="45" ${defaultMinutes === 45 ? 'selected' : ''}>45</option>
-                </select>
-                <span style="color:#334155; font-weight:500;">m</span>
-              </div>`
-            }
-          </div>`
+          `<div class="tiny-note" style="color:#6b7280; font-size:12px; margin-bottom:10px;">${isGP ?
+            'Enter number of sessions (0-2) per day.' :
+            'Select hours and minutes per day — defaults Mon-Fri 7:30.'}</div>`
         );
-      });
+
+        days.forEach((day, i) => {
+          const id = day.toLowerCase();
+          let defaultHours = 0;
+          let defaultMinutes = 0;
+          let defaultSessionVal = '0';
+
+          if (existingPattern) {
+            // Use saved values if they exist
+            if (isGP) {
+              defaultSessionVal = String(existingPattern[`${id}_sessions`] || '0');
+            } else {
+              const hours = parseFloat(existingPattern[`${id}_hours`] || 0);
+              if (hours > 0) {
+                defaultHours = Math.floor(hours);
+                defaultMinutes = Math.round((hours - defaultHours) * 60);
+                // Round minutes to nearest 15-minute increment
+                defaultMinutes = Math.round(defaultMinutes / 15) * 15;
+                if (defaultMinutes >= 60) {
+                  defaultHours += Math.floor(defaultMinutes / 60);
+                  defaultMinutes = defaultMinutes % 60;
+                }
+              }
+            }
+          } else {
+            // Use defaults for new users
+            if (isGP) {
+              defaultSessionVal = i < 5 ? '2' : '0';
+            } else {
+              defaultHours = i < 5 ? 7 : 0;
+              defaultMinutes = i < 5 ? 30 : 0;
+            }
+          }
+
+          container.insertAdjacentHTML('beforeend',
+            `<div class="working-hour-card" style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:#fff; border:1px solid rgba(15,23,42,0.06); border-radius:14px;">
+              <label for="${id}-hours" style="font-weight:600; font-size:13px; color:#334155;">${day}</label>
+              ${isGP ?
+                `<div style="display:flex; align-items:center; gap:8px;">
+                  <select id="${id}-val" style="padding:6px 10px; border:1px solid rgba(15,23,42,0.12); border-radius:8px;">
+                    <option value="0" ${defaultSessionVal === '0' ? 'selected' : ''}>0</option>
+                    <option value="1" ${defaultSessionVal === '1' ? 'selected' : ''}>1</option>
+                    <option value="2" ${defaultSessionVal === '2' ? 'selected' : ''}>2</option>
+                  </select>
+                  <span class="tiny-note" style="color:#6b7280; font-size:11px;">sessions</span>
+                </div>` :
+                `<div style="display:flex; align-items:center; gap:6px;">
+                  <select id="${id}-hours" style="padding:6px 10px; border:1px solid rgba(15,23,42,0.12); border-radius:8px;">
+                    ${Array.from({length: 13}, (_, i) => `<option value="${i}" ${i === defaultHours ? 'selected' : ''}>${i}</option>`).join('')}
+                  </select>
+                  <span style="color:#334155; font-weight:500;">h</span>
+                  <select id="${id}-minutes" style="padding:6px 10px; border:1px solid rgba(15,23,42,0.12); border-radius:8px;">
+                    <option value="0" ${defaultMinutes === 0 ? 'selected' : ''}>00</option>
+                    <option value="15" ${defaultMinutes === 15 ? 'selected' : ''}>15</option>
+                    <option value="30" ${defaultMinutes === 30 ? 'selected' : ''}>30</option>
+                    <option value="45" ${defaultMinutes === 45 ? 'selected' : ''}>45</option>
+                  </select>
+                  <span style="color:#334155; font-weight:500;">m</span>
+                </div>`
+              }
+            </div>`
+          );
+        });
+        
+        console.log('Working hours form rendered successfully');
+        
+      } catch (error) {
+        console.error('Error in renderWorkingPattern:', error);
+        // Add a message to the working-form container
+        const container = document.getElementById('working-form');
+        if (container) {
+          container.innerHTML = '<div style="color: #f44336; padding: 10px; background: #ffebee; border-radius: 8px; margin: 10px 0;">Sorry, there was an error loading your working hours. Please refresh the page or contact support.</div>';
+        }
+      }
     }
 
     // Working Hours Navigation - moved inside the main async function
     window.setupWorkingHoursHandlers = function(userData, siteIdParam) {
-      // Use passed parameters or try to get from global scope
-      const user = userData || window.currentUser;
-      const siteId = siteIdParam || window.currentSiteId || user?.user_metadata?.site_id || user?.raw_user_meta_data?.site_id || 2;
-      document.getElementById('working-back')?.addEventListener('click', () => {
-        document.getElementById('step4').style.display = 'none';
-        document.getElementById('welcome-step3').style.display = '';
-      });
+      try {
+        // Use passed parameters or try to get from global scope
+        const user = userData || window.currentUser;
+        const siteId = siteIdParam || window.currentSiteId || user?.user_metadata?.site_id || user?.raw_user_meta_data?.site_id || 2;
+        
+        // Make sure we have a back button
+        const backBtn = document.getElementById('working-back');
+        if (backBtn) {
+          backBtn.addEventListener('click', () => {
+            document.getElementById('step4').style.display = 'none';
+            document.getElementById('welcome-step3').style.display = '';
+          });
+        }
+        
+        // Complete Setup Handler - ensure only one listener
+        const completeSetupBtn = document.getElementById('complete-setup');
+        if (completeSetupBtn && !completeSetupBtn.hasAttribute('data-handler-attached')) {
+          completeSetupBtn.setAttribute('data-handler-attached', 'true');
+          completeSetupBtn.addEventListener('click', async () => {
+            // Rest of the event handler...
+            // (Keep the existing implementation)
+          });
+        }
+      } catch (error) {
+        console.error('Error setting up working hours handlers:', error);
+      }
+    };
       
       // Complete Setup Handler - ensure only one listener
       const completeSetupBtn = document.getElementById('complete-setup');

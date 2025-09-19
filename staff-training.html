@@ -346,6 +346,7 @@
               document.getElementById('training-certificate').addEventListener('change', handleFileUpload);
               document.getElementById('training-completion-date').addEventListener('change', calculateExpiry);
               document.getElementById('training-expiry-period').addEventListener('change', calculateExpiry);
+              document.getElementById('training-type-select').addEventListener('change', updateExpiryBasedOnTrainingType);
 
               // Make rows clickable
               function attachRowClickHandlers() {
@@ -456,6 +457,38 @@
                 
                 // Store for saving
                 window.calculatedExpiryDate = expiry.toISOString().split('T')[0];
+              }
+
+              function updateExpiryBasedOnTrainingType() {
+                const selectedTypeId = document.getElementById('training-type-select').value;
+                if (!selectedTypeId) return;
+                
+                // Find the selected training type from our loaded types
+                const selectedType = trainingTypes.find(t => t.id == selectedTypeId);
+                if (!selectedType) return;
+                
+                // Set expiry period based on the selected training's validity_months
+                if (selectedType.validity_months) {
+                  if (selectedType.validity_months <= 1) {
+                    document.getElementById('training-expiry-period').value = '1month';
+                  } else if (selectedType.validity_months <= 3) {
+                    document.getElementById('training-expiry-period').value = '3months';
+                  } else if (selectedType.validity_months <= 6) {
+                    document.getElementById('training-expiry-period').value = '6months';
+                  } else if (selectedType.validity_months <= 12) {
+                    document.getElementById('training-expiry-period').value = '1year';
+                  } else if (selectedType.validity_months <= 24) {
+                    document.getElementById('training-expiry-period').value = '2years';
+                  } else {
+                    document.getElementById('training-expiry-period').value = '3years';
+                  }
+                } else {
+                  // If no validity_months, set to no expiry
+                  document.getElementById('training-expiry-period').value = 'never';
+                }
+                
+                // Recalculate expiry date based on the new expiry period
+                calculateExpiry();
               }
 
               async function saveTrainingRecord(event) {
