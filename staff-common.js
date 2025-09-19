@@ -210,7 +210,7 @@ export function renderStaffNavigation(activePage = 'home') {
     { page: 'home', href: 'staff.html', label: 'Home' },
     { page: 'welcome', href: 'staff-welcome.html', label: 'Welcome' },
     { page: 'holidays', href: 'my-holidays.html', label: 'My Holidays' },
-    { page: 'meetings', href: 'staff-meetings.html', label: 'Meetings' },
+    { page: 'meetings', href: 'staff-meetings.html', label: 'Meetings', disabled: true, tooltip: 'Coming Soon!' },
     { page: 'scans', href: 'staff-scans.html', label: 'My Scans' },
     { page: 'training', href: 'staff-training.html', label: 'My Training' },
     { page: 'achievements', href: 'achievements.html', label: 'Achievements' },
@@ -235,7 +235,12 @@ export function renderStaffNavigation(activePage = 'home') {
     }
     
     // Set classes and visibility
-    if (item.disabled) {
+    if (item.disabled && item.page === activePage) {
+      button.className = 'disabled-nav-item active';
+      button.style.color = '#9ca3af'; // Grey color
+      button.style.cursor = 'pointer'; // Allow clicking for PIN prompt
+      button.style.opacity = '0.6';
+    } else if (item.disabled) {
       button.className = 'disabled-nav-item';
       // Don't actually disable the button so tooltip works and we can handle clicks
       // button.disabled = true;
@@ -264,8 +269,24 @@ export function renderStaffNavigation(activePage = 'home') {
       e.preventDefault();
       e.stopPropagation();
       
-      // Prevent navigation for disabled items
+      // Handle disabled items - show PIN prompt for meetings
       if (btn.classList.contains('disabled-nav-item')) {
+        const section = btn.getAttribute('data-section');
+        if (section === 'meetings') {
+          // Show PIN prompt for meetings
+          const pin = prompt('This feature is coming soon! Enter PIN to access:');
+          if (pin === '9021') {
+            // Correct PIN, allow access
+            const href = btn.getAttribute('data-href');
+            if (href) {
+              window.location.href = href;
+            }
+          } else if (pin !== null) {
+            // Wrong PIN (but not cancelled)
+            alert('Incorrect PIN');
+          }
+          // If pin is null (cancelled), do nothing
+        }
         return;
       }
       
