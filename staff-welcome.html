@@ -933,8 +933,6 @@
           if (!roleStr) return false;
           return /(^|\s)(gp|doctor|dr\.?)(\s|$)/i.test(String(roleStr));
         }
-        // Expose to global scope
-        window.buildIsGpFlag = buildIsGpFlag;
 
         // Helper function to get the user's role from various sources (admin-provided data)
         function getUserRole() {
@@ -977,8 +975,6 @@
           console.log('No role found, defaulting to Staff');
           return 'Staff';
         }
-        // Expose to global scope
-        window.getUserRole = getUserRole;
 
         function resolveSelectedRoleTeam(){
           // Prefer globals set by existing handlers
@@ -2735,20 +2731,8 @@
               step4.style.display = 'block'; // Use 'block' instead of empty string for clarity
 
               console.log('Rendering working pattern...');
-              // Make sure we have access to the Supabase client
-              if (!globalSupabase && window.supabase) {
-                console.log('Setting globalSupabase from window.supabase');
-                globalSupabase = window.supabase;
-              }
-              
               // Ensure the function exists and call it
-              if (typeof window.renderWorkingPattern === 'function') {
-                console.log('Calling renderWorkingPattern...');
-                window.renderWorkingPattern();
-              } else {
-                console.error('renderWorkingPattern function not found!');
-                if (fm) fm.textContent = 'Error: Working pattern function not found';
-              }
+              renderWorkingPattern();
 
               // Ensure working hours handlers are set up
               if (window.setupWorkingHoursHandlers) {
@@ -3522,219 +3506,175 @@
     
     // Working Hours Functions - make it global so it can be called from other places
     window.renderWorkingPattern = async function renderWorkingPattern() {
-      try {
-        const container = document.getElementById('working-form');
-        if (!container) {
-          console.error('Working-form container element not found!');
-          return;
-        }
+      const container = document.getElementById('working-form');
+      if (!container) return;
 
-        console.log('Rendering working pattern...');
-        container.innerHTML = '<div style="padding: 10px; text-align: center;">Loading your working hours...</div>';
-        const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-        
-        // Get the user's role from admin-provided data
-        const userRole = window.getUserRole ? window.getUserRole() : 'Staff';
-        const isGP = window.buildIsGpFlag ? window.buildIsGpFlag(userRole) : false;
-        
-        console.log('Working hours - determined role:', userRole, 'isGP:', isGP);
+      container.innerHTML = '';
+      const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      
+      // Get the user's role from admin-provided data
+      const userRole = getUserRole();
+      const isGP = buildIsGpFlag(userRole);
+      
+      console.log('Working hours - determined role:', userRole, 'isGP:', isGP);
 
-        // Make sure we have access to the Supabase client
-        if (!globalSupabase && window.supabase) {
-          console.log('Setting globalSupabase from window.supabase for pattern load');
-          globalSupabase = window.supabase;
-        }
+      // Try to load existing working pattern from master_users first, then legacy table
+      let existingPattern = null;
+      const currentUser = window.currentUser;
+      const currentSiteId = window.currentSiteId || user?.user_metadata?.site_id || user?.raw_user_meta_data?.site_id || 2;
 
-        // Try to load existing working pattern from master_users first, then legacy table
-        let existingPattern = null;
-        const currentUser = window.currentUser;
-        const currentSiteId = window.currentSiteId || (currentUser?.user_metadata?.site_id) || (currentUser?.raw_user_meta_data?.site_id) || 2;
+      // First check for pre-configured working pattern from invitation
+      if (window.preConfiguredWorkingPattern) {
+        console.log('Using pre-configured working pattern from invitation');
+        existingPattern = window.preConfiguredWorkingPattern;
+      } else if (currentUser && globalSupabase) {
+        try {
+          console.log('Loading existing working pattern for user:', currentUser.id);
+          
+          // First try to load from master_users (primary source of truth)
+          const { data: masterData, error: masterError } = await globalSupabase
+            .from('master_users')
+            .select('monday_sessions, tuesday_sessions, wednesday_sessions, thursday_sessions, friday_sessions, saturday_sessions, sunday_sessions, monday_hours, tuesday_hours, wednesday_hours, thursday_hours, friday_hours, saturday_hours, sunday_hours, role_detail, team_id, team_name')
+            .eq('auth_user_id', currentUser.id)
+            .eq('site_id', currentSiteId)
+            .maybeSingle();
 
-        // First check for pre-configured working pattern from invitation
-        if (window.preConfiguredWorkingPattern) {
-          console.log('Using pre-configured working pattern from invitation');
-          existingPattern = window.preConfiguredWorkingPattern;
-        } else if (currentUser && globalSupabase) {
-          try {
-            console.log('Loading existing working pattern for user:', currentUser.id);
-            
-            // First try to load from master_users (primary source of truth)
-            const { data: masterData, error: masterError } = await globalSupabase
-              .from('master_users')
-              .select('monday_sessions, tuesday_sessions, wednesday_sessions, thursday_sessions, friday_sessions, saturday_sessions, sunday_sessions, monday_hours, tuesday_hours, wednesday_hours, thursday_hours, friday_hours, saturday_hours, sunday_hours, role_detail, team_id, team_name')
-              .eq('auth_user_id', currentUser.id)
-              .eq('site_id', currentSiteId)
-              .maybeSingle();
+          if (masterData && !masterError) {
+            console.log('Found existing working pattern in master_users:', masterData);
+            existingPattern = masterData;
 
-            if (masterData && !masterError) {
-              console.log('Found existing working pattern in master_users:', masterData);
-              existingPattern = masterData;
+            // Also set the role from master_users if it exists
+            if (masterData.role_detail) {
+              window.selectedRole = masterData.role_detail;
+              console.log('Setting role from master_users:', masterData.role_detail);
 
-              // Also set the role from master_users if it exists
-              if (masterData.role_detail) {
-                window.selectedRole = masterData.role_detail;
-                console.log('Setting role from master_users:', masterData.role_detail);
-
-                // Update the radio button to reflect the loaded role
-                const roleRadios = document.querySelectorAll('input[name="role"]');
-                roleRadios.forEach(radio => {
-                  if (radio.value === masterData.role_detail) {
-                    radio.checked = true;
-                    console.log('Updated role radio button for:', masterData.role_detail);
-                  }
-                });
-              }
-
-              // Also update team if it exists
-              if (masterData.team_id) {
-                window.selectedTeamId = masterData.team_id;
-                window.selectedTeamName = masterData.team_name;
-                console.log('Setting team from master_users:', masterData.team_id, masterData.team_name);
-
-                // Update the team radio button to reflect the loaded team
-                const teamRadios = document.querySelectorAll('input[name="team"]');
-                teamRadios.forEach(radio => {
-                  if (parseInt(radio.value) === masterData.team_id) {
-                    radio.checked = true;
-                    console.log('Updated team radio button for:', masterData.team_id);
-                  }
-                });
-              }
-            } else {
-              // Fallback to legacy table
-              console.log('No master_users pattern found, checking legacy table');
-              const { data, error } = await globalSupabase
-                .from('3_staff_working_patterns')
-                .select('*')
-                .eq('user_id', currentUser.id)
-                .maybeSingle();
-
-              if (data) {
-                existingPattern = data;
-                console.log('Found existing working pattern in legacy table:', existingPattern);
-              } else if (error) {
-                console.warn('Error loading working pattern:', error);
-              } else {
-                console.log('No existing working pattern found');
-              }
-            }
-          } catch (e) {
-            console.warn('Failed to load working pattern:', e);
-          }
-        }
-
-        container.innerHTML = '';
-        
-        container.insertAdjacentHTML('beforeend',
-          `<div class="tiny-note" style="color:#6b7280; font-size:12px; margin-bottom:10px;">${isGP ?
-            'Enter number of sessions (0-2) per day.' :
-            'Select hours and minutes per day — defaults Mon-Fri 7:30.'}</div>`
-        );
-
-        days.forEach((day, i) => {
-          const id = day.toLowerCase();
-          let defaultHours = 0;
-          let defaultMinutes = 0;
-          let defaultSessionVal = '0';
-
-          if (existingPattern) {
-            // Use saved values if they exist
-            if (isGP) {
-              defaultSessionVal = String(existingPattern[`${id}_sessions`] || '0');
-            } else {
-              const hours = parseFloat(existingPattern[`${id}_hours`] || 0);
-              if (hours > 0) {
-                defaultHours = Math.floor(hours);
-                defaultMinutes = Math.round((hours - defaultHours) * 60);
-                // Round minutes to nearest 15-minute increment
-                defaultMinutes = Math.round(defaultMinutes / 15) * 15;
-                if (defaultMinutes >= 60) {
-                  defaultHours += Math.floor(defaultMinutes / 60);
-                  defaultMinutes = defaultMinutes % 60;
+              // Update the radio button to reflect the loaded role
+              const roleRadios = document.querySelectorAll('input[name="role"]');
+              roleRadios.forEach(radio => {
+                if (radio.value === masterData.role_detail) {
+                  radio.checked = true;
+                  console.log('Updated role radio button for:', masterData.role_detail);
                 }
-              }
+              });
+            }
+
+            // Also update team if it exists
+            if (masterData.team_id) {
+              window.selectedTeamId = masterData.team_id;
+              window.selectedTeamName = masterData.team_name;
+              console.log('Setting team from master_users:', masterData.team_id, masterData.team_name);
+
+              // Update the team radio button to reflect the loaded team
+              const teamRadios = document.querySelectorAll('input[name="team"]');
+              teamRadios.forEach(radio => {
+                if (parseInt(radio.value) === masterData.team_id) {
+                  radio.checked = true;
+                  console.log('Updated team radio button for:', masterData.team_id);
+                }
+              });
             }
           } else {
-            // Use defaults for new users
-            if (isGP) {
-              defaultSessionVal = i < 5 ? '2' : '0';
+            // Fallback to legacy table
+            console.log('No master_users pattern found, checking legacy table');
+            const { data, error } = await globalSupabase
+              .from('3_staff_working_patterns')
+              .select('*')
+              .eq('user_id', currentUser.id)
+              .maybeSingle();
+
+            if (data) {
+              existingPattern = data;
+              console.log('Found existing working pattern in legacy table:', existingPattern);
+            } else if (error) {
+              console.warn('Error loading working pattern:', error);
             } else {
-              defaultHours = i < 5 ? 7 : 0;
-              defaultMinutes = i < 5 ? 30 : 0;
+              console.log('No existing working pattern found');
             }
           }
-
-          container.insertAdjacentHTML('beforeend',
-            `<div class="working-hour-card" style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:#fff; border:1px solid rgba(15,23,42,0.06); border-radius:14px;">
-              <label for="${id}-hours" style="font-weight:600; font-size:13px; color:#334155;">${day}</label>
-              ${isGP ?
-                `<div style="display:flex; align-items:center; gap:8px;">
-                  <select id="${id}-val" style="padding:6px 10px; border:1px solid rgba(15,23,42,0.12); border-radius:8px;">
-                    <option value="0" ${defaultSessionVal === '0' ? 'selected' : ''}>0</option>
-                    <option value="1" ${defaultSessionVal === '1' ? 'selected' : ''}>1</option>
-                    <option value="2" ${defaultSessionVal === '2' ? 'selected' : ''}>2</option>
-                  </select>
-                  <span class="tiny-note" style="color:#6b7280; font-size:11px;">sessions</span>
-                </div>` :
-                `<div style="display:flex; align-items:center; gap:6px;">
-                  <select id="${id}-hours" style="padding:6px 10px; border:1px solid rgba(15,23,42,0.12); border-radius:8px;">
-                    ${Array.from({length: 13}, (_, i) => `<option value="${i}" ${i === defaultHours ? 'selected' : ''}>${i}</option>`).join('')}
-                  </select>
-                  <span style="color:#334155; font-weight:500;">h</span>
-                  <select id="${id}-minutes" style="padding:6px 10px; border:1px solid rgba(15,23,42,0.12); border-radius:8px;">
-                    <option value="0" ${defaultMinutes === 0 ? 'selected' : ''}>00</option>
-                    <option value="15" ${defaultMinutes === 15 ? 'selected' : ''}>15</option>
-                    <option value="30" ${defaultMinutes === 30 ? 'selected' : ''}>30</option>
-                    <option value="45" ${defaultMinutes === 45 ? 'selected' : ''}>45</option>
-                  </select>
-                  <span style="color:#334155; font-weight:500;">m</span>
-                </div>`
-              }
-            </div>`
-          );
-        });
-        
-        console.log('Working hours form rendered successfully');
-        
-      } catch (error) {
-        console.error('Error in renderWorkingPattern:', error);
-        // Add a message to the working-form container
-        const container = document.getElementById('working-form');
-        if (container) {
-          container.innerHTML = '<div style="color: #f44336; padding: 10px; background: #ffebee; border-radius: 8px; margin: 10px 0;">Sorry, there was an error loading your working hours. Please refresh the page or contact support.</div>';
+        } catch (e) {
+          console.warn('Failed to load working pattern:', e);
         }
       }
+
+      container.insertAdjacentHTML('beforeend',
+        `<div class="tiny-note" style="color:#6b7280; font-size:12px; margin-bottom:10px;">${isGP ?
+          'Enter number of sessions (0-2) per day.' :
+          'Select hours and minutes per day — defaults Mon-Fri 7:30.'}</div>`
+      );
+
+      days.forEach((day, i) => {
+        const id = day.toLowerCase();
+        let defaultHours = 0;
+        let defaultMinutes = 0;
+        let defaultSessionVal = '0';
+
+        if (existingPattern) {
+          // Use saved values if they exist
+          if (isGP) {
+            defaultSessionVal = String(existingPattern[`${id}_sessions`] || '0');
+          } else {
+            const hours = parseFloat(existingPattern[`${id}_hours`] || 0);
+            if (hours > 0) {
+              defaultHours = Math.floor(hours);
+              defaultMinutes = Math.round((hours - defaultHours) * 60);
+              // Round minutes to nearest 15-minute increment
+              defaultMinutes = Math.round(defaultMinutes / 15) * 15;
+              if (defaultMinutes >= 60) {
+                defaultHours += Math.floor(defaultMinutes / 60);
+                defaultMinutes = defaultMinutes % 60;
+              }
+            }
+          }
+        } else {
+          // Use defaults for new users
+          if (isGP) {
+            defaultSessionVal = i < 5 ? '2' : '0';
+          } else {
+            defaultHours = i < 5 ? 7 : 0;
+            defaultMinutes = i < 5 ? 30 : 0;
+          }
+        }
+
+        container.insertAdjacentHTML('beforeend',
+          `<div class="working-hour-card" style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:#fff; border:1px solid rgba(15,23,42,0.06); border-radius:14px;">
+            <label for="${id}-hours" style="font-weight:600; font-size:13px; color:#334155;">${day}</label>
+            ${isGP ?
+              `<div style="display:flex; align-items:center; gap:8px;">
+                <select id="${id}-val" style="padding:6px 10px; border:1px solid rgba(15,23,42,0.12); border-radius:8px;">
+                  <option value="0" ${defaultSessionVal === '0' ? 'selected' : ''}>0</option>
+                  <option value="1" ${defaultSessionVal === '1' ? 'selected' : ''}>1</option>
+                  <option value="2" ${defaultSessionVal === '2' ? 'selected' : ''}>2</option>
+                </select>
+                <span class="tiny-note" style="color:#6b7280; font-size:11px;">sessions</span>
+              </div>` :
+              `<div style="display:flex; align-items:center; gap:6px;">
+                <select id="${id}-hours" style="padding:6px 10px; border:1px solid rgba(15,23,42,0.12); border-radius:8px;">
+                  ${Array.from({length: 13}, (_, i) => `<option value="${i}" ${i === defaultHours ? 'selected' : ''}>${i}</option>`).join('')}
+                </select>
+                <span style="color:#334155; font-weight:500;">h</span>
+                <select id="${id}-minutes" style="padding:6px 10px; border:1px solid rgba(15,23,42,0.12); border-radius:8px;">
+                  <option value="0" ${defaultMinutes === 0 ? 'selected' : ''}>00</option>
+                  <option value="15" ${defaultMinutes === 15 ? 'selected' : ''}>15</option>
+                  <option value="30" ${defaultMinutes === 30 ? 'selected' : ''}>30</option>
+                  <option value="45" ${defaultMinutes === 45 ? 'selected' : ''}>45</option>
+                </select>
+                <span style="color:#334155; font-weight:500;">m</span>
+              </div>`
+            }
+          </div>`
+        );
+      });
     }
 
     // Working Hours Navigation - moved inside the main async function
     window.setupWorkingHoursHandlers = function(userData, siteIdParam) {
-      try {
-        // Use passed parameters or try to get from global scope
-        const user = userData || window.currentUser;
-        const siteId = siteIdParam || window.currentSiteId || user?.user_metadata?.site_id || user?.raw_user_meta_data?.site_id || 2;
-        
-        // Make sure we have a back button
-        const backBtn = document.getElementById('working-back');
-        if (backBtn) {
-          backBtn.addEventListener('click', () => {
-            document.getElementById('step4').style.display = 'none';
-            document.getElementById('welcome-step3').style.display = '';
-          });
-        }
-        
-        // Complete Setup Handler - ensure only one listener
-        const completeSetupBtn = document.getElementById('complete-setup');
-        if (completeSetupBtn && !completeSetupBtn.hasAttribute('data-handler-attached')) {
-          completeSetupBtn.setAttribute('data-handler-attached', 'true');
-          completeSetupBtn.addEventListener('click', async () => {
-            // Rest of the event handler...
-            // (Keep the existing implementation)
-          });
-        }
-      } catch (error) {
-        console.error('Error setting up working hours handlers:', error);
-      }
-    };
+      // Use passed parameters or try to get from global scope
+      const user = userData || window.currentUser;
+      const siteId = siteIdParam || window.currentSiteId || user?.user_metadata?.site_id || user?.raw_user_meta_data?.site_id || 2;
+      document.getElementById('working-back')?.addEventListener('click', () => {
+        document.getElementById('step4').style.display = 'none';
+        document.getElementById('welcome-step3').style.display = '';
+      });
       
       // Complete Setup Handler - ensure only one listener
       const completeSetupBtn = document.getElementById('complete-setup');
