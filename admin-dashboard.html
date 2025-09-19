@@ -18905,6 +18905,75 @@ window.refreshStaffData = refreshStaffData;
   }
 
   // Load holiday requests
+  // Function to check for overlapping holidays for a specific request
+  async function checkOverlapsForRequest(request) {
+    try {
+      // Get the user's site_id
+      const { data: requestUser } = await window.supabase
+        .from('master_users')
+        .select('site_id')
+        .eq('auth_user_id', request.user_id)
+        .single();
+
+      if (!requestUser || !requestUser.site_id) {
+        return [];
+      }
+
+      // Get all users from the same site
+      const { data: siteUsers } = await window.supabase
+        .from('master_users')
+        .select('auth_user_id, full_name, email, avatar_url')
+        .eq('site_id', requestUser.site_id)
+        .neq('auth_user_id', request.user_id); // Exclude the requesting user
+
+      if (!siteUsers || siteUsers.length === 0) {
+        return [];
+      }
+
+      // Get overlapping approved/pending requests
+      const userIds = siteUsers.map(u => u.auth_user_id);
+      console.log('[Admin Overlap Check] Checking for overlaps:', {
+        requestStart: request.start_date,
+        requestEnd: request.end_date,
+        siteId: requestUser.site_id,
+        userIds
+      });
+
+      // For date ranges to overlap: start_date <= request.end_date AND end_date >= request.start_date
+      const { data: overlappingRequests, error: overlapError } = await window.supabase
+        .from('4_holiday_requests')
+        .select('*')
+        .in('user_id', userIds)
+        .in('status', ['approved', 'pending'])
+        .lte('start_date', request.end_date)
+        .gte('end_date', request.start_date);
+
+      if (overlapError) {
+        console.error('[Admin Overlap Check] Error querying overlaps:', overlapError);
+      }
+      console.log('[Admin Overlap Check] Found overlapping requests:', overlappingRequests);
+
+      if (!overlappingRequests || overlappingRequests.length === 0) {
+        return [];
+      }
+
+      // Map requests to users
+      const overlaps = overlappingRequests.map(req => {
+        const userInfo = siteUsers.find(u => u.auth_user_id === req.user_id);
+        return {
+          ...req,
+          userName: userInfo?.full_name || userInfo?.email || 'Unknown User',
+          avatarUrl: userInfo?.avatar_url || null
+        };
+      });
+
+      return overlaps;
+    } catch (error) {
+      console.error('Error checking overlaps:', error);
+      return [];
+    }
+  }
+
   async function loadHolidayRequests() {
     if (!window.supabase) return;
 
@@ -19007,10 +19076,15 @@ window.refreshStaffData = refreshStaffData;
                   <td>
                     ${req.status === 'pending' ? `
                       <div style="display:flex; gap:8px;">
-                        <button class="btn secondary" style="padding:6px 12px; font-size:12px; background:var(--success);" onclick="approveRequest(${req.id})">Approve</button>
+                        <button class="btn secondary" style="padding:6px 12px; font-size:12px; background:var(--success);" onclick="approveRequestWithOverlapCheck(${req.id})">Approve</button>
                         <button class="btn secondary" style="padding:6px 12px; font-size:12px; background:var(--danger);" onclick="rejectRequest(${req.id})">Reject</button>
                       </div>
                     ` : '-'}
+                  </td>
+                </tr>
+                <tr id="overlap-row-${req.id}" style="display:none;">
+                  <td colspan="6" style="background: rgba(251,191,36,0.1); padding: 12px;">
+                    <div id="overlap-content-${req.id}"></div>
                   </td>
                 </tr>
               `;
@@ -19175,6 +19249,82 @@ window.refreshStaffData = refreshStaffData;
   };
 
   // Approve request
+  // Approve request with overlap check
+  window.approveRequestWithOverlapCheck = async function(reqId) {
+    if (!window.supabase) {
+      alert('System not initialized. Please refresh the page.');
+      return;
+    }
+
+    try {
+      // First get the request details
+      const { data: request } = await window.supabase
+        .from('4_holiday_requests')
+        .select('*')
+        .eq('id', reqId)
+        .single();
+
+      if (!request) {
+        alert('Request not found');
+        return;
+      }
+
+      // Check for overlaps
+      const overlaps = await checkOverlapsForRequest(request);
+
+      if (overlaps.length > 0) {
+        // Show overlaps
+        const overlapRow = document.getElementById(`overlap-row-${reqId}`);
+        const overlapContent = document.getElementById(`overlap-content-${reqId}`);
+
+        if (overlapRow && overlapContent) {
+          const overlapHTML = `
+            <div style="color: #fbbf24; font-weight: 600; margin-bottom: 8px;">
+              ⚠️ Warning: ${overlaps.length} staff member(s) from the same site have overlapping holidays:
+            </div>
+            ${overlaps.map(overlap => {
+              const avatarHTML = overlap.avatarUrl
+                ? `<img src="${overlap.avatarUrl}" alt="${overlap.userName}" style="width: 24px; height: 24px; border-radius: 50%; margin-right: 6px; vertical-align: middle;">`
+                : `<span style="display: inline-block; width: 24px; height: 24px; border-radius: 50%; background: linear-gradient(135deg, #667eea, #764ba2); margin-right: 6px; vertical-align: middle; text-align: center; line-height: 24px; color: white; font-size: 11px; font-weight: bold;">${overlap.userName.charAt(0).toUpperCase()}</span>`;
+
+              const statusBadge = overlap.status === 'approved'
+                ? '<span style="background: #059669; color: white; padding: 2px 6px; border-radius: 8px; font-size: 10px; margin-left: 6px;">Approved</span>'
+                : '<span style="background: #f59e0b; color: white; padding: 2px 6px; border-radius: 8px; font-size: 10px; margin-left: 6px;">Pending</span>';
+
+              return `
+                <div style="padding: 6px; margin: 4px 0; background: rgba(255,255,255,0.05); border-radius: 6px;">
+                  ${avatarHTML}
+                  <strong>${overlap.userName}</strong>
+                  ${statusBadge}
+                  <span style="color: #9ca3af; margin-left: 8px;">
+                    ${new Date(overlap.start_date).toLocaleDateString()} - ${new Date(overlap.end_date).toLocaleDateString()}
+                    ${overlap.reason ? `• ${overlap.reason}` : ''}
+                  </span>
+                </div>
+              `;
+            }).join('')}
+            <div style="margin-top: 12px;">
+              <button class="btn secondary" style="padding:6px 12px; font-size:12px; background:var(--success); margin-right: 8px;" onclick="approveRequest(${reqId})">Approve Anyway</button>
+              <button class="btn secondary" style="padding:6px 12px; font-size:12px; background:var(--muted);" onclick="document.getElementById('overlap-row-${reqId}').style.display='none'">Cancel</button>
+            </div>
+          `;
+
+          overlapContent.innerHTML = overlapHTML;
+          overlapRow.style.display = 'table-row';
+        }
+      } else {
+        // No overlaps, proceed with approval
+        await approveRequest(reqId);
+      }
+    } catch (error) {
+      console.error('Error checking overlaps:', error);
+      // If overlap check fails, ask if they want to proceed anyway
+      if (confirm('Could not check for overlaps. Do you want to approve anyway?')) {
+        await approveRequest(reqId);
+      }
+    }
+  };
+
   window.approveRequest = async function(reqId) {
     if (!window.supabase) {
       alert('System not initialized. Please refresh the page.');

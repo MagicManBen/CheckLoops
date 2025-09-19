@@ -381,6 +381,40 @@
         transform: scale(1) rotate(0);
       }
     }
+
+    /* Help Tour Button */
+    #help-tour-btn {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      width: 56px;
+      height: 56px;
+      background: #0b69ff;
+      color: white;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: 700;
+      box-shadow: 0 4px 20px rgba(11, 105, 255, 0.4);
+      transition: all 0.3s ease;
+      z-index: 1000;
+      gap: 2px;
+    }
+
+    #help-tour-btn:hover {
+      background: #0956cc;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 25px rgba(11, 105, 255, 0.5);
+    }
+
+    #help-tour-btn svg {
+      width: 20px;
+      height: 20px;
+    }
   </style>
 </head>
 <body class="staff-home-particles">
@@ -509,6 +543,14 @@
     <div class="muted" style="text-align:center; font-size:12px; padding:10px 0;">© CheckLoop • Staff</div>
   </main>
 
+  <!-- Help Tour Button -->
+  <button id="help-tour-btn" title="Take a guided tour of the dashboard">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/>
+    </svg>
+    ?
+  </button>
+
   <script type="module">
   import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, setRing, fmtDate, getUserAchievements, upsertAchievement, clearAuthData, computeCompliance } from './staff-common.js';
     
@@ -586,121 +628,8 @@
     requireStaffSession(supabase).then(async ({ session, profileRow }) => {
       await loadDashboard(session.user, profileRow);
 
-      // Show one-off welcome tour after onboarding completion
-      try {
-        const onboardingComplete = profileRow?.onboarding_complete || false;
-        if (!onboardingComplete) return;
-
-        // If we've already been marked server-side as shown, skip entirely
-        let serverFlag = null;
-        try {
-          const { data: row } = await supabase
-            .from('user_welcome_tours')
-            .select('seen')
-            .eq('auth_user_id', session.user.id)
-            .maybeSingle();
-          if (row && typeof row.seen !== 'undefined') serverFlag = row.seen;
-        } catch (e) { /* ignore */ }
-
-        // If server flag true, don't show. If null/false, proceed (still respect localStorage)
-        if (serverFlag === true) {
-          console.log('Server indicates tour already shown, skipping');
-          try { localStorage.setItem('cl_welcome_tour_seen_v1', '1'); } catch(_){}
-          return;
-        }
-
-        // Only show if client hasn't stored it
-        if (window.CLWelcomeTour && !localStorage.getItem('cl_welcome_tour_seen_v1')) {
-          const role = (profileRow?.role || session.user?.raw_user_meta_data?.role || '').toLowerCase();
-          
-          const steps = [
-            { 
-              selector: '#welcome', 
-              title: 'Welcome to CheckLoop Staff! 👋', 
-              body: 'This is your personal dashboard where you can access all staff tools, track your progress, and stay compliant with training requirements.' 
-            },
-            { 
-              selector: '.nav', 
-              title: 'Navigation Menu', 
-              body: 'Use the top navigation to access different areas: Staff tools, Training modules, Admin functions (if you have access), and your profile settings.' 
-            },
-            { 
-              selector: '#compliance-ring', 
-              title: 'Your Training Compliance 📊', 
-              body: 'This ring shows your overall training completion status. Keep it at 100% to maintain compliance! The ring fills up as you complete required training modules.' 
-            },
-            { 
-              selector: '.bubble-actions', 
-              title: 'Quick Action Hub ⚡', 
-              body: 'These are your most-used tools: Scans for patient records, Training for courses, Holidays for time off, and Quiz for weekly assessments.' 
-            },
-            { 
-              selector: 'a[href="staff-scans.html"]', 
-              title: 'My Scans 📋', 
-              body: 'Access and manage patient scan records. This is where you\'ll spend most of your clinical work time.' 
-            },
-            { 
-              selector: 'a[href="staff-training.html"]', 
-              title: 'Training Center 🎓', 
-              body: 'Complete mandatory training modules, view certificates, and track your learning progress. Essential for maintaining compliance!' 
-            },
-            { 
-              selector: '#quiz-bubble', 
-              title: 'Weekly Quiz 🧠', 
-              body: 'Complete your required weekly knowledge assessments here. The bubble will glow when a quiz is due!' 
-            },
-            { 
-              selector: '.progress-wrap', 
-              title: 'Training Progress Tracker 📈', 
-              body: 'This bar shows your overall training completion percentage. Aim to keep this at 100% to stay compliant with requirements.' 
-            },
-            { 
-              selector: '#achievements-grid', 
-              title: 'Your Achievements 🏆', 
-              body: 'Earn badges and recognition for completing training, maintaining compliance, and reaching milestones. Show off your progress!' 
-            },
-            { 
-              selector: '#timeline', 
-              title: 'Recent Activity 📅', 
-              body: 'Track your recent scans, training completions, and other activities. Great for staying on top of your work!' 
-            },
-            { 
-              selector: '.topbar .pill', 
-              title: 'Your Profile Info 👤', 
-              body: 'These pills show your current site, email, and role. Make sure everything looks correct!' 
-            }
-          ];
-
-          // Add admin-specific step if user is admin/owner
-          if (role === 'admin' || role === 'owner') {
-            steps.push({ 
-              selector: '#admin-access-panel', 
-              title: 'Admin Panel 🔧', 
-              body: 'As an admin, you have access to the Admin Site for managing users, viewing reports, and configuring system settings.' 
-            });
-          }
-
-          // Add final step
-          steps.push({ 
-            selector: '#logout-btn', 
-            title: 'Sign Out Securely 🔒', 
-            body: 'Always remember to sign out when you\'re done, especially on shared computers. Security is important! You\'re all set - enjoy using CheckLoop!' 
-          });
-
-          setTimeout(() => window.CLWelcomeTour.show(steps), 250);
-
-          // When the tour finishes, mark it server-side so it never shows again for this user
-          const onTourFinish = async () => {
-            try {
-              // Call RPC to upsert seen=true atomically
-              await supabase.rpc('upsert_user_welcome_tour', { p_auth_user_id: session.user.id, p_seen: true });
-            } catch (e) { console.warn('Could not persist welcome tour seen flag via RPC', e); }
-            // Remove listener
-            document.removeEventListener('clwelcome:finished', onTourFinish);
-          };
-          document.addEventListener('clwelcome:finished', onTourFinish);
-        }
-      } catch (e) { console.error('Welcome tour failed to start', e); }
+      // Setup help tour button functionality
+      setupHelpTourButton(profileRow, session);
 
       // Check holiday approval status and update button from master_users table
       try {
@@ -1344,6 +1273,99 @@
     })();
   </script>
   
+  <script>
+    // Setup Help Tour Button
+    function setupHelpTourButton(profileRow, session) {
+      const helpBtn = document.getElementById('help-tour-btn');
+      if (!helpBtn) return;
+
+      helpBtn.addEventListener('click', () => {
+        if (!window.CLWelcomeTour) {
+          console.warn('Welcome tour not available');
+          return;
+        }
+
+        const role = (profileRow?.role || session.user?.raw_user_meta_data?.role || '').toLowerCase();
+        
+        const steps = [
+          { 
+            selector: '#welcome', 
+            title: 'Welcome to CheckLoop Staff! 👋', 
+            body: 'This is your personal dashboard where you can access all staff tools, track your progress, and stay compliant with training requirements.' 
+          },
+          { 
+            selector: '.nav', 
+            title: 'Navigation Menu', 
+            body: 'Use the top navigation to access different areas: Staff tools, Training modules, Admin functions (if you have access), and your profile settings.' 
+          },
+          { 
+            selector: '#compliance-ring', 
+            title: 'Your Training Compliance 📊', 
+            body: 'This ring shows your overall training completion status. Keep it at 100% to maintain compliance! The ring fills up as you complete required training modules.' 
+          },
+          { 
+            selector: '.bubble-actions', 
+            title: 'Quick Action Hub ⚡', 
+            body: 'These are your most-used tools: Scans for patient records, Training for courses, Holidays for time off, and Quiz for weekly assessments.' 
+          },
+          { 
+            selector: 'a[href="staff-scans.html"]', 
+            title: 'My Scans 📋', 
+            body: 'Access and manage patient scan records. This is where you\'ll spend most of your clinical work time.' 
+          },
+          { 
+            selector: 'a[href="staff-training.html"]', 
+            title: 'Training Center 🎓', 
+            body: 'Complete mandatory training modules, view certificates, and track your learning progress. Essential for maintaining compliance!' 
+          },
+          { 
+            selector: '#quiz-bubble', 
+            title: 'Weekly Quiz 🧠', 
+            body: 'Complete your required weekly knowledge assessments here. The bubble will glow when a quiz is due!' 
+          },
+          { 
+            selector: '.progress-wrap', 
+            title: 'Training Progress Tracker 📈', 
+            body: 'This bar shows your overall training completion percentage. Aim to keep this at 100% to stay compliant with requirements.' 
+          },
+          { 
+            selector: '#achievements-grid', 
+            title: 'Your Achievements 🏆', 
+            body: 'Earn badges and recognition for completing training, maintaining compliance, and reaching milestones. Show off your progress!' 
+          },
+          { 
+            selector: '#timeline', 
+            title: 'Recent Activity 📅', 
+            body: 'Track your recent scans, training completions, and other activities. Great for staying on top of your work!' 
+          },
+          { 
+            selector: '.topbar .pill', 
+            title: 'Your Profile Info 👤', 
+            body: 'These pills show your current site, email, and role. Make sure everything looks correct!' 
+          }
+        ];
+
+        // Add admin-specific step if user is admin/owner
+        if (role === 'admin' || role === 'owner') {
+          steps.push({ 
+            selector: '#admin-access-panel', 
+            title: 'Admin Panel 🔧', 
+            body: 'As an admin, you have access to the Admin Site for managing users, viewing reports, and configuring system settings.' 
+          });
+        }
+
+        // Add final step
+        steps.push({ 
+          selector: '#logout-btn', 
+          title: 'Sign Out Securely 🔒', 
+          body: 'Always remember to sign out when you\'re done, especially on shared computers. Security is important! You\'re all set - enjoy using CheckLoop!' 
+        });
+
+        window.CLWelcomeTour.show(steps);
+      });
+    }
+  </script>
+
   <script>
     // Create animated particles - only on staff home page
     // DISABLED: Commenting out particle animation to improve performance

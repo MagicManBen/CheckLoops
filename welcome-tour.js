@@ -1,12 +1,10 @@
-/* Lightweight one-off guided tour for new staff users. Vanilla JS, no deps. */
+/* Lightweight guided tour for staff users. Vanilla JS, no deps. */
 (function(){
   if (typeof window === 'undefined') return;
-  const KEY = 'cl_welcome_tour_seen_v1';
 
   function createEl(tag, attrs){ const e = document.createElement(tag); Object.entries(attrs||{}).forEach(([k,v])=>e.setAttribute(k,v)); return e; }
 
   function showTour(steps){
-    if (localStorage.getItem(KEY)) return; // already seen
     if (!steps || !steps.length) return;
 
     let idx = 0;
@@ -67,12 +65,9 @@
     }
 
     function cleanup(){
-      try{ localStorage.setItem(KEY, '1'); }catch(e){}
       overlay.remove(); highlight.remove(); tooltip.remove();
       window.removeEventListener('resize', render);
       window.removeEventListener('scroll', render);
-      // Emit an event so the embedding page can persist this server-side
-      try { document.dispatchEvent(new CustomEvent('clwelcome:finished', { detail: { timestamp: Date.now() } })); } catch(e){}
     }
 
     overlay.addEventListener('click', ()=>{ cleanup(); });
