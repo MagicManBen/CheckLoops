@@ -8327,33 +8327,20 @@ window.PIR_DEFINITIONS_DATA = [
       }
 
       // APPROACH HISTORY:
-      // Previous approach (works but says "Reset Password"):
-      // await supabase.auth.resetPasswordForEmail(formData.email, { redirectTo: '...' })
-      // This worked reliably but showed "Reset your password" in the email which was confusing for new users
+      // Previous approach (magic links): Failed when email security scanners pre-opened the links
+      // Current approach: Use resetPasswordForEmail which is NOT single-use and handles pre-opening
+      // The email will say "Reset Password" but it's more reliable than magic links
 
-      // Current approach: Use magic link (shows "Sign in to CheckLoop")
-      const { error: magicLinkError } = await supabase.auth.signInWithOtp({
-        email: formData.email,
-        options: {
-          shouldCreateUser: false, // User already exists from admin.createUser above
-          emailRedirectTo: `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(formData.email)}&site_id=${formData.siteId}&full_name=${encodeURIComponent(formData.fullName)}&role=${formData.siteRole}&role_detail=${encodeURIComponent(formData.jobRole || '')}&reports_to_id=${formData.teamId || ''}`,
-          data: {
-            full_name: formData.fullName,
-            role: formData.siteRole,
-            role_detail: formData.jobRole,
-            reports_to_id: formData.teamId,
-            site_id: formData.siteId,
-            invited: true
-          }
-        }
+      const { error: inviteError } = await supabase.auth.resetPasswordForEmail(formData.email, {
+        redirectTo: `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(formData.email)}&site_id=${formData.siteId}&full_name=${encodeURIComponent(formData.fullName)}&role=${formData.siteRole}&role_detail=${encodeURIComponent(formData.jobRole || '')}&reports_to_id=${formData.teamId || ''}`
       });
 
-      if (magicLinkError) {
-        console.error('Failed to send magic link:', magicLinkError);
-        throw new Error(`Failed to send invitation email: ${magicLinkError.message || 'Unknown error'}`);
+      if (inviteError) {
+        console.error('Failed to send invitation email:', inviteError);
+        throw new Error(`Failed to send invitation email: ${inviteError.message || 'Unknown error'}`);
       }
 
-      console.log('Magic link email sent successfully');
+      console.log('Password reset email sent successfully (used as invitation)');
 
       // Success!
       const successElement = document.getElementById('add-user-success');
@@ -8361,7 +8348,7 @@ window.PIR_DEFINITIONS_DATA = [
         successElement.innerHTML = `
           <strong>Success!</strong> User ${formData.email} has been invited successfully!
           <br><br>
-          They will receive a magic link email to sign in and set their password.
+          They will receive an email with a secure link to set their password and complete setup.
           <br><br>
           <em>Note: The email may take a few minutes to arrive. Check spam folder if not received.</em>
         `;
