@@ -410,9 +410,25 @@
       <button class="btn" id="logout-btn">Sign Out</button>
     </div>
 
+    <!-- Fuzzy Match Notification -->
+    <div id="fuzzy-match-notification" style="display: none; background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 16px 20px; margin: 20px 20px 0 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);">
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="font-size: 24px;">🎉</span>
+          <div>
+            <div style="font-weight: 600; font-size: 16px;">Holiday Records Found!</div>
+            <div style="opacity: 0.9; font-size: 14px;">You have <span id="fuzzy-match-count">0</span> historical holiday record(s) to review</div>
+          </div>
+        </div>
+        <a href="review-holiday-matches.html" style="background: rgba(255,255,255,0.2); color: white; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-weight: 600; transition: all 0.3s ease; display: inline-block;">
+          Review Now →
+        </a>
+      </div>
+    </div>
+
     <section class="panel g-12" style="margin:0; position:relative; overflow:hidden;">
       <div class="halo"></div>
-      
+
       <!-- Quiz Due Alert -->
       <div id="quiz-alert" class="quiz-alert" style="display:none;">
         <div class="quiz-alert-content">
@@ -650,9 +666,12 @@
       const roleDetail = role.charAt(0).toUpperCase() + role.slice(1);  // Capitalize first letter
 
       document.getElementById('welcome').textContent = `Welcome, ${displayName}`;
-      
+
       // Check quiz due status
       await checkQuizStatus(user, profileRow);
+
+      // Check for pending fuzzy match holidays
+      await checkFuzzyMatches(user, profileRow);
       
       // Resolve avatar and render into ring circle
       // Check sources in priority order (most authoritative first)
@@ -982,6 +1001,39 @@
       await loadRecentActivity(displayName, siteId);
       
   // Meetings moved to dedicated page
+    }
+
+    async function checkFuzzyMatches(user, profileRow) {
+      try {
+        // Get user's profile for name matching
+        const fullName = profileRow?.full_name;
+        const siteId = profileRow?.site_id;
+
+        if (!fullName || !siteId) return;
+
+        // Check for pending fuzzy matches
+        const { data: matches, error } = await supabase
+          .from('fuzzy_match_holidays')
+          .select('id')
+          .eq('site_id', siteId)
+          .or(`matched_user_id.eq.${user.id},and(staff_name.ilike.${fullName},match_status.eq.pending)`)
+          .in('match_status', ['pending', 'matched']);
+
+        if (error) {
+          console.error('Error checking fuzzy matches:', error);
+          return;
+        }
+
+        // Filter to only count relevant pending matches
+        const pendingMatches = matches?.filter(match => true) || [];
+
+        if (pendingMatches.length > 0) {
+          document.getElementById('fuzzy-match-count').textContent = pendingMatches.length;
+          document.getElementById('fuzzy-match-notification').style.display = 'block';
+        }
+      } catch (error) {
+        console.error('Error checking fuzzy matches:', error);
+      }
     }
 
     async function checkQuizStatus(user, profileRow) {
