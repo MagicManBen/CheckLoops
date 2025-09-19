@@ -824,10 +824,10 @@
           }
 
           // Check if user has existing data in various tables
-          const [welcomeData, workingPattern, holidayProfile] = await Promise.all([
-            supabase.from('staff_app_welcome')
-              .select('*')
-              .eq('user_id', user.id)
+          const [masterData, workingPattern, holidayProfile] = await Promise.all([
+            supabase.from('master_users')
+              .select('nickname, role_detail, team_id, team_name, avatar_url')
+              .eq('auth_user_id', user.id)
               .eq('site_id', siteIdForCheck)
               .maybeSingle(),
             supabase.from('3_staff_working_patterns')
@@ -841,13 +841,13 @@
           ]);
 
           // Store existing data for pre-population
-          if (welcomeData.data) {
-            existingData.welcome = welcomeData.data;
-            nickname = welcomeData.data.nickname;
-            roleDetailCheck = welcomeData.data.role_detail;
-            teamId = welcomeData.data.team_id;
-            teamName = welcomeData.data.team_name;
-            avatarUrl = welcomeData.data.avatar_url;
+          if (masterData.data) {
+            existingData.master = masterData.data;
+            nickname = masterData.data.nickname;
+            roleDetailCheck = masterData.data.role_detail;
+            teamId = masterData.data.team_id;
+            teamName = masterData.data.team_name;
+            avatarUrl = masterData.data.avatar_url;
             // If we have role and team data, user was pre-configured
             if (roleDetailCheck && (teamId || teamName)) {
               preConfigured = true;
@@ -880,16 +880,16 @@
             console.log('User was pre-configured by admin:', existingData);
           }
 
-          if (siteIdForCheck && !welcomeData.data) {
-            const { data: saw } = await supabase
-              .from('staff_app_welcome')
+          if (siteIdForCheck && !masterData.data) {
+            const { data: masterSnapshot } = await supabase
+              .from('master_users')
               .select('nickname, role_detail, team_id, team_name, avatar_url')
-              .eq('user_id', user.id)
+              .eq('auth_user_id', user.id)
               .eq('site_id', siteIdForCheck)
               .order('updated_at', { ascending: false })
               .limit(1)
               .maybeSingle();
-            if (saw) { nickname = saw.nickname; roleDetailCheck = saw.role_detail; teamId = saw.team_id; teamName = saw.team_name; avatarUrl = saw.avatar_url; }
+            if (masterSnapshot) { nickname = masterSnapshot.nickname; roleDetailCheck = masterSnapshot.role_detail; teamId = masterSnapshot.team_id; teamName = masterSnapshot.team_name; avatarUrl = masterSnapshot.avatar_url; }
           }
           if (!nickname || !roleDetailCheck || (!teamId && !teamName) || !avatarUrl) {
             try {
@@ -1099,39 +1099,8 @@
           }
           */
 
-          // 3) staff_app_welcome (onboarding snapshot)
-          try {
-            const sawData = {
-              user_id: user.id,
-              site_id: siteId || null,
-              team_id: finalTeamId || null,
-              team_name: finalTeamName || null,
-              nickname: nickVal || null
-            };
-
-            // Handle role assignment for staff_app_welcome
-            if (isAdmin) {
-              sawData.role_detail = 'Admin'; // Keep admin display
-              sawData.job_role = finalRole; // Store clinical role separately
-              console.log('[persistRoleTeam] Setting admin in staff_app_welcome, job_role:', finalRole);
-            } else {
-              sawData.role_detail = finalRole;
-              console.log('[persistRoleTeam] Setting role_detail in staff_app_welcome:', finalRole);
-            }
-
-            // Wrap in try-catch - table has trigger issues with ku.created_at column
-            try {
-              const { error: sawErr } = await supabase.from('staff_app_welcome').upsert(sawData);
-              if (sawErr) {
-                // Log but continue - known issue with database triggers
-                console.warn('[persistRoleTeam] staff_app_welcome upsert error (known ku.created_at trigger issue):', sawErr);
-              }
-            } catch (dbErr) {
-              console.warn('[persistRoleTeam] staff_app_welcome upsert exception:', dbErr);
-            }
-          } catch (e) {
-            console.warn('[persistRoleTeam] staff_app_welcome upsert failed', e);
-          }
+          // 3) staff_app_welcome removed - master_users is now the primary source of truth
+          // No longer writing to staff_app_welcome table
 
           // 4) 1_staff_holiday_profiles (keep role/team in sync)
           try {
@@ -2643,27 +2612,7 @@
                 throw e; // Re-throw to handle upstream
               }
 
-              // Save to staff_app_welcome
-              if (siteId) {
-                try {
-                  const payload = {
-                    user_id: user.id,
-                    site_id: siteId,
-                    full_name: fullName || displayName,
-                    nickname: nickVal,
-                    avatar_url: avatarUrl,
-                    role_detail: window.selectedRole || user?.raw_user_meta_data?.role_detail || null,
-                    team_id: window.selectedTeamId || null,
-                    team_name: window.selectedTeamName || null
-                  };
-                  // Wrap known problematic save - has trigger issues with ku.created_at
-                  try {
-                    await supabase.from('staff_app_welcome').upsert(payload);
-                  } catch (dbErr) {
-                    console.warn('staff_app_welcome avatar save failed (known ku.created_at trigger issue):', dbErr);
-                  }
-                } catch (_) { /* non-critical */ }
-              }
+              // staff_app_welcome removed - avatar is saved to master_users above
 
               // Update 1_staff_holiday_profiles with avatar and latest info
               try {
@@ -2800,37 +2749,7 @@
             const nicknameValue = document.getElementById('nickname')?.value?.trim() || user?.email?.split('@')[0] || 'Staff';
             let saveErrors = [];
 
-            // 1. First save to staff_app_welcome (primary storage)
-            try {
-              const welcomeData = {
-                user_id: user.id,
-                site_id: siteId,
-                full_name: user?.raw_user_meta_data?.full_name || user?.email?.split('@')[0] || 'Staff',
-                nickname: nicknameValue,
-                role_detail: role,
-                team_id: teamIdNum,
-                team_name: window.selectedTeamName || null,
-                avatar_url: avatar
-              };
-
-              console.log('Saving to staff_app_welcome:', welcomeData);
-              const { error: welcomeErr } = await supabase
-                .from('staff_app_welcome')
-                .upsert(welcomeData);
-
-              if (welcomeErr) {
-                console.error('staff_app_welcome save error:', welcomeErr);
-                // Don't treat RLS errors as fatal
-                if (!welcomeErr.message?.includes('violates row-level security')) {
-                  saveErrors.push('welcome');
-                }
-              } else {
-                console.log('Successfully saved to staff_app_welcome');
-              }
-            } catch (e) {
-              console.error('Exception saving to staff_app_welcome:', e);
-              // Don't treat welcome errors as fatal
-            }
+            // 1. staff_app_welcome removed - using master_users as primary storage
 
             // 2. Save/update profiles table (for compatibility)
             try {
@@ -3328,18 +3247,17 @@
                 existing = masterData;
                 console.log('Using master_users data:', existing);
               } else {
-                // Fallback to staff_app_welcome table
-                console.log('No master_users data found, checking staff_app_welcome');
-                let q = supabase
-                  .from('staff_app_welcome')
+                // Try again without site_id filter if no data found
+                console.log('No master_users data found with site filter, trying without site filter');
+                const { data: masterDataNoSite, error: masterErrorNoSite } = await supabase
+                  .from('master_users')
                   .select('full_name, nickname, role_detail, team_id, team_name, avatar_url')
-                  .eq('user_id', user.id)
-                  .limit(1);
-                if (siteId) q = q.eq('site_id', siteId);
-                const { data: sawRow, error: sawErr } = await q.maybeSingle();
-                if (!sawErr && sawRow) {
-                  existing = sawRow;
-                  console.log('Using staff_app_welcome data:', existing);
+                  .eq('auth_user_id', user.id)
+                  .limit(1)
+                  .maybeSingle();
+                if (!masterErrorNoSite && masterDataNoSite) {
+                  existing = masterDataNoSite;
+                  console.log('Using master_users data (no site filter):', existing);
                 }
               }
             } catch (e) {
@@ -4196,73 +4114,8 @@
 
           console.log('Working pattern saved:', savedPattern);
 
-          // Also save working hours summary to staff_app_welcome
-          try {
-            // Create a safe version of the working hours data object with error handling
-            const workingHoursData = {
-              monday: isGP 
-                ? (typeof patternData.monday_sessions === 'number' ? patternData.monday_sessions : 0)
-                : (patternData.monday_hours || '00:00'),
-              tuesday: isGP 
-                ? (typeof patternData.tuesday_sessions === 'number' ? patternData.tuesday_sessions : 0)
-                : (patternData.tuesday_hours || '00:00'),
-              wednesday: isGP 
-                ? (typeof patternData.wednesday_sessions === 'number' ? patternData.wednesday_sessions : 0)
-                : (patternData.wednesday_hours || '00:00'),
-              thursday: isGP 
-                ? (typeof patternData.thursday_sessions === 'number' ? patternData.thursday_sessions : 0)
-                : (patternData.thursday_hours || '00:00'),
-              friday: isGP 
-                ? (typeof patternData.friday_sessions === 'number' ? patternData.friday_sessions : 0)
-                : (patternData.friday_hours || '00:00'),
-              saturday: isGP 
-                ? (typeof patternData.saturday_sessions === 'number' ? patternData.saturday_sessions : 0)
-                : (patternData.saturday_hours || '00:00'),
-              sunday: isGP 
-                ? (typeof patternData.sunday_sessions === 'number' ? patternData.sunday_sessions : 0)
-                : (patternData.sunday_hours || '00:00'),
-              isGP: isGP,
-              total_hours: totalHours,
-              total_sessions: totalSessions
-            };
-
-            // Validate and sanitize the object to ensure it's safe for storage
-            for (const [key, value] of Object.entries(workingHoursData)) {
-              if (key === 'isGP') continue; // Boolean is fine
-              
-              if (isGP && key.includes('day')) {
-                // For GP, ensure sessions are valid numbers
-                if (typeof value !== 'number' || isNaN(value)) {
-                  workingHoursData[key] = 0;
-                }
-              } else if (!isGP && key.includes('day')) {
-                // For non-GP, ensure hours are valid strings
-                if (typeof value !== 'string') {
-                  workingHoursData[key] = '00:00';
-                }
-              }
-            }
-
-            console.log('Saving working hours to staff_app_welcome:', workingHoursData);
-
-            // Wrap in try-catch - table has trigger issues with ku.created_at column
-            try {
-              await globalSupabase.from('staff_app_welcome').upsert({
-                user_id: currentUser.id,
-                site_id: currentSiteId,
-                working_hours: workingHoursData,
-                updated_at: new Date().toISOString()
-              });
-            } catch (tableErr) {
-              // Log but don't fail - table has known trigger issues
-              console.warn('staff_app_welcome upsert failed (known issue with ku.created_at trigger):', tableErr);
-            }
-
-            // Note: profiles table doesn't have working_hours column
-            // Working hours are stored in staff_app_welcome and 3_staff_working_patterns tables
-          } catch (e) {
-            console.warn('Failed to save working hours to welcome/profiles:', e);
-          }
+          // staff_app_welcome removed - working hours are saved to master_users and 3_staff_working_patterns
+          // Working hours data is already saved to master_users table above
           
           // Create/Update holiday profile and entitlements
           try {
