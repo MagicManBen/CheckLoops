@@ -147,6 +147,39 @@
     @keyframes fadeInUp { from{opacity:0;transform:translateY(10px);} to{opacity:1;transform:translateY(0);} }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* === New Revamped Layout Styles === */
+    .meeting-shell{ display:flex; flex-direction:column; gap:14px; }
+    .meetings-toolbar{ display:flex; gap:12px; align-items:center; justify-content:space-between; background:rgba(255,255,255,.92); border:1px solid var(--line); border-radius:14px; padding:10px 12px; box-shadow:0 10px 28px rgba(2,6,23,.08); }
+    .toolbar-left{ display:flex; gap:10px; align-items:center; }
+    .toolbar-right{ display:flex; gap:10px; align-items:center; }
+    .searchbar{ display:flex; align-items:center; gap:8px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:999px; padding:8px 12px; }
+    .searchbar input{ border:none; outline:none; background:transparent; min-width:280px; font-size:14px; }
+    .filters{ display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+    .filter-chip{ border:1px solid #e2e8f0; background:#fff; color:#0f172a; border-radius:999px; padding:6px 12px; font-weight:700; font-size:12px; cursor:pointer; }
+    .filter-chip.active{ background:linear-gradient(135deg,var(--primary-start),var(--primary-end)); color:#fff; border-color:transparent; }
+
+    .content-grid{ display:grid; grid-template-columns: 1.75fr 1fr; gap:16px; }
+    .primary-panel{ background:rgba(255,255,255,.92); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 34px rgba(2,6,23,.1); padding:12px; }
+    .side-panel{ display:grid; gap:16px; position:sticky; top:96px; height:fit-content; }
+
+    .view-tabs{ display:flex; gap:8px; align-items:center; padding:6px; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:999px; width:max-content; margin-bottom:10px; }
+    .view-tab{ border:none; background:transparent; padding:6px 14px; border-radius:999px; font-weight:800; cursor:pointer; color:#475569; }
+    .view-tab.active{ background:#fff; color:#0f172a; box-shadow:0 2px 6px rgba(2,6,23,.08); }
+
+    .view{ display:none; }
+    .view.active{ display:block; }
+    #list-view{ padding:6px; }
+    .list-card{ background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:12px; display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center; margin-bottom:10px; transition:transform .15s ease, box-shadow .2s ease; }
+    .list-card:hover{ transform:translateY(-1px); box-shadow:0 6px 16px rgba(2,6,23,.08); }
+    .list-title{ font-weight:800; color:#0f172a; }
+    .list-meta{ font-size:12px; color:#64748b; display:flex; gap:10px; flex-wrap:wrap; }
+    .list-actions{ display:flex; gap:8px; }
+
+    @media (max-width: 1024px){
+      .content-grid{ grid-template-columns: 1fr; }
+      .searchbar input{ min-width: 160px; }
+    }
+
     @media (max-width: 768px) {
       .meetings-container { grid-template-columns: 1fr; }
       .modal { width: 95%; max-width: none; }
@@ -182,54 +215,76 @@
         <div class="panel-title">Meetings Hub</div>
       </div>
 
-      <div class="meetings-container">
-        <!-- Main Calendar Section -->
-        <div class="calendar-section">
-          <div class="calendar-header">
-            <h2 class="calendar-title">Meeting Calendar</h2>
+      <div class="meeting-shell">
+        <!-- Top Toolbar -->
+        <div class="meetings-toolbar">
+          <div class="toolbar-left">
+            <div class="searchbar">
+              <span>🔎</span>
+              <input id="meeting-search-input" type="search" placeholder="Search title, description, or location…" />
+            </div>
+            <div class="filters">
+              <button class="filter-chip active" data-type="all">All</button>
+              <button class="filter-chip" data-type="partners">Partners</button>
+              <button class="filter-chip" data-type="staff">Staff</button>
+              <button class="filter-chip" data-type="training">Training</button>
+              <button class="filter-chip" data-type="pcn">PCN</button>
+              <button class="filter-chip" data-type="clinical">Clinical</button>
+            </div>
+          </div>
+          <div class="toolbar-right">
             <button class="pill-btn primary" onclick="openCreateMeetingModal()">➕ New Meeting</button>
           </div>
-          <div id="calendar"></div>
         </div>
 
-        <!-- Sidebar -->
-        <div class="sidebar-panel">
-          <!-- Upcoming Meetings -->
-          <div class="upcoming-card">
-            <h3 class="upcoming-header">Upcoming Meetings</h3>
-            <div class="upcoming-list" id="upcoming-list">
-              <!-- Dynamically populated -->
+        <!-- Main Content Grid -->
+        <div class="content-grid">
+          <!-- Primary panel with tabs -->
+          <div class="primary-panel">
+            <div class="view-tabs">
+              <button class="view-tab active" data-view="calendar">Calendar</button>
+              <button class="view-tab" data-view="list">List</button>
+            </div>
+            <div id="calendar-view" class="view active">
+              <div id="calendar"></div>
+            </div>
+            <div id="list-view" class="view">
+              <div id="meetings-list"></div>
             </div>
           </div>
 
-          <!-- Quick Stats -->
-          <div class="stats-card">
-            <div class="stats-grid">
-              <div class="stat-item">
-                <div class="stat-value" id="stat-upcoming">0</div>
-                <div class="stat-label">Upcoming</div>
-              </div>
-              <div class="stat-item">
-                <div class="stat-value" id="stat-month">0</div>
-                <div class="stat-label">This Month</div>
-              </div>
-              <div class="stat-item">
-                <div class="stat-value" id="stat-total">0</div>
-                <div class="stat-label">Total</div>
-              </div>
-              <div class="stat-item">
-                <div class="stat-value" id="stat-past">0</div>
-                <div class="stat-label">Completed</div>
+          <!-- Sidebar -->
+          <aside class="side-panel">
+            <div class="upcoming-card">
+              <h3 class="upcoming-header">Upcoming Meetings</h3>
+              <div class="upcoming-list" id="upcoming-list"></div>
+            </div>
+            <div class="stats-card">
+              <div class="stats-grid">
+                <div class="stat-item">
+                  <div class="stat-value" id="stat-upcoming">0</div>
+                  <div class="stat-label">Upcoming</div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-value" id="stat-month">0</div>
+                  <div class="stat-label">This Month</div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-value" id="stat-total">0</div>
+                  <div class="stat-label">Total</div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-value" id="stat-past">0</div>
+                  <div class="stat-label">Completed</div>
+                </div>
               </div>
             </div>
-          </div>
-
-          <!-- Past Recordings Button -->
-          <div class="sidebar-footer" style="margin-top: 8px;">
-            <button class="pill-btn primary" onclick="openPastRecordingsModal()" style="width: 100%;">
-              <span>🎙️ View Past Recordings</span>
-            </button>
-          </div>
+            <div class="sidebar-footer">
+              <button class="pill-btn primary" onclick="openPastRecordingsModal()" style="width: 100%;">
+                <span>🎙️ View Past Recordings</span>
+              </button>
+            </div>
+          </aside>
         </div>
       </div>
     </section>
@@ -552,6 +607,9 @@
     let currentMeetingId = null;
     let currentMeeting = null;
     let meetings = [];
+    let meetingFilter = 'all';
+    let meetingView = 'calendar';
+    let searchQuery = '';
 
     // Initialize meetings functionality
     async function initializeMeetings() {
@@ -624,6 +682,7 @@
       await loadMeetings();
       loadUpcomingMeetings();
       updateStats();
+      bindMeetingsUI();
     }
 
     // Load meetings from storage
@@ -631,11 +690,10 @@
       if (!window.meetingsManager) return [];
 
       meetings = await window.meetingsManager.getMeetings();
-      const events = window.meetingsManager.formatForFullCalendar(meetings);
-
-      // Update upcoming meetings list
-      setTimeout(loadUpcomingMeetings, 50);
-
+      const filtered = applyMeetingFilters(meetings);
+      const events = window.meetingsManager.formatForFullCalendar(filtered);
+      // Update list + upcoming after calendar finishes
+      setTimeout(() => { renderMeetingList(); loadUpcomingMeetings(); }, 50);
       return events;
     }
 
@@ -643,7 +701,8 @@
     async function loadUpcomingMeetings() {
       if (!window.meetingsManager) return;
 
-      const upcomingMeetings = await window.meetingsManager.getUpcomingMeetings(5);
+      let upcomingMeetings = await window.meetingsManager.getUpcomingMeetings(5);
+      upcomingMeetings = applyMeetingFilters(upcomingMeetings);
       const listEl = document.getElementById('upcoming-list');
 
       if (!upcomingMeetings || upcomingMeetings.length === 0) {
@@ -677,6 +736,97 @@
             </div>
           </div>
         `;
+      }).join('');
+    }
+
+    // === New UI Filter & List Helpers ===
+    function bindMeetingsUI(){
+      // View tabs
+      document.querySelectorAll('.view-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.view-tab').forEach(b=>b.classList.remove('active'));
+          btn.classList.add('active');
+          meetingView = btn.dataset.view;
+          document.getElementById('calendar-view').classList.toggle('active', meetingView==='calendar');
+          document.getElementById('list-view').classList.toggle('active', meetingView==='list');
+          if (meetingView==='calendar') { calendar?.updateSize?.(); }
+        });
+      });
+
+      // Filters
+      document.querySelectorAll('.filter-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+          document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));
+          chip.classList.add('active');
+          meetingFilter = chip.dataset.type || 'all';
+          refreshMeetingsUI();
+        });
+      });
+
+      // Search
+      const searchEl = document.getElementById('meeting-search-input');
+      if (searchEl){
+        searchEl.addEventListener('input', () => {
+          searchQuery = searchEl.value.trim().toLowerCase();
+          refreshMeetingsUI();
+        });
+      }
+    }
+
+    function refreshMeetingsUI(){
+      // Re-pull events via calendar callback
+      try { calendar?.refetchEvents?.(); } catch(_){ }
+      renderMeetingList();
+      loadUpcomingMeetings();
+      updateStats();
+    }
+
+    function applyMeetingFilters(list){
+      if (!Array.isArray(list)) return [];
+      let out = list.slice();
+      if (meetingFilter && meetingFilter !== 'all') {
+        out = out.filter(m => (m.meeting_type||'general').toLowerCase() === meetingFilter);
+      }
+      if (searchQuery){
+        const q = searchQuery;
+        out = out.filter(m => {
+          const t = (m.title||'').toLowerCase();
+          const d = (m.description||'').toLowerCase();
+          const l = (m.location||'').toLowerCase();
+          return t.includes(q) || d.includes(q) || l.includes(q);
+        });
+      }
+      // sort by start ascending
+      out.sort((a,b)=> new Date(a.start) - new Date(b.start));
+      return out;
+    }
+
+    function renderMeetingList(){
+      const listEl = document.getElementById('meetings-list');
+      if (!listEl) return;
+      const data = applyMeetingFilters(meetings||[]);
+      if (!data.length){
+        listEl.innerHTML = '<div style="text-align:center; color:#94a3b8; padding:20px;">No meetings match your filters.</div>';
+        return;
+      }
+      listEl.innerHTML = data.map(m => {
+        const start = m.start ? new Date(m.start) : null;
+        const when = start ? `${start.toLocaleDateString()} • ${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}` : 'No date';
+        const type = (m.meeting_type||'general').toLowerCase();
+        return `
+          <div class="list-card" onclick="showMeetingDetails('${m.id}')">
+            <div>
+              <div class="list-title">${m.title || 'Untitled meeting'}</div>
+              <div class="list-meta">
+                <span>🗓️ ${when}</span>
+                <span>🏷️ ${type}</span>
+                ${m.location ? `<span>📍 ${m.location}</span>` : ''}
+              </div>
+            </div>
+            <div class="list-actions">
+              <button class="action-btn" onclick="event.stopPropagation(); showMeetingDetails('${m.id}')">Open</button>
+            </div>
+          </div>`;
       }).join('');
     }
 
