@@ -414,6 +414,14 @@
           </div>
         </div>
 
+        <!-- Overlap Detection Section -->
+        <div id="overlap-section" class="calc-card" style="display:none; margin:16px 0; background: linear-gradient(145deg, rgba(251,191,36,0.08), rgba(245,158,11,0.04)); border: 1px solid rgba(251,191,36,0.25);">
+          <div class="calc-header" style="color: #fbbf24;">⚠️ Other Staff on Holiday During This Period</div>
+          <div id="overlap-list" style="padding: 12px;">
+            <!-- Overlapping holidays will be loaded here -->
+          </div>
+        </div>
+
         <div class="form-group" style="margin-top:16px;">
           <label class="form-label">Reason (optional)</label>
           <textarea id="reason" class="form-input" rows="3" placeholder="Holiday, personal time, etc."></textarea>
@@ -469,12 +477,20 @@
       attachLogout(supabase);
 
       // Setup Flatpickr for range selection
+      // Using 2025 as the holiday year to match current data
+      const holidayYear = 2025; // TODO: Get this from holiday year settings
+      const currentMonth = new Date().getMonth();
+      const currentDay = new Date().getDate();
+
       const rangePicker = flatpickr("#holiday-range", {
         mode: "range",
         dateFormat: "Y-m-d",
         altInput: true,
         altFormat: "D, j M Y",
-        weekNumbers: true
+        weekNumbers: true,
+        defaultDate: new Date(holidayYear, currentMonth, currentDay), // Default to current month/day in holiday year
+        minDate: new Date(holidayYear, 0, 1), // Start from Jan 1 of holiday year
+        maxDate: new Date(holidayYear, 11, 31) // End at Dec 31 of holiday year
       });
       window.rangePicker = rangePicker;
 
@@ -765,8 +781,131 @@
           }).join('');
         }
 
+        // Function to check for overlapping holidays
+        async function checkHolidayOverlaps(startDate, endDate) {
+          console.log('=== CHECKING FOR OVERLAPS ===');
+          console.log('Start date:', startDate);
+          console.log('End date:', endDate);
+          console.log('Current user ID:', user.id);
+          console.log('Current user email:', user.email);
+
+          try {
+            // Get current user's site_id from master_users
+            const { data: currentUser } = await supabase
+              .from('master_users')
+              .select('site_id, full_name, email')
+              .eq('auth_user_id', user.id)
+              .single();
+
+            console.log('Current user data:', currentUser);
+
+            if (!currentUser || !currentUser.site_id) {
+              console.log('No site_id found for current user');
+              return [];
+            }
+
+            // Get all users from the same site
+            const { data: siteUsers } = await supabase
+              .from('master_users')
+              .select('auth_user_id, full_name, email, avatar_url')
+              .eq('site_id', currentUser.site_id)
+              .neq('auth_user_id', user.id); // Exclude current user
+
+            console.log('Site users found:', siteUsers?.length || 0);
+            console.log('Site users:', siteUsers);
+
+            if (!siteUsers || siteUsers.length === 0) {
+              console.log('No other users found at the same site');
+              return [];
+            }
+
+            // Get all approved/pending holiday requests that overlap with the selected dates
+            const userIds = siteUsers.map(u => u.auth_user_id);
+            console.log('[Overlap Check] Checking for overlaps:', {
+              startDate,
+              endDate,
+              siteId: currentUser.site_id,
+              otherUserIds: userIds,
+              totalOtherUsers: userIds.length
+            });
+
+            // For date ranges to overlap: start_date <= endDate AND end_date >= startDate
+            const { data: overlappingRequests, error: overlapError } = await supabase
+              .from('4_holiday_requests')
+              .select('*')
+              .in('user_id', userIds)
+              .in('status', ['approved', 'pending'])
+              .lte('start_date', endDate)
+              .gte('end_date', startDate);
+
+            if (overlapError) {
+              console.error('[Overlap Check] Error querying overlaps:', overlapError);
+            }
+            console.log('[Overlap Check] Found overlapping requests:', overlappingRequests);
+
+            if (!overlappingRequests || overlappingRequests.length === 0) {
+              return [];
+            }
+
+            // Map requests to users
+            const overlaps = overlappingRequests.map(request => {
+              const userInfo = siteUsers.find(u => u.auth_user_id === request.user_id);
+              return {
+                ...request,
+                userName: userInfo?.full_name || userInfo?.email || 'Unknown User',
+                avatarUrl: userInfo?.avatar_url || null,
+                email: userInfo?.email
+              };
+            });
+
+            return overlaps;
+          } catch (error) {
+            console.error('Error checking holiday overlaps:', error);
+            return [];
+          }
+        }
+
+        // Function to display overlapping holidays
+        function displayOverlaps(overlaps) {
+          const overlapSection = document.getElementById('overlap-section');
+          const overlapList = document.getElementById('overlap-list');
+
+          if (!overlaps || overlaps.length === 0) {
+            overlapSection.style.display = 'none';
+            return;
+          }
+
+          overlapSection.style.display = 'block';
+
+          const overlapHTML = overlaps.map(overlap => {
+            const startDate = new Date(overlap.start_date).toLocaleDateString();
+            const endDate = new Date(overlap.end_date).toLocaleDateString();
+            const avatarHTML = overlap.avatarUrl
+              ? `<img src="${overlap.avatarUrl}" alt="${overlap.userName}" style="width: 32px; height: 32px; border-radius: 50%; margin-right: 8px; vertical-align: middle;">`
+              : `<div style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #667eea, #764ba2); display: inline-block; margin-right: 8px; vertical-align: middle; text-align: center; line-height: 32px; color: white; font-weight: bold;">${overlap.userName.charAt(0).toUpperCase()}</div>`;
+
+            const statusBadge = overlap.status === 'approved'
+              ? '<span style="background: #059669; color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-left: 8px;">Approved</span>'
+              : '<span style="background: #f59e0b; color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-left: 8px;">Pending</span>';
+
+            return `
+              <div style="padding: 8px; margin: 4px 0; background: rgba(255,255,255,0.05); border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
+                ${avatarHTML}
+                <strong style="color: #fbbf24;">${overlap.userName}</strong>
+                ${statusBadge}
+                <div style="margin-left: 40px; color: #d1d5db; font-size: 13px; margin-top: 4px;">
+                  ${startDate} - ${endDate}
+                  ${overlap.reason ? `<span style="color: #9ca3af;"> • ${overlap.reason}</span>` : ''}
+                </div>
+              </div>
+            `;
+          }).join('');
+
+          overlapList.innerHTML = overlapHTML;
+        }
+
         // Calculate time off
-        document.getElementById('calculate-btn').addEventListener('click', () => {
+        document.getElementById('calculate-btn').addEventListener('click', async () => {
           const dates = (window.rangePicker && window.rangePicker.selectedDates) || [];
           const fromDate = dates[0] ? new Date(dates[0]) : null;
           const toDate = dates[1] ? new Date(dates[1]) : (dates[0] ? new Date(dates[0]) : null);
@@ -829,6 +968,14 @@
             totalHours += Math.floor(totalMinutes / 60);
             totalMinutes = totalMinutes % 60;
           }
+
+          // Check for overlapping holidays
+          const startDateStr = fromDate.toISOString().split('T')[0];
+          const endDateStr = toDate.toISOString().split('T')[0];
+          console.log('[Calculate] Checking overlaps for dates:', startDateStr, 'to', endDateStr);
+          const overlaps = await checkHolidayOverlaps(startDateStr, endDateStr);
+          console.log('[Calculate] Overlaps found:', overlaps);
+          displayOverlaps(overlaps);
 
           // Display result
           const resultDiv = document.getElementById('calculation-result');
@@ -946,6 +1093,7 @@
             if (window.rangePicker) window.rangePicker.clear();
             document.getElementById('reason').value = '';
             document.getElementById('calculation-result').style.display = 'none';
+            document.getElementById('overlap-section').style.display = 'none';
             document.getElementById('submit-request').style.display = 'none';
 
             // Reload bookings
