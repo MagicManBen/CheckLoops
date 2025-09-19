@@ -231,14 +231,25 @@
       persistSession: true, 
       autoRefreshToken: true, 
       detectSessionInUrl: true,
-      flowType: 'pkce'
+      flowType: 'pkce',
+      storage: window.localStorage,
+      storageKey: `sb-${SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`
     }
   });
 
   // Helper: Clear any stale auth data that might cause session confusion
   function clearStaleAuthData() {
-    console.log('Clearing any stale auth data...');
+    console.log('Checking for stale auth data...');
     try {
+      // We only want to clear manually logged out sessions
+      // Don't clear auth data if there's a valid session
+      const sessionStr = localStorage.getItem(`sb-${SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`);
+      if (sessionStr && sessionStr.includes('"access_token"')) {
+        // Valid session exists, don't clear anything
+        console.log('Valid session exists, preserving auth data');
+        return;
+      }
+      
       // Clear remember me data if user manually logged out from another page
       const entries = Object.keys(localStorage);
       const authKeys = entries.filter(key => 
@@ -249,9 +260,11 @@
         key === 'rememberedPassword'
       );
       
-      // Only clear if we detect inconsistent state
+      // Only clear if we detect inconsistent state - i.e., auth tokens without remember me setting
       if (authKeys.some(key => key.startsWith('sb-')) && !localStorage.getItem('rememberMe')) {
-        authKeys.forEach(key => localStorage.removeItem(key));
+        // Don't clear rememberedEmail and rememberedPassword even if logged out
+        authKeys.filter(key => key !== 'rememberedEmail' && key !== 'rememberedPassword')
+               .forEach(key => localStorage.removeItem(key));
         console.log('Cleared stale auth data from localStorage');
       }
     } catch (error) {
@@ -749,8 +762,7 @@
         localStorage.setItem('rememberMe', 'true');
         localStorage.setItem('rememberedEmail', email);
         if (usernameInput && usernameInput.value) localStorage.setItem('rememberedUsername', usernameInput.value.trim());
-        // Only store password if explicitly needed (not recommended) — preserve existing behavior if present
-        if (passwordInput.value) localStorage.setItem('rememberedPassword', passwordInput.value);
+        localStorage.setItem('rememberedPassword', passwordInput.value);
       } else {
         localStorage.removeItem('rememberMe');
         localStorage.removeItem('rememberedEmail');
