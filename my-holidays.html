@@ -399,7 +399,7 @@
         <div class="form-row">
           <div class="form-group" style="grid-column: 1 / span 2;">
             <label class="form-label">Date Range</label>
-            <input id="holiday-range" class="form-input" placeholder="Select holiday dates…" />
+            <input id="holiday-range" class="form-input" placeholder="Select holiday dates…" autocomplete="off" value="" />
             <div class="muted" style="font-size:12px; margin-top:6px;">Click start date, then end date (click once for a single day).</div>
           </div>
           <button class="btn" id="calculate-btn" style="padding:10px 20px;">Calculate</button>
@@ -479,8 +479,10 @@
       // Setup Flatpickr for range selection
       // Using 2025 as the holiday year to match current data
       const holidayYear = 2025; // TODO: Get this from holiday year settings
-      const currentMonth = new Date().getMonth();
-      const currentDay = new Date().getDate();
+
+      // Ensure no pre-filled value from browser restoration/autofill
+      const holidayInput = document.getElementById('holiday-range');
+      if (holidayInput) holidayInput.value = '';
 
       const rangePicker = flatpickr("#holiday-range", {
         mode: "range",
@@ -488,9 +490,13 @@
         altInput: true,
         altFormat: "D, j M Y",
         weekNumbers: true,
-        defaultDate: new Date(holidayYear, currentMonth, currentDay), // Default to current month/day in holiday year
+        defaultDate: null, // explicitly no default
         minDate: new Date(holidayYear, 0, 1), // Start from Jan 1 of holiday year
-        maxDate: new Date(holidayYear, 11, 31) // End at Dec 31 of holiday year
+        maxDate: new Date(holidayYear, 11, 31), // End at Dec 31 of holiday year
+        onReady: function(selectedDates, dateStr, instance){
+          // Clear any restored selection from bfcache/autofill
+          instance.clear();
+        }
       });
       window.rangePicker = rangePicker;
 
@@ -867,14 +873,24 @@
 
         // Function to display overlapping holidays
         function displayOverlaps(overlaps) {
+          console.log('[displayOverlaps] Called with:', overlaps);
           const overlapSection = document.getElementById('overlap-section');
           const overlapList = document.getElementById('overlap-list');
 
+          console.log('[displayOverlaps] Section element:', overlapSection);
+          console.log('[displayOverlaps] List element:', overlapList);
+
           if (!overlaps || overlaps.length === 0) {
-            overlapSection.style.display = 'none';
+            console.log('[displayOverlaps] No overlaps, hiding section');
+            if (overlapSection) overlapSection.style.display = 'none';
             return;
           }
 
+          console.log('[displayOverlaps] Showing overlap section with', overlaps.length, 'overlaps');
+          if (!overlapSection) {
+            console.error('[displayOverlaps] ERROR: overlap-section element not found!');
+            return;
+          }
           overlapSection.style.display = 'block';
 
           const overlapHTML = overlaps.map(overlap => {
@@ -970,12 +986,18 @@
           }
 
           // Check for overlapping holidays
-          const startDateStr = fromDate.toISOString().split('T')[0];
-          const endDateStr = toDate.toISOString().split('T')[0];
-          console.log('[Calculate] Checking overlaps for dates:', startDateStr, 'to', endDateStr);
-          const overlaps = await checkHolidayOverlaps(startDateStr, endDateStr);
-          console.log('[Calculate] Overlaps found:', overlaps);
-          displayOverlaps(overlaps);
+          try {
+            const startDateStr = fromDate.toISOString().split('T')[0];
+            const endDateStr = toDate.toISOString().split('T')[0];
+            console.log('[Calculate] Checking overlaps for dates:', startDateStr, 'to', endDateStr);
+            const overlaps = await checkHolidayOverlaps(startDateStr, endDateStr);
+            console.log('[Calculate] Overlaps found:', overlaps);
+            console.log('[Calculate] Type of overlaps:', typeof overlaps);
+            console.log('[Calculate] Is array?', Array.isArray(overlaps));
+            displayOverlaps(overlaps);
+          } catch (overlapError) {
+            console.error('[Calculate] Error checking overlaps:', overlapError);
+          }
 
           // Display result
           const resultDiv = document.getElementById('calculation-result');

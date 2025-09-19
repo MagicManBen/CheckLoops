@@ -723,13 +723,16 @@
       // Check sources in priority order (most authoritative first)
       try {
         let avatarUrl = null;
+        let avatarVersion = null;
+        const avatarCacheKey = `staff-avatar-${user.id}`;
 
         // 1. First check profiles table (most authoritative/recent)
         try {
-          const { data: p } = await supabase.from('profiles').select('avatar_url').eq('user_id', user.id).maybeSingle();
+          const { data: p } = await supabase.from('profiles').select('avatar_url, updated_at').eq('user_id', user.id).maybeSingle();
           if (p?.avatar_url) {
             avatarUrl = p.avatar_url;
             console.log('Avatar from profiles:', avatarUrl);
+            avatarVersion = p.updated_at || avatarVersion;
           }
         } catch(e) {
           console.warn('Error fetching avatar from profiles:', e);
@@ -750,6 +753,7 @@
               if (saw?.avatar_url) {
                 avatarUrl = saw.avatar_url;
                 console.log('Avatar from staff_app_welcome:', avatarUrl);
+                avatarVersion = saw.updated_at || avatarVersion;
               }
             }
           } catch(e) {
@@ -764,6 +768,11 @@
           avatarUrl = refreshedUser?.user_metadata?.avatar_url || user?.raw_user_meta_data?.avatar_url || null;
           if (avatarUrl) {
             console.log('Avatar from user metadata:', avatarUrl);
+            avatarVersion = avatarVersion
+              || refreshedUser?.user_metadata?.avatar_updated_at
+              || refreshedUser?.updated_at
+              || user?.updated_at
+              || null;
           }
         }
 
@@ -773,19 +782,51 @@
         
         // Check if this is a full-body avatar (from uploads bucket)
         const isFullBodyAvatar = avatarUrl && (avatarUrl.includes('/uploads/') || avatarUrl.includes('/full_avatars/'));
-        
+
         const img = document.getElementById('ring-avatar');
         if (img && avatarUrl) {
-          // Add cache-busting parameter to ensure fresh avatar loads
-          const cacheBuster = new Date().getTime();
+          // Build a stable cache seed so the browser can reuse the cached avatar between visits
+          let versionToken = null;
+          if (avatarVersion) {
+            if (typeof avatarVersion === 'number') {
+              versionToken = avatarVersion;
+            } else {
+              const parsedVersion = Date.parse(avatarVersion);
+              if (!Number.isNaN(parsedVersion)) {
+                versionToken = parsedVersion;
+              }
+            }
+          }
+
           const separator = avatarUrl.includes('?') ? '&' : '?';
-          img.src = `${avatarUrl}${separator}v=${cacheBuster}`;
+          const finalUrl = versionToken ? `${avatarUrl}${separator}v=${versionToken}` : avatarUrl;
+
+          try {
+            localStorage.setItem(avatarCacheKey, JSON.stringify({
+              url: avatarUrl,
+              version: versionToken || null,
+              resolvedUrl: finalUrl
+            }));
+          } catch(_) { /* ignore storage errors */ }
+
+          img.src = finalUrl;
           if (isFullBodyAvatar) {
             img.style.objectFit = 'contain';
             img.style.padding = '4px';
           }
+        } else if (img) {
+          try {
+            const cached = JSON.parse(localStorage.getItem(avatarCacheKey) || 'null');
+            if (cached?.resolvedUrl) {
+              img.src = cached.resolvedUrl;
+              if (cached?.url && (cached.url.includes('/uploads/') || cached.url.includes('/full_avatars/'))) {
+                img.style.objectFit = 'contain';
+                img.style.padding = '4px';
+              }
+            }
+          } catch(_) { /* ignore */ }
         }
-        
+
         // Small right-hand avatar removed from markup; we only use the ring avatar now
       } catch(_){}
       // Set top bar site/email/role
