@@ -1119,16 +1119,8 @@
               console.log('[persistRoleTeam] Setting role_detail in staff_app_welcome:', finalRole);
             }
 
-            // Wrap in try-catch - table has trigger issues with ku.created_at column
-            try {
-              const { error: sawErr } = await supabase.from('staff_app_welcome').upsert(sawData);
-              if (sawErr) {
-                // Log but continue - known issue with database triggers
-                console.warn('[persistRoleTeam] staff_app_welcome upsert error (known ku.created_at trigger issue):', sawErr);
-              }
-            } catch (dbErr) {
-              console.warn('[persistRoleTeam] staff_app_welcome upsert exception:', dbErr);
-            }
+            const { error: sawErr } = await supabase.from('staff_app_welcome').upsert(sawData);
+            if (sawErr) console.warn('[persistRoleTeam] staff_app_welcome upsert error', sawErr);
           } catch (e) {
             console.warn('[persistRoleTeam] staff_app_welcome upsert failed', e);
           }
@@ -1225,9 +1217,6 @@
           btn.dataset.avatarPersistBound = '1';
         })();
 
-        // COMMENTED OUT: This function tries to call persistRoleTeam which is not in scope
-        // The actual working hours saving is handled by setupWorkingHoursHandlers
-        /*
         (function bindFinalSave(){
           const btn = document.getElementById('complete-setup');
           if (!btn || btn.dataset.finalPersistBound === '1') return;
@@ -1247,7 +1236,6 @@
           }, { once: true });
           btn.dataset.finalPersistBound = '1';
         })();
-        */
 
         // === /Persist Role/Team and Avatar helpers ===
         // Adds two new fields to the entitlement payload:
@@ -1442,35 +1430,15 @@
           const mouth = document.getElementById('opt-mouth').value;
           const eyebrows = document.getElementById('opt-eyebrows').value;
           const glasses = document.getElementById('opt-glasses').value;
-          let glassesProbability = document.getElementById('opt-glassesProbability').value;
+          const glassesProbability = document.getElementById('opt-glassesProbability').value;
           const earrings = document.getElementById('opt-earrings').value;
-          let earringsProbability = document.getElementById('opt-earringsProbability').value;
+          const earringsProbability = document.getElementById('opt-earringsProbability').value;
           const featuresSel = document.getElementById('opt-features');
-          let featuresProbability = document.getElementById('opt-featuresProbability').value;
+          const featuresProbability = document.getElementById('opt-featuresProbability').value;
           const hair = document.getElementById('opt-hair').value;
           const hairColor = document.getElementById('opt-hairColor').value;
-          let hairProbability = document.getElementById('opt-hairProbability').value;
+          const hairProbability = document.getElementById('opt-hairProbability').value;
           const skinColor = document.getElementById('opt-skinColor').value;
-
-          // Ensure selected accessories/styles are visible by default
-          // If a style is chosen but probability is blank, default to 100
-          const ensureProb = (styleVal, probVal, probId) => {
-            if (styleVal && !String(probVal || '').trim()) {
-              const el = document.getElementById(probId);
-              if (el) el.value = '100';
-              return '100';
-            }
-            return probVal;
-          };
-          glassesProbability = ensureProb(glasses, glassesProbability, 'opt-glassesProbability');
-          earringsProbability = ensureProb(earrings, earringsProbability, 'opt-earringsProbability');
-          // For features (multi-select), if any chosen and no probability, set to 100
-          const featuresChosen = featuresSel ? Array.from(featuresSel.selectedOptions).some(o => !!o.value) : false;
-          if (featuresChosen) {
-            featuresProbability = ensureProb('features', featuresProbability, 'opt-featuresProbability');
-          }
-          // For hair, if a non-blank style picked and no probability, set to 100
-          hairProbability = ensureProb(hair, hairProbability, 'opt-hairProbability');
 
           if (bgType) params.set('backgroundType', bgType);
           if (bgColor) params.append('backgroundColor', bgColor);
@@ -1486,39 +1454,18 @@
           if (eyes) params.set('eyes', eyes);
           if (mouth) params.set('mouth', mouth);
           if (eyebrows) params.set('eyebrows', eyebrows);
-          if (glasses) {
-            params.set('glasses', glasses);
-            if (glassesProbability) params.set('glassesProbability', glassesProbability);
-          } else {
-            // Clear probability control to avoid stale values affecting preview
-            const gp = document.getElementById('opt-glassesProbability');
-            if (gp) gp.value = '';
-          }
-          if (earrings) {
-            params.set('earrings', earrings);
-            if (earringsProbability) params.set('earringsProbability', earringsProbability);
-          } else {
-            const ep = document.getElementById('opt-earringsProbability');
-            if (ep) ep.value = '';
-          }
+          if (glasses) params.set('glasses', glasses);
+          if (glassesProbability) params.set('glassesProbability', glassesProbability);
+          if (earrings) params.set('earrings', earrings);
+          if (earringsProbability) params.set('earringsProbability', earringsProbability);
           if (featuresSel){
             const vals = Array.from(featuresSel.selectedOptions).map(o=>o.value).filter(Boolean);
             vals.forEach(v=> params.append('features', v));
-            if (vals.length > 0 && featuresProbability) {
-              params.set('featuresProbability', featuresProbability);
-            } else {
-              const fp = document.getElementById('opt-featuresProbability');
-              if (fp) fp.value = '';
-            }
           }
-          if (hair) {
-            params.set('hair', hair);
-            if (hairColor) params.set('hairColor', hairColor);
-            if (hairProbability) params.set('hairProbability', hairProbability);
-          } else {
-            const hp = document.getElementById('opt-hairProbability');
-            if (hp) hp.value = '';
-          }
+          if (featuresProbability) params.set('featuresProbability', featuresProbability);
+          if (hair) params.set('hair', hair);
+          if (hairColor) params.set('hairColor', hairColor);
+          if (hairProbability) params.set('hairProbability', hairProbability);
           if (skinColor) params.set('skinColor', skinColor);
 
           return `${base}?${params.toString()}`;
@@ -1535,59 +1482,18 @@
         (function bindAvatarAutoPreview(){
           const scope = document.getElementById('welcome-step3');
           if (!scope || scope.dataset.previewBound === '1') return;
-          const cb = (source = 'unknown') => { 
-            try { 
-              console.log(`Avatar preview update triggered by: ${source}`);
-              updateAvatarPreview(); 
-            } catch(e) {
-              console.error('Preview update failed:', e);
-            }
-          };
-          
+          const cb = () => { try { updateAvatarPreview(); } catch(_){} };
           // Listen to changes on all selects and inputs
           scope.addEventListener('change', (e) => {
-            if (e.target.matches('select, input[type="radio"], input[type="checkbox"]')) {
-              console.log(`Change event on ${e.target.id || e.target.tagName}`);
-              cb(`change:${e.target.id || e.target.tagName}`);
-            }
+            if (e.target.matches('select, input[type="radio"], input[type="checkbox"]')) cb();
           });
-          
           scope.addEventListener('input', (e) => {
-            if (e.target.matches('select, input[type="range"]')) {
-              console.log(`Input event on ${e.target.id || e.target.tagName}`);
-              cb(`input:${e.target.id || e.target.tagName}`);
-            }
+            if (e.target.matches('select, input[type="range"]')) cb();
           });
-          
           // Also catch clicks on our option buttons (e.g., swatches)
           scope.addEventListener('click', (e) => {
-            if ((e.target).closest('.option-btn')) {
-              console.log(`Option button clicked: ${e.target.className}`);
-              cb('option-button-click');
-            }
+            if ((e.target).closest('.option-btn')) cb();
           });
-          
-          // Add additional observer for dynamic content changes
-          const observer = new MutationObserver((mutations) => {
-            mutations.forEach((mutation) => {
-              if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-                // Check if any of the added nodes are select elements or contain them
-                const addedSelects = Array.from(mutation.addedNodes).filter(node => 
-                  node.nodeType === 1 && (node.tagName === 'SELECT' || node.querySelector('select'))
-                );
-                if (addedSelects.length > 0) {
-                  console.log('New select elements detected, rebinding events');
-                  // Small delay to ensure elements are fully ready
-                  setTimeout(() => {
-                    // Trigger a preview update in case default values should be applied
-                    cb('dynamic-select-added');
-                  }, 100);
-                }
-              }
-            });
-          });
-          
-          observer.observe(scope, { childList: true, subtree: true });
           scope.dataset.previewBound = '1';
         })();
 
@@ -1684,51 +1590,6 @@
 
         // Kick off once the page has loaded the controls
         ensureSkinSwatchesReady();
-        // Force initial preview update for accessory selects once they are populated
-        (function ensureAccessoriesReady(){
-          const ids = ['opt-glasses','opt-earrings','opt-features'];
-          ids.forEach(id => {
-            const el = document.getElementById(id);
-            if (!el) return;
-            
-            // Function to bind events to accessory controls
-            const bindAccessoryEvents = () => {
-              // Make sure change events trigger preview updates
-              if (!el.dataset.accessoryEventsBound) {
-                el.addEventListener('change', () => {
-                  console.log(`${id} changed, updating preview`);
-                  updateAvatarPreview();
-                  window.avatarDirty = true;
-                  const saveMsg = document.getElementById('avatar-save-msg');
-                  if (saveMsg) saveMsg.textContent = 'You have unsaved changes — they will be saved when you finish.';
-                });
-                
-                // Also bind to input events for immediate feedback
-                el.addEventListener('input', () => {
-                  console.log(`${id} input, updating preview`);
-                  updateAvatarPreview();
-                });
-                
-                el.dataset.accessoryEventsBound = 'true';
-                console.log(`Bound events to ${id}`);
-              }
-            };
-            
-            if (el.options && el.options.length > 0) {
-              bindAccessoryEvents();
-              el.dispatchEvent(new Event('change', { bubbles: true }));
-            } else {
-              const mo = new MutationObserver(() => {
-                if (el.options && el.options.length > 0) {
-                  bindAccessoryEvents();
-                  el.dispatchEvent(new Event('change', { bubbles: true }));
-                  mo.disconnect();
-                }
-              });
-              mo.observe(el, { childList: true });
-            }
-          });
-        })();
         // ---- /Skin tone swatches ----
 
         function getAiEndpoint(){
@@ -2250,83 +2111,19 @@
           const ids = [
             'opt-backgroundType','opt-backgroundColor','opt-backgroundRotation','opt-radius','opt-rotate','opt-scale','opt-flip','opt-clip','opt-translateX','opt-translateY','opt-eyes','opt-mouth','opt-eyebrows','opt-glasses','opt-glassesProbability','opt-earrings','opt-earringsProbability','opt-featuresProbability','opt-hair','opt-hairColor','opt-hairProbability','opt-skinColor'
           ];
-          
-          // Function to bind events to a control
-          const bindControlEvents = (id) => {
+          ids.forEach(id=>{
             const el = document.getElementById(id);
-            if (el && !el.dataset.bound) { 
-              // Bind both input and change events for maximum compatibility
+            if (el && !el.dataset.bound){ 
               el.addEventListener('input', () => {
-                console.log(`Input event on ${id}, updating preview`);
                 updateAvatarPreview();
                 // mark that avatar has unsaved manual changes
                 window.avatarDirty = true;
                 const saveMsg = document.getElementById('avatar-save-msg');
                 if (saveMsg) saveMsg.textContent = 'You have unsaved changes — they will be saved when you finish.';
-              });
-              
-              el.addEventListener('change', () => {
-                console.log(`Change event on ${id}, updating preview`);
-                updateAvatarPreview();
-                window.avatarDirty = true;
-                const saveMsg = document.getElementById('avatar-save-msg');
-                if (saveMsg) saveMsg.textContent = 'You have unsaved changes — they will be saved when you finish.';
-              });
-              
-              el.dataset.bound = '1'; 
-              console.log(`Bound events to control: ${id}`);
+              }); 
+              el.dataset.bound='1'; 
             }
-          };
-          
-          // Initial binding attempt
-          ids.forEach(bindControlEvents);
-          
-          // Delayed binding for accessory controls that might be populated later
-          setTimeout(() => {
-            const accessoryIds = ['opt-glasses', 'opt-earrings', 'opt-features'];
-            accessoryIds.forEach(id => {
-              const el = document.getElementById(id);
-              if (el && !el.dataset.bound && el.options && el.options.length > 0) {
-                console.log(`Late binding for ${id} with ${el.options.length} options`);
-                bindControlEvents(id);
-              }
-            });
-
-            // Auto-manage probabilities for accessories to reflect immediately
-            const autoProb = (styleId, probId) => {
-              const styleEl = document.getElementById(styleId);
-              const probEl = document.getElementById(probId);
-              if (!styleEl || !probEl) return;
-              if (!styleEl.dataset.probAutoBound) {
-                styleEl.addEventListener('change', () => {
-                  const val = String(styleEl.value || '').trim();
-                  if (val) {
-                    // If a style is selected and prob empty, set to 100
-                    if (!String(probEl.value || '').trim()) probEl.value = '100';
-                  } else {
-                    // If cleared, blank out probability to avoid stale param
-                    probEl.value = '';
-                  }
-                  updateAvatarPreview();
-                });
-                styleEl.dataset.probAutoBound = '1';
-              }
-            };
-            autoProb('opt-glasses', 'opt-glassesProbability');
-            autoProb('opt-earrings', 'opt-earringsProbability');
-            // For features, if any selected and prob empty, set to 100; else clear
-            const featsEl = document.getElementById('opt-features');
-            const featsProbEl = document.getElementById('opt-featuresProbability');
-            if (featsEl && featsProbEl && !featsEl.dataset.probAutoBound) {
-              featsEl.addEventListener('change', () => {
-                const any = Array.from(featsEl.selectedOptions).some(o => !!o.value);
-                if (any && !String(featsProbEl.value || '').trim()) featsProbEl.value = '100';
-                if (!any) featsProbEl.value = '';
-                updateAvatarPreview();
-              });
-              featsEl.dataset.probAutoBound = '1';
-            }
-          }, 500); // Wait 500ms for async population
+          });
           // features (multi-select)
           const featuresMulti = document.getElementById('opt-features');
           if (featuresMulti && !featuresMulti.dataset.bound){ 
@@ -2656,12 +2453,7 @@
                     team_id: window.selectedTeamId || null,
                     team_name: window.selectedTeamName || null
                   };
-                  // Wrap known problematic save - has trigger issues with ku.created_at
-                  try {
-                    await supabase.from('staff_app_welcome').upsert(payload);
-                  } catch (dbErr) {
-                    console.warn('staff_app_welcome avatar save failed (known ku.created_at trigger issue):', dbErr);
-                  }
+                  await supabase.from('staff_app_welcome').upsert(payload);
                 } catch (_) { /* non-critical */ }
               }
 
@@ -2920,20 +2712,8 @@
               step4.style.display = 'block'; // Use 'block' instead of empty string for clarity
 
               console.log('Rendering working pattern...');
-              // Ensure the function exists and call it (module scope -> use window)
-              if (window.renderWorkingPattern) {
-                try {
-                  // Wrap in try/catch to handle any synchronous errors
-                  await Promise.resolve(window.renderWorkingPattern())
-                    .catch(err => {
-                      console.error('[renderWorkingPattern] error', err);
-                    });
-                } catch (err) {
-                  console.error('[renderWorkingPattern] exception', err);
-                }
-              } else {
-                console.warn('renderWorkingPattern not available on window');
-              }
+              // Ensure the function exists and call it
+              renderWorkingPattern();
 
               // Ensure working hours handlers are set up
               if (window.setupWorkingHoursHandlers) {
@@ -3707,36 +3487,22 @@
     
     // Working Hours Functions - make it global so it can be called from other places
     window.renderWorkingPattern = async function renderWorkingPattern() {
-      try {
-        const container = document.getElementById('working-form');
-        if (!container) { console.warn('[renderWorkingPattern] container #working-form not found'); return; }
+      const container = document.getElementById('working-form');
+      if (!container) return;
 
-        container.innerHTML = '';
-        const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-        
-        // Get the user's role from admin-provided data - ensure this is in window scope
-        let userRole = '';
-        let isGP = false;
-        
-        try {
-          userRole = (typeof window.getUserRole === 'function') ? window.getUserRole() : 
-                    (window.selectedRole || 'staff');
-                    
-          isGP = (typeof window.buildIsGpFlag === 'function') ? window.buildIsGpFlag(userRole) : 
-                /(^|\s)(gp|doctor|dr\.?)(\s|$)/i.test(String(userRole));
-        } catch (roleErr) {
-          console.warn('[renderWorkingPattern] Error determining role:', roleErr);
-          userRole = window.selectedRole || 'staff';
-          isGP = /(^|\s)(gp|doctor|dr\.?)(\s|$)/i.test(String(userRole));
-        }
-        
-        console.log('[renderWorkingPattern] determined role:', userRole, 'isGP:', isGP);
+      container.innerHTML = '';
+      const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      
+      // Get the user's role from admin-provided data
+      const userRole = getUserRole();
+      const isGP = buildIsGpFlag(userRole);
+      
+      console.log('Working hours - determined role:', userRole, 'isGP:', isGP);
 
-        // Try to load existing working pattern from master_users first, then legacy table
-        let existingPattern = null;
-        // Access window globals properly
-        const currentUser = window.currentUser;
-        const currentSiteId = window.currentSiteId || currentUser?.user_metadata?.site_id || currentUser?.raw_user_meta_data?.site_id || 2;
+      // Try to load existing working pattern from master_users first, then legacy table
+      let existingPattern = null;
+      const currentUser = window.currentUser;
+      const currentSiteId = window.currentSiteId || user?.user_metadata?.site_id || user?.raw_user_meta_data?.site_id || 2;
 
       // First check for pre-configured working pattern from invitation
       if (window.preConfiguredWorkingPattern) {
@@ -3828,46 +3594,16 @@
           if (isGP) {
             defaultSessionVal = String(existingPattern[`${id}_sessions`] || '0');
           } else {
-            const raw = existingPattern[`${id}_hours`];
-            try {
-              if (raw === null || raw === undefined) {
-                // No value provided, use defaults
-                defaultHours = 0;
-                defaultMinutes = 0;
-              } else if (typeof raw === 'string' && raw.includes(':')) {
-                // Handle HH:MM format
-                const [hStr, mStr] = raw.split(':');
-                const h = parseInt(hStr || '0', 10);
-                const m = parseInt(mStr || '0', 10);
-                defaultHours = isNaN(h) ? 0 : h;
-                defaultMinutes = isNaN(m) ? 0 : m;
-                // Snap minutes to 15-minute increments
-                defaultMinutes = Math.round(defaultMinutes / 15) * 15;
-                if (defaultMinutes >= 60) {
-                  defaultHours += Math.floor(defaultMinutes / 60);
-                  defaultMinutes = defaultMinutes % 60;
-                }
-              } else {
-                // Handle numeric format (could be string or number)
-                const hours = parseFloat(String(raw).replace(',', '.') || '0');
-                if (!isNaN(hours) && hours > 0) {
-                  defaultHours = Math.floor(hours);
-                  defaultMinutes = Math.round((hours - defaultHours) * 60);
-                  // Round minutes to nearest 15-minute increment
-                  defaultMinutes = Math.round(defaultMinutes / 15) * 15;
-                  if (defaultMinutes >= 60) {
-                    defaultHours += Math.floor(defaultMinutes / 60);
-                    defaultMinutes = defaultMinutes % 60;
-                  }
-                } else {
-                  defaultHours = 0;
-                  defaultMinutes = 0;
-                }
+            const hours = parseFloat(existingPattern[`${id}_hours`] || 0);
+            if (hours > 0) {
+              defaultHours = Math.floor(hours);
+              defaultMinutes = Math.round((hours - defaultHours) * 60);
+              // Round minutes to nearest 15-minute increment
+              defaultMinutes = Math.round(defaultMinutes / 15) * 15;
+              if (defaultMinutes >= 60) {
+                defaultHours += Math.floor(defaultMinutes / 60);
+                defaultMinutes = defaultMinutes % 60;
               }
-            } catch (parseErr) {
-              console.warn(`[renderWorkingPattern] Error parsing time for ${id}:`, parseErr, raw);
-              defaultHours = 0;
-              defaultMinutes = 0;
             }
           }
         } else {
@@ -3909,10 +3645,6 @@
           </div>`
         );
       });
-      console.log('[renderWorkingPattern] rendered');
-      } catch (e) {
-        console.error('[renderWorkingPattern] error', e);
-      }
     }
 
     // Working Hours Navigation - moved inside the main async function
@@ -3967,87 +3699,47 @@
         let totalSessions = 0;
         
         for (const day of days) {
-          try {
-            if (isGP) {
-              const inputEl = document.getElementById(`${day}-val`);
-              console.log(`Looking for element: ${day}-val, found:`, inputEl);
-              if (!inputEl) {
-                console.warn(`Input element for ${day} not found`);
-                patternData[`${day}_sessions`] = 0;
-                patternData[`${day}_hours`] = null;
-                continue;
-              }
-
-              // Ensure we have a valid number by parsing it and handling invalid values
-              let sessions = 0;
-              try {
-                sessions = parseInt(inputEl.value || '0', 10);
-                if (isNaN(sessions)) {
-                  console.warn(`Invalid sessions value for ${day}: "${inputEl.value}"`);
-                  sessions = 0;
-                }
-              } catch (parseErr) {
-                console.warn(`Error parsing sessions for ${day}:`, parseErr);
-                sessions = 0;
-              }
-              
-              console.log(`${day} input value: "${inputEl.value}", parsed sessions: ${sessions}`);
-              patternData[`${day}_sessions`] = sessions;
-              patternData[`${day}_hours`] = null;  // NULL for GP staff
-              totalSessions += sessions;
-              console.log(`${day}: ${sessions} sessions`);
-            } else {
-              // Handle dropdown structure for non-GP staff
-              const hoursEl = document.getElementById(`${day}-hours`);
-              const minutesEl = document.getElementById(`${day}-minutes`);
-              
-              if (!hoursEl || !minutesEl) {
-                console.warn(`Dropdown elements for ${day} not found`);
-                patternData[`${day}_hours`] = null;
-                patternData[`${day}_sessions`] = 0;
-                continue;
-              }
-
-              // Parse values with error handling
-              let hours = 0, minutes = 0;
-              try {
-                hours = parseInt(hoursEl.value || '0', 10);
-                if (isNaN(hours)) {
-                  console.warn(`Invalid hours value for ${day}: "${hoursEl.value}"`);
-                  hours = 0;
-                }
-              } catch (parseErr) {
-                console.warn(`Error parsing hours for ${day}:`, parseErr);
-                hours = 0;
-              }
-              
-              try {
-                minutes = parseInt(minutesEl.value || '0', 10);
-                if (isNaN(minutes)) {
-                  console.warn(`Invalid minutes value for ${day}: "${minutesEl.value}"`);
-                  minutes = 0;
-                }
-              } catch (parseErr) {
-                console.warn(`Error parsing minutes for ${day}:`, parseErr);
-                minutes = 0;
-              }
-              
-              // Convert to HH:MM format for storage
-              const timeValue = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-              
-              patternData[`${day}_hours`] = (hours === 0 && minutes === 0) ? null : timeValue;
+          if (isGP) {
+            const inputEl = document.getElementById(`${day}-val`);
+            console.log(`Looking for element: ${day}-val, found:`, inputEl);
+            if (!inputEl) {
+              console.warn(`Input element for ${day} not found`);
               patternData[`${day}_sessions`] = 0;
-
-              // Calculate total hours (decimal format for calculations)
-              const decimal = hours + (minutes / 60);
-              totalHours += decimal;
-              console.log(`${day}: ${hours}h ${minutes}m = ${timeValue} (decimal: ${decimal})`);
+              patternData[`${day}_hours`] = null;
+              continue;
             }
-          } catch (dayErr) {
-            console.error(`Error processing ${day}:`, dayErr);
-            // Set safe defaults for this day
-            patternData[`${day}_hours`] = null;
+
+            const sessions = parseInt(inputEl.value || '0');
+            console.log(`${day} input value: "${inputEl.value}", parsed sessions: ${sessions}`);
+            patternData[`${day}_sessions`] = sessions;
+            patternData[`${day}_hours`] = null;  // NULL for GP staff
+            totalSessions += sessions;
+            console.log(`${day}: ${sessions} sessions`);
+          } else {
+            // Handle dropdown structure for non-GP staff
+            const hoursEl = document.getElementById(`${day}-hours`);
+            const minutesEl = document.getElementById(`${day}-minutes`);
+            
+            if (!hoursEl || !minutesEl) {
+              console.warn(`Dropdown elements for ${day} not found`);
+              patternData[`${day}_hours`] = null;
+              patternData[`${day}_sessions`] = 0;
+              continue;
+            }
+
+            const hours = parseInt(hoursEl.value || '0');
+            const minutes = parseInt(minutesEl.value || '0');
+            
+            // Convert to HH:MM format for storage
+            const timeValue = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+            
+            patternData[`${day}_hours`] = (hours === 0 && minutes === 0) ? null : timeValue;
             patternData[`${day}_sessions`] = 0;
+
+            // Calculate total hours (decimal format for calculations)
+            const decimal = hours + (minutes / 60);
+            totalHours += decimal;
+            console.log(`${day}: ${hours}h ${minutes}m = ${timeValue} (decimal: ${decimal})`);
           }
         }
         
@@ -4061,24 +3753,11 @@
         try {
           // Helper function to convert HH:MM to decimal hours
           function convertTimeToDecimal(timeStr) {
-            try {
-              if (!timeStr || timeStr === 'null' || timeStr === null) return 0;
-              if (typeof timeStr === 'number') return timeStr; // Already a number
-              
-              const parts = String(timeStr).split(':');
-              const hours = parseInt(parts[0] || 0, 10);
-              const minutes = parseInt(parts[1] || 0, 10);
-              
-              if (isNaN(hours) || isNaN(minutes)) {
-                console.warn(`[convertTimeToDecimal] Invalid time format: "${timeStr}"`);
-                return 0;
-              }
-              
-              return hours + (minutes / 60);
-            } catch (err) {
-              console.warn(`[convertTimeToDecimal] Error parsing "${timeStr}":`, err);
-              return 0;
-            }
+            if (!timeStr || timeStr === 'null') return 0;
+            const parts = timeStr.split(':');
+            const hours = parseInt(parts[0] || 0);
+            const minutes = parseInt(parts[1] || 0);
+            return hours + (minutes / 60);
           }
 
           // NEW: Save working hours to master_users table (primary source of truth)
@@ -4198,65 +3877,23 @@
 
           // Also save working hours summary to staff_app_welcome
           try {
-            // Create a safe version of the working hours data object with error handling
             const workingHoursData = {
-              monday: isGP 
-                ? (typeof patternData.monday_sessions === 'number' ? patternData.monday_sessions : 0)
-                : (patternData.monday_hours || '00:00'),
-              tuesday: isGP 
-                ? (typeof patternData.tuesday_sessions === 'number' ? patternData.tuesday_sessions : 0)
-                : (patternData.tuesday_hours || '00:00'),
-              wednesday: isGP 
-                ? (typeof patternData.wednesday_sessions === 'number' ? patternData.wednesday_sessions : 0)
-                : (patternData.wednesday_hours || '00:00'),
-              thursday: isGP 
-                ? (typeof patternData.thursday_sessions === 'number' ? patternData.thursday_sessions : 0)
-                : (patternData.thursday_hours || '00:00'),
-              friday: isGP 
-                ? (typeof patternData.friday_sessions === 'number' ? patternData.friday_sessions : 0)
-                : (patternData.friday_hours || '00:00'),
-              saturday: isGP 
-                ? (typeof patternData.saturday_sessions === 'number' ? patternData.saturday_sessions : 0)
-                : (patternData.saturday_hours || '00:00'),
-              sunday: isGP 
-                ? (typeof patternData.sunday_sessions === 'number' ? patternData.sunday_sessions : 0)
-                : (patternData.sunday_hours || '00:00'),
-              isGP: isGP,
-              total_hours: totalHours,
-              total_sessions: totalSessions
+              monday: isGP ? patternData.monday_sessions : (patternData.monday_hours || '00:00'),
+              tuesday: isGP ? patternData.tuesday_sessions : (patternData.tuesday_hours || '00:00'),
+              wednesday: isGP ? patternData.wednesday_sessions : (patternData.wednesday_hours || '00:00'),
+              thursday: isGP ? patternData.thursday_sessions : (patternData.thursday_hours || '00:00'),
+              friday: isGP ? patternData.friday_sessions : (patternData.friday_hours || '00:00'),
+              saturday: isGP ? patternData.saturday_sessions : (patternData.saturday_hours || '00:00'),
+              sunday: isGP ? patternData.sunday_sessions : (patternData.sunday_hours || '00:00'),
+              isGP: isGP
             };
 
-            // Validate and sanitize the object to ensure it's safe for storage
-            for (const [key, value] of Object.entries(workingHoursData)) {
-              if (key === 'isGP') continue; // Boolean is fine
-              
-              if (isGP && key.includes('day')) {
-                // For GP, ensure sessions are valid numbers
-                if (typeof value !== 'number' || isNaN(value)) {
-                  workingHoursData[key] = 0;
-                }
-              } else if (!isGP && key.includes('day')) {
-                // For non-GP, ensure hours are valid strings
-                if (typeof value !== 'string') {
-                  workingHoursData[key] = '00:00';
-                }
-              }
-            }
-
-            console.log('Saving working hours to staff_app_welcome:', workingHoursData);
-
-            // Wrap in try-catch - table has trigger issues with ku.created_at column
-            try {
-              await globalSupabase.from('staff_app_welcome').upsert({
-                user_id: currentUser.id,
-                site_id: currentSiteId,
-                working_hours: workingHoursData,
-                updated_at: new Date().toISOString()
-              });
-            } catch (tableErr) {
-              // Log but don't fail - table has known trigger issues
-              console.warn('staff_app_welcome upsert failed (known issue with ku.created_at trigger):', tableErr);
-            }
+            await globalSupabase.from('staff_app_welcome').upsert({
+              user_id: currentUser.id,
+              site_id: currentSiteId,
+              working_hours: workingHoursData,
+              updated_at: new Date().toISOString()
+            });
 
             // Note: profiles table doesn't have working_hours column
             // Working hours are stored in staff_app_welcome and 3_staff_working_patterns tables
@@ -4407,18 +4044,6 @@
           } catch (e) {
             console.warn('completion meta update failed', e);
           }
-
-          // Persist server-side flag to record that the welcome tour should be shown
-          // COMMENTED OUT: This RPC function has a bug - references ku.created_at column that doesn't exist
-          // The error prevents the onboarding from completing properly
-          /*
-          try {
-            // Create an initial record with seen=false using RPC
-            await globalSupabase.rpc('upsert_user_welcome_tour', { p_auth_user_id: currentUser.id, p_seen: false });
-          } catch (e) {
-            console.warn('Could not persist initial welcome tour flag via RPC', e);
-          }
-          */
 
           // Unlock the Onboarding Completion achievement
           try {
