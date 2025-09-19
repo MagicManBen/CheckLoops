@@ -2585,10 +2585,10 @@
 
                 console.log('[saveAvatarToSupabase] Checking for existing master_users record');
 
-                // Check if record exists first
+                // Check if record exists first (include access_type so we can preserve it)
                 const { data: existingRecord, error: checkErr } = await supabase
                   .from('master_users')
-                  .select('id')
+                  .select('id, access_type')
                   .eq('auth_user_id', user.id)
                   .eq('site_id', siteId || 1)
                   .maybeSingle();
@@ -2596,6 +2596,16 @@
                 let masterResult, masterErr;
 
                 if (existingRecord) {
+                  // Preserve any existing access_type to avoid downgrading admins
+                  if (existingRecord.access_type) {
+                    masterData.access_type = existingRecord.access_type;
+                    console.log('[saveAvatarToSupabase] Preserving existing access_type:', existingRecord.access_type);
+                  } else {
+                    // Fallback to computed accessType if no existing value
+                    masterData.access_type = accessType;
+                    console.log('[saveAvatarToSupabase] No existing access_type found; using computed:', accessType);
+                  }
+
                   // Update existing record
                   console.log('[saveAvatarToSupabase] Updating existing master_users record');
                   const { data, error } = await supabase
@@ -2609,6 +2619,7 @@
                 } else {
                   // Insert new record
                   console.log('[saveAvatarToSupabase] Inserting new master_users record');
+                  masterData.access_type = accessType; // set access_type for new records
                   masterData.created_at = new Date().toISOString();
                   const { data, error } = await supabase
                     .from('master_users')
@@ -3721,8 +3732,18 @@
           try {
             const upd = await globalSupabase.from('master_users').update(payload).eq('auth_user_id', payload.auth_user_id).eq('site_id', payload.site_id).select('id');
             const updatedRows = Array.isArray(upd.data) ? upd.data.length : (upd.data ? 1 : 0);
-            if (updatedRows === 0) {
-              const ins = await globalSupabase.from('master_users').insert([payload]).select('id');
+                if (updatedRows === 0) {
+                  // Ensure access_type is set on new rows to avoid DB defaulting to 'staff'
+                  try {
+                    const originalRole = user?.user_metadata?.role || user?.raw_user_meta_data?.role || user?.app_metadata?.role || 'Staff';
+                    let accessType = 'staff';
+                    if (String(originalRole).toLowerCase() === 'admin' || user?.user_metadata?.admin_access === true) accessType = 'admin';
+                    else if (String(originalRole).toLowerCase() === 'owner') accessType = 'owner';
+                    payload.access_type = accessType;
+                    console.log('[Step4] Setting access_type for new master_users row:', accessType);
+                  } catch (_) {}
+
+                  const ins = await globalSupabase.from('master_users').insert([payload]).select('id');
               if (ins.error) { console.error('Insert master_users failed', ins.error); if (msg) msg.textContent = '⚠️ Save failed; continuing.'; }
             }
             window.currentMasterIsGp = payload.is_gp;
