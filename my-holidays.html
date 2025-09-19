@@ -453,15 +453,34 @@
     function destinationIconHTML(text){
       if (!text) return '';
       const t = String(text).toLowerCase();
+      // Keyword → emoji map (cities, regions, countries). Put specific places first.
       const entries = [
-        // Specific places first
-        ['paris', '🗼'], ['new york', '🗽'], ['disney', '🏰'], ['beach', '🏖️'], ['mountain', '🏔️'],
-        ['rome', '🏛️'], ['barcelona', '🌆'], ['tokyo', '🗼'], ['lake', '🏞️'], ['ski', '🎿'],
-        // Countries / regions
-        ['france', '🇫🇷'], ['spain', '🇪🇸'], ['italy', '🇮🇹'], ['greece', '🇬🇷'],
-        ['portugal', '🇵🇹'], ['usa', '🇺🇸'], ['america', '🇺🇸'], ['japan', '🇯🇵'],
-        ['uk', '🇬🇧'], ['england', '🏴'], ['scotland', '🏴'], ['wales', '🏴'],
+        // --- Cities & popular destinations ---
+        ['paris','🗼'], ['new york','🗽'], ['nyc','🗽'], ['disney','🏰'], ['orlando','🏰'], ['las vegas','🎰'], ['vegas','🎰'],
+        ['london','🎡'], ['rome','🏛️'], ['barcelona','🌆'], ['madrid','🏟️'], ['venice','🚤'], ['florence','🖼️'],
+        ['amsterdam','🚲'], ['berlin','🧱'], ['munich','🍺'], ['athens','🏺'], ['dubai','🏙️'], ['abu dhabi','🏜️'],
+        ['tokyo','🗼'], ['kyoto','⛩️'], ['seoul','🕍'], ['bangkok','🛕'], ['singapore','🌇'], ['sydney','🌉'],
+        ['melbourne','🎾'], ['auckland','🗻'], ['toronto','🧊'], ['vancouver','🌲'], ['montreal','🎭'],
+        ['cancun','🏖️'], ['mexico city','🦅'], ['rio','🎉'], ['buenos aires','⚽'], ['cape town','🗻'],
+        ['cairo','🗿'], ['marrakech','🕌'], ['istanbul','🕌'], ['prague','🎻'], ['vienna','🎼'], ['budapest','🌉'],
+        ['reykjavik','❄️'], ['oslo','🛶'], ['stockholm','🚤'], ['copenhagen','🚴'], ['helsinki','🧊'],
+        // --- Activities / generic ---
+        ['beach','🏖️'], ['mountain','🏔️'], ['ski','🎿'], ['cruise','🛳️'], ['camping','🏕️'], ['safari','🦒'],
+        // --- Countries / regions ---
+        ['france','🇫🇷'], ['spain','🇪🇸'], ['italy','🇮🇹'], ['greece','🇬🇷'], ['portugal','🇵🇹'],
+        ['germany','🇩🇪'], ['netherlands','🇳🇱'], ['belgium','🇧🇪'], ['switzerland','🇨🇭'], ['austria','🇦🇹'],
+        ['czech','🇨🇿'], ['hungary','🇭🇺'], ['poland','🇵🇱'], ['croatia','🇭🇷'], ['slovenia','🇸🇮'], ['malta','🇲🇹'],
+        ['turkey','🇹🇷'], ['cyprus','🇨🇾'], ['iceland','🇮🇸'], ['norway','🇳🇴'], ['sweden','🇸🇪'], ['denmark','🇩🇰'], ['finland','🇫🇮'],
+        ['ireland','🇮🇪'], ['northern ireland','🏴'], ['scotland','🏴'], ['wales','🏴'], ['uk','🇬🇧'], ['england','🏴'],
+        ['morocco','🇲🇦'], ['egypt','🇪🇬'], ['south africa','🇿🇦'],
+        ['united states','🇺🇸'], ['usa','🇺🇸'], ['america','🇺🇸'], ['canada','🇨🇦'], ['mexico','🇲🇽'],
+        ['brazil','🇧🇷'], ['argentina','🇦🇷'], ['chile','🇨🇱'],
+        ['uae','🇦🇪'], ['qatar','🇶🇦'], ['oman','🇴🇲'], ['jordan','🇯🇴'],
+        ['india','🇮🇳'], ['sri lanka','🇱🇰'], ['thailand','🇹🇭'], ['vietnam','🇻🇳'], ['indonesia','🇮🇩'], ['bali','🌴'],
+        ['philippines','🇵🇭'], ['malaysia','🇲🇾'], ['singapore','🇸🇬'], ['japan','🇯🇵'], ['china','🇨🇳'], ['south korea','🇰🇷'],
+        ['australia','🇦🇺'], ['new zealand','🇳🇿']
       ];
+
       const found = entries.find(([k]) => t.includes(k));
       if (!found) return '';
       const emoji = found[1];
@@ -787,86 +806,110 @@
           }).join('');
         }
 
-        // Function to check for overlapping holidays
+        // Function to check for overlapping holidays (SITE-STRICT)
         async function checkHolidayOverlaps(startDate, endDate) {
-          console.log('=== CHECKING FOR OVERLAPS ===');
+          console.log('=== CHECKING FOR OVERLAPS (SITE-STRICT) ===');
           console.log('Start date:', startDate);
           console.log('End date:', endDate);
           console.log('Current user ID:', user.id);
           console.log('Current user email:', user.email);
 
           try {
-            // Get current user's site_id from master_users
-            const { data: currentUser } = await supabase
+            // 1) Get current user's site_id
+            const { data: currentUser, error: cuErr } = await supabase
               .from('master_users')
               .select('site_id, full_name, email')
               .eq('auth_user_id', user.id)
               .single();
 
-            console.log('Current user data:', currentUser);
-
+            if (cuErr) {
+              console.error('[Overlap Check] Error loading current user site:', cuErr);
+              return [];
+            }
             if (!currentUser || !currentUser.site_id) {
-              console.log('No site_id found for current user');
+              console.warn('[Overlap Check] No site_id for current user; cannot check overlaps.');
               return [];
             }
 
-            // Get all users from the same site
-            const { data: siteUsers } = await supabase
-              .from('master_users')
-              .select('auth_user_id, full_name, email, avatar_url')
-              .eq('site_id', currentUser.site_id)
-              .neq('auth_user_id', user.id); // Exclude current user
+            const siteId = currentUser.site_id;
+            console.log('[Overlap Check] Using site_id =', siteId);
 
-            console.log('Site users found:', siteUsers?.length || 0);
-            console.log('Site users:', siteUsers);
+            // 2a) Prefer a VIEW that already joins master_users so we get names/emails in one go
+            try {
+              const { data: vRows, error: vErr } = await supabase
+                .from('v_holiday_requests_with_user')
+                .select('id, user_id, site_id, start_date, end_date, status, reason, full_name, email, avatar_url')
+                .eq('site_id', siteId)
+                .neq('user_id', user.id)
+                .in('status', ['approved', 'pending'])
+                .lte('start_date', endDate)
+                .gte('end_date', startDate);
 
-            if (!siteUsers || siteUsers.length === 0) {
-              console.log('No other users found at the same site');
-              return [];
+              if (!vErr && Array.isArray(vRows)) {
+                console.log('[Overlap Check] Using view v_holiday_requests_with_user. Rows:', vRows.length);
+                if (vRows.length > 0) {
+                  return vRows.map(r => ({
+                    ...r,
+                    userName: r.full_name || r.email || 'Unknown User',
+                    avatarUrl: r.avatar_url || null
+                  }));
+                }
+              } else if (vErr) {
+                console.log('[Overlap Check] View not available or error:', vErr.message || vErr);
+              }
+            } catch(viewCatch){
+              console.log('[Overlap Check] View join attempt failed:', viewCatch?.message || viewCatch);
             }
 
-            // Get all approved/pending holiday requests that overlap with the selected dates
-            const userIds = siteUsers.map(u => u.auth_user_id);
-            console.log('[Overlap Check] Checking for overlaps:', {
-              startDate,
-              endDate,
-              siteId: currentUser.site_id,
-              otherUserIds: userIds,
-              totalOtherUsers: userIds.length
-            });
-
-            // For date ranges to overlap: start_date <= endDate AND end_date >= startDate
-            const { data: overlappingRequests, error: overlapError } = await supabase
+            // 2b) Fallback: Query requests in-site then enrich with master_users
+            // Overlap condition: start_date <= endDate AND end_date >= startDate
+            const { data: overlappingRequests, error: reqErr } = await supabase
               .from('4_holiday_requests')
-              .select('*')
-              .in('user_id', userIds)
+              .select('id, user_id, site_id, start_date, end_date, status, reason')
+              .eq('site_id', siteId)
+              .neq('user_id', user.id)
               .in('status', ['approved', 'pending'])
               .lte('start_date', endDate)
               .gte('end_date', startDate);
 
-            if (overlapError) {
-              console.error('[Overlap Check] Error querying overlaps:', overlapError);
+            if (reqErr) {
+              console.error('[Overlap Check] Error querying requests:', reqErr);
+              return [];
             }
-            console.log('[Overlap Check] Found overlapping requests:', overlappingRequests);
 
+            console.log('[Overlap Check] Raw overlapping requests count:', overlappingRequests?.length || 0);
             if (!overlappingRequests || overlappingRequests.length === 0) {
               return [];
             }
 
-            // Map requests to users
-            const overlaps = overlappingRequests.map(request => {
-              const userInfo = siteUsers.find(u => u.auth_user_id === request.user_id);
+            // 3) Enrich with user profiles for display (names/avatars)
+            const otherIds = [...new Set(overlappingRequests.map(r => r.user_id))];
+            let profiles = [];
+            if (otherIds.length > 0) {
+              const { data: profs, error: profErr } = await supabase
+                .from('master_users')
+                .select('auth_user_id, full_name, email, avatar_url')
+                .in('auth_user_id', otherIds);
+              if (profErr) {
+                console.warn('[Overlap Check] Could not load user profiles:', profErr);
+              }
+              profiles = profs || [];
+            }
+
+            const overlaps = overlappingRequests.map(req => {
+              const u = profiles.find(p => p.auth_user_id === req.user_id) || {};
               return {
-                ...request,
-                userName: userInfo?.full_name || userInfo?.email || 'Unknown User',
-                avatarUrl: userInfo?.avatar_url || null,
-                email: userInfo?.email
+                ...req,
+                userName: u.full_name || u.email || (req.user_id ? `User ${String(req.user_id).slice(0,6)}…` : 'Unknown User'),
+                avatarUrl: u.avatar_url || null,
+                email: u.email || ''
               };
             });
 
+            console.log('[Overlap Check] Final overlaps to display:', overlaps.length);
             return overlaps;
           } catch (error) {
-            console.error('Error checking holiday overlaps:', error);
+            console.error('[Overlap Check] Unexpected error:', error);
             return [];
           }
         }
