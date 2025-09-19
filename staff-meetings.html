@@ -339,8 +339,8 @@
                 </div>
               </div>
             </div>
-            <div class="sidebar-footer">
-              <button class="pill-btn primary" onclick="openPastRecordingsModal()" style="width: 100%;">
+            <div id="sidebar-footer" class="sidebar-footer">
+              <button id="view-recordings-btn" class="pill-btn primary" onclick="openPastRecordingsModal()" style="width: 100%;">
                 <span>🎙️ View Past Recordings</span>
               </button>
             </div>
@@ -618,6 +618,18 @@
       const role = (profileRow?.role || session.user?.raw_user_meta_data?.role || 'Staff');
       setTopbar({ siteText: await getSiteText(supabase, siteId), email: session.user.email, role });
 
+      // Hide "View Past Recordings" for non‑admin roles (hide entire footer for non-admin)
+      const recordingsBtn = document.getElementById('view-recordings-btn');
+      const recordingsFooter = document.getElementById('sidebar-footer');
+      const isAdmin = role && role.toLowerCase() === 'admin';
+
+      if (recordingsBtn) {
+        recordingsBtn.style.display = isAdmin ? 'block' : 'none';
+      }
+      if (recordingsFooter) {
+        recordingsFooter.style.display = isAdmin ? 'block' : 'none';
+      }
+
       // Initialize MeetingsManager
       window.meetingsManager = new MeetingsManager(supabase);
       await window.meetingsManager.setContext(session);
@@ -844,6 +856,7 @@
     function applyMeetingFilters(list){
       if (!Array.isArray(list)) return [];
       let out = list.slice();
+      out = out.filter(m => (m.status || 'scheduled') !== 'cancelled');
       if (meetingFilter && meetingFilter !== 'all') {
         out = out.filter(m => (m.meeting_type||'general').toLowerCase() === meetingFilter);
       }
@@ -1061,16 +1074,78 @@
       setTimeout(() => showMeetingDetails(meeting.id), 300);
     }
 
-    // Delete meeting
+    // Cancel / delete meeting — verify deletion actually sticks server‑side
     async function deleteMeeting() {
-      if (!window.meetingsManager || !currentMeetingId) return;
+      if (!currentMeetingId || !supabase) return;
 
-      if (confirm('Are you sure you want to delete this meeting? This action cannot be undone.')) {
-        await window.meetingsManager.deleteMeeting(currentMeetingId);
-        calendar.refetchEvents();
-        loadUpcomingMeetings();
-        updateStats();
-        closeMeetingModal();
+      // Confirm with user
+      if (!confirm('Are you sure you want to cancel this meeting? This will remove it for all users.')) {
+        return;
+      }
+
+      // Resolve site_id for RLS scoping
+      const siteId =
+        currentMeeting?.site_id ||
+        window.activeSiteId ||
+        window.site_id ||
+        window.currentSiteId ||
+        null;
+
+      // Attempt hard delete scoped by id + site_id
+      let deleteError = null;
+      try {
+        const { error } = await supabase
+          .from('meetings')
+          .delete()
+          .match({ id: currentMeetingId, site_id: siteId });
+
+        if (error) deleteError = error;
+      } catch (err) {
+        deleteError = err;
+      }
+
+      // Verify deletion actually happened (row should no longer exist)
+      let stillExists = false;
+      try {
+        const { data: chkData, error: chkErr } = await supabase
+          .from('meetings')
+          .select('id')
+          .eq('id', currentMeetingId)
+          .limit(1)
+          .maybeSingle();
+
+        stillExists = !!chkData && !chkErr;
+      } catch (_) {
+        /* ignore network errors here */
+      }
+
+      if (deleteError || stillExists) {
+        console.error('Delete failed or row still present:', deleteError);
+        alert('❌ Unable to cancel meeting (server permissions). Please contact an admin.');
+        return;
+      }
+
+      /* ---------- Front‑end cleanup for instant feedback ---------- */
+      try {
+        // Remove from local cache
+        meetings = (meetings || []).filter(m => String(m.id) !== String(currentMeetingId));
+
+        // Remove from FullCalendar (string and numeric just in case)
+        const ev =
+          calendar?.getEventById?.(String(currentMeetingId)) ||
+          calendar?.getEventById?.(Number(currentMeetingId));
+        if (ev) ev.remove();
+
+        // Refresh dependent UI sections
+        renderMeetingList?.();
+        loadUpcomingMeetings?.();
+        updateStats?.();
+
+        // Close modal & notify
+        closeMeetingModal?.();
+        alert('✅ Meeting cancelled');
+      } catch (uiErr) {
+        console.error('UI cleanup failed:', uiErr);
       }
     }
 
