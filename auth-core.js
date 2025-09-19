@@ -32,10 +32,17 @@ export async function getSupabase() {
     if (event === 'SIGNED_OUT' || !session) {
       userRole = null;
       // Only redirect if we're not already on a public page
-      const publicPages = ['homepage.html', 'home.html', 'signup.html', 'set-password.html'];
+      const publicPages = ['homepage.html', 'home.html', 'signup.html', 'set-password.html', 'admin-login.html'];
       const currentPage = window.location.pathname.split('/').pop();
+      
       if (!publicPages.includes(currentPage)) {
-        window.location.href = 'home.html';
+        // If on admin pages, redirect to admin login
+        if (currentPage.includes('admin') || currentPage === 'index.html') {
+          window.location.href = 'admin-login.html';
+        } else {
+          // For staff pages, redirect to home.html
+          window.location.href = 'home.html';
+        }
       }
     } else if (event === 'SIGNED_IN' && session) {
       // Fetch and cache user role
@@ -116,7 +123,11 @@ export async function signIn(email, password) {
   const supabase = await getSupabase();
   const { data, error } = await supabase.auth.signInWithPassword({
     email,
-    password
+    password,
+    options: {
+      shouldCreateUser: false,
+      data: { remember_me: true } // Always remember the user
+    }
   });
   
   if (error) throw error;
@@ -130,9 +141,24 @@ export async function signIn(email, password) {
 // Sign out
 export async function signOut() {
   const supabase = await getSupabase();
+  const currentRole = userRole;
+  
+  // Determine the current page to decide where to redirect
+  const currentPage = window.location.pathname.split('/').pop();
+  
+  // Clear session
   await supabase.auth.signOut();
   currentSession = null;
   userRole = null;
+  
+  // Redirect based on the page the user is currently on
+  if (currentPage.includes('admin') || currentPage === 'index.html') {
+    // If on admin pages, redirect to admin login
+    window.location.href = 'admin-login.html';
+  } else {
+    // For staff pages, redirect to home.html
+    window.location.href = 'home.html';
+  }
 }
 
 // Page-specific auth requirements
