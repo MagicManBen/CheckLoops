@@ -3416,33 +3416,34 @@
           async function persistRoleTeam(role, teamIdNum, teamName, avatarUrl){
             const msgEl = document.getElementById('finish-msg');
             try {
-              // 1) Try upsert into new source-of-truth table if it exists
+              // 1) Update master_users table (primary source of truth)
               try {
                 const nicknameVal = String(document.getElementById('nickname')?.value || '').trim() || null;
                 if (!siteId) {
-                  if (msgEl) msgEl.textContent = 'No site detected — saving to profiles only.';
-                  throw new Error('NO_SITE_ID');
+                  if (msgEl) msgEl.textContent = 'No site detected — saving to master_users without site.';
                 }
                 const payload = {
-                  user_id: user.id,
-                  site_id: siteId,
-                  full_name: fullName,
                   nickname: nicknameVal,
                   role_detail: role || null,
                   team_id: teamIdNum ?? null,
                   team_name: teamName || null,
-                  avatar_url: avatarUrl ?? null
+                  avatar_url: avatarUrl ?? null,
+                  updated_at: new Date().toISOString()
                 };
-                const { error: sawErr } = await supabase
-                  .from('staff_app_welcome')
-                  .upsert(payload);
-                if (sawErr) {
-                  if (msgEl) msgEl.textContent = `Could not save to Staff_App_Welcome (${sawErr.code||''}). Falling back…`;
-                  throw sawErr;
+                const { error: masterErr } = await supabase
+                  .from('master_users')
+                  .update(payload)
+                  .eq('auth_user_id', user.id)
+                  .eq('site_id', siteId || currentSiteId);
+                if (masterErr) {
+                  console.warn('Could not update master_users:', masterErr);
+                  if (msgEl) msgEl.textContent = `Updating master_users...`;
+                } else {
+                  console.log('Successfully updated master_users');
                 }
               } catch (e) {
-                // If table doesn't exist or RLS blocks, continue to profiles fallback
-                if (msgEl) msgEl.textContent = 'Saving to profiles…';
+                console.warn('Master users update failed:', e);
+                if (msgEl) msgEl.textContent = 'Updating user data...';
               }
 
               // 2) profiles table is no longer used - master_users is the primary source
@@ -4151,10 +4152,25 @@
 
             if (profileError) {
               console.error('Holiday profile error:', profileError);
+              // Try to resolve by user_id if email conflict failed
+              if (profileError.message?.includes('duplicate key') || profileError.code === '23505') {
+                console.log('Attempting to resolve profile by user_id instead of email...');
+                const { data: profileByUser } = await globalSupabase
+                  .from('1_staff_holiday_profiles')
+                  .select('id')
+                  .eq('user_id', currentUser.id)
+                  .maybeSingle();
+
+                if (profileByUser?.id) {
+                  profileData = [profileByUser];
+                  console.log('Found profile by user_id:', profileByUser.id);
+                }
+              }
             }
 
             if (profileData && profileData[0]?.id) {
               const profileId = profileData[0].id;
+              console.log('[staff-welcome] Using staff_profile_id:', profileId, 'for entitlements');
               const currentYear = new Date().getFullYear();
 
               // Use the already calculated totals
@@ -4230,6 +4246,9 @@
                   onConflict: 'staff_profile_id,user_id',
                   ignoreDuplicates: false
                 });
+            } else {
+              console.warn('[staff-welcome] No staff_profile_id found - entitlements not created. This may need manual resolution.');
+              console.log('[staff-welcome] Attempted with user_id:', currentUser.id, 'email:', currentUser.email);
             }
           } catch (e) {
             console.error('Holiday profile/entitlement setup failed:', e);
