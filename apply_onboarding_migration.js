@@ -66,7 +66,7 @@ console.log('   supabase db push\n');
 async function checkMigrationStatus() {
   try {
     const { data, error } = await supabase
-      .from('profiles')
+      .from('master_users')
       .select('onboarding_complete')
       .limit(1);
     

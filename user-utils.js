@@ -16,9 +16,9 @@ async function getUserProfile(supabase, user) {
     // First try to use the unified view if it exists
     try {
       const { data: unified } = await supabase
-        .from('user_profiles_complete')
+        .from('master_users')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('auth_user_id', user.id)
         .maybeSingle();
       
       if (unified) {
@@ -50,18 +50,18 @@ async function getUserProfile(supabase, user) {
     // Get main profile - handle case where avatar_url column might not exist
     try {
       const { data: p } = await supabase
-        .from('profiles')
+        .from('master_users')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('auth_user_id', user.id)
         .maybeSingle();
       profile = p;
     } catch (profileError) {
       // If avatar_url column doesn't exist, try without it
       try {
         const { data: p } = await supabase
-          .from('profiles')
-          .select('user_id, site_id, full_name, nickname, role, onboarding_complete, created_at')
-          .eq('user_id', user.id)
+          .from('master_users')
+          .select('auth_auth_user_id, site_id, full_name, nickname, role, onboarding_complete, created_at')
+          .eq('auth_user_id', user.id)
           .maybeSingle();
         profile = p;
       } catch (basicError) {
@@ -72,9 +72,9 @@ async function getUserProfile(supabase, user) {
     // Get staff welcome data
     try {
       const { data: sw } = await supabase
-        .from('staff_app_welcome')
+        .from('master_users')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('auth_user_id', user.id)
         .maybeSingle();
       staffWelcome = sw;
     } catch (staffWelcomeError) {
@@ -89,7 +89,7 @@ async function getUserProfile(supabase, user) {
     if (siteId && fullName) {
       try {
         const { data: ku } = await supabase
-          .from('kiosk_users')
+          .from('master_users')
           .select('id, full_name, site_id')
           .eq('site_id', siteId)
           .eq('full_name', fullName)
@@ -186,7 +186,7 @@ async function getUserSubmissions(supabase, userProfile, options = {}) {
   const query = supabase
     .from('submissions')
     .select(options.select || '*')
-    .eq('user_id', userProfile.user_id);
+    .eq('auth_user_id', userProfile.user_id);
   
   // Add site filter if available
   if (userProfile.site_id) {
@@ -315,18 +315,18 @@ async function ensureUserProfile(supabase, user, additionalData = {}) {
   
   // Check if profile exists
   const { data: existing } = await supabase
-    .from('profiles')
+    .from('master_users')
     .select('*')
-    .eq('user_id', user.id)
+    .eq('auth_user_id', user.id)
     .maybeSingle();
   
   if (existing) {
     // Update if additional data provided
     if (Object.keys(additionalData).length > 0) {
       const { data, error } = await supabase
-        .from('profiles')
+        .from('master_users')
         .update(additionalData)
-        .eq('user_id', user.id)
+        .eq('auth_user_id', user.id)
         .select()
         .single();
       
@@ -349,7 +349,7 @@ async function ensureUserProfile(supabase, user, additionalData = {}) {
   };
   
   const { data, error } = await supabase
-    .from('profiles')
+    .from('master_users')
     .insert(newProfile)
     .select()
     .single();

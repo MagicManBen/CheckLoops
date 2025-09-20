@@ -1,4 +1,4 @@
-// Script to add holiday_approved column to kiosk_users table if it doesn't exist
+// Script to add holiday_approved column to master_users table if it doesn't exist
 
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 
@@ -13,8 +13,8 @@ async function setupHolidayApproval() {
 
     // First, let's check if the column exists
     const { data: testData, error: testError } = await supabase
-      .from('kiosk_users')
-      .select('user_id, holiday_approved')
+      .from('master_users')
+      .select('auth_auth_user_id, holiday_approved')
       .limit(1);
 
     if (testError && testError.message.includes('column')) {
@@ -33,8 +33,8 @@ WHERE holiday_approved IS NULL;
 
     // Get all users and their current approval status
     const { data: users, error: usersError } = await supabase
-      .from('kiosk_users')
-      .select('user_id, name, holiday_approved');
+      .from('master_users')
+      .select('auth_auth_user_id, name, holiday_approved');
 
     if (usersError) {
       console.error('Error fetching users:', usersError);

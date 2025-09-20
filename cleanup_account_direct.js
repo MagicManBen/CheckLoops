@@ -51,18 +51,18 @@ async function cleanupDirectly() {
         // 2. Clean profiles
         console.log('Cleaning profiles...');
         const { data: profiles, error: profError } = await supabase
-          .from('profiles')
+          .from('master_users')
           .delete()
-          .eq('user_id', userId)
+          .eq('auth_user_id', userId)
           .select();
         results.push({ table: 'profiles', deleted: profiles?.length || 0, error: profError });
         
         // 3. Clean staff_app_welcome
         console.log('Cleaning staff_app_welcome...');
         const { data: saw, error: sawError } = await supabase
-          .from('staff_app_welcome')
+          .from('master_users')
           .delete()
-          .eq('user_id', userId)
+          .eq('auth_user_id', userId)
           .select();
         results.push({ table: 'staff_app_welcome', deleted: saw?.length || 0, error: sawError });
         
@@ -71,7 +71,7 @@ async function cleanupDirectly() {
         const names = ['new name', 'benhowardmagic', 'Ben Howard Magic', 'Test User'];
         for (const name of names) {
           const { data: kiosk, error: kioskError } = await supabase
-            .from('kiosk_users')
+            .from('master_users')
             .delete()
             .eq('full_name', name)
             .select();
@@ -83,9 +83,9 @@ async function cleanupDirectly() {
         // 5. Clean user_permissions
         console.log('Cleaning user_permissions...');
         const { data: perms, error: permError } = await supabase
-          .from('user_permissions')
+          .from('master_users')
           .delete()
-          .eq('user_id', userId)
+          .eq('auth_user_id', userId)
           .select();
         results.push({ table: 'user_permissions', deleted: perms?.length || 0, error: permError });
         

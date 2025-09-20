@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <title>CheckLoop — Admin</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -93,6 +96,89 @@ document.addEventListener('DOMContentLoaded', () => {
     console.warn('Could not remove some sidebar buttons:', e);
   }
 });
+</script>
+<script>
+// Populate the Invite User → Team dropdown. Minimal query: teams(id,name) by site_id.
+async function populateTeamsSelect() {
+  try {
+    if (typeof supabase === 'undefined') {
+      console.error('populateTeamsSelect: Supabase not available');
+      return;
+    }
+
+    const sel = document.getElementById('add-user-team');
+    if (!sel) { console.warn('populateTeamsSelect: #add-user-team not found'); return; }
+    sel.innerHTML = '<option value="" disabled selected>Loading teams…</option>';
+
+    // Resolve siteId from existing context or session metadata
+    let siteId = (window.ctx && window.ctx.site_id) ? window.ctx.site_id : null;
+    if (!siteId) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const u = session?.user;
+        siteId = u?.user_metadata?.site_id || u?.raw_user_meta_data?.site_id || null;
+      } catch (e) {
+        console.warn('populateTeamsSelect: getSession failed', e && (e.message || e));
+      }
+    }
+
+    if (!siteId) {
+      console.warn('populateTeamsSelect: no site_id resolved');
+      sel.innerHTML = '<option value="" disabled selected>No teams available</option>';
+      return;
+    }
+
+    console.log('Loading teams from teams table for site', siteId);
+    const { data: teams, error } = await supabase
+      .from('teams')
+      .select('id, name')
+      .eq('site_id', siteId)
+      .order('name');
+
+    if (error) {
+      console.error('populateTeamsSelect: teams query failed', error);
+      const msg = String(error.message || '').toLowerCase();
+      // Helpful hint if an RLS/policy references a non-existent column like auth_user_id
+      if (error.code === '42703' || msg.includes('auth_user_id') || msg.includes('column') ) {
+        sel.innerHTML = '<option value="" disabled selected>DB policy error – please fix RLS on teams</option>';
+      } else if (msg.includes('policy') || msg.includes('rls')) {
+        sel.innerHTML = '<option value="" disabled selected>Permission denied by RLS</option>';
+      } else {
+        sel.innerHTML = '<option value="" disabled selected>Error loading teams</option>';
+      }
+      return;
+    }
+
+    if (!Array.isArray(teams) || teams.length === 0) {
+      sel.innerHTML = '<option value="" disabled selected>No teams found</option>';
+      return;
+    }
+
+    // Populate options
+    sel.innerHTML = '<option value="" disabled selected>Select a team…</option>';
+    teams.forEach(t => {
+      if (!t) return;
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.name;
+      sel.appendChild(opt);
+    });
+  } catch (e) {
+    console.error('populateTeamsSelect: fatal', e && (e.message || e));
+    const sel = document.getElementById('add-user-team');
+    if (sel) sel.innerHTML = '<option value="" disabled selected>Error loading teams</option>';
+  }
+}
+
+// Run when the page is ready (safe if the select exists), and also when opening the Invite modal
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => setTimeout(populateTeamsSelect, 0));
+} else {
+  setTimeout(populateTeamsSelect, 0);
+}
+
+// Also repopulate when the Invite User modal is opened, so the dropdown stays fresh
+(document.getElementById('btn-invite-user') || {}).addEventListener?.('click', () => setTimeout(populateTeamsSelect, 0));
 </script>
 <style>
   :root{
@@ -342,7 +428,19 @@ document.addEventListener('DOMContentLoaded', () => {
   #staff-fallback a { padding:8px 12px; border-radius:10px; box-shadow: 0 6px 18px rgba(2,6,23,0.06); }
 
   /* Make Sign Out visually match the Staff View button and be same height */
-  #signout { display: block; width: 100%; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 8px; }
+  #signout {
+    display: block;
+    padding: 8px 12px;
+    /* Align visual width/offset with the Staff View button above */
+    width: calc(100% - 8px);
+    box-sizing: border-box;
+    margin: 0 2px 8px 2px; /* 12px parent padding + 2px margin = 14px offset (same as #staff-return: 8px padding + 6px margin) */
+    border-radius: 10px;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   #signout::before {
     content: '';
     display: inline-block;
@@ -361,10 +459,6 @@ document.addEventListener('DOMContentLoaded', () => {
   .app.collapsed .user-details { display: none; }
   .app.collapsed .btn-signout { padding: 6px; }
 
-  /* Ensure the Sign Out button (now using .btn.secondary) mirrors the old collapsed behaviour */
-  .app.collapsed .user-profile .btn.secondary#signout { padding: 6px; width: auto; }
-  .app.collapsed .user-profile .btn.secondary#signout span { display: none; }
-  .app.collapsed .user-profile .btn.secondary#signout svg { margin-right: 0; }
 
   /* Hide nav-group-toggle label text when collapsed but keep the caret visible */
   .app.collapsed #sidebar .nav .nav-group-toggle { font-size: 0; }
@@ -525,8 +619,8 @@ document.addEventListener('DOMContentLoaded', () => {
   .table-wrap{ overflow:auto; max-height:420px; background: rgba(19, 59, 138, 0.4); border-radius: 12px; padding: 4px; backdrop-filter: blur(10px); box-shadow: inset 0 0 20px rgba(255,255,255,0.05); }
   .chip{ padding:4px 8px; background:#ffffff20; border-radius:999px; font-size:12px; display:inline-block }
   .chip.success { background: var(--stat-2-bg); color: var(--stat-2-color); }
-  .chip.danger { background: var(--stat-4-bg); color: var (--stat-4-color); }
-  .chip.warning { background: var(--stat-3-bg); color: var (--stat-3-color); }
+  .chip.danger { background: var(--stat-4-bg); color: var(--stat-4-color); }
+  .chip.warning { background: var(--stat-3-bg); color: var(--stat-3-color); }
 
 
   /* Sections (SPA) */
@@ -5144,8 +5238,15 @@ document.addEventListener('DOMContentLoaded', () => {
             <h3 style="margin-top:0; color:#2d3748;">📋 How to Import Historical Holidays</h3>
             <ol style="color:#4a5568; line-height:1.8;">
               <li>Download the Excel template using the button above</li>
-              <li>Fill in: Staff Name, Start Date, End Date, Total Hours/Sessions, Reason</li>
+              <li>Fill in: Staff Name, Start Date, End Date, Reason (Hours/Sessions are optional)</li>
               <li>Upload the completed Excel file below</li>
+              <li>Choose to either:
+                <ul style="margin-top: 5px; list-style-type: disc; margin-left: 20px;">
+                  <li>Enter hours/sessions manually in the preview table, or</li>
+                  <li>Enter hours/sessions for each staff member (these will be used by default)</li>
+                </ul>
+              </li>
+              <li>Review the data and click "Confirm Upload"</li>
               <li>Select the appropriate user from the dropdown and click "Match & Transfer" to assign holidays</li>
             </ol>
           </div>
@@ -5181,12 +5282,14 @@ document.addEventListener('DOMContentLoaded', () => {
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
             </svg>
             <h3 style="margin:0 0 8px;">Upload Excel File</h3>
-            <p style="color:#718096; margin:0;">Drag & drop or click to browse</p>
+            <p style="color:#718096; margin:0;">Click to browse and select file</p>
           </div>
 
           <!-- Data Preview -->
           <div class="panel" id="fuzzy-data-preview" style="display:none; margin-bottom:20px;">
             <h3>Preview Data</h3>
+
+
             <div style="overflow-x:auto;">
               <table class="data-table">
                 <thead>
@@ -5203,6 +5306,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 </tbody>
               </table>
             </div>
+            <div id="calculation-progress" style="display:none; padding: 12px; background: #f8fafc; border-radius: 8px; margin-top: 12px;">
+              <div style="color: #475569; font-size: 14px;">
+                <span id="calc-status">Calculating hours/sessions...</span>
+                <div style="width: 100%; height: 6px; background: #e2e8f0; border-radius: 3px; margin-top: 8px;">
+                  <div id="calc-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #667eea, #764ba2); border-radius: 3px; transition: width 0.3s;"></div>
+                </div>
+              </div>
+            </div>
             <div style="display:flex; gap:10px; justify-content:center; margin-top:20px;">
               <button class="btn" onclick="confirmFuzzyUpload()" style="background:linear-gradient(135deg, #667eea, #764ba2);">Confirm Upload</button>
               <button class="btn secondary" onclick="cancelFuzzyUpload()">Cancel</button>
@@ -5216,10 +5327,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 <h3 style="margin:0;">Holiday Import Records</h3>
                 <div id="fuzzy-match-info" style="font-size:12px; color:#718096; margin-top:4px;"></div>
               </div>
-              <div style="display:flex; gap:10px; align-items:center;">
-                <input type="text" id="fuzzy-search" placeholder="Search by name..."
-                  style="padding:8px 12px; border:1px solid #cbd5e0; border-radius:8px; width:200px;"
-                  onkeyup="filterFuzzyRecords()">
+              <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <select id="fuzzy-name-filter" onchange="filterFuzzyRecords()"
+                  style="padding:8px 12px; border:1px solid #cbd5e0; border-radius:8px; width:200px;">
+                  <option value="">All Names</option>
+                </select>
+                <select id="fuzzy-match-filter" onchange="filterFuzzyRecords()"
+                  style="padding:8px 12px; border:1px solid #cbd5e0; border-radius:8px; width:150px;">
+                  <option value="">All Records</option>
+                  <option value="matched">Matched Only</option>
+                  <option value="pending">Pending Only</option>
+                  <option value="transferred">Transferred Only</option>
+                </select>
                 <button class="btn" onclick="autoMatchAllPending()"
                   style="background:linear-gradient(135deg, #10b981, #059669); padding:8px 16px;"
                   title="Automatically match and transfer all records where names match exactly">
@@ -5234,6 +5353,11 @@ document.addEventListener('DOMContentLoaded', () => {
                   style="background:linear-gradient(135deg, #667eea, #764ba2); padding:8px 16px;">
                   ✓ Match Selected
                 </button>
+                <label style="display:inline-flex; align-items:center; gap:8px; padding:8px 16px; background:linear-gradient(135deg, #4ade80, #22c55e); border-radius:8px; color:white; cursor:pointer; font-weight:500;">
+                  <input type="checkbox" id="fuzzy-use-calculated" onchange="toggleCalculatedHours()"
+                    style="width:18px; height:18px; cursor:pointer;">
+                  <span>Use calculated hours?</span>
+                </label>
               </div>
             </div>
             <div style="overflow-x:auto;">
@@ -7085,7 +7209,7 @@ window.PIR_DEFINITIONS_DATA = [
   window.supabaseCreateClient = createClient; // Expose createClient globally
 
   // Initialize authentication once Supabase client is ready
-  console.log('🔥 MODULE: Supabase client ready, initializing authentication');
+  // console.log('🔥 MODULE: Supabase client ready, initializing authentication');
   initAuth();
 
   // Authentication functions
@@ -7136,7 +7260,12 @@ window.PIR_DEFINITIONS_DATA = [
         showError(error.message);
       } else if (data.user) {
         // Login successful - bootstrap will be called automatically by the session change
-        window.location.reload();
+        // Removed reload to prevent debugger interference
+        hideLoginForm();
+        // Initialize the page content instead of reloading
+        if (typeof bootstrap === 'function') {
+          bootstrap();
+        }
       }
     } catch (err) {
       showError('Login failed: ' + (err.message || 'Unknown error'));
@@ -7156,9 +7285,9 @@ window.PIR_DEFINITIONS_DATA = [
     }
 
     // Check for existing session
-    console.log('🔥 ADMIN.HTML: About to call supabase.auth.getSession()');
+    // console.log('🔥 ADMIN.HTML: About to call supabase.auth.getSession()');
     supabase.auth.getSession().then(({ data: { session }, error }) => {
-      console.log('🔥 ADMIN.HTML: getSession() result - session:', session, 'error:', error);
+      // console.log('🔥 ADMIN.HTML: getSession() result - session:', session, 'error:', error);
       if (error) {
         console.error('🔥 Failed to get session:', error);
         showAuth(true);
@@ -7166,43 +7295,44 @@ window.PIR_DEFINITIONS_DATA = [
       }
       
       if (!session) {
-        console.log('🔥 No active session found, showing login form');
+        // console.log('🔥 No active session found, showing login form');
         showAuth(true);
         return;
       }
       
-      console.log('🔥 Session found, user:', session.user?.email);
+      // console.log('🔥 Session found, user:', session.user?.email);
       
       // Check if the user has admin/owner role
       const checkAdminRole = async () => {
-        console.log('🔥 checkAdminRole() STARTED - session:', session);
+        // console.log('🔥 checkAdminRole() STARTED - session:', session);
         try {
-          console.log('🔥 About to query profiles table for user:', session.user.id);
+          // console.log('🔥 About to query master_users table for user:', session.user.id);
           // First check if user has a profile with admin role
           const { data: profile, error: profileError } = await supabase
-            .from('profiles')
-            .select('role, full_name')
-            .eq('user_id', session.user.id)
+            .from('master_users')
+            .select('access_type, full_name, onboarding_complete')
+            .eq('auth_user_id', session.user.id)
             .maybeSingle();
           
-          console.log('🔥 Profiles query result - profile:', profile, 'error:', profileError);
+          // console.log('🔥 Profiles query result - profile:', profile, 'error:', profileError);
             
-          if (profile && ['admin', 'owner'].includes(profile.role?.toLowerCase())) {
+          const accessType = String(profile?.access_type || '').toLowerCase();
+          if (accessType === 'admin' || accessType === 'owner') {
             console.log('✅ Admin role confirmed from profile');
-            console.log('🔥 ABOUT TO CALL BOOTSTRAP - Profile data:', profile);
+            // console.log('🔥 ABOUT TO CALL BOOTSTRAP - Profile data:', profile);
             
             // Immediately update user display with available info
             try {
               const userName = document.getElementById('user-name');
               const userInitials = document.getElementById('user-initials');
-              console.log('🔥 Setting immediate user display - userName element:', userName);
+              // console.log('🔥 Setting immediate user display - userName element:', userName);
               if (userName) {
                 const displayName = profile.full_name || 
                                   session.user?.user_metadata?.full_name ||
                                   session.user?.user_metadata?.name ||
                                   (session.user.email ? session.user.email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'User');
                 userName.textContent = displayName;
-                console.log('🔥 Immediately set user name to:', displayName);
+                // console.log('🔥 Immediately set user name to:', displayName);
                 
                 // Also set initials
                 if (userInitials) {
@@ -7231,35 +7361,10 @@ window.PIR_DEFINITIONS_DATA = [
             return;
           }
           
-          // Next check site_invites table
-          const { data: invite, error: inviteError } = await supabase
-            .from('site_invites')
-            .select('role')
-            .eq('email', session.user.email)
-            .in('role', ['admin', 'owner'])
-            .maybeSingle();
-            
-          if (invite) {
-            console.log('✅ Admin role confirmed from invitation');
-            showAuth(false);
-            bootstrap();
-            return;
-          }
-          
-          // Finally check user metadata
-          const rawRole = session.user?.user_metadata?.role || session.user?.raw_user_meta_data?.role;
-          if (rawRole && ['admin', 'owner'].includes(String(rawRole).toLowerCase())) {
-            console.log('✅ Admin role confirmed from user metadata');
-            showAuth(false);
-            bootstrap();
-            return;
-          }
-          
-          // No admin role found, show staff view instead
-          console.log('⚠️ User authenticated but not admin/owner role');
-          document.getElementById('admin-section').style.display = 'none';
-          document.getElementById('staff-view').style.display = 'block';
-          document.getElementById('no-access').style.display = 'block';
+          // Not admin/owner per master_users.access_type: redirect to home
+          console.log('⚠️ User authenticated but not admin/owner via access_type; redirecting');
+          window.location.replace('home.html');
+          return;
           
         } catch (err) {
           console.error('Error checking admin role:', err);
@@ -7284,6 +7389,1649 @@ window.PIR_DEFINITIONS_DATA = [
 
   // Sidebar toggle functionality is handled by the resize script at the bottom
   // This ensures proper coordination between toggle and drag-resize features
+
+
+  // Fuzzy Match Holiday Import Functions
+  let fuzzyUploadData = [];
+  let siteUsers = [];
+
+  function setupFuzzyUploadHandlers() {
+    console.log('🎯 Setting up fuzzy upload handlers (click-only)...');
+
+    // Use setTimeout to ensure DOM is ready
+    setTimeout(() => {
+      const uploadZone = document.getElementById('fuzzy-upload-zone');
+      const fileInput = document.getElementById('fuzzy-file-input');
+
+      console.log('Upload zone found:', !!uploadZone);
+      console.log('File input found:', !!fileInput);
+
+      if (!uploadZone || !fileInput) {
+        console.error('❌ Upload elements not found');
+        return;
+      }
+
+      // Click to upload only
+      uploadZone.onclick = (e) => {
+        console.log('📂 Upload zone clicked');
+        fileInput.click();
+      };
+
+      // File input change
+      fileInput.onchange = (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+          console.log('📎 File selected:', e.target.files[0].name);
+          if (typeof handleFuzzyFileUpload === 'function') {
+            handleFuzzyFileUpload(e.target.files[0]);
+          } else if (typeof window.handleFuzzyFileUpload === 'function') {
+            window.handleFuzzyFileUpload(e.target.files[0]);
+          } else {
+            console.error('handleFuzzyFileUpload not yet available');
+          }
+        }
+      };
+
+      console.log('✅ Upload handlers attached successfully (click-only)');
+    }, 100);
+  }
+
+  async function loadFuzzyMatch() {
+    console.log('Loading fuzzy match data...');
+    console.log('Current ctx:', ctx);
+    console.log('Current site_id:', ctx.site_id);
+
+    try {
+      // Check if ctx is properly initialized
+      if (!ctx || !ctx.site_id) {
+        console.error('❌ Context not initialized or site_id missing!', ctx);
+        const errorMsg = document.getElementById('fuzzy-error-message');
+        if (errorMsg) {
+          errorMsg.textContent = 'Error: User context not initialized. Please refresh the page.';
+          errorMsg.style.display = 'block';
+        }
+        return;
+      }
+
+      // Load site users for matching
+      await loadSiteUsers();
+
+      // Load statistics
+      await loadFuzzyStatistics();
+
+      // Load existing records
+      await loadFuzzyRecords();
+
+      // Setup file upload handlers
+      setupFuzzyUploadHandlers();
+    } catch (error) {
+      console.error('❌ Error in loadFuzzyMatch:', error);
+      const errorMsg = document.getElementById('fuzzy-error-message');
+      if (errorMsg) {
+        errorMsg.textContent = `Error loading holiday data: ${error.message}`;
+        errorMsg.style.display = 'block';
+      }
+    }
+  }
+
+  async function loadSiteUsers() {
+    try {
+      const { data: users, error } = await supabase
+        .from('master_users')
+        .select('id, auth_user_id, full_name, role_detail')
+        .eq('site_id', ctx.site_id)
+        .order('full_name');
+
+      if (error) throw error;
+
+      // Map the users to have a consistent user_id field for matching
+      siteUsers = (users || []).map(u => ({
+        ...u,
+        user_id: u.auth_user_id || u.id  // Use auth_user_id if available, fallback to id
+      }));
+      console.log('Loaded site users:', siteUsers.length, siteUsers);
+    } catch (error) {
+      console.error('Failed to load site users:', error);
+      siteUsers = [];
+    }
+  }
+
+  // Resolve a possibly-numeric user identifier to the auth.users UUID expected by
+  // stored procedures. If the value already looks like a UUID, return it unchanged.
+  // If it's numeric (profile id or similar), try to find the matching `user_id`
+  // from the cached `siteUsers` list. If resolution fails, return the original
+  // value so Supabase will surface the appropriate error.
+  async function resolveUserUuid(raw) {
+    if (!raw) return raw;
+    // Simple UUID v4-ish pattern check
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (uuidPattern.test(raw)) return raw;
+
+    // If it's numeric, try to find a matching profile entry via Supabase
+    if (/^\d+$/.test(String(raw))) {
+      try {
+        // Try common profile identifier columns that might contain the numeric value
+        const { data: profile, error } = await supabase
+          .from('master_users')
+          .select('auth_user_id, id, kiosk_user_id')
+          .or(`id.eq.${raw},kiosk_user_id.eq.${raw}`)
+          .limit(1)
+          .maybeSingle();
+
+        if (!error && profile && profile.auth_user_id) return profile.auth_user_id;
+      } catch (e) {
+        console.warn('resolveUserUuid lookup failed', e);
+      }
+
+      // Fallback: try to resolve from cached siteUsers by positional index
+      const numeric = parseInt(raw, 10);
+      if (!isNaN(numeric) && siteUsers[numeric - 1] && siteUsers[numeric - 1].user_id) {
+        return siteUsers[numeric - 1].user_id;
+      }
+    }
+
+    // If we couldn't resolve, return the original value so Supabase surfaces a clear error
+    return raw;
+  }
+
+  async function loadFuzzyStatistics() {
+    try {
+      const { data, error } = await supabase
+        .from('fuzzy_match_holidays')
+        .select('match_status')
+        .eq('site_id', ctx.site_id);
+
+      if (error) throw error;
+
+      // Also get matched_user_id to count auto-matched pending records
+      const { data: fullData, error: fullError } = await supabase
+        .from('fuzzy_match_holidays')
+        .select('match_status, matched_user_id')
+        .eq('site_id', ctx.site_id);
+
+      const stats = {
+        pending: fullData.filter(d => d.match_status === 'pending' && !d.matched_user_id).length,
+        matched: fullData.filter(d => d.match_status === 'matched' || (d.match_status === 'pending' && d.matched_user_id)).length,
+        transferred: fullData.filter(d => d.match_status === 'transferred').length,
+        total: fullData.length
+      };
+
+      document.getElementById('fuzzy-stat-pending').textContent = stats.pending;
+      document.getElementById('fuzzy-stat-matched').textContent = stats.matched;
+      document.getElementById('fuzzy-stat-transferred').textContent = stats.transferred;
+      document.getElementById('fuzzy-stat-total').textContent = stats.total;
+    } catch (error) {
+      console.error('Failed to load statistics:', error);
+    }
+  }
+
+  async function loadFuzzyRecords() {
+    const tbody = document.getElementById('fuzzy-existing-tbody');
+    console.log('📊 Loading fuzzy records for site_id:', ctx.site_id);
+
+    if (!tbody) {
+      console.error('❌ fuzzy-existing-tbody element not found!');
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('fuzzy_match_holidays')
+        .select('*')
+        .eq('site_id', ctx.site_id)
+        .order('created_at', { ascending: false });
+
+      console.log('📋 Query result:', { data, error });
+
+      if (error) {
+        console.error('❌ Supabase error:', error);
+        throw error;
+      }
+
+      if (!data || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:#718096;">No records found</td></tr>';
+        return;
+      }
+
+      // Get user names and working patterns for matched records
+      const matchedUserIds = data.filter(r => r.matched_user_id).map(r => r.matched_user_id);
+      let userMap = {};
+      let workingPatternMap = {};
+
+      if (matchedUserIds.length > 0) {
+        const { data: matchedUsers } = await supabase
+          .from('master_users')
+          .select(`
+            id, auth_user_id, full_name, is_gp,
+            monday_hours, tuesday_hours, wednesday_hours,
+            thursday_hours, friday_hours, saturday_hours, sunday_hours,
+            monday_sessions, tuesday_sessions, wednesday_sessions,
+            thursday_sessions, friday_sessions, saturday_sessions, sunday_sessions
+          `)
+          .or(`id.in.(${matchedUserIds.join(',')}),auth_user_id.in.(${matchedUserIds.join(',')})`);
+
+        if (matchedUsers) {
+          matchedUsers.forEach(u => {
+            // Map both id and auth_user_id to the full name and working patterns
+            if (u.auth_user_id) {
+              userMap[u.auth_user_id] = u.full_name;
+              workingPatternMap[u.auth_user_id] = u;
+            }
+            if (u.id) {
+              userMap[u.id] = u.full_name;
+              workingPatternMap[u.id] = u;
+            }
+          });
+        }
+      }
+
+      // Get working patterns for siteUsers too (for auto-matched records)
+      const siteUserIds = siteUsers.map(u => u.user_id);
+      if (siteUserIds.length > 0) {
+        const { data: siteUserPatterns } = await supabase
+          .from('master_users')
+          .select(`
+            id, auth_user_id, is_gp,
+            monday_hours, tuesday_hours, wednesday_hours,
+            thursday_hours, friday_hours, saturday_hours, sunday_hours,
+            monday_sessions, tuesday_sessions, wednesday_sessions,
+            thursday_sessions, friday_sessions, saturday_sessions, sunday_sessions
+          `)
+          .or(`id.in.(${siteUserIds.join(',')}),auth_user_id.in.(${siteUserIds.join(',')})`);
+
+        if (siteUserPatterns) {
+          siteUserPatterns.forEach(u => {
+            if (u.auth_user_id && !workingPatternMap[u.auth_user_id]) {
+              workingPatternMap[u.auth_user_id] = u;
+            }
+            if (u.id && !workingPatternMap[u.id]) {
+              workingPatternMap[u.id] = u;
+            }
+          });
+        }
+      }
+
+      let autoMatchCount = 0;
+      let pendingCount = 0;
+
+      tbody.innerHTML = data.map((record, index) => {
+        // Determine effective status (if has matched_user_id and still pending, show as matched)
+        const effectiveStatus = (record.matched_user_id && record.match_status === 'pending') ? 'matched' : record.match_status;
+
+        const statusColor = {
+          'pending': '#667eea',
+          'matched': '#10b981',
+          'transferred': '#000000',
+          'rejected': '#ef4444'
+        }[effectiveStatus] || '#6b7280';
+
+        // Find best matching user based on name similarity
+        let bestMatchUserId = record.matched_user_id || '';
+
+        // Count pending records (no matched user yet)
+        if (record.match_status === 'pending' && !record.matched_user_id) {
+          pendingCount++;
+        }
+
+        // Count auto-matched records (pending with matched user from auto-matching)
+        if (record.match_status === 'pending' && record.matched_user_id) {
+          autoMatchCount++;
+        }
+
+        if (!bestMatchUserId && record.match_status === 'pending') {
+
+          // Debug: Log what we're trying to match
+          if (record.staff_name.toLowerCase().includes('ben howard')) {
+            console.log('🔍 Trying to match:', record.staff_name);
+            console.log('Available users:', siteUsers.map(u => u.full_name));
+          }
+
+          // Try exact match first (case insensitive)
+          const exactMatch = siteUsers.find(u =>
+            u.full_name.toLowerCase() === record.staff_name.toLowerCase()
+          );
+          if (exactMatch) {
+            bestMatchUserId = exactMatch.user_id;
+            console.log('✅ Exact match found for', record.staff_name, '→', exactMatch.full_name);
+
+            // Automatically save the matched_user_id (but keep status as pending for review)
+            if (!record.matched_user_id) {
+              supabase
+                .from('fuzzy_match_holidays')
+                .update({
+                  matched_user_id: exactMatch.user_id
+                })
+                .eq('id', record.id)
+                .eq('site_id', ctx.site_id)
+                .then(({ error }) => {
+                  if (!error) {
+                    console.log('✅ Auto-match user saved for', record.staff_name);
+                  }
+                });
+            }
+          } else {
+            // Try partial match (last name match)
+            const recordLastName = record.staff_name.split(' ').pop().toLowerCase();
+            const partialMatch = siteUsers.find(u => {
+              const userLastName = u.full_name.split(' ').pop().toLowerCase();
+              return userLastName === recordLastName;
+            });
+            if (partialMatch) {
+              bestMatchUserId = partialMatch.user_id;
+              console.log('✅ Partial match found for', record.staff_name, '→', partialMatch.full_name);
+
+              // Automatically save the matched_user_id (but keep status as pending for review)
+              if (!record.matched_user_id) {
+                supabase
+                  .from('fuzzy_match_holidays')
+                  .update({
+                    matched_user_id: partialMatch.user_id
+                  })
+                  .eq('id', record.id)
+                  .eq('site_id', ctx.site_id)
+                  .then(({ error }) => {
+                    if (!error) {
+                      console.log('✅ Auto-match user saved for', record.staff_name);
+                    }
+                  });
+              }
+            } else {
+              console.log('❌ No match found for', record.staff_name);
+            }
+          }
+        }
+
+        // Calculate hours/sessions if user is matched
+        let calculatedHours = record.total_hours;
+        let calculatedSessions = record.total_sessions;
+        let isCalculated = false;
+
+        const useCalculated = document.getElementById('fuzzy-use-calculated')?.checked || false;
+        const matchedUserId = record.matched_user_id || bestMatchUserId;
+
+        if (matchedUserId && useCalculated) {
+          const pattern = workingPatternMap[matchedUserId];
+          if (pattern) {
+            const calculated = calculateHoursForDateRange(
+              record.start_date,
+              record.end_date,
+              pattern
+            );
+            console.log(`📊 Auto-calculated for ${record.staff_name}:`, calculated);
+            calculatedHours = calculated.hours;
+            calculatedSessions = calculated.sessions;
+            isCalculated = true;
+          }
+        }
+
+        // Generate user dropdown options with best match pre-selected
+        const userOptions = siteUsers.map(u =>
+          `<option value="${u.user_id}" ${(record.matched_user_id === u.user_id || (!record.matched_user_id && bestMatchUserId === u.user_id)) ? 'selected' : ''}>
+            ${esc(u.full_name)}${u.role_detail ? ' (' + esc(u.role_detail) + ')' : ''}
+          </option>`
+        ).join('');
+
+        return `
+          <tr data-record-id="${record.id}" data-status="${effectiveStatus}">
+            <td>
+              ${effectiveStatus !== 'transferred' && effectiveStatus !== 'rejected' ?
+                `<input type="checkbox" class="fuzzy-record-checkbox" data-record-id="${record.id}"
+                  style="width:16px; height:16px; cursor:pointer;">` :
+                ''}
+            </td>
+            <td>
+              ${esc(record.staff_name)}
+              ${record.matched_user_id && record.match_status === 'pending' ?
+                '<span style="color:#10b981; font-size:12px; margin-left:8px;" title="Auto-matched">✓</span>' :
+                ''}
+            </td>
+            <td>${new Date(record.start_date).toLocaleDateString()}</td>
+            <td>${new Date(record.end_date).toLocaleDateString()}</td>
+            <td>
+              ${calculatedHours ?
+                `<span ${isCalculated ? 'style="font-style:italic;" title="Auto-calculated from working pattern"' : ''}>${calculatedHours.toFixed(1)} hours</span>` :
+                calculatedSessions ?
+                `<span ${isCalculated ? 'style="font-style:italic;" title="Auto-calculated from working pattern"' : ''}>${calculatedSessions.toFixed(1)} sessions</span>` :
+                '-'}
+            </td>
+            <td><span style="color:${statusColor}; font-weight:600;">${effectiveStatus}</span></td>
+            <td>
+              ${effectiveStatus === 'transferred' ?
+                `✅ ${userMap[record.matched_user_id] || 'Transferred'}` :
+                effectiveStatus === 'rejected' ?
+                `❌ Rejected` :
+                `<select id="user-select-${record.id}" class="fuzzy-user-select" data-record-id="${record.id}"
+                  style="padding:4px 8px; border-radius:4px; border:1px solid #cbd5e0; ${bestMatchUserId ? 'border-color:#10b981;' : ''}">
+                  <option value="">Select User...</option>
+                  ${userOptions}
+                </select>`
+              }
+            </td>
+            <td>${new Date(record.uploaded_at || record.created_at).toLocaleDateString()}</td>
+            <td>
+              ${effectiveStatus === 'pending' ?
+                `<div style="display:flex; gap:4px;">
+                  <button class="btn btn-sm" onclick="matchAndTransferFuzzyRecord('${record.id}')"
+                    style="background:linear-gradient(135deg, #667eea, #764ba2); padding:4px 8px;">
+                    Match & Transfer
+                  </button>
+                  <button class="btn btn-sm" onclick="deleteFuzzyRecord('${record.id}')"
+                    style="background:#ef4444; padding:4px 8px;">
+                    Delete
+                  </button>
+                </div>` :
+                effectiveStatus === 'matched' ?
+                `<div style="display:flex; gap:4px;">
+                  <button class="btn btn-sm" onclick="transferFuzzyRecord('${record.id}')"
+                    style="background:#10b981; padding:4px 8px;">
+                    Transfer
+                  </button>
+                  <button class="btn btn-sm" onclick="unmatchFuzzyRecord('${record.id}')"
+                    style="background:#6b7280; padding:4px 8px;">
+                    Unmatch
+                  </button>
+                </div>` :
+                '-'}
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      // Update match info
+      const matchInfo = document.getElementById('fuzzy-match-info');
+      if (matchInfo) {
+        if (autoMatchCount > 0) {
+          const totalUnprocessed = pendingCount + autoMatchCount;
+          matchInfo.innerHTML = `<span style="color:#10b981;">✓ ${autoMatchCount} of ${totalUnprocessed} records have automatic matches</span>`;
+        } else if (pendingCount > 0) {
+          matchInfo.innerHTML = `<span style="color:#6b7280;">${pendingCount} pending records awaiting review</span>`;
+        } else {
+          matchInfo.innerHTML = '';
+        }
+      }
+
+      // Update statistics after auto-matching
+      if (autoMatchCount > 0) {
+        setTimeout(async () => {
+          await loadFuzzyStatistics();
+        }, 500);
+      }
+
+      // Populate name filter dropdown with unique names
+      const nameFilter = document.getElementById('fuzzy-name-filter');
+      if (nameFilter) {
+        const currentValue = nameFilter.value;
+        const uniqueNames = [...new Set(data.map(record => record.staff_name))].sort();
+
+        nameFilter.innerHTML = '<option value="">All Names</option>';
+        uniqueNames.forEach(name => {
+          const option = document.createElement('option');
+          option.value = name.toLowerCase();
+          option.textContent = name;
+          nameFilter.appendChild(option);
+        });
+
+        // Restore previous selection if it still exists
+        if (currentValue && nameFilter.querySelector(`option[value="${currentValue}"]`)) {
+          nameFilter.value = currentValue;
+        }
+      }
+
+      // Add event listeners for user dropdown changes
+      document.querySelectorAll('.fuzzy-user-select').forEach(select => {
+        select.addEventListener('change', async (e) => {
+          const recordId = e.target.dataset.recordId;
+          const newUserId = e.target.value;
+
+          if (newUserId) {
+            // Update the matched_user_id in the database
+            const { error } = await supabase
+              .from('fuzzy_match_holidays')
+              .update({
+                matched_user_id: newUserId,
+                match_status: 'matched',
+                matched_at: new Date().toISOString()
+              })
+              .eq('id', recordId)
+              .eq('site_id', ctx.site_id);
+
+            if (!error) {
+              console.log(`✅ Updated match for record ${recordId} to user ${newUserId}`);
+              // Reload statistics and records to show updated calculations
+              await loadFuzzyStatistics();
+              await loadFuzzyRecords();
+            } else {
+              console.error('Failed to update match:', error);
+            }
+          }
+        });
+      });
+
+      // Apply current filters
+      setTimeout(() => {
+        filterFuzzyRecords();
+      }, 100);
+    } catch (error) {
+      console.error('Failed to load fuzzy records:', error);
+      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:#ef4444;">Error loading records: ${error.message}</td></tr>`;
+    }
+  }
+
+  async function handleFuzzyFileUpload(file) {
+    const errorMsg = document.getElementById('fuzzy-error-message');
+    const successMsg = document.getElementById('fuzzy-success-message');
+
+    // Hide messages
+    errorMsg.style.display = 'none';
+    successMsg.style.display = 'none';
+
+    if (!file.name.match(/\.(xlsx|xls)$/)) {
+      errorMsg.textContent = 'Please upload an Excel file (.xlsx or .xls)';
+      errorMsg.style.display = 'block';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const workbook = XLSX.read(e.target.result, { type: 'binary' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const data = XLSX.utils.sheet_to_json(sheet);
+
+        // Validate and process data
+        fuzzyUploadData = data.map(row => ({
+          staff_name: row['Staff Name'] || row['Name'] || '',
+          start_date: parseExcelDate(row['Start Date']),
+          end_date: parseExcelDate(row['End Date']),
+          total_hours: parseFloat(row['Total Hours']) || null,
+          total_sessions: parseFloat(row['Total Sessions']) || null,
+          reason: row['Reason'] || ''
+        })).filter(row => row.staff_name && row.start_date && row.end_date);
+
+        if (fuzzyUploadData.length === 0) {
+          errorMsg.textContent = 'No valid data found in the Excel file';
+          errorMsg.style.display = 'block';
+          return;
+        }
+
+        // Show preview
+        showFuzzyPreview();
+      } catch (error) {
+        console.error('Error parsing Excel:', error);
+        errorMsg.textContent = 'Failed to parse Excel file: ' + error.message;
+        errorMsg.style.display = 'block';
+      }
+    };
+    reader.readAsBinaryString(file);
+  }
+
+  function parseExcelDate(dateValue) {
+    if (!dateValue) return null;
+
+    // If it's already a Date object or valid date string
+    if (dateValue instanceof Date) return dateValue.toISOString().split('T')[0];
+    if (typeof dateValue === 'string' && dateValue.match(/^\d{4}-\d{2}-\d{2}$/)) return dateValue;
+
+    // Excel serial date (number of days since 1900-01-01)
+    if (typeof dateValue === 'number') {
+      const date = new Date((dateValue - 25569) * 86400 * 1000);
+      return date.toISOString().split('T')[0];
+    }
+
+    // Try parsing as string
+    const parsed = new Date(dateValue);
+    return isNaN(parsed) ? null : parsed.toISOString().split('T')[0];
+  }
+
+  function showFuzzyPreview() {
+    const preview = document.getElementById('fuzzy-data-preview');
+    const tbody = document.getElementById('fuzzy-preview-tbody');
+
+    // Generate preview rows with editable inputs for hours/sessions
+    tbody.innerHTML = fuzzyUploadData.slice(0, 10).map((row, index) => `
+      <tr data-index="${index}">
+        <td>${esc(row.staff_name)}</td>
+        <td>${row.start_date}</td>
+        <td>${row.end_date}</td>
+        <td>
+          <input type="number" step="0.5" min="0"
+                 class="hours-input"
+                 data-index="${index}"
+                 value="${row.total_hours || ''}"
+                 placeholder="-"
+                 style="width: 80px; padding: 4px; border: 1px solid #e2e8f0; border-radius: 4px;"
+                 onchange="updateHoursValue(${index}, this.value)">
+        </td>
+        <td>
+          <input type="number" step="1" min="0"
+                 class="sessions-input"
+                 data-index="${index}"
+                 value="${row.total_sessions || ''}"
+                 placeholder="-"
+                 style="width: 80px; padding: 4px; border: 1px solid #e2e8f0; border-radius: 4px;"
+                 onchange="updateSessionsValue(${index}, this.value)">
+        </td>
+        <td>${esc(row.reason)}</td>
+      </tr>
+    `).join('');
+
+    if (fuzzyUploadData.length > 10) {
+      tbody.innerHTML += `<tr><td colspan="6" style="text-align:center; color:#718096;">... and ${fuzzyUploadData.length - 10} more records</td></tr>`;
+    }
+
+    preview.style.display = 'block';
+  }
+
+  async function confirmFuzzyUpload() {
+    const errorMsg = document.getElementById('fuzzy-error-message');
+    const successMsg = document.getElementById('fuzzy-success-message');
+
+    // Hide any existing messages
+    errorMsg.style.display = 'none';
+    successMsg.style.display = 'none';
+
+    try {
+      // Validate data
+      if (!fuzzyUploadData || fuzzyUploadData.length === 0) {
+        throw new Error('No data to upload');
+      }
+
+      // Show uploading message
+      successMsg.textContent = '⏳ Uploading holiday records...';
+      successMsg.style.display = 'block';
+
+      // Prepare data for upload
+      const recordsToInsert = fuzzyUploadData.map(row => ({
+        ...row,
+        site_id: ctx.site_id,
+        match_status: 'pending',
+        uploaded_by: ctx.user.id
+      }));
+
+      console.log('📤 Attempting to insert', recordsToInsert.length, 'records');
+
+      // Insert into database
+      const { data, error } = await supabase
+        .from('fuzzy_match_holidays')
+        .insert(recordsToInsert);
+
+      if (error) {
+        // Check for specific RLS error
+        if (error.code === '42501') {
+          throw new Error('Permission denied. Please contact your administrator to enable holiday uploads for your account.');
+        }
+        throw error;
+      }
+
+      // Success
+      successMsg.textContent = `✅ Successfully uploaded ${fuzzyUploadData.length} holiday records`;
+      successMsg.style.display = 'block';
+
+      // Reset UI
+      document.getElementById('fuzzy-data-preview').style.display = 'none';
+      document.getElementById('fuzzy-file-input').value = '';
+      fuzzyUploadData = [];
+
+      // Reload data
+      await loadFuzzyStatistics();
+      await loadFuzzyRecords();
+
+      // Auto-hide success message after 5 seconds
+      setTimeout(() => {
+        successMsg.style.display = 'none';
+      }, 5000);
+
+    } catch (error) {
+      console.error('Upload failed:', error);
+
+      // Make error message more prominent
+      errorMsg.innerHTML = `
+        <strong>❌ Upload Failed</strong><br>
+        ${error.message}<br>
+        <small style="margin-top: 8px; display: block;">
+          If this persists, please run: <code>node fix_fuzzy_holidays_rls.js</code>
+        </small>
+      `;
+      errorMsg.style.display = 'block';
+      errorMsg.style.backgroundColor = '#fee';
+      errorMsg.style.border = '2px solid #f44';
+      errorMsg.style.padding = '15px';
+      errorMsg.style.borderRadius = '8px';
+      errorMsg.style.marginBottom = '20px';
+
+      // Hide uploading message
+      successMsg.style.display = 'none';
+
+      // Scroll to error message
+      errorMsg.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+
+  function cancelFuzzyUpload() {
+    document.getElementById('fuzzy-data-preview').style.display = 'none';
+    document.getElementById('fuzzy-file-input').value = '';
+    fuzzyUploadData = [];
+  }
+
+  async function deleteFuzzyRecord(id) {
+    if (!confirm('Are you sure you want to delete this record?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('fuzzy_match_holidays')
+        .delete()
+        .eq('id', id)
+        .eq('site_id', ctx.site_id);
+
+      if (error) throw error;
+
+      // Reload data
+      await loadFuzzyStatistics();
+      await loadFuzzyRecords();
+    } catch (error) {
+      console.error('Delete failed:', error);
+      alert('Failed to delete record: ' + error.message);
+    }
+  }
+
+  async function matchAndTransferFuzzyRecord(recordId) {
+    const selectElement = document.getElementById(`user-select-${recordId}`);
+    const userId = selectElement?.value;
+
+    if (!userId) {
+      alert('Please select a user to match this record to');
+      return;
+    }
+
+    const userName = selectElement.options[selectElement.selectedIndex].text.trim();
+    if (!confirm(`Match and transfer this holiday record to ${userName}?`)) return;
+
+    try {
+      // Get the full record first
+      const { data: record, error: fetchError } = await supabase
+        .from('fuzzy_match_holidays')
+        .select('*')
+        .eq('id', recordId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Check if we need to calculate hours/sessions
+      const useCalculated = document.getElementById('fuzzy-use-calculated')?.checked || false;
+      let updateData = {
+        matched_user_id: userId,
+        match_status: 'matched',
+        matched_at: new Date().toISOString()
+      };
+
+      if (useCalculated && (!record.total_hours && !record.total_sessions)) {
+        // Get user's working pattern
+        const { data: userData, error: userError } = await supabase
+          .from('master_users')
+          .select(`
+            full_name, is_gp,
+            monday_hours, tuesday_hours, wednesday_hours,
+            thursday_hours, friday_hours, saturday_hours, sunday_hours,
+            monday_sessions, tuesday_sessions, wednesday_sessions,
+            thursday_sessions, friday_sessions, saturday_sessions, sunday_sessions
+          `)
+          .or(`id.eq.${userId},auth_user_id.eq.${userId}`)
+          .eq('site_id', ctx.site_id)
+          .maybeSingle();
+
+        if (userData) {
+          const calculated = calculateHoursForDateRange(
+            record.start_date,
+            record.end_date,
+            userData
+          );
+
+          if (userData.is_gp) {
+            updateData.total_sessions = calculated.sessions;
+            updateData.total_hours = null;
+            updateData.total_days = calculated.sessions; // For GPs, total_days = sessions
+          } else {
+            updateData.total_hours = calculated.hours;
+            updateData.total_sessions = null;
+            updateData.total_days = calculated.hours / 7.5; // Convert hours to days (assuming 7.5 hour work day)
+          }
+        }
+      } else if (!record.total_days) {
+        // Calculate total_days from existing hours or sessions
+        if (record.total_sessions) {
+          updateData.total_days = record.total_sessions; // For GPs
+        } else if (record.total_hours) {
+          updateData.total_days = record.total_hours / 7.5; // For staff
+        }
+      }
+
+      // Update the record with match info and calculated values
+      const { error: matchError } = await supabase
+        .from('fuzzy_match_holidays')
+        .update(updateData)
+        .eq('id', recordId)
+        .eq('site_id', ctx.site_id);
+
+      if (matchError) throw matchError;
+
+      // Now transfer to holiday requests using the database function
+      const resolvedUserId = await resolveUserUuid(userId);
+      const { data: transferResult, error: transferError } = await supabase
+        .rpc('transfer_fuzzy_match_to_request', {
+          p_fuzzy_match_id: parseInt(recordId),
+          p_user_id: resolvedUserId
+        });
+
+      if (transferError) throw transferError;
+
+      // Success
+      alert(`Holiday successfully transferred to ${userName}`);
+
+      // Reload data
+      await loadFuzzyStatistics();
+      await loadFuzzyRecords();
+    } catch (error) {
+      console.error('Match and transfer failed:', error);
+      alert('Failed to match and transfer: ' + error.message);
+    }
+  }
+
+  async function transferFuzzyRecord(recordId) {
+    if (!confirm('Transfer this matched holiday to the user\'s holiday requests?')) return;
+
+    try {
+      // Get the full record
+      const { data: record, error: fetchError } = await supabase
+        .from('fuzzy_match_holidays')
+        .select('*')
+        .eq('id', recordId)
+        .single();
+
+      if (fetchError) throw fetchError;
+      if (!record?.matched_user_id) {
+        alert('No user matched to this record');
+        return;
+      }
+
+      // Check if we need to calculate hours/sessions
+      const useCalculated = document.getElementById('fuzzy-use-calculated')?.checked || false;
+
+      if (useCalculated && (!record.total_hours && !record.total_sessions)) {
+        // Get user's working pattern
+        const { data: userData, error: userError } = await supabase
+          .from('master_users')
+          .select(`
+            full_name, is_gp,
+            monday_hours, tuesday_hours, wednesday_hours,
+            thursday_hours, friday_hours, saturday_hours, sunday_hours,
+            monday_sessions, tuesday_sessions, wednesday_sessions,
+            thursday_sessions, friday_sessions, saturday_sessions, sunday_sessions
+          `)
+          .or(`id.eq.${record.matched_user_id},auth_user_id.eq.${record.matched_user_id}`)
+          .eq('site_id', ctx.site_id)
+          .maybeSingle();
+
+        if (userData) {
+          const calculated = calculateHoursForDateRange(
+            record.start_date,
+            record.end_date,
+            userData
+          );
+
+          // Update record with calculated values
+          const updateData = {};
+          if (userData.is_gp) {
+            updateData.total_sessions = calculated.sessions;
+            updateData.total_hours = null;
+            updateData.total_days = calculated.sessions; // For GPs, total_days = sessions
+          } else {
+            updateData.total_hours = calculated.hours;
+            updateData.total_sessions = null;
+            updateData.total_days = calculated.hours / 7.5; // Convert hours to days (assuming 7.5 hour work day)
+          }
+
+          // Update the record first
+          const { error: updateError } = await supabase
+            .from('fuzzy_match_holidays')
+            .update(updateData)
+            .eq('id', recordId);
+
+          if (updateError) {
+            console.error('Failed to update calculated values:', updateError);
+            throw updateError;
+          }
+        }
+      } else if (!record.total_days) {
+        // Calculate total_days from existing hours or sessions
+        const updateData = {};
+        if (record.total_sessions) {
+          updateData.total_days = record.total_sessions; // For GPs
+        } else if (record.total_hours) {
+          updateData.total_days = record.total_hours / 7.5; // For staff
+        }
+
+        if (updateData.total_days) {
+          const { error: updateError } = await supabase
+            .from('fuzzy_match_holidays')
+            .update(updateData)
+            .eq('id', recordId);
+
+          if (updateError) {
+            console.error('Failed to update total_days:', updateError);
+          }
+        }
+      }
+
+      // Transfer using the database function
+      const resolvedUserId = await resolveUserUuid(record.matched_user_id);
+      const { data: transferResult, error: transferError } = await supabase
+        .rpc('transfer_fuzzy_match_to_request', {
+          p_fuzzy_match_id: parseInt(recordId),
+          p_user_id: resolvedUserId
+        });
+
+      if (transferError) throw transferError;
+
+      alert('Holiday successfully transferred');
+
+      // Reload data
+      await loadFuzzyStatistics();
+      await loadFuzzyRecords();
+    } catch (error) {
+      console.error('Transfer failed:', error);
+      alert('Failed to transfer: ' + error.message);
+    }
+  }
+
+  async function unmatchFuzzyRecord(recordId) {
+    if (!confirm('Remove the user match from this record?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('fuzzy_match_holidays')
+        .update({
+          matched_user_id: null,
+          match_status: 'pending',
+          matched_at: null
+        })
+        .eq('id', recordId)
+        .eq('site_id', ctx.site_id);
+
+      if (error) throw error;
+
+      // Reload data
+      await loadFuzzyStatistics();
+      await loadFuzzyRecords();
+    } catch (error) {
+      console.error('Unmatch failed:', error);
+      alert('Failed to unmatch: ' + error.message);
+    }
+  }
+
+  // Bulk operation functions
+  function toggleAllCheckboxes() {
+    const selectAll = document.getElementById('fuzzy-select-all');
+    const allCheckboxes = document.querySelectorAll('.fuzzy-record-checkbox');
+
+    // Only toggle checkboxes in visible rows
+    allCheckboxes.forEach(cb => {
+      const row = cb.closest('tr');
+      if (row && row.style.display !== 'none') {
+        cb.checked = selectAll.checked;
+      }
+    });
+  }
+
+  async function deleteSelectedFuzzyRecords() {
+    const allSelectedCheckboxes = document.querySelectorAll('.fuzzy-record-checkbox:checked');
+
+    // Only include checkboxes from visible rows
+    const selectedCheckboxes = Array.from(allSelectedCheckboxes).filter(cb => {
+      const row = cb.closest('tr');
+      return row && row.style.display !== 'none';
+    });
+
+    if (selectedCheckboxes.length === 0) {
+      alert('Please select records to delete');
+      return;
+    }
+
+    if (!confirm(`Delete ${selectedCheckboxes.length} selected record(s)?`)) {
+      return;
+    }
+
+    const recordIds = Array.from(selectedCheckboxes).map(cb => parseInt(cb.dataset.recordId, 10));
+
+    try {
+      const { error } = await supabase
+        .from('fuzzy_match_holidays')
+        .delete()
+        .eq('site_id', ctx.site_id)
+        .in('id', recordIds);
+
+      if (error) throw error;
+
+      await loadFuzzyStatistics();
+      await loadFuzzyRecords();
+    } catch (error) {
+      console.error('Bulk delete failed:', error);
+      alert('Failed to delete selected records: ' + error.message);
+    }
+  }
+
+  function filterFuzzyRecords() {
+    const nameFilter = document.getElementById('fuzzy-name-filter').value.toLowerCase();
+    const matchFilter = document.getElementById('fuzzy-match-filter').value;
+    const rows = document.querySelectorAll('#fuzzy-existing-tbody tr');
+
+    rows.forEach(row => {
+      if (!row.dataset.recordId) return; // Skip header/empty rows
+
+      const nameCell = row.cells[1]; // Name is in the second column (after checkbox)
+      const statusAttr = row.dataset.status;
+
+      let showRow = true;
+
+      // Name filter
+      if (nameFilter && nameCell) {
+        const name = nameCell.textContent.toLowerCase();
+        if (!name.includes(nameFilter)) {
+          showRow = false;
+        }
+      }
+
+      // Match status filter
+      if (matchFilter) {
+        // Check if row has matched_user_id set (for pending records that are matched)
+        const userSelect = row.querySelector('.fuzzy-user-select');
+        const hasMatchedUser = userSelect && userSelect.value;
+
+        if (matchFilter === 'matched') {
+          if (!(statusAttr === 'matched' || (statusAttr === 'pending' && hasMatchedUser))) {
+            showRow = false;
+          }
+        } else if (matchFilter === 'pending') {
+          if (!(statusAttr === 'pending' && !hasMatchedUser)) {
+            showRow = false;
+          }
+        } else if (matchFilter !== statusAttr) {
+          showRow = false;
+        }
+      }
+
+      row.style.display = showRow ? '' : 'none';
+    });
+  }
+
+  async function autoMatchAllPending() {
+    const allPendingRecords = document.querySelectorAll('tr[data-status="pending"]');
+
+    // Only include visible pending records
+    const pendingRecords = Array.from(allPendingRecords).filter(row => {
+      return row.style.display !== 'none';
+    });
+
+    if (pendingRecords.length === 0) {
+      alert('No pending records to match');
+      return;
+    }
+
+    if (!confirm(`Auto-match ${pendingRecords.length} pending record(s)?\n\nThis will match records where names exactly match existing users and transfer them immediately.`)) {
+      return;
+    }
+
+    let matchedCount = 0;
+    let failedCount = 0;
+    const errors = [];
+
+    for (const row of pendingRecords) {
+      const recordId = row.dataset.recordId;
+      const selectElement = document.getElementById(`user-select-${recordId}`);
+
+      if (selectElement && selectElement.value) {
+        // Only process if a user is selected (auto-matched)
+        try {
+          // Match and transfer
+          const { error: matchError } = await supabase
+            .from('fuzzy_match_holidays')
+            .update({
+              matched_user_id: selectElement.value,
+              match_status: 'matched',
+              matched_at: new Date().toISOString()
+            })
+            .eq('id', recordId)
+            .eq('site_id', ctx.site_id);
+
+          if (matchError) throw matchError;
+
+          // Transfer to holiday requests
+          const resolvedUserId = await resolveUserUuid(selectElement.value);
+          const { error: transferError } = await supabase
+            .rpc('transfer_fuzzy_match_to_request', {
+              p_fuzzy_match_id: parseInt(recordId),
+              p_user_id: resolvedUserId
+            });
+
+          if (transferError) throw transferError;
+
+          matchedCount++;
+        } catch (error) {
+          failedCount++;
+          errors.push(`Record ${recordId}: ${error.message}`);
+        }
+      }
+    }
+
+    // Show results
+    let message = `Auto-match complete!\n`;
+    message += `✅ Successfully matched and transferred: ${matchedCount}\n`;
+    if (failedCount > 0) {
+      message += `❌ Failed: ${failedCount}\n`;
+      if (errors.length > 0) {
+        message += `\nErrors:\n${errors.slice(0, 5).join('\n')}`;
+      }
+    }
+    alert(message);
+
+    // Reload data
+    await loadFuzzyStatistics();
+    await loadFuzzyRecords();
+  }
+
+  async function matchSelectedRecords() {
+    const allSelectedCheckboxes = document.querySelectorAll('.fuzzy-record-checkbox:checked');
+
+    // Only include checkboxes from visible rows
+    const selectedCheckboxes = Array.from(allSelectedCheckboxes).filter(cb => {
+      const row = cb.closest('tr');
+      return row && row.style.display !== 'none';
+    });
+
+    if (selectedCheckboxes.length === 0) {
+      alert('Please select records to match');
+      return;
+    }
+
+    // Check that all selected records have users selected
+    let missingUsers = [];
+    selectedCheckboxes.forEach(cb => {
+      const recordId = cb.dataset.recordId;
+      const selectElement = document.getElementById(`user-select-${recordId}`);
+      if (!selectElement || !selectElement.value) {
+        const row = cb.closest('tr');
+        const name = row.cells[1].textContent;
+        missingUsers.push(name);
+      }
+    });
+
+    if (missingUsers.length > 0) {
+      alert(`Please select users for the following records:\n${missingUsers.join('\n')}`);
+      return;
+    }
+
+    if (!confirm(`Match and transfer ${selectedCheckboxes.length} selected record(s)?`)) {
+      return;
+    }
+
+    let successCount = 0;
+    let failedCount = 0;
+    const errors = [];
+
+    for (const checkbox of selectedCheckboxes) {
+      const recordId = checkbox.dataset.recordId;
+      const selectElement = document.getElementById(`user-select-${recordId}`);
+      const userId = selectElement.value;
+
+      try {
+        // Match and transfer
+        const { error: matchError } = await supabase
+          .from('fuzzy_match_holidays')
+          .update({
+            matched_user_id: userId,
+            match_status: 'matched',
+            matched_at: new Date().toISOString()
+          })
+          .eq('id', recordId)
+          .eq('site_id', ctx.site_id);
+
+        if (matchError) throw matchError;
+
+        // Transfer to holiday requests
+        const { error: transferError } = await supabase
+          .rpc('transfer_fuzzy_match_to_request', {
+            p_fuzzy_match_id: parseInt(recordId),
+            p_user_id: await resolveUserUuid(userId)
+          });
+
+        if (transferError) throw transferError;
+
+        successCount++;
+      } catch (error) {
+        failedCount++;
+        errors.push(`Record ${recordId}: ${error.message}`);
+      }
+    }
+
+    // Show results
+    let message = `Batch processing complete!\n`;
+    message += `✅ Successfully matched and transferred: ${successCount}\n`;
+    if (failedCount > 0) {
+      message += `❌ Failed: ${failedCount}\n`;
+      if (errors.length > 0) {
+        message += `\nErrors:\n${errors.slice(0, 5).join('\n')}`;
+      }
+    }
+    alert(message);
+
+    // Reload data
+    await loadFuzzyStatistics();
+    await loadFuzzyRecords();
+  }
+
+  function downloadFuzzyTemplate() {
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+
+    // Create sample data
+    const data = [
+      ['Staff Name', 'Start Date', 'End Date', 'Total Hours', 'Total Sessions', 'Reason'],
+      ['John Smith', '2024-01-01', '2024-01-05', '40', '', 'Annual Leave'],
+      ['Jane Doe', '2024-02-15', '2024-02-16', '', '2', 'Sick Leave'],
+      ['Example: Use either Hours OR Sessions', '', '', '', '', ''],
+    ];
+
+    // Create worksheet
+    const ws = XLSX.utils.aoa_to_sheet(data);
+
+    // Set column widths
+    ws['!cols'] = [
+      { wch: 20 }, // Staff Name
+      { wch: 15 }, // Start Date
+      { wch: 15 }, // End Date
+      { wch: 12 }, // Total Hours
+      { wch: 15 }, // Total Sessions
+      { wch: 30 }  // Reason
+    ];
+
+    // Add worksheet to workbook
+    XLSX.utils.book_append_sheet(wb, ws, 'Holiday Import Template');
+
+    // Generate and download file
+    XLSX.writeFile(wb, 'holiday_import_template.xlsx');
+  }
+
+  // New functions for auto-calculate functionality
+  function updateHoursValue(index, value) {
+    if (index < fuzzyUploadData.length) {
+      fuzzyUploadData[index].total_hours = value ? parseFloat(value) : null;
+    }
+  }
+
+  function updateSessionsValue(index, value) {
+    if (index < fuzzyUploadData.length) {
+      fuzzyUploadData[index].total_sessions = value ? parseFloat(value) : null;
+    }
+  }
+
+  // Old auto-calculate functions removed - moved to Holiday Import Records section
+
+  async function toggleCalculatedHours() {
+    // Store current filter values
+    const nameFilter = document.getElementById('fuzzy-name-filter').value;
+    const matchFilter = document.getElementById('fuzzy-match-filter').value;
+
+    // Reload records to apply the calculation toggle
+    await loadFuzzyRecords();
+
+    // Restore filter values
+    setTimeout(() => {
+      document.getElementById('fuzzy-name-filter').value = nameFilter;
+      document.getElementById('fuzzy-match-filter').value = matchFilter;
+      filterFuzzyRecords();
+    }, 100);
+  }
+
+  async function calculateHoursForImported() {
+    // Show confirmation dialog
+    if (!confirm('Calculate hours/sessions from user working patterns?\n\nThis will update records where users have been matched.')) {
+      return;
+    }
+
+    // Show processing message
+    const successMsg = document.getElementById('fuzzy-success-message');
+    const errorMsg = document.getElementById('fuzzy-error-message');
+
+    successMsg.style.display = 'block';
+    successMsg.textContent = '⏳ Calculating hours/sessions from working patterns...';
+    errorMsg.style.display = 'none';
+
+    try {
+      // Get all pending and matched records with matched users
+      const { data: records, error: fetchError } = await supabase
+        .from('fuzzy_match_holidays')
+        .select('*')
+        .eq('site_id', ctx.site_id)
+        .in('match_status', ['pending', 'matched'])
+        .not('matched_user_id', 'is', null);
+
+      if (fetchError) throw fetchError;
+
+      if (!records || records.length === 0) {
+        successMsg.textContent = '⚠️ No matched records found to calculate';
+        setTimeout(() => { successMsg.style.display = 'none'; }, 3000);
+        return;
+      }
+
+      let updatedCount = 0;
+      let errors = [];
+
+      // Process each record
+      for (const record of records) {
+        try {
+          // Get the user's working pattern (try both id and auth_user_id)
+          const { data: userData, error: userError } = await supabase
+            .from('master_users')
+            .select(`
+              full_name,
+              is_gp,
+              monday_hours, tuesday_hours, wednesday_hours,
+              thursday_hours, friday_hours, saturday_hours, sunday_hours,
+              monday_sessions, tuesday_sessions, wednesday_sessions,
+              thursday_sessions, friday_sessions, saturday_sessions, sunday_sessions
+            `)
+            .or(`id.eq.${record.matched_user_id},auth_user_id.eq.${record.matched_user_id}`)
+            .eq('site_id', ctx.site_id)
+            .maybeSingle();
+
+          if (userError) {
+            errors.push(`Error for ${record.staff_name}: ${userError.message}`);
+            continue;
+          }
+
+          if (!userData) {
+            console.log(`❌ No user data found for matched_user_id: ${record.matched_user_id}`);
+            errors.push(`No user found for ${record.staff_name} (ID: ${record.matched_user_id})`);
+            continue;
+          }
+
+          console.log(`📊 Calculating for ${userData.full_name}, is_gp: ${userData.is_gp}`);
+
+          // Calculate hours/sessions for the date range
+          const calculated = calculateHoursForDateRange(
+            record.start_date,
+            record.end_date,
+            userData
+          );
+
+          console.log(`📅 Calculated result:`, calculated);
+
+          // Update the record with calculated values
+          const updateData = {};
+
+          // Determine whether to use hours or sessions based on is_gp flag
+          if (userData.is_gp) {
+            updateData.total_sessions = calculated.sessions;
+            updateData.total_hours = null;
+            console.log(`🩺 GP user - using sessions: ${calculated.sessions}`);
+          } else {
+            updateData.total_hours = calculated.hours;
+            updateData.total_sessions = null;
+            console.log(`👤 Non-GP user - using hours: ${calculated.hours}`);
+          }
+
+          const { error: updateError } = await supabase
+            .from('fuzzy_match_holidays')
+            .update(updateData)
+            .eq('id', record.id);
+
+          if (updateError) {
+            errors.push(`Failed to update ${record.staff_name}: ${updateError.message}`);
+          } else {
+            updatedCount++;
+            console.log(`✅ Updated ${userData.full_name}: ${userData.is_gp ? calculated.sessions + ' sessions' : calculated.hours + ' hours'}`);
+          }
+        } catch (err) {
+          errors.push(`Error processing ${record.staff_name}: ${err.message}`);
+        }
+      }
+
+      // Show results
+      if (updatedCount > 0) {
+        successMsg.textContent = `✅ Successfully calculated hours/sessions for ${updatedCount} record${updatedCount > 1 ? 's' : ''}`;
+        // Reload the records to show updated values
+        await loadFuzzyRecords();
+      }
+
+      if (errors.length > 0) {
+        errorMsg.style.display = 'block';
+        errorMsg.textContent = `⚠️ Some errors occurred: ${errors.join(', ')}`;
+        setTimeout(() => { errorMsg.style.display = 'none'; }, 5000);
+      }
+
+      setTimeout(() => {
+        successMsg.style.display = 'none';
+      }, 3000);
+
+    } catch (error) {
+      console.error('Failed to calculate hours:', error);
+      errorMsg.style.display = 'block';
+      errorMsg.textContent = `❌ Failed to calculate: ${error.message}`;
+      successMsg.style.display = 'none';
+      setTimeout(() => { errorMsg.style.display = 'none'; }, 5000);
+    }
+  }
+
+  async function getUserWorkingPattern(staffName) {
+    try {
+      // Clean and prepare the staff name for search
+      const originalName = staffName.trim();
+      console.log(`🔍 Looking up working pattern for: "${originalName}"`);
+
+      // Normalize the name for better matching - remove punctuation and normalize spacing
+      const normalizedName = originalName
+        .replace(/[.,]/g, ' ')  // Replace periods and commas with spaces
+        .replace(/\s+/g, ' ')   // Normalize spaces
+        .trim();
+
+      // Try different name formats
+      // 1. Original name
+      // 2. Normalized name
+      // 3. Name parts (for handling "LastName, FirstName" format or partial matches)
+      
+      // Get name parts
+      const nameParts = normalizedName.split(' ');
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
+      
+      // For known users like "Ben Howard", add specific handling
+      const knownUsers = {
+        "ben howard": true,
+        "benhoward": true,
+        "ben.howard": true,
+        "howard ben": true,
+        "howard, ben": true
+      };
+      
+      const lowerName = normalizedName.toLowerCase();
+      const isKnownUser = knownUsers[lowerName] || 
+                          (firstName.toLowerCase() === 'ben' && lastName.toLowerCase() === 'howard') ||
+                          lowerName.includes('ben') && lowerName.includes('howard');
+      
+      console.log(`Name parts: First="${firstName}", Last="${lastName}", Known user? ${isKnownUser}`);
+      
+      // If it's a known problematic name like Ben Howard, do a direct lookup
+      let userData = null;
+      
+      if (isKnownUser) {
+        console.log(`Using specific lookup for known user (Ben Howard)`);
+        const { data, error } = await supabase
+          .from('master_users')
+          .select(`
+            email,
+            is_gp,
+            total_hours,
+            total_sessions,
+            monday_hours, tuesday_hours, wednesday_hours,
+            thursday_hours, friday_hours, saturday_hours, sunday_hours,
+            monday_sessions, tuesday_sessions, wednesday_sessions,
+            thursday_sessions, friday_sessions, saturday_sessions, sunday_sessions
+          `)
+          .or(`full_name.ilike.%Ben Howard%,full_name.ilike.%Benjamin Howard%,email.eq.benhowardmagic@hotmail.com`)
+          .eq('site_id', ctx.site_id)
+          .limit(5);
+          
+        if (!error && data) {
+          if (Array.isArray(data) && data.length > 0) {
+            // Prefer the admin account (benhowardmagic@hotmail.com) for calculations
+            const adminAccount = data.find(u => u.email === 'benhowardmagic@hotmail.com');
+            if (adminAccount) {
+              userData = adminAccount;
+              console.log(`✅ Found Ben Howard admin account for calculations`);
+            } else {
+              userData = data[0];
+              console.log(`✅ Found Ben Howard with direct lookup: ${data[0].email}`);
+            }
+          } else {
+            userData = data;
+            console.log(`✅ Found Ben Howard with direct lookup`);
+          }
+        }
+      }
+      
+      // If still no data, try the general search approaches
+      if (!userData) {
+        // Try multiple query approaches
+        const { data, error } = await supabase
+          .from('master_users')
+          .select(`
+            full_name,
+            is_gp,
+            monday_hours, tuesday_hours, wednesday_hours,
+            thursday_hours, friday_hours, saturday_hours, sunday_hours,
+            monday_sessions, tuesday_sessions, wednesday_sessions,
+            thursday_sessions, friday_sessions, saturday_sessions, sunday_sessions
+          `)
+          .or(`full_name.ilike.%${normalizedName}%,nickname.ilike.%${normalizedName}%,full_name.ilike.%${firstName}%${lastName}%,full_name.ilike.%${lastName}%${firstName}%`)
+          .eq('site_id', ctx.site_id)
+          .limit(10);  // Get a few results to find the best match
+
+        if (error) {
+          console.error(`❌ Error looking up ${originalName}:`, error);
+        } else if (data && data.length > 0) {
+          // Try to find exact match first
+          const exactMatch = data.find(u => 
+            u.full_name.toLowerCase() === normalizedName.toLowerCase()
+          );
+          
+          if (exactMatch) {
+            userData = exactMatch;
+            console.log(`✅ Found exact match: ${exactMatch.full_name}`);
+          } else {
+            // Find the best match using similarity calculation
+            let bestMatch = null;
+            let bestScore = 0;
+            
+            for (const user of data) {
+              const score = calculateSimilarity(normalizedName.toLowerCase(), user.full_name.toLowerCase());
+              console.log(`Similarity score for ${user.full_name}: ${score}`);
+              
+              if (score > bestScore) {
+                bestScore = score;
+                bestMatch = user;
+              }
+            }
+            
+            if (bestMatch && bestScore > 0.5) { // Threshold for acceptable match
+              userData = bestMatch;
+              console.log(`✅ Found fuzzy match: ${bestMatch.full_name} (score: ${bestScore})`);
+            }
+          }
+        }
+      }
+
+      if (!userData) {
+        console.log(`⚠️ No working pattern found for ${originalName}, using default pattern`);
+        // Return default working pattern (8 hours per weekday for staff, 2 sessions for GP)
+        return {
+          is_gp: false,
+          monday_hours: 8, tuesday_hours: 8, wednesday_hours: 8,
+          thursday_hours: 8, friday_hours: 8, saturday_hours: 0, sunday_hours: 0,
+          monday_sessions: 2, tuesday_sessions: 2, wednesday_sessions: 2,
+          thursday_sessions: 2, friday_sessions: 2, saturday_sessions: 0, sunday_sessions: 0
+        };
+      }
+
+      console.log(`✅ Found working pattern for ${userData.full_name || originalName}:`, userData.is_gp ? 'GP' : 'Staff');
+      return userData;
+    } catch (err) {
+      console.error('❌ Error fetching working pattern:', err);
+      // Return default pattern on error
+      return {
+        is_gp: false,
+        monday_hours: 8, tuesday_hours: 8, wednesday_hours: 8,
+        thursday_hours: 8, friday_hours: 8, saturday_hours: 0, sunday_hours: 0,
+        monday_sessions: 2, tuesday_sessions: 2, wednesday_sessions: 2,
+        thursday_sessions: 2, friday_sessions: 2, saturday_sessions: 0, sunday_sessions: 0
+      };
+    }
+  }
+
+  function calculateHoursForDateRange(startDate, endDate, pattern) {
+    if (!pattern) return { hours: null, sessions: null };
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    let totalHours = 0;
+    let totalSessions = 0;
+    let daysCalculated = 0;
+
+    const currentDate = new Date(start);
+    while (currentDate <= end) {
+      const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][currentDate.getDay()];
+
+      if (pattern.is_gp) {
+        const sessions = parseFloat(pattern[`${dayName}_sessions`] || 0);
+        totalSessions += sessions;
+        if (sessions > 0) daysCalculated++;
+      } else {
+        const hours = parseFloat(pattern[`${dayName}_hours`] || 0);
+        totalHours += hours;
+        if (hours > 0) daysCalculated++;
+      }
+
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    console.log(`📊 Calculated for ${daysCalculated} working days:`, pattern.is_gp ? `${totalSessions} sessions` : `${totalHours} hours`);
+
+    return {
+      hours: pattern.is_gp ? null : (totalHours > 0 ? totalHours : null),
+      sessions: pattern.is_gp ? (totalSessions > 0 ? totalSessions : null) : null
+    };
+  }
+
+  // Export fuzzy match functions
+  window.loadFuzzyMatch = loadFuzzyMatch;
+  window.handleFuzzyFileUpload = handleFuzzyFileUpload;
+  window.showFuzzyPreview = showFuzzyPreview;
+  window.parseExcelDate = parseExcelDate;
+  window.confirmFuzzyUpload = confirmFuzzyUpload;
+  window.cancelFuzzyUpload = cancelFuzzyUpload;
+  window.deleteFuzzyRecord = deleteFuzzyRecord;
+  window.downloadFuzzyTemplate = downloadFuzzyTemplate;
+  window.matchAndTransferFuzzyRecord = matchAndTransferFuzzyRecord;
+  window.transferFuzzyRecord = transferFuzzyRecord;
+  window.unmatchFuzzyRecord = unmatchFuzzyRecord;
+  window.toggleAllCheckboxes = toggleAllCheckboxes;
+  window.filterFuzzyRecords = filterFuzzyRecords;
+  window.autoMatchAllPending = autoMatchAllPending;
+  window.deleteSelectedFuzzyRecords = deleteSelectedFuzzyRecords;
+  window.matchSelectedRecords = matchSelectedRecords;
+  window.updateHoursValue = updateHoursValue;
+  window.updateSessionsValue = updateSessionsValue;
+  window.calculateHoursForImported = calculateHoursForImported;
+  window.toggleCalculatedHours = toggleCalculatedHours;
+  // Removed toggleAutoCalculate - functionality moved to Holiday Import Records
+
 
   function setActiveSection(id){
     if(!id) return;
@@ -7411,10 +9159,50 @@ window.PIR_DEFINITIONS_DATA = [
         loadPracticeUsers();
         break;
       case 'fuzzy-match':
-        loadFuzzyMatch();
+        // Check if loadFuzzyMatch is available
+        if (typeof loadFuzzyMatch === 'function') {
+          console.log('✅ Calling loadFuzzyMatch function');
+          loadFuzzyMatch();
+        } else if (typeof window.loadFuzzyMatch === 'function') {
+          console.log('✅ Calling window.loadFuzzyMatch function');
+          window.loadFuzzyMatch();
+        } else {
+          console.error('❌ loadFuzzyMatch function not found!');
+          console.log('Available functions:', Object.keys(window).filter(k => k.includes('Fuzzy')));
+          // Try to call it directly in case of scope issues
+          setTimeout(() => {
+            if (typeof window.loadFuzzyMatch === 'function') {
+              console.log('✅ Found loadFuzzyMatch after delay, loading now...');
+              window.loadFuzzyMatch();
+            } else {
+              console.error('❌ loadFuzzyMatch still not available after delay');
+              // Show error to user
+              const content = document.querySelector('.fuzzy-match-content');
+              if (content) {
+                content.innerHTML = '<div class="p-4 bg-red-50 border border-red-200 rounded text-red-700">Error: Failed to load Holiday Import Records. Please refresh the page (Ctrl+Shift+R or Cmd+Shift+R).</div>';
+              }
+            }
+          }, 1000);
+        }
         break;
       case 'training-import':
-        loadTrainingImport();
+        // Check if loadTrainingImport is defined (it's defined later in the script)
+        if (typeof loadTrainingImport === 'function') {
+          loadTrainingImport();
+        } else if (typeof window.loadTrainingImport === 'function') {
+          window.loadTrainingImport();
+        } else {
+          console.error('❌ loadTrainingImport function not found!');
+          // Try to load it after a delay when the script has fully loaded
+          setTimeout(() => {
+            if (typeof window.loadTrainingImport === 'function') {
+              console.log('✅ Found loadTrainingImport after delay, loading now...');
+              window.loadTrainingImport();
+            } else {
+              console.error('❌ loadTrainingImport still not available after delay');
+            }
+          }, 1000);
+        }
         break;
       case 'training':
         // Ensure proper tab state initialization
@@ -7935,12 +9723,34 @@ window.PIR_DEFINITIONS_DATA = [
     teamSelect.innerHTML = '<option value="">Select team (optional)</option>';
 
     try {
+      // Ensure context is loaded
       if (!window.ctx || !ctx.site_id) {
-        try { await loadContext(); } catch (_) {}
+        console.log('Context not loaded, attempting to load...');
+        try {
+          await loadContext();
+          console.log('Context loaded successfully, site_id:', ctx?.site_id);
+        } catch (e) {
+          console.error('Failed to load context:', e);
+        }
       }
 
       if (!window.ctx || !ctx.site_id) {
         console.warn('No site_id in context; cannot load teams');
+        // Try to load teams without site filter as fallback
+        console.log('Attempting to load all teams as fallback...');
+        const { data: allTeams, error: allError } = await supabase
+          .from('teams')
+          .select('id, name, site_id')
+          .order('name');
+
+        if (!allError && allTeams && allTeams.length > 0) {
+          console.log(`Found ${allTeams.length} teams across all sites`);
+          teamSelect.innerHTML = '<option value="">Select team</option>';
+          allTeams.forEach(t => {
+            teamSelect.innerHTML += `<option value="${t.id}">${esc(t.name)} ${t.site_id ? `(Site ${t.site_id})` : ''}</option>`;
+          });
+          return;
+        }
         teamSelect.innerHTML = '<option value="">No teams available</option>';
         return;
       }
@@ -7953,35 +9763,68 @@ window.PIR_DEFINITIONS_DATA = [
         .order('name');
 
       if (error) {
-        console.error('Failed to load teams', error);
-        const msg = (error && (error.message || error.error_description)) || '';
-        if (String(msg).toLowerCase().includes('policy') || String(msg).toLowerCase().includes('rls')) {
-          console.warn('RLS/policy prevented team select; showing fallback teams');
-          [
-            { id: 1, name: 'Clinical Team' },
-            { id: 2, name: 'Admin Team' },
-            { id: 3, name: 'Reception' },
-            { id: 4, name: 'Management' }
-          ].forEach(t => teamSelect.innerHTML += `<option value="${t.id}">${esc(t.name)}</option>`);
+        console.error('Failed to load teams for site', ctx.site_id, error);
+
+        // Try without site filter as fallback
+        console.log('Trying to load teams without site filter...');
+        const { data: allTeams, error: allError } = await supabase
+          .from('teams')
+          .select('id, name')
+          .order('name');
+
+        if (!allError && allTeams && allTeams.length > 0) {
+          console.log(`Loaded ${allTeams.length} teams (all sites)`);
+          teamSelect.innerHTML = '<option value="">Select team</option>';
+          allTeams.forEach(t => {
+            teamSelect.innerHTML += `<option value="${t.id}">${esc(t.name)}</option>`;
+          });
         } else {
-          teamSelect.innerHTML = '<option value="">No teams available</option>';
+          const msg = (error && (error.message || error.error_description)) || '';
+          if (String(msg).toLowerCase().includes('policy') || String(msg).toLowerCase().includes('rls')) {
+            console.warn('RLS/policy prevented team select; showing fallback teams');
+            // Show newly created teams with correct IDs
+            [
+              { id: 'clinical', name: 'Clinical Team' },
+              { id: 'admin', name: 'Admin Team' },
+              { id: 'reception', name: 'Reception' },
+              { id: 'management', name: 'Management' },
+              { id: 'nursing', name: 'Nursing' },
+              { id: 'support', name: 'Support Staff' }
+            ].forEach(t => teamSelect.innerHTML += `<option value="${t.id}">${esc(t.name)}</option>`);
+          } else {
+            teamSelect.innerHTML = '<option value="">Error loading teams</option>';
+            console.error('All attempts to load teams failed');
+          }
         }
         return;
       }
 
-      if (Array.isArray(teams) && teams.length) {
+      if (Array.isArray(teams) && teams.length > 0) {
+        console.log(`Successfully loaded ${teams.length} teams for site ${ctx.site_id}`);
         teams.forEach(t => teamSelect.innerHTML += `<option value="${t.id}">${esc(t.name)}</option>`);
       } else {
         console.log('No teams returned for site', ctx.site_id);
-        // keep placeholder only
+        // Try to load all teams as fallback
+        const { data: allTeams } = await supabase
+          .from('teams')
+          .select('id, name')
+          .order('name');
+
+        if (allTeams && allTeams.length > 0) {
+          console.log(`Loading ${allTeams.length} teams from all sites as fallback`);
+          allTeams.forEach(t => {
+            teamSelect.innerHTML += `<option value="${t.id}">${esc(t.name)}</option>`;
+          });
+        }
       }
     } catch (err) {
       console.error('Unexpected error loading teams:', err);
+      // Show generic teams as last resort
       [
-        { id: 1, name: 'Clinical Team' },
-        { id: 2, name: 'Admin Team' },
-        { id: 3, name: 'Reception' },
-        { id: 4, name: 'Management' }
+        { id: 'clinical', name: 'Clinical Team' },
+        { id: 'admin', name: 'Admin Team' },
+        { id: 'reception', name: 'Reception' },
+        { id: 'management', name: 'Management' }
       ].forEach(t => teamSelect.innerHTML += `<option value="${t.id}">${esc(t.name)}</option>`);
     }
   }
@@ -8336,8 +10179,13 @@ window.PIR_DEFINITIONS_DATA = [
       // Current approach: Use resetPasswordForEmail which is NOT single-use and handles pre-opening
       // The email will say "Reset Password" but it's more reliable than magic links
 
+      // Use CONFIG for dynamic redirect URL
+      const redirectUrl = typeof CONFIG !== 'undefined' && CONFIG.passwordRedirectUrl
+        ? `${CONFIG.passwordRedirectUrl}?invite_email=${encodeURIComponent(formData.email)}&site_id=${formData.siteId}&full_name=${encodeURIComponent(formData.fullName)}&role=${formData.siteRole}&role_detail=${encodeURIComponent(formData.jobRole || '')}&reports_to_id=${formData.teamId || ''}`
+        : `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(formData.email)}&site_id=${formData.siteId}&full_name=${encodeURIComponent(formData.fullName)}&role=${formData.siteRole}&role_detail=${encodeURIComponent(formData.jobRole || '')}&reports_to_id=${formData.teamId || ''}`;
+
       const { error: emailError } = await supabase.auth.resetPasswordForEmail(formData.email, {
-        redirectTo: `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(formData.email)}&site_id=${formData.siteId}&full_name=${encodeURIComponent(formData.fullName)}&role=${formData.siteRole}&role_detail=${encodeURIComponent(formData.jobRole || '')}&reports_to_id=${formData.teamId || ''}`
+        redirectTo: redirectUrl
       });
 
       if (emailError) {
@@ -8423,11 +10271,11 @@ window.PIR_DEFINITIONS_DATA = [
       // Get all data needed
       const [profiles, invites, welcomeData] = await Promise.all([
         // Get profiles
-        supabase.from('profiles').select('*').eq('site_id', ctx.site_id),
+        supabase.from('master_users').select('*').eq('site_id', ctx.site_id),
         // Get invites
         supabase.from('site_invites').select('*').eq('site_id', ctx.site_id),
         // Get welcome data for job roles and teams
-        supabase.from('staff_app_welcome').select('*').eq('site_id', ctx.site_id)
+        supabase.from('master_users').select('*').eq('site_id', ctx.site_id)
       ]);
 
       const users = profiles.data || [];
@@ -8541,11 +10389,11 @@ window.PIR_DEFINITIONS_DATA = [
     if (!confirm('Are you sure you want to deactivate this user? This will prevent them from logging in but preserve all their data.')) return;
 
     try {
-      // Update the profiles table to set active = false
+      // Update the master_users table to set active = false
       const { data, error } = await supabase
-        .from('profiles')
+        .from('master_users')
         .update({ active: false })
-        .eq('user_id', userId)
+        .eq('auth_user_id', userId)
         .eq('site_id', ctx.site_id)
         .select('full_name')
         .single();
@@ -8579,11 +10427,11 @@ window.PIR_DEFINITIONS_DATA = [
     if (!confirm('Are you sure you want to reactivate this user? This will allow them to log in again.')) return;
 
     try {
-      // Update the profiles table to set active = true
+      // Update the master_users table to set active = true
       const { data, error } = await supabase
-        .from('profiles')
+        .from('master_users')
         .update({ active: true })
-        .eq('user_id', userId)
+        .eq('auth_user_id', userId)
         .eq('site_id', ctx.site_id)
         .select('full_name')
         .single();
@@ -8635,25 +10483,18 @@ window.PIR_DEFINITIONS_DATA = [
         .eq('status', 'pending')
         .single();
 
-      // Use magic link for resending invitations (consistent with initial invite)
-      const redirectUrl = inviteData ?
-        `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(email)}&site_id=${inviteData.site_id}&full_name=${encodeURIComponent(inviteData.full_name || '')}&role=${inviteData.role || ''}&role_detail=${encodeURIComponent(inviteData.role_detail || '')}&reports_to_id=${inviteData.reports_to_id || ''}` :
-        `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(email)}`;
+      // Use resetPasswordForEmail for resending - more reliable than magic links
+      const baseUrl = typeof CONFIG !== 'undefined' && CONFIG.passwordRedirectUrl
+        ? CONFIG.passwordRedirectUrl
+        : 'https://checkloops.co.uk/simple-set-password.html';
 
-      const { error } = await supabase.auth.signInWithOtp({
-        email: email,
-        options: {
-          shouldCreateUser: false, // User should already exist
-          emailRedirectTo: redirectUrl,
-          data: inviteData ? {
-            full_name: inviteData.full_name,
-            role: inviteData.role,
-            role_detail: inviteData.role_detail,
-            reports_to_id: inviteData.reports_to_id,
-            site_id: inviteData.site_id,
-            invited: true
-          } : {}
-        }
+      const redirectUrl = inviteData ?
+        `${baseUrl}?invite_email=${encodeURIComponent(email)}&site_id=${inviteData.site_id}&full_name=${encodeURIComponent(inviteData.full_name || '')}&role=${inviteData.role || ''}&role_detail=${encodeURIComponent(inviteData.role_detail || '')}&reports_to_id=${inviteData.reports_to_id || ''}` :
+        `${baseUrl}?invite_email=${encodeURIComponent(email)}`;
+
+      // Use resetPasswordForEmail which is more reliable and doesn't get consumed by scanners
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: redirectUrl
       });
 
       if (error) throw error;
@@ -8692,9 +10533,9 @@ window.PIR_DEFINITIONS_DATA = [
       if (isUserId) {
         // Get user profile data first for proper cleanup
         const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('full_name, user_id, email')
-          .eq('user_id', id)
+          .from('master_users')
+          .select('full_name, auth_auth_user_id, email')
+          .eq('auth_user_id', id)
           .single();
 
         if (profileError && profileError.code !== 'PGRST116') {
@@ -8712,7 +10553,7 @@ window.PIR_DEFINITIONS_DATA = [
         let holidayProfile = null;
         if (profile?.full_name) {
           const { data: hp } = await supabase
-            .from('1_staff_holiday_profiles')
+            .from('master_users')
             .select('id')
             .eq('full_name', profile.full_name)
             .single();
@@ -8784,11 +10625,6 @@ window.PIR_DEFINITIONS_DATA = [
             table: 'site_invites',
             condition: userEmail ? { email: userEmail } : { user_id: id },
             description: 'site invitations'
-          },
-          {
-            table: 'profiles',
-            condition: { user_id: id },
-            description: 'user profile'
           }
         ];
 
@@ -9372,8 +11208,12 @@ window.PIR_DEFINITIONS_DATA = [
             const cameFromStaffAt = sessionStorage.getItem('cameFromStaffAt');
             const recentNavigation = cameFromStaffAt && (Date.now() - Number(cameFromStaffAt)) < 10000;
             if (recentNavigation && sess && sess.user) {
-              console.log('Refreshing page after navigation from staff...');
-              window.location.reload();
+              console.log('Re-initializing after navigation from staff...');
+              // Removed reload to prevent debugger interference - call bootstrap instead
+              sessionStorage.removeItem('cameFromStaffAt');
+              if (typeof bootstrap === 'function') {
+                bootstrap();
+              }
             }
           } else if (event === 'SIGNED_OUT' || !sess || !sess.user) {
             if (!isLoggingOut) {
@@ -9392,33 +11232,20 @@ window.PIR_DEFINITIONS_DATA = [
         const user = session.user;
         console.log('Checking if user has admin role...');
         
-        // First check user metadata (most reliable source)
-        const userRole = user?.raw_user_meta_data?.role?.toLowerCase();
-        if (userRole === 'admin' || userRole === 'owner') {
-          console.log('✅ User allowed on admin site - role from metadata:', userRole);
-          
-          // Store that this user is verified as admin for future reference
-          try {
-            sessionStorage.setItem('adminVerified', 'true');
-            sessionStorage.setItem('adminEmail', user.email);
-          } catch(_) {}
-          
-          return;
-        }
-
-        // Then check profiles table
+        // Check master_users.access_type only (authoritative)
         const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('role, full_name')
-          .eq('user_id', user.id)
+          .from('master_users')
+          .select('access_type, full_name')
+          .eq('auth_user_id', user.id)
           .maybeSingle();
         
         if (profileError) {
           console.error('Error fetching profile:', profileError);
         }
         
-        if (profile?.role && ['admin', 'owner'].includes(profile.role.toLowerCase())) {
-          console.log(`✅ User allowed on admin site - role from profile: ${profile.role}`);
+        const accessType = String(profile?.access_type || '').toLowerCase();
+        if (accessType === 'admin' || accessType === 'owner') {
+          console.log(`✅ User allowed on admin site - access_type: ${accessType}`);
           
           // Store that this user is verified as admin for future reference
           try {
@@ -9429,48 +11256,10 @@ window.PIR_DEFINITIONS_DATA = [
           return;
         }
         
-        // Finally check site_invites table as a fallback
-        const { data: invite, error: inviteError } = await supabase
-          .from('site_invites')
-          .select('role, full_name')
-          .eq('email', user.email)
-          .eq('status', 'accepted')
-          .maybeSingle();
-        
-        if (inviteError) {
-          console.error('Error fetching invite:', inviteError);
-        }
-
-        if (invite?.role && ['admin', 'owner'].includes(invite.role.toLowerCase())) {
-          console.log(`✅ User allowed on admin site - role from invite: ${invite.role}`);
-          
-          // Store that this user is verified as admin for future reference
-          try {
-            sessionStorage.setItem('adminVerified', 'true');
-            sessionStorage.setItem('adminEmail', user.email);
-          } catch(_) {}
-          
-          return;
-        }
-        
-        // Check if we came from staff and had admin role stored
-        const storedRole = sessionStorage.getItem('userRole');
-        const storedEmail = sessionStorage.getItem('userEmail');
-        const cameFromStaffAt = sessionStorage.getItem('cameFromStaffAt');
-        const recentNavigation = cameFromStaffAt && (Date.now() - Number(cameFromStaffAt)) < 10000;
-        
-        if (recentNavigation && storedRole && ['admin', 'owner'].includes(storedRole.toLowerCase()) && storedEmail === user.email) {
-          console.log(`✅ User allowed on admin site - verified from staff navigation: ${storedRole}`);
-          try {
-            sessionStorage.setItem('adminVerified', 'true');
-          } catch(_) {}
-          return;
-        }
-
-        // If we get here, the user doesn't have admin role in any of the sources
-        console.log(`🚫 BLOCKED: User "${profile?.full_name || invite?.full_name || user.email}" doesn't have admin privileges`);
-        console.log('Redirecting to staff.html...');
-        window.location.replace('staff.html');
+        // If we get here, the user doesn't have admin/owner access_type
+        console.log(`🚫 BLOCKED: User "${profile?.full_name || user.email}" lacks admin privileges (access_type=${accessType})`);
+        console.log('Redirecting to home.html...');
+        window.location.replace('home.html');
         return;
       } catch (e) {
         console.warn('Role guard check failed, but allowing access:', e);
@@ -9542,19 +11331,18 @@ window.PIR_DEFINITIONS_DATA = [
         return;
       }
 
-      // STRICT GUARD: Block staff users even on page refresh/back button
+      // STRICT GUARD: Re-check access_type on bfcache restore; redirect non-admins
       try {
         const user = session.user;
-        const { data: invite } = await supabase
-          .from('site_invites')
-          .select('role, full_name')
-          .eq('email', user.email)
-          .eq('status', 'accepted')
-          .single();
-
-        if (invite && invite.role && invite.role.toLowerCase() === 'staff') {
-          console.log(`🚫 BLOCKED: Staff user "${invite.full_name}" attempted to access admin site via back/refresh`);
-          window.location.replace('staff.html');
+        const { data: profile } = await supabase
+          .from('master_users')
+          .select('access_type, full_name')
+          .eq('auth_user_id', user.id)
+          .maybeSingle();
+        const accessType = String(profile?.access_type || '').toLowerCase();
+        if (!(accessType === 'admin' || accessType === 'owner')) {
+          console.log(`🚫 BLOCKED: Non-admin user "${profile?.full_name || user.email}" attempted to access admin site via back/refresh`);
+          window.location.replace('home.html');
           return;
         }
       } catch(_) { /* ignore role check errors */ }
@@ -9678,9 +11466,9 @@ window.PIR_DEFINITIONS_DATA = [
       // Load user profile to get site_id and role
       console.log('🔍 Loading user profile...');
       let { data: profile, error: profileError } = await supabase
-        .from("profiles")
+        .from('master_users')
         .select("site_id, role, full_name")
-        .eq("user_id", user.id)
+        .eq('auth_user_id', user.id)
         .maybeSingle();
 
       if(profileError) {
@@ -9700,9 +11488,9 @@ window.PIR_DEFINITIONS_DATA = [
         
         console.log('Updating profile with inferred name:', inferredName);
         const { data: updatedProfile, error: updateError } = await supabase
-          .from("profiles")
+          .from('master_users')
           .update({ full_name: inferredName })
-          .eq("user_id", user.id)
+          .eq('auth_user_id', user.id)
           .select("site_id, role, full_name")
           .single();
         
@@ -9732,7 +11520,7 @@ window.PIR_DEFINITIONS_DATA = [
           
           // Create profile from invitation data
           const { data: newProfile, error: createError } = await supabase
-            .from("profiles")
+            .from('master_users')
             .insert({
               user_id: user.id,
               site_id: invitation.site_id,
@@ -9751,7 +11539,7 @@ window.PIR_DEFINITIONS_DATA = [
           if (invitation.role_detail && invitation.role_detail.trim() !== '') {
             console.log('Creating kiosk_users entry...', invitation.role_detail);
             const { error: kioskError } = await supabase
-              .from("kiosk_users")
+              .from('master_users')
               .insert({
                 site_id: invitation.site_id,
                 full_name: invitation.full_name,
@@ -9786,7 +11574,7 @@ window.PIR_DEFINITIONS_DATA = [
       }
 
       ctx.site_id = profile.site_id;
-      ctx.role = profile.role;
+      ctx.role = profile.access_type || profile.role;
       // Try to get full name from profile, user metadata, or construct from email
       ctx.full_name = profile.full_name || 
                       user?.user_metadata?.full_name || 
@@ -9851,9 +11639,9 @@ window.PIR_DEFINITIONS_DATA = [
         let avatarUrl = null;
         try {
           const { data: saw } = await supabase
-            .from('staff_app_welcome')
+            .from('master_users')
             .select('avatar_url, updated_at')
-            .eq('user_id', user.id)
+            .eq('auth_user_id', user.id)
             .order('updated_at', { ascending: false })
             .limit(1)
             .maybeSingle();
@@ -9911,7 +11699,7 @@ window.PIR_DEFINITIONS_DATA = [
       } else {
         // fallback to detected role
         if (roleDisplay) {
-          const role = ctx.role || ctx.user?.user_metadata?.role || 'Staff';
+          const role = (ctx.role || ctx.user?.user_metadata?.role || 'Staff'?.access_type || ctx.role || ctx.user?.user_metadata?.role || 'Staff');
           roleDisplay.textContent = role.charAt(0).toUpperCase() + role.slice(1);
         }
       }
@@ -9955,7 +11743,7 @@ window.PIR_DEFINITIONS_DATA = [
       supabase.from("rooms").select("id", { count:"exact", head:true }).eq("site_id", ctx.site_id),
       supabase.from("complaints").select("id", { count:"exact", head:true }).eq("site_id", ctx.site_id),
       supabase.from("check_types").select("id", { count:"exact", head:true }).eq("site_id", ctx.site_id),
-      supabase.from("kiosk_users").select("id", { count:"exact", head:true }).eq("site_id", ctx.site_id),
+      supabase.from('master_users').select("id", { count:"exact", head:true }).eq("site_id", ctx.site_id),
     ]);
     if(typeof setDueTab === 'function') setDueTab('due');
 
@@ -10582,20 +12370,20 @@ async function loadRooms(){
     if (ownerIds.length === 1) {
       const single = ownerIds[0];
       if (looksLikeUUID(single)) {
-        const res = await supabase.from('kiosk_users').select('id,full_name,user_id').eq('user_id', single);
+        const res = await supabase.from('master_users').select('id,full_name,auth_user_id').eq('auth_user_id', single);
         staff = (res && res.data) || [];
       } else {
-        const res = await supabase.from('kiosk_users').select('id,full_name').eq('id', single);
+        const res = await supabase.from('master_users').select('id,full_name').eq('id', single);
         staff = (res && res.data) || [];
       }
     } else {
       const uuids = ownerIds.filter(looksLikeUUID);
       const nums = ownerIds.filter(i => !looksLikeUUID(i));
       if (uuids.length) {
-        try{ const r = await supabase.from('kiosk_users').select('id,full_name,user_id').in('user_id', uuids); if(r && r.data) staff.push(...r.data); }catch(_e){}
+        try{ const r = await supabase.from('master_users').select('id,full_name,auth_user_id').in('auth_user_id', uuids); if(r && r.data) staff.push(...r.data); }catch(_e){}
       }
       if (nums.length) {
-        try{ const r = await supabase.from('kiosk_users').select('id,full_name').in('id', nums); if(r && r.data) staff.push(...r.data); }catch(_e){}
+        try{ const r = await supabase.from('master_users').select('id,full_name').in('id', nums); if(r && r.data) staff.push(...r.data); }catch(_e){}
       }
     }
     (staff||[]).forEach(s => { owners[s.id] = s.full_name; });
@@ -10704,16 +12492,16 @@ function renderComplaintsTable(tb, data){
           const single = creatorIds[0];
           if (looksLikeUUID(single)) {
             try {
-              const r = await supabase.from('kiosk_users').select('id,full_name,user_id').eq('user_id', single);
+              const r = await supabase.from('master_users').select('id,full_name,auth_user_id').eq('auth_user_id', single);
               staff = (r && r.data) || [];
             } catch (e) {
               // Fallback: user_id column might not exist, try querying by id instead
               debugLog('kiosk_users user_id query failed, trying id fallback:', e.message);
-              const r = await supabase.from('kiosk_users').select('id,full_name').eq('id', single);
+              const r = await supabase.from('master_users').select('id,full_name').eq('id', single);
               staff = (r && r.data) || [];
             }
           } else {
-            const r = await supabase.from('kiosk_users').select('id,full_name').eq('id', single);
+            const r = await supabase.from('master_users').select('id,full_name').eq('id', single);
             staff = (r && r.data) || [];
           }
         } else {
@@ -10721,7 +12509,7 @@ function renderComplaintsTable(tb, data){
           const nums = creatorIds.filter(i => !looksLikeUUID(i));
           if (uuids.length) {
             try{ 
-              const r = await supabase.from('kiosk_users').select('id,full_name,user_id').in('user_id', uuids); 
+              const r = await supabase.from('master_users').select('id,full_name,auth_user_id').in('auth_user_id', uuids); 
               if(r && r.data) staff.push(...r.data); 
             } catch(e) {
               // Fallback: user_id column might not exist, skip UUID lookups
@@ -10729,7 +12517,7 @@ function renderComplaintsTable(tb, data){
             }
           }
           if (nums.length) {
-            try{ const r = await supabase.from('kiosk_users').select('id,full_name').in('id', nums); if(r && r.data) staff.push(...r.data); }catch(_e){}
+            try{ const r = await supabase.from('master_users').select('id,full_name').in('id', nums); if(r && r.data) staff.push(...r.data); }catch(_e){}
           }
         }
         (staff||[]).forEach(s=>{ creators[s.id] = s.full_name; });
@@ -11145,11 +12933,11 @@ function applySchedulesFilters() {
     const tb = document.getElementById("staff-tbody");
     
     try {
-      // Get staff from staff_app_welcome table
+      // Get staff from master_users table
       const { data: staffData, error: staffError } = await supabase
-        .from("staff_app_welcome")
+        .from('master_users')
         .select(`
-          user_id,
+          auth_user_id,
           full_name, 
           role_detail,
           team_name,
@@ -11175,7 +12963,7 @@ function applySchedulesFilters() {
       if (userIds.length > 0) {
         try {
           const { data: patterns, error: patternsError } = await supabase
-            .from("3_staff_working_patterns")
+            .from('master_users')
             .select("*")
             .in("user_id", userIds);
           
@@ -11663,7 +13451,7 @@ function applySchedulesFilters() {
     // Fetch any submission rows on that exact date, including item and check names when available
     const { data: rows, error: rowsErr } = await supabase
       .from('submission_rows')
-      .select('item_pk, check_type_id, items(id,item_name), check_types(id,name), submissions!inner(submitted_at, staff_name, user_id)')
+      .select('item_pk, check_type_id, items(id,item_name), check_types(id,name), submissions!inner(submitted_at, staff_name, auth_user_id)')
       .gte('submissions.submitted_at', start.toISOString())
       .lte('submissions.submitted_at', end.toISOString())
       .eq('site_id', ctx.site_id);
@@ -12654,7 +14442,7 @@ function applySchedulesFilters() {
                 if (pathParts.length >= 2) {
                     // Query for the user who uploaded this file
                     const { data: profile } = await supabase
-                        .from('profiles')
+                        .from('master_users')
                         .select('full_name')
                         .eq('site_id', doc.site_id)
                         .single();
@@ -14229,7 +16017,7 @@ for (const f of (crudState.entity.fields || [])) {
       
       if (staffMultiSelect && staffChips && hiddenInput) {
         // Load staff members into the selector
-        supabase.from('kiosk_users').select('id, full_name').eq('site_id', ctx.site_id).then(({data, error}) => {
+        supabase.from('master_users').select('id, full_name').eq('site_id', ctx.site_id).then(({data, error}) => {
           if (data && !error) {
             staffMultiSelect.innerHTML = '<option value="">Add staff member...</option>' + 
               data.map(s => `<option value="${s.id}">${s.full_name}</option>`).join('');
@@ -14597,7 +16385,7 @@ for (const f of (crudState.entity.fields || [])) {
 
     // Basic validation: ensure UUID fields expected by the DB contain valid UUIDs
     // Use the already-coerced value in `body` (post processing). Accept numeric kiosk_user ids
-    // (the kiosk_users table uses integer PKs) as valid choices.
+    // (the master_users table uses integer PKs) as valid choices.
     const uuidChecks = [];
     (crudState.entity.fields || []).forEach(f => {
       if (f.name === 'created_by') {
@@ -14997,8 +16785,8 @@ for (const f of (crudState.entity.fields || [])) {
   async function loadTrainingMatrix() {
     try {
       const [staffRes, typesRes, recordsRes] = await Promise.all([
-        // Load staff from profiles table instead of empty kiosk_users table
-        supabase.from('profiles').select('user_id, full_name, role, kiosk_user_id').eq('site_id', ctx.site_id),
+        // Load staff from master_users table instead of empty master_users table
+        supabase.from('master_users').select('auth_user_id, full_name, role, kiosk_user_id').eq('site_id', ctx.site_id),
         supabase.from('training_types').select('*').eq('site_id', ctx.site_id).eq('active', true),
         // no relational select here (avoids RLS join issues on live)
         supabase.from('training_records').select('*').eq('site_id', ctx.site_id)
@@ -15010,10 +16798,10 @@ for (const f of (crudState.entity.fields || [])) {
 
       // Map profiles to staff format expected by training matrix
       const mappedStaff = staffRes.data?.map(profile => ({
-        id: profile.kiosk_user_id || profile.user_id, // Use kiosk_user_id if available, fallback to user_id
-        user_id: profile.user_id,
+        id: profile.kiosk_user_id || profile.auth_user_id, // Use kiosk_user_id if available, fallback to auth_user_id
+        user_id: profile.auth_user_id,
         full_name: profile.full_name,
-        role: profile.role,
+        role: profile.access_type || profile.role,
         active: true
       })) || [];
 
@@ -16397,7 +18185,7 @@ for (const f of (crudState.entity.fields || [])) {
           if (elPeopleInvolved && d.people_involved && Array.isArray(d.people_involved)) {
             // For multi-select, we'd need to match names to IDs from the staff list
             debugLog('People involved names extracted', d.people_involved);
-            // Note: Actual ID mapping would require matching against kiosk_users table
+            // Note: Actual ID mapping would require matching against master_users table
           }
           
           setStatus(statusEl, '✓ Filled by AI — please review.');
@@ -16430,7 +18218,8 @@ for (const f of (crudState.entity.fields || [])) {
     </div>
   </div>
   
- </body>
+     <script src="supabase-debug.js"></script>
+</body>
  </html>
   <script>
     // === Quiz: Raw Supabase Table Renderer ===
@@ -18512,9 +20301,9 @@ async function loadWorkingPattern(userId) {
   try {
     console.log('Loading working pattern for user:', userId);
     const { data, error } = await supabase
-      .from('3_staff_working_patterns')
+      .from('master_users')
       .select('*')
-      .eq('user_id', userId)
+      .eq('auth_user_id', userId)
       .maybeSingle(); // Use maybeSingle instead of single to avoid error when no record exists
     
     if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows returned"
@@ -18648,7 +20437,7 @@ async function saveWorkingPattern(event) {
     
     // Use upsert to insert or update
     const { data, error } = await supabase
-      .from('3_staff_working_patterns')
+      .from('master_users')
       .upsert(patternData, { 
         onConflict: 'user_id',
         ignoreDuplicates: false 
@@ -18821,7 +20610,7 @@ window.refreshStaffData = refreshStaffData;
     try {
       // Get all holiday profiles with entitlements
       const { data: profiles } = await window.supabase
-        .from('1_staff_holiday_profiles')
+        .from('master_users')
         .select(`
           *,
           entitlements:2_staff_entitlements!staff_id(*)
@@ -18874,7 +20663,7 @@ window.refreshStaffData = refreshStaffData;
               return `
                 <tr>
                   <td>\${profile.full_name || 'Unknown'}</td>
-                  <td>\${profile.role || 'N/A'}</td>
+                  <td>\${profile.access_type || profile.role || 'N/A'}</td>
                   <td>\${formatValue(weekly, isGP)} \${unit}/week</td>
                   <td>
                     <input type="number"
@@ -18927,7 +20716,7 @@ window.refreshStaffData = refreshStaffData;
       // Get all users from the same site
       const { data: siteUsers } = await window.supabase
         .from('master_users')
-        .select('auth_user_id, full_name, email, avatar_url')
+        .select('auth_auth_auth_user_id, full_name, email, avatar_url')
         .eq('site_id', requestUser.site_id)
         .neq('auth_user_id', request.user_id); // Exclude the requesting user
 
@@ -18983,58 +20772,60 @@ window.refreshStaffData = refreshStaffData;
     if (!window.supabase) return;
 
     try {
-      // First get requests
-      const { data: requests } = await window.supabase
-        .from('4_holiday_requests')
+      // First try to get requests from the view that includes user data
+      const { data: requestsWithUser, error: viewError } = await window.supabase
+        .from('v_holiday_requests_with_user')
         .select('*')
         .order('requested_at', { ascending: false });
+      
+      let requests;
+      
+      if (viewError || !requestsWithUser) {
+        console.log('View query failed, falling back to manual joins:', viewError);
+        // Fallback to manual query if view isn't available
+        const { data: rawRequests } = await window.supabase
+          .from('4_holiday_requests')
+          .select('*')
+          .order('requested_at', { ascending: false });
+          
+        requests = rawRequests;
+        
+        // Then get profiles and holiday profiles with more complete data
+        if (requests && requests.length > 0) {
+          const userIds = [...new Set(requests.map(r => r.user_id))];
 
-      // Then get profiles and holiday profiles with more complete data
-      if (requests && requests.length > 0) {
-        const userIds = [...new Set(requests.map(r => r.user_id))];
+          // Get user data from master_users - use auth_user_id for correct join
+          const { data: userProfiles } = await window.supabase
+            .from('master_users')
+            .select('auth_user_id, email, full_name, is_gp')
+            .in('auth_user_id', userIds);
 
-        // Get profiles for emails
-        const { data: profiles } = await window.supabase
-          .from('profiles')
-          .select('user_id, email')
-          .in('user_id', userIds);
+          // Create map for easier lookup
+          const userMap = {};
 
-        // Get holiday profiles with complete data
-        const { data: holidayProfiles } = await window.supabase
-          .from('1_staff_holiday_profiles')
-          .select('user_id, email, full_name, is_gp')
-          .in('user_id', userIds);
-
-        // Create map for easier lookup
-        const userToHolidayProfileMap = {};
-        const profileMap = {};
-
-        if (profiles) {
-          profiles.forEach(p => {
-            profileMap[p.user_id] = p.email;
-          });
-        }
-
-        if (holidayProfiles) {
-          holidayProfiles.forEach(hp => {
-            userToHolidayProfileMap[hp.user_id] = hp;
-          });
-        }
-
-        // Enhance requests with profile data
-        requests.forEach(r => {
-          const holidayProfile = userToHolidayProfileMap[r.user_id];
-
-          if (holidayProfile) {
-            r.email = holidayProfile.email;
-            r.full_name = holidayProfile.full_name;
-            r.is_gp = holidayProfile.is_gp;
-          } else {
-            r.email = profileMap[r.user_id] || 'Unknown';
-            r.full_name = '';
-            r.is_gp = false;
+          if (userProfiles) {
+            userProfiles.forEach(p => {
+              userMap[p.auth_user_id] = p;
+            });
           }
-        });
+
+          // Enhance requests with profile data
+          requests.forEach(r => {
+            const profile = userMap[r.user_id];
+
+            if (profile) {
+              r.email = profile.email;
+              r.full_name = profile.full_name;
+              r.is_gp = profile.is_gp;
+            } else {
+              r.email = 'Unknown';
+              r.full_name = 'Unknown';
+              r.is_gp = false;
+            }
+          });
+        }
+      } else {
+        requests = requestsWithUser;
       }
 
       const container = document.getElementById('requests-list');
@@ -19488,9 +21279,9 @@ window.refreshStaffData = refreshStaffData;
   // Helper functions
   async function getWeeklyHours(profileId) {
     const { data } = await window.supabase
-      .from('3_staff_working_patterns')
+      .from('master_users')
       .select('monday_hours, tuesday_hours, wednesday_hours, thursday_hours, friday_hours')
-      .eq('user_id', profileId)
+      .eq('auth_user_id', profileId)
       .maybeSingle();
 
     if (!data) return 0;
@@ -19499,9 +21290,9 @@ window.refreshStaffData = refreshStaffData;
 
   async function getWeeklySessions(profileId) {
     const { data } = await window.supabase
-      .from('3_staff_working_patterns')
+      .from('master_users')
       .select('monday_sessions, tuesday_sessions, wednesday_sessions, thursday_sessions, friday_sessions')
-      .eq('user_id', profileId)
+      .eq('auth_user_id', profileId)
       .maybeSingle();
 
     if (!data) return 0;
@@ -19544,7 +21335,7 @@ window.refreshStaffData = refreshStaffData;
     try {
       // First get working patterns
       const { data: patterns, error } = await supabase
-        .from('3_staff_working_patterns')
+        .from('master_users')
         .select('*');
 
       if (error) {
@@ -19563,8 +21354,8 @@ window.refreshStaffData = refreshStaffData;
       // Get user profiles for the patterns
       const userIds = patterns.map(p => p.user_id).filter(Boolean);
       const { data: profiles } = await supabase
-        .from('profiles')
-        .select('user_id, email, full_name')
+        .from('master_users')
+        .select('auth_auth_user_id, email, full_name')
         .in('user_id', userIds);
 
       // Create a map of user_id to profile
@@ -19620,821 +21411,6 @@ window.refreshStaffData = refreshStaffData;
       }
     }
   }
-
-  // Fuzzy Match Holiday Import Functions
-  let fuzzyUploadData = [];
-  let siteUsers = [];
-
-  async function loadFuzzyMatch() {
-    console.log('Loading fuzzy match data...');
-
-    // Load site users for matching
-    await loadSiteUsers();
-
-    // Load statistics
-    await loadFuzzyStatistics();
-
-    // Load existing records
-    await loadFuzzyRecords();
-
-    // Setup file upload handlers
-    setupFuzzyUploadHandlers();
-  }
-
-  async function loadSiteUsers() {
-    try {
-      const { data: users, error } = await supabase
-        .from('profiles')
-        .select('user_id, full_name, role_detail')
-        .eq('site_id', ctx.site_id)
-        .order('full_name');
-
-      if (error) throw error;
-
-      siteUsers = users || [];
-      console.log('Loaded site users:', siteUsers.length);
-    } catch (error) {
-      console.error('Failed to load site users:', error);
-      siteUsers = [];
-    }
-  }
-
-  // Resolve a possibly-numeric user identifier to the auth.users UUID expected by
-  // stored procedures. If the value already looks like a UUID, return it unchanged.
-  // If it's numeric (profile id or similar), try to find the matching `user_id`
-  // from the cached `siteUsers` list. If resolution fails, return the original
-  // value so Supabase will surface the appropriate error.
-  async function resolveUserUuid(raw) {
-    if (!raw) return raw;
-    // Simple UUID v4-ish pattern check
-    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    if (uuidPattern.test(raw)) return raw;
-
-    // If it's numeric, try to find a matching profile entry via Supabase
-    if (/^\d+$/.test(String(raw))) {
-      try {
-        // Try common profile identifier columns that might contain the numeric value
-        const { data: profile, error } = await supabase
-          .from('profiles')
-          .select('user_id, id, kiosk_user_id')
-          .or(`id.eq.${raw},kiosk_user_id.eq.${raw}`)
-          .limit(1)
-          .maybeSingle();
-
-        if (!error && profile && profile.user_id) return profile.user_id;
-      } catch (e) {
-        console.warn('resolveUserUuid lookup failed', e);
-      }
-
-      // Fallback: try to resolve from cached siteUsers by positional index
-      const numeric = parseInt(raw, 10);
-      if (!isNaN(numeric) && siteUsers[numeric - 1] && siteUsers[numeric - 1].user_id) {
-        return siteUsers[numeric - 1].user_id;
-      }
-    }
-
-    // If we couldn't resolve, return the original value so Supabase surfaces a clear error
-    return raw;
-  }
-
-  async function loadFuzzyStatistics() {
-    try {
-      const { data, error } = await supabase
-        .from('fuzzy_match_holidays')
-        .select('match_status')
-        .eq('site_id', ctx.site_id);
-
-      if (error) throw error;
-
-      const stats = {
-        pending: data.filter(d => d.match_status === 'pending').length,
-        matched: data.filter(d => d.match_status === 'matched').length,
-        transferred: data.filter(d => d.match_status === 'transferred').length,
-        total: data.length
-      };
-
-      document.getElementById('fuzzy-stat-pending').textContent = stats.pending;
-      document.getElementById('fuzzy-stat-matched').textContent = stats.matched;
-      document.getElementById('fuzzy-stat-transferred').textContent = stats.transferred;
-      document.getElementById('fuzzy-stat-total').textContent = stats.total;
-    } catch (error) {
-      console.error('Failed to load statistics:', error);
-    }
-  }
-
-  async function loadFuzzyRecords() {
-    const tbody = document.getElementById('fuzzy-existing-tbody');
-
-    try {
-      const { data, error } = await supabase
-        .from('fuzzy_match_holidays')
-        .select('*')
-        .eq('site_id', ctx.site_id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      if (!data || data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:#718096;">No records found</td></tr>';
-        return;
-      }
-
-      // Get user names for matched records
-      const matchedUserIds = data.filter(r => r.matched_user_id).map(r => r.matched_user_id);
-      let userMap = {};
-      if (matchedUserIds.length > 0) {
-        const { data: matchedUsers } = await supabase
-          .from('profiles')
-          .select('user_id, full_name')
-          .in('user_id', matchedUserIds);
-
-        if (matchedUsers) {
-          matchedUsers.forEach(u => {
-            userMap[u.user_id] = u.full_name;
-          });
-        }
-      }
-
-      let autoMatchCount = 0;
-      let pendingCount = 0;
-
-      tbody.innerHTML = data.map((record, index) => {
-        const statusColor = {
-          'pending': '#667eea',
-          'matched': '#10b981',
-          'transferred': '#3b82f6',
-          'rejected': '#ef4444'
-        }[record.match_status] || '#6b7280';
-
-        // Find best matching user based on name similarity
-        let bestMatchUserId = record.matched_user_id || '';
-        if (!bestMatchUserId && record.match_status === 'pending') {
-          pendingCount++;
-          // Try exact match first (case insensitive)
-          const exactMatch = siteUsers.find(u =>
-            u.full_name.toLowerCase() === record.staff_name.toLowerCase()
-          );
-          if (exactMatch) {
-            bestMatchUserId = exactMatch.user_id;
-            autoMatchCount++;
-          } else {
-            // Try partial match (last name match)
-            const recordLastName = record.staff_name.split(' ').pop().toLowerCase();
-            const partialMatch = siteUsers.find(u => {
-              const userLastName = u.full_name.split(' ').pop().toLowerCase();
-              return userLastName === recordLastName;
-            });
-            if (partialMatch) {
-              bestMatchUserId = partialMatch.user_id;
-              autoMatchCount++;
-            }
-          }
-        }
-
-        // Generate user dropdown options with best match pre-selected
-        const userOptions = siteUsers.map(u =>
-          `<option value="${u.user_id}" ${(record.matched_user_id === u.user_id || (!record.matched_user_id && bestMatchUserId === u.user_id)) ? 'selected' : ''}>
-            ${esc(u.full_name)}${u.role_detail ? ' (' + esc(u.role_detail) + ')' : ''}
-          </option>`
-        ).join('');
-
-        return `
-          <tr data-record-id="${record.id}" data-status="${record.match_status}">
-            <td>
-              ${record.match_status === 'pending' ?
-                `<input type="checkbox" class="fuzzy-record-checkbox" data-record-id="${record.id}"
-                  style="width:16px; height:16px; cursor:pointer;">` :
-                ''}
-            </td>
-            <td>
-              ${esc(record.staff_name)}
-              ${bestMatchUserId && record.match_status === 'pending' ?
-                '<span style="color:#10b981; font-size:12px; margin-left:8px;" title="Name match found">✓</span>' :
-                ''}
-            </td>
-            <td>${new Date(record.start_date).toLocaleDateString()}</td>
-            <td>${new Date(record.end_date).toLocaleDateString()}</td>
-            <td>${record.total_hours ? record.total_hours + ' hours' : record.total_sessions + ' sessions'}</td>
-            <td><span style="color:${statusColor}; font-weight:600;">${record.match_status}</span></td>
-            <td>
-              ${record.match_status === 'transferred' ?
-                `✅ ${userMap[record.matched_user_id] || 'Transferred'}` :
-                record.match_status === 'rejected' ?
-                `❌ Rejected` :
-                `<select id="user-select-${record.id}" class="fuzzy-user-select" data-record-id="${record.id}"
-                  style="padding:4px 8px; border-radius:4px; border:1px solid #cbd5e0; ${bestMatchUserId ? 'border-color:#10b981;' : ''}">
-                  <option value="">Select User...</option>
-                  ${userOptions}
-                </select>`
-              }
-            </td>
-            <td>${new Date(record.uploaded_at || record.created_at).toLocaleDateString()}</td>
-            <td>
-              ${record.match_status === 'pending' ?
-                `<div style="display:flex; gap:4px;">
-                  <button class="btn btn-sm" onclick="matchAndTransferFuzzyRecord('${record.id}')"
-                    style="background:linear-gradient(135deg, #667eea, #764ba2); padding:4px 8px;">
-                    Match & Transfer
-                  </button>
-                  <button class="btn btn-sm" onclick="deleteFuzzyRecord('${record.id}')"
-                    style="background:#ef4444; padding:4px 8px;">
-                    Delete
-                  </button>
-                </div>` :
-                record.match_status === 'matched' ?
-                `<div style="display:flex; gap:4px;">
-                  <button class="btn btn-sm" onclick="transferFuzzyRecord('${record.id}')"
-                    style="background:#10b981; padding:4px 8px;">
-                    Transfer
-                  </button>
-                  <button class="btn btn-sm" onclick="unmatchFuzzyRecord('${record.id}')"
-                    style="background:#6b7280; padding:4px 8px;">
-                    Unmatch
-                  </button>
-                </div>` :
-                '-'}
-            </td>
-          </tr>
-        `;
-      }).join('');
-
-      // Update match info
-      const matchInfo = document.getElementById('fuzzy-match-info');
-      if (matchInfo) {
-        if (pendingCount > 0) {
-          matchInfo.innerHTML = `<span style="color:#10b981;">✓ ${autoMatchCount} of ${pendingCount} pending records have automatic matches</span>`;
-        } else {
-          matchInfo.innerHTML = '';
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load fuzzy records:', error);
-      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:#ef4444;">Error loading records: ${error.message}</td></tr>`;
-    }
-  }
-
-  function setupFuzzyUploadHandlers() {
-    const uploadZone = document.getElementById('fuzzy-upload-zone');
-    const fileInput = document.getElementById('fuzzy-file-input');
-
-    if (uploadZone && fileInput) {
-      uploadZone.addEventListener('click', () => fileInput.click());
-
-      uploadZone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        uploadZone.style.borderColor = '#4c51bf';
-        uploadZone.style.backgroundColor = 'rgba(102,126,234,0.1)';
-      });
-
-      uploadZone.addEventListener('dragleave', () => {
-        uploadZone.style.borderColor = '#667eea';
-        uploadZone.style.backgroundColor = 'rgba(102,126,234,0.05)';
-      });
-
-      uploadZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        uploadZone.style.borderColor = '#667eea';
-        uploadZone.style.backgroundColor = 'rgba(102,126,234,0.05)';
-
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-          handleFuzzyFileUpload(files[0]);
-        }
-      });
-
-      fileInput.addEventListener('change', (e) => {
-        if (e.target.files.length > 0) {
-          handleFuzzyFileUpload(e.target.files[0]);
-        }
-      });
-    }
-  }
-
-  async function handleFuzzyFileUpload(file) {
-    const errorMsg = document.getElementById('fuzzy-error-message');
-    const successMsg = document.getElementById('fuzzy-success-message');
-
-    // Hide messages
-    errorMsg.style.display = 'none';
-    successMsg.style.display = 'none';
-
-    if (!file.name.match(/\.(xlsx|xls)$/)) {
-      errorMsg.textContent = 'Please upload an Excel file (.xlsx or .xls)';
-      errorMsg.style.display = 'block';
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = function(e) {
-      try {
-        const workbook = XLSX.read(e.target.result, { type: 'binary' });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const data = XLSX.utils.sheet_to_json(sheet);
-
-        // Validate and process data
-        fuzzyUploadData = data.map(row => ({
-          staff_name: row['Staff Name'] || row['Name'] || '',
-          start_date: parseExcelDate(row['Start Date']),
-          end_date: parseExcelDate(row['End Date']),
-          total_hours: parseFloat(row['Total Hours']) || null,
-          total_sessions: parseFloat(row['Total Sessions']) || null,
-          reason: row['Reason'] || ''
-        })).filter(row => row.staff_name && row.start_date && row.end_date);
-
-        if (fuzzyUploadData.length === 0) {
-          errorMsg.textContent = 'No valid data found in the Excel file';
-          errorMsg.style.display = 'block';
-          return;
-        }
-
-        // Show preview
-        showFuzzyPreview();
-      } catch (error) {
-        console.error('Error parsing Excel:', error);
-        errorMsg.textContent = 'Failed to parse Excel file: ' + error.message;
-        errorMsg.style.display = 'block';
-      }
-    };
-    reader.readAsBinaryString(file);
-  }
-
-  function parseExcelDate(dateValue) {
-    if (!dateValue) return null;
-
-    // If it's already a Date object or valid date string
-    if (dateValue instanceof Date) return dateValue.toISOString().split('T')[0];
-    if (typeof dateValue === 'string' && dateValue.match(/^\d{4}-\d{2}-\d{2}$/)) return dateValue;
-
-    // Excel serial date (number of days since 1900-01-01)
-    if (typeof dateValue === 'number') {
-      const date = new Date((dateValue - 25569) * 86400 * 1000);
-      return date.toISOString().split('T')[0];
-    }
-
-    // Try parsing as string
-    const parsed = new Date(dateValue);
-    return isNaN(parsed) ? null : parsed.toISOString().split('T')[0];
-  }
-
-  function showFuzzyPreview() {
-    const preview = document.getElementById('fuzzy-data-preview');
-    const tbody = document.getElementById('fuzzy-preview-tbody');
-
-    tbody.innerHTML = fuzzyUploadData.slice(0, 10).map(row => `
-      <tr>
-        <td>${esc(row.staff_name)}</td>
-        <td>${row.start_date}</td>
-        <td>${row.end_date}</td>
-        <td>${row.total_hours || '-'}</td>
-        <td>${row.total_sessions || '-'}</td>
-        <td>${esc(row.reason)}</td>
-      </tr>
-    `).join('');
-
-    if (fuzzyUploadData.length > 10) {
-      tbody.innerHTML += `<tr><td colspan="6" style="text-align:center; color:#718096;">... and ${fuzzyUploadData.length - 10} more records</td></tr>`;
-    }
-
-    preview.style.display = 'block';
-  }
-
-  async function confirmFuzzyUpload() {
-    const errorMsg = document.getElementById('fuzzy-error-message');
-    const successMsg = document.getElementById('fuzzy-success-message');
-
-    try {
-      // Prepare data for upload
-      const recordsToInsert = fuzzyUploadData.map(row => ({
-        ...row,
-        site_id: ctx.site_id,
-        match_status: 'pending',
-        uploaded_by: ctx.user.id
-      }));
-
-      // Insert into database
-      const { data, error } = await supabase
-        .from('fuzzy_match_holidays')
-        .insert(recordsToInsert);
-
-      if (error) throw error;
-
-      // Success
-      successMsg.textContent = `Successfully uploaded ${fuzzyUploadData.length} records`;
-      successMsg.style.display = 'block';
-
-      // Reset UI
-      document.getElementById('fuzzy-data-preview').style.display = 'none';
-      document.getElementById('fuzzy-file-input').value = '';
-      fuzzyUploadData = [];
-
-      // Reload data
-      await loadFuzzyStatistics();
-      await loadFuzzyRecords();
-    } catch (error) {
-      console.error('Upload failed:', error);
-      errorMsg.textContent = 'Upload failed: ' + error.message;
-      errorMsg.style.display = 'block';
-    }
-  }
-
-  function cancelFuzzyUpload() {
-    document.getElementById('fuzzy-data-preview').style.display = 'none';
-    document.getElementById('fuzzy-file-input').value = '';
-    fuzzyUploadData = [];
-  }
-
-  async function deleteFuzzyRecord(id) {
-    if (!confirm('Are you sure you want to delete this record?')) return;
-
-    try {
-      const { error } = await supabase
-        .from('fuzzy_match_holidays')
-        .delete()
-        .eq('id', id)
-        .eq('site_id', ctx.site_id);
-
-      if (error) throw error;
-
-      // Reload data
-      await loadFuzzyStatistics();
-      await loadFuzzyRecords();
-    } catch (error) {
-      console.error('Delete failed:', error);
-      alert('Failed to delete record: ' + error.message);
-    }
-  }
-
-  async function matchAndTransferFuzzyRecord(recordId) {
-    const selectElement = document.getElementById(`user-select-${recordId}`);
-    const userId = selectElement?.value;
-
-    if (!userId) {
-      alert('Please select a user to match this record to');
-      return;
-    }
-
-    const userName = selectElement.options[selectElement.selectedIndex].text.trim();
-    if (!confirm(`Match and transfer this holiday record to ${userName}?`)) return;
-
-    try {
-      // First, update the record to matched status
-      const { error: matchError } = await supabase
-        .from('fuzzy_match_holidays')
-        .update({
-          matched_user_id: userId,
-          match_status: 'matched',
-          matched_at: new Date().toISOString()
-        })
-        .eq('id', recordId)
-        .eq('site_id', ctx.site_id);
-
-      if (matchError) throw matchError;
-
-      // Now transfer to holiday requests using the database function
-  const resolvedUserId = await resolveUserUuid(userId);
-      const { data: transferResult, error: transferError } = await supabase
-        .rpc('transfer_fuzzy_match_to_request', {
-          p_fuzzy_match_id: parseInt(recordId),
-          p_user_id: resolvedUserId
-        });
-
-      if (transferError) throw transferError;
-
-      // Success
-      alert(`Holiday successfully transferred to ${userName}`);
-
-      // Reload data
-      await loadFuzzyStatistics();
-      await loadFuzzyRecords();
-    } catch (error) {
-      console.error('Match and transfer failed:', error);
-      alert('Failed to match and transfer: ' + error.message);
-    }
-  }
-
-  async function transferFuzzyRecord(recordId) {
-    if (!confirm('Transfer this matched holiday to the user\'s holiday requests?')) return;
-
-    try {
-      // Get the matched user ID
-      const { data: record, error: fetchError } = await supabase
-        .from('fuzzy_match_holidays')
-        .select('matched_user_id')
-        .eq('id', recordId)
-        .single();
-
-      if (fetchError) throw fetchError;
-      if (!record?.matched_user_id) {
-        alert('No user matched to this record');
-        return;
-      }
-
-      // Transfer using the database function
-  const resolvedUserId = await resolveUserUuid(record.matched_user_id);
-      const { data: transferResult, error: transferError } = await supabase
-        .rpc('transfer_fuzzy_match_to_request', {
-          p_fuzzy_match_id: parseInt(recordId),
-          p_user_id: resolvedUserId
-        });
-
-      if (transferError) throw transferError;
-
-      alert('Holiday successfully transferred');
-
-      // Reload data
-      await loadFuzzyStatistics();
-      await loadFuzzyRecords();
-    } catch (error) {
-      console.error('Transfer failed:', error);
-      alert('Failed to transfer: ' + error.message);
-    }
-  }
-
-  async function unmatchFuzzyRecord(recordId) {
-    if (!confirm('Remove the user match from this record?')) return;
-
-    try {
-      const { error } = await supabase
-        .from('fuzzy_match_holidays')
-        .update({
-          matched_user_id: null,
-          match_status: 'pending',
-          matched_at: null
-        })
-        .eq('id', recordId)
-        .eq('site_id', ctx.site_id);
-
-      if (error) throw error;
-
-      // Reload data
-      await loadFuzzyStatistics();
-      await loadFuzzyRecords();
-    } catch (error) {
-      console.error('Unmatch failed:', error);
-      alert('Failed to unmatch: ' + error.message);
-    }
-  }
-
-  // Bulk operation functions
-  function toggleAllCheckboxes() {
-    const selectAll = document.getElementById('fuzzy-select-all');
-    const checkboxes = document.querySelectorAll('.fuzzy-record-checkbox');
-    checkboxes.forEach(cb => {
-      cb.checked = selectAll.checked;
-    });
-  }
-
-  async function deleteSelectedFuzzyRecords() {
-    const selectedCheckboxes = document.querySelectorAll('.fuzzy-record-checkbox:checked');
-
-    if (selectedCheckboxes.length === 0) {
-      alert('Please select records to delete');
-      return;
-    }
-
-    if (!confirm(`Delete ${selectedCheckboxes.length} selected record(s)?`)) {
-      return;
-    }
-
-    const recordIds = Array.from(selectedCheckboxes).map(cb => parseInt(cb.dataset.recordId, 10));
-
-    try {
-      const { error } = await supabase
-        .from('fuzzy_match_holidays')
-        .delete()
-        .eq('site_id', ctx.site_id)
-        .in('id', recordIds);
-
-      if (error) throw error;
-
-      await loadFuzzyStatistics();
-      await loadFuzzyRecords();
-    } catch (error) {
-      console.error('Bulk delete failed:', error);
-      alert('Failed to delete selected records: ' + error.message);
-    }
-  }
-
-  function filterFuzzyRecords() {
-    const searchTerm = document.getElementById('fuzzy-search').value.toLowerCase();
-    const rows = document.querySelectorAll('#fuzzy-existing-tbody tr');
-
-    rows.forEach(row => {
-      const nameCell = row.cells[1]; // Name is in the second column (after checkbox)
-      if (nameCell) {
-        const name = nameCell.textContent.toLowerCase();
-        if (name.includes(searchTerm)) {
-          row.style.display = '';
-        } else {
-          row.style.display = 'none';
-        }
-      }
-    });
-  }
-
-  async function autoMatchAllPending() {
-    const pendingCount = document.querySelectorAll('tr[data-status="pending"]').length;
-
-    if (pendingCount === 0) {
-      alert('No pending records to match');
-      return;
-    }
-
-    if (!confirm(`Auto-match ${pendingCount} pending record(s)?\n\nThis will match records where names exactly match existing users and transfer them immediately.`)) {
-      return;
-    }
-
-    let matchedCount = 0;
-    let failedCount = 0;
-    const errors = [];
-
-    // Get all pending records with their selected users
-    const pendingRecords = document.querySelectorAll('tr[data-status="pending"]');
-
-    for (const row of pendingRecords) {
-      const recordId = row.dataset.recordId;
-      const selectElement = document.getElementById(`user-select-${recordId}`);
-
-      if (selectElement && selectElement.value) {
-        // Only process if a user is selected (auto-matched)
-        try {
-          // Match and transfer
-          const { error: matchError } = await supabase
-            .from('fuzzy_match_holidays')
-            .update({
-              matched_user_id: selectElement.value,
-              match_status: 'matched',
-              matched_at: new Date().toISOString()
-            })
-            .eq('id', recordId)
-            .eq('site_id', ctx.site_id);
-
-          if (matchError) throw matchError;
-
-          // Transfer to holiday requests
-          const resolvedUserId = await resolveUserUuid(selectElement.value);
-          const { error: transferError } = await supabase
-            .rpc('transfer_fuzzy_match_to_request', {
-              p_fuzzy_match_id: parseInt(recordId),
-              p_user_id: resolvedUserId
-            });
-
-          if (transferError) throw transferError;
-
-          matchedCount++;
-        } catch (error) {
-          failedCount++;
-          errors.push(`Record ${recordId}: ${error.message}`);
-        }
-      }
-    }
-
-    // Show results
-    let message = `Auto-match complete!\n`;
-    message += `✅ Successfully matched and transferred: ${matchedCount}\n`;
-    if (failedCount > 0) {
-      message += `❌ Failed: ${failedCount}\n`;
-      if (errors.length > 0) {
-        message += `\nErrors:\n${errors.slice(0, 5).join('\n')}`;
-      }
-    }
-    alert(message);
-
-    // Reload data
-    await loadFuzzyStatistics();
-    await loadFuzzyRecords();
-  }
-
-  async function matchSelectedRecords() {
-    const selectedCheckboxes = document.querySelectorAll('.fuzzy-record-checkbox:checked');
-
-    if (selectedCheckboxes.length === 0) {
-      alert('Please select records to match');
-      return;
-    }
-
-    // Check that all selected records have users selected
-    let missingUsers = [];
-    selectedCheckboxes.forEach(cb => {
-      const recordId = cb.dataset.recordId;
-      const selectElement = document.getElementById(`user-select-${recordId}`);
-      if (!selectElement || !selectElement.value) {
-        const row = cb.closest('tr');
-        const name = row.cells[1].textContent;
-        missingUsers.push(name);
-      }
-    });
-
-    if (missingUsers.length > 0) {
-      alert(`Please select users for the following records:\n${missingUsers.join('\n')}`);
-      return;
-    }
-
-    if (!confirm(`Match and transfer ${selectedCheckboxes.length} selected record(s)?`)) {
-      return;
-    }
-
-    let successCount = 0;
-    let failedCount = 0;
-    const errors = [];
-
-    for (const checkbox of selectedCheckboxes) {
-      const recordId = checkbox.dataset.recordId;
-      const selectElement = document.getElementById(`user-select-${recordId}`);
-      const userId = selectElement.value;
-
-      try {
-        // Match and transfer
-        const { error: matchError } = await supabase
-          .from('fuzzy_match_holidays')
-          .update({
-            matched_user_id: userId,
-            match_status: 'matched',
-            matched_at: new Date().toISOString()
-          })
-          .eq('id', recordId)
-          .eq('site_id', ctx.site_id);
-
-        if (matchError) throw matchError;
-
-        // Transfer to holiday requests
-        const { error: transferError } = await supabase
-          .rpc('transfer_fuzzy_match_to_request', {
-            p_fuzzy_match_id: parseInt(recordId),
-            p_user_id: await resolveUserUuid(userId)
-          });
-
-        if (transferError) throw transferError;
-
-        successCount++;
-      } catch (error) {
-        failedCount++;
-        errors.push(`Record ${recordId}: ${error.message}`);
-      }
-    }
-
-    // Show results
-    let message = `Batch processing complete!\n`;
-    message += `✅ Successfully matched and transferred: ${successCount}\n`;
-    if (failedCount > 0) {
-      message += `❌ Failed: ${failedCount}\n`;
-      if (errors.length > 0) {
-        message += `\nErrors:\n${errors.slice(0, 5).join('\n')}`;
-      }
-    }
-    alert(message);
-
-    // Reload data
-    await loadFuzzyStatistics();
-    await loadFuzzyRecords();
-  }
-
-  function downloadFuzzyTemplate() {
-    // Create workbook
-    const wb = XLSX.utils.book_new();
-
-    // Create sample data
-    const data = [
-      ['Staff Name', 'Start Date', 'End Date', 'Total Hours', 'Total Sessions', 'Reason'],
-      ['John Smith', '2024-01-01', '2024-01-05', '40', '', 'Annual Leave'],
-      ['Jane Doe', '2024-02-15', '2024-02-16', '', '2', 'Sick Leave'],
-      ['Example: Use either Hours OR Sessions', '', '', '', '', ''],
-    ];
-
-    // Create worksheet
-    const ws = XLSX.utils.aoa_to_sheet(data);
-
-    // Set column widths
-    ws['!cols'] = [
-      { wch: 20 }, // Staff Name
-      { wch: 15 }, // Start Date
-      { wch: 15 }, // End Date
-      { wch: 12 }, // Total Hours
-      { wch: 15 }, // Total Sessions
-      { wch: 30 }  // Reason
-    ];
-
-    // Add worksheet to workbook
-    XLSX.utils.book_append_sheet(wb, ws, 'Holiday Import Template');
-
-    // Generate and download file
-    XLSX.writeFile(wb, 'holiday_import_template.xlsx');
-  }
-
-  // Export fuzzy match functions
-  window.loadFuzzyMatch = loadFuzzyMatch;
-  window.confirmFuzzyUpload = confirmFuzzyUpload;
-  window.cancelFuzzyUpload = cancelFuzzyUpload;
-  window.deleteFuzzyRecord = deleteFuzzyRecord;
-  window.downloadFuzzyTemplate = downloadFuzzyTemplate;
-  window.matchAndTransferFuzzyRecord = matchAndTransferFuzzyRecord;
-  window.transferFuzzyRecord = transferFuzzyRecord;
-  window.unmatchFuzzyRecord = unmatchFuzzyRecord;
-  window.toggleAllCheckboxes = toggleAllCheckboxes;
-  window.filterFuzzyRecords = filterFuzzyRecords;
-  window.autoMatchAllPending = autoMatchAllPending;
-  window.deleteSelectedFuzzyRecords = deleteSelectedFuzzyRecords;
-  window.matchSelectedRecords = matchSelectedRecords;
 
   // Training Import Functions
   let trainingUploadData = [];
@@ -20522,18 +21498,60 @@ window.refreshStaffData = refreshStaffData;
         return;
       }
 
-      // Get user names for matched records
+      // Get user names and working patterns for matched records
       const matchedUserIds = data.filter(r => r.matched_user_id).map(r => r.matched_user_id);
       let userMap = {};
+      let workingPatternMap = {};
+
       if (matchedUserIds.length > 0) {
         const { data: matchedUsers } = await supabase
-          .from('profiles')
-          .select('user_id, full_name')
-          .in('user_id', matchedUserIds);
+          .from('master_users')
+          .select(`
+            id, auth_user_id, full_name, is_gp,
+            monday_hours, tuesday_hours, wednesday_hours,
+            thursday_hours, friday_hours, saturday_hours, sunday_hours,
+            monday_sessions, tuesday_sessions, wednesday_sessions,
+            thursday_sessions, friday_sessions, saturday_sessions, sunday_sessions
+          `)
+          .or(`id.in.(${matchedUserIds.join(',')}),auth_user_id.in.(${matchedUserIds.join(',')})`);
 
         if (matchedUsers) {
           matchedUsers.forEach(u => {
-            userMap[u.user_id] = u.full_name;
+            // Map both id and auth_user_id to the full name and working patterns
+            if (u.auth_user_id) {
+              userMap[u.auth_user_id] = u.full_name;
+              workingPatternMap[u.auth_user_id] = u;
+            }
+            if (u.id) {
+              userMap[u.id] = u.full_name;
+              workingPatternMap[u.id] = u;
+            }
+          });
+        }
+      }
+
+      // Get working patterns for siteUsers too (for auto-matched records)
+      const siteUserIds = siteUsers.map(u => u.user_id);
+      if (siteUserIds.length > 0) {
+        const { data: siteUserPatterns } = await supabase
+          .from('master_users')
+          .select(`
+            id, auth_user_id, is_gp,
+            monday_hours, tuesday_hours, wednesday_hours,
+            thursday_hours, friday_hours, saturday_hours, sunday_hours,
+            monday_sessions, tuesday_sessions, wednesday_sessions,
+            thursday_sessions, friday_sessions, saturday_sessions, sunday_sessions
+          `)
+          .or(`id.in.(${siteUserIds.join(',')}),auth_user_id.in.(${siteUserIds.join(',')})`);
+
+        if (siteUserPatterns) {
+          siteUserPatterns.forEach(u => {
+            if (u.auth_user_id && !workingPatternMap[u.auth_user_id]) {
+              workingPatternMap[u.auth_user_id] = u;
+            }
+            if (u.id && !workingPatternMap[u.id]) {
+              workingPatternMap[u.id] = u;
+            }
           });
         }
       }
@@ -21284,5 +22302,6 @@ window.refreshStaffData = refreshStaffData;
 
     <!-- Debug Console - Persistent across all pages -->
     <script src="debug-console.js"></script>
+    <script src="supabase-debug.js"></script>
 </body>
 </html>

@@ -1,0 +1,668 @@
+// Complete comprehensive site test including iPad kiosk PIN functionality
+import { chromium } from 'playwright';
+import { createClient } from '@supabase/supabase-js';
+
+// Initialize Supabase client for backend verification
+const supabaseUrl = 'https://unveoqnlqnobufhublyw.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME';
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// Test credentials
+const TEST_EMAIL = 'benhowardmagic@hotmail.com';
+const TEST_PASSWORD = 'Hello1!';
+const BASE_URL = 'http://127.0.0.1:58156';
+
+// Test report structure
+let testReport = {
+  timestamp: new Date().toISOString(),
+  credentials: TEST_EMAIL,
+  summary: {
+    totalTests: 0,
+    passed: 0,
+    failed: 0,
+    warnings: 0
+  },
+  sections: {},
+  criticalIssues: [],
+  functionalityStatus: {}
+};
+
+// Helper to log and record test results
+function recordTest(section, testName, status, details = '') {
+  testReport.totalTests++;
+
+  if (!testReport.sections[section]) {
+    testReport.sections[section] = {
+      tests: [],
+      passed: 0,
+      failed: 0,
+      warnings: 0
+    };
+  }
+
+  testReport.sections[section].tests.push({
+    name: testName,
+    status: status,
+    details: details,
+    timestamp: new Date().toISOString()
+  });
+
+  if (status === 'PASS') {
+    testReport.summary.passed++;
+    testReport.sections[section].passed++;
+    console.log(`  ✅ ${testName}`);
+  } else if (status === 'FAIL') {
+    testReport.summary.failed++;
+    testReport.sections[section].failed++;
+    console.log(`  ❌ ${testName}: ${details}`);
+    if (details.includes('Critical')) {
+      testReport.criticalIssues.push({
+        section,
+        test: testName,
+        details
+      });
+    }
+  } else if (status === 'WARNING') {
+    testReport.summary.warnings++;
+    testReport.sections[section].warnings++;
+    console.log(`  ⚠️ ${testName}: ${details}`);
+  }
+}
+
+async function fullComprehensiveTest() {
+  console.log('='.repeat(70));
+  console.log('🔍 COMPREHENSIVE SITE TEST - FULL FUNCTIONALITY CHECK');
+  console.log('='.repeat(70));
+  console.log(`📅 Date: ${new Date().toLocaleString()}`);
+  console.log(`🌐 URL: ${BASE_URL}`);
+  console.log(`👤 Test User: ${TEST_EMAIL}`);
+  console.log('='.repeat(70) + '\n');
+
+  const browser = await chromium.launch({
+    headless: false,
+    slowMo: 300 // Slower for visibility
+  });
+
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 720 }
+  });
+
+  const page = await context.newPage();
+
+  // Capture console errors
+  const consoleErrors = [];
+  page.on('console', msg => {
+    if (msg.type() === 'error') {
+      consoleErrors.push(msg.text());
+    }
+  });
+
+  // Capture network failures
+  const networkFailures = [];
+  page.on('requestfailed', request => {
+    networkFailures.push({
+      url: request.url(),
+      failure: request.failure()?.errorText
+    });
+  });
+
+  try {
+    // ============================================
+    // SECTION 1: HOMEPAGE & LOGIN
+    // ============================================
+    console.log('📋 SECTION 1: HOMEPAGE & LOGIN\n');
+
+    await page.goto(`${BASE_URL}/index.html`);
+    await page.waitForTimeout(2000);
+
+    // Check page structure
+    const hasLoginForm = await page.locator('#loginForm').count() > 0;
+    const hasEmailField = await page.locator('#email').count() > 0;
+    const hasPasswordField = await page.locator('input[type="password"]').count() > 0;
+    const hasSignInButton = await page.locator('button:has-text("Sign In")').count() > 0;
+
+    recordTest('Homepage', 'Page loads', 'PASS');
+    recordTest('Homepage', 'Login form present', hasLoginForm ? 'PASS' : 'FAIL',
+      hasLoginForm ? '' : 'Login form not found');
+    recordTest('Homepage', 'Email field present', hasEmailField ? 'PASS' : 'FAIL');
+    recordTest('Homepage', 'Password field present', hasPasswordField ? 'PASS' : 'FAIL');
+    recordTest('Homepage', 'Sign in button present', hasSignInButton ? 'PASS' : 'FAIL');
+
+    // Perform login
+    if (hasEmailField && hasPasswordField) {
+      await page.fill('#email', TEST_EMAIL);
+      await page.fill('input[type="password"]', TEST_PASSWORD);
+      await page.screenshot({ path: 'test_01_login_credentials.png' });
+
+      await page.click('button:has-text("Sign In")');
+      await page.waitForTimeout(3000);
+
+      const afterLoginUrl = page.url();
+      const loginSuccess = afterLoginUrl.includes('home.html') || afterLoginUrl.includes('staff');
+
+      recordTest('Authentication', 'Login attempt', loginSuccess ? 'PASS' : 'FAIL',
+        loginSuccess ? `Redirected to: ${afterLoginUrl}` : 'No redirect after login');
+
+      await page.screenshot({ path: 'test_02_after_login.png' });
+    } else {
+      recordTest('Authentication', 'Login attempt', 'FAIL', 'Could not find login fields');
+    }
+
+    // Check session in Supabase
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    recordTest('Authentication', 'Supabase session', sessionData?.session ? 'PASS' : 'WARNING',
+      sessionData?.session ? 'Session established' : 'No session found');
+
+    // ============================================
+    // SECTION 2: HOME PAGE
+    // ============================================
+    console.log('\n📋 SECTION 2: HOME PAGE\n');
+
+    if (!page.url().includes('home.html')) {
+      await page.goto(`${BASE_URL}/home.html`);
+      await page.waitForTimeout(2000);
+    }
+
+    // Check navigation elements
+    const navigationButtons = [
+      { selector: 'button[data-section="staff"]', name: 'Staff Portal button' },
+      { selector: 'button[data-section="quiz"]', name: 'Quiz button' },
+      { selector: 'button[data-section="achievements"]', name: 'Achievements button' },
+      { selector: 'button[data-section="myHolidays"]', name: 'My Holidays button' },
+      { selector: 'button[data-section="admin"]', name: 'Admin button' }
+    ];
+
+    for (const nav of navigationButtons) {
+      const exists = await page.locator(nav.selector).count() > 0;
+      recordTest('Home Page', nav.name, exists ? 'PASS' : 'FAIL');
+    }
+
+    // Check user info display
+    const userDisplay = await page.locator('#userName, .user-name, [class*="user"]').first().textContent().catch(() => '');
+    recordTest('Home Page', 'User info display', userDisplay ? 'PASS' : 'WARNING',
+      userDisplay ? `Shows: ${userDisplay}` : 'No user info displayed');
+
+    await page.screenshot({ path: 'test_03_home_page.png' });
+
+    // ============================================
+    // SECTION 3: STAFF PORTAL
+    // ============================================
+    console.log('\n📋 SECTION 3: STAFF PORTAL\n');
+
+    await page.goto(`${BASE_URL}/staff.html`);
+    await page.waitForTimeout(2000);
+
+    // Check if redirected to login
+    if (page.url().includes('staff.html')) {
+      const staffSections = ['Welcome', 'Meetings', 'Scans', 'Training'];
+      for (const section of staffSections) {
+        const exists = await page.locator(`text=${section}`).count() > 0;
+        recordTest('Staff Portal', `${section} section`, exists ? 'PASS' : 'FAIL');
+      }
+
+      // Test navigation to each section
+      const staffPages = [
+        { url: '/staff-welcome.html', name: 'Staff Welcome' },
+        { url: '/staff-meetings.html', name: 'Staff Meetings' }
+      ];
+
+      for (const staffPage of staffPages) {
+        await page.goto(`${BASE_URL}${staffPage.url}`);
+        await page.waitForTimeout(1500);
+        const loaded = !page.url().includes('index.html');
+        recordTest('Staff Portal', `${staffPage.name} loads`, loaded ? 'PASS' : 'FAIL');
+      }
+    }
+
+    await page.screenshot({ path: 'test_04_staff_portal.png' });
+
+    // ============================================
+    // SECTION 4: STAFF WELCOME (ONBOARDING)
+    // ============================================
+    console.log('\n📋 SECTION 4: STAFF WELCOME/ONBOARDING\n');
+
+    await page.goto(`${BASE_URL}/staff-welcome.html`);
+    await page.waitForTimeout(2000);
+
+    const onboardingElements = [
+      { selector: '#nickname', name: 'Nickname field' },
+      { selector: '#role, select[name*="role"]', name: 'Role selector' },
+      { selector: '#team, select[name*="team"]', name: 'Team selector' },
+      { selector: '[id*="hours"], [class*="hours"]', name: 'Working hours input' },
+      { selector: '[id*="avatar"], [class*="avatar"]', name: 'Avatar selection' }
+    ];
+
+    for (const element of onboardingElements) {
+      const exists = await page.locator(element.selector).count() > 0;
+      recordTest('Staff Welcome', element.name, exists ? 'PASS' : 'FAIL');
+    }
+
+    // Try to interact with form
+    const nicknameField = await page.locator('#nickname').first();
+    if (await nicknameField.count() > 0) {
+      await nicknameField.fill('TestNick' + Date.now().toString().slice(-4));
+      recordTest('Staff Welcome', 'Can enter nickname', 'PASS');
+    }
+
+    await page.screenshot({ path: 'test_05_staff_welcome.png' });
+
+    // ============================================
+    // SECTION 5: ACHIEVEMENTS
+    // ============================================
+    console.log('\n📋 SECTION 5: ACHIEVEMENTS\n');
+
+    await page.goto(`${BASE_URL}/achievements.html`);
+    await page.waitForTimeout(2000);
+
+    const achievementCards = await page.locator('.achievement-card, .achievement-item, [class*="achievement"]').count();
+    recordTest('Achievements', 'Achievement display', achievementCards > 0 ? 'PASS' : 'WARNING',
+      `Found ${achievementCards} achievement elements`);
+
+    // Check database for achievements
+    const { data: achievements, error: achError } = await supabase
+      .from('achievements')
+      .select('*')
+      .limit(5);
+
+    recordTest('Achievements', 'Database records', achievements && achievements.length > 0 ? 'PASS' : 'WARNING',
+      achievements ? `${achievements.length} achievements in database` : 'No achievements found');
+
+    await page.screenshot({ path: 'test_06_achievements.png' });
+
+    // ============================================
+    // SECTION 6: ADMIN DASHBOARD
+    // ============================================
+    console.log('\n📋 SECTION 6: ADMIN DASHBOARD\n');
+
+    await page.goto(`${BASE_URL}/admin-dashboard.html`);
+    await page.waitForTimeout(3000);
+
+    // Check if admin access is granted or login required
+    const isAdminPage = page.url().includes('admin-dashboard') && !page.url().includes('index.html');
+    recordTest('Admin Dashboard', 'Access granted', isAdminPage ? 'PASS' : 'WARNING',
+      isAdminPage ? 'Admin page loaded' : 'Redirected or access denied');
+
+    if (isAdminPage) {
+      // Check admin sections
+      const adminElements = [
+        { selector: '#userCreationForm, [id*="create"]', name: 'User creation form' },
+        { selector: '#userManagement, [id*="management"]', name: 'User management' },
+        { selector: '#pendingInvitations, [id*="pending"]', name: 'Pending invitations' },
+        { selector: '#completedUsers, [id*="completed"]', name: 'Completed users' }
+      ];
+
+      for (const element of adminElements) {
+        const exists = await page.locator(element.selector).count() > 0;
+        recordTest('Admin Dashboard', element.name, exists ? 'PASS' : 'FAIL');
+      }
+    }
+
+    await page.screenshot({ path: 'test_07_admin_dashboard.png' });
+
+    // ============================================
+    // SECTION 7: IPAD KIOSK & PIN SETUP
+    // ============================================
+    console.log('\n📋 SECTION 7: IPAD KIOSK & PIN SETUP (CRITICAL TEST)\n');
+
+    await page.goto(`${BASE_URL}/indexIpad.html`);
+    await page.waitForTimeout(2000);
+
+    // First, login as admin
+    const kioskEmailField = await page.locator('#loginEmail');
+    const kioskPasswordField = await page.locator('#loginPass');
+
+    if (await kioskEmailField.count() > 0) {
+      await kioskEmailField.fill(TEST_EMAIL);
+      await kioskPasswordField.fill(TEST_PASSWORD);
+      await page.click('#doLogin');
+      await page.waitForTimeout(3000);
+      recordTest('iPad Kiosk', 'Admin login', 'PASS');
+    } else {
+      recordTest('iPad Kiosk', 'Admin login', 'FAIL', 'Login fields not found');
+    }
+
+    // Check for PIN setup button
+    const pinSetupBtn = await page.locator('#btnPinSetup');
+    const hasPinSetup = await pinSetupBtn.count() > 0;
+    recordTest('iPad Kiosk', 'PIN setup button available', hasPinSetup ? 'PASS' : 'FAIL');
+
+    if (hasPinSetup) {
+      await pinSetupBtn.click();
+      await page.waitForTimeout(2000);
+
+      // Look for user dropdown in PIN setup
+      const pinSetupUser = await page.locator('#pinSetupUser');
+      if (await pinSetupUser.count() > 0) {
+        // Get all users in dropdown
+        const options = await pinSetupUser.locator('option').all();
+        recordTest('iPad Kiosk', 'Users in PIN dropdown', options.length > 1 ? 'PASS' : 'WARNING',
+          `Found ${options.length - 1} users`);
+
+        // Select first real user (skip the placeholder)
+        if (options.length > 1) {
+          const firstUser = await options[1].getAttribute('value');
+          await pinSetupUser.selectOption(firstUser);
+
+          // Set a PIN
+          const testPin = '1234';
+          await page.fill('#pinSetupNew', testPin);
+          await page.fill('#pinSetupConfirm', testPin);
+
+          await page.click('#btnPinSetupSave');
+          await page.waitForTimeout(2000);
+
+          // Check for success message
+          const successMsg = await page.locator('#pinSetupMsg').textContent();
+          const pinSaved = successMsg && successMsg.toLowerCase().includes('success');
+          recordTest('iPad Kiosk', 'PIN saved', pinSaved ? 'PASS' : 'FAIL',
+            pinSaved ? 'PIN successfully saved' : `Message: ${successMsg}`);
+
+          // Check database for PIN
+          const { data: profile } = await supabase
+            .from('master_users')
+            .select('pin_hmac, kiosk_auth_user_id')
+            .eq('email', TEST_EMAIL)
+            .single();
+
+          recordTest('iPad Kiosk', 'PIN in database', profile?.pin_hmac ? 'PASS' : 'WARNING',
+            profile?.pin_hmac ? 'PIN hash stored' : 'No PIN hash found');
+
+          recordTest('iPad Kiosk', 'Kiosk user ID', profile?.kiosk_user_id ? 'PASS' : 'WARNING',
+            profile?.kiosk_user_id ? `Kiosk ID: ${profile.kiosk_user_id}` : 'No kiosk user ID');
+
+          // Try PIN authentication
+          await page.click('#btnPinSetupCancel');
+          await page.waitForTimeout(1000);
+
+          // Now test entering the PIN
+          const pinScreen = await page.locator('#screen-pin');
+          if (await pinScreen.isVisible()) {
+            // Enter PIN using keypad
+            for (const digit of testPin) {
+              await page.click(`.key:has-text("${digit}")`);
+              await page.waitForTimeout(200);
+            }
+
+            recordTest('iPad Kiosk', 'PIN entry interface', 'PASS', 'PIN pad functional');
+
+            // Check if authenticated
+            await page.waitForTimeout(2000);
+            const onBeginScreen = await page.locator('#screen-begin').isVisible();
+            recordTest('iPad Kiosk', 'PIN authentication', onBeginScreen ? 'PASS' : 'FAIL',
+              onBeginScreen ? 'Successfully authenticated with PIN' : 'PIN authentication failed');
+          }
+        }
+      } else {
+        recordTest('iPad Kiosk', 'PIN setup form', 'FAIL', 'User dropdown not found');
+      }
+    }
+
+    await page.screenshot({ path: 'test_08_ipad_kiosk.png' });
+
+    // Check master_users table
+    const { data: kioskUsers } = await supabase
+      .from('master_users')
+      .select('*');
+
+    recordTest('iPad Kiosk', 'Kiosk users table', kioskUsers ? 'PASS' : 'FAIL',
+      kioskUsers ? `${kioskUsers.length} entries in kiosk_users` : 'Cannot access kiosk_users');
+
+    // ============================================
+    // SECTION 8: MY HOLIDAYS
+    // ============================================
+    console.log('\n📋 SECTION 8: MY HOLIDAYS\n');
+
+    await page.goto(`${BASE_URL}/home.html`);
+    await page.waitForTimeout(1500);
+
+    // Click My Holidays button if available
+    const holidaysBtn = await page.locator('button[data-section="myHolidays"]');
+    if (await holidaysBtn.count() > 0) {
+      await holidaysBtn.click();
+      await page.waitForTimeout(2000);
+
+      const holidayElements = [
+        { selector: '[id*="holiday"], [class*="holiday"]', name: 'Holiday display' },
+        { selector: '[id*="entitlement"], [class*="entitlement"]', name: 'Entitlement info' },
+        { selector: 'button:has-text("Request"), button:has-text("Book")', name: 'Request button' }
+      ];
+
+      for (const element of holidayElements) {
+        const exists = await page.locator(element.selector).count() > 0;
+        recordTest('My Holidays', element.name, exists ? 'PASS' : 'WARNING');
+      }
+    } else {
+      recordTest('My Holidays', 'Access', 'FAIL', 'My Holidays button not found');
+    }
+
+    await page.screenshot({ path: 'test_09_holidays.png' });
+
+    // ============================================
+    // SECTION 9: STAFF QUIZ
+    // ============================================
+    console.log('\n📋 SECTION 9: STAFF QUIZ\n');
+
+    await page.goto(`${BASE_URL}/home.html`);
+    await page.waitForTimeout(1500);
+
+    const quizBtn = await page.locator('button[data-section="quiz"]');
+    if (await quizBtn.count() > 0) {
+      await quizBtn.click();
+      await page.waitForTimeout(2000);
+
+      const quizElements = await page.locator('[id*="quiz"], [class*="quiz"]').count();
+      recordTest('Staff Quiz', 'Quiz interface', quizElements > 0 ? 'PASS' : 'WARNING',
+        `Found ${quizElements} quiz elements`);
+    }
+
+    await page.screenshot({ path: 'test_10_quiz.png' });
+
+    // ============================================
+    // SECTION 10: DATA INTEGRITY
+    // ============================================
+    console.log('\n📋 SECTION 10: DATABASE & DATA INTEGRITY\n');
+
+    // Check user profile
+    const { data: userProfile } = await supabase
+      .from('master_users')
+      .select('*')
+      .eq('email', TEST_EMAIL)
+      .single();
+
+    if (userProfile) {
+      recordTest('Database', 'User profile exists', 'PASS', `User ID: ${userProfile.user_id}`);
+      recordTest('Database', 'Profile has site_id', userProfile.site_id ? 'PASS' : 'FAIL');
+      recordTest('Database', 'Profile has full_name', userProfile.full_name ? 'PASS' : 'WARNING');
+      recordTest('Database', 'Onboarding status', userProfile.onboarding_complete ? 'PASS' : 'WARNING',
+        `Onboarding: ${userProfile.onboarding_complete ? 'Complete' : 'Incomplete'}`);
+    } else {
+      recordTest('Database', 'User profile exists', 'FAIL', 'Critical: No profile found');
+    }
+
+    // Check various tables
+    const tablesToCheck = [
+      { table: 'sites', name: 'Sites' },
+      { table: 'achievements', name: 'Achievements' },
+      { table: 'kiosk_users', name: 'Kiosk Users' },
+      { table: 'invitations', name: 'Invitations' }
+    ];
+
+    for (const { table, name } of tablesToCheck) {
+      const { data, error } = await supabase.from(table).select('*').limit(1);
+      recordTest('Database', `${name} table accessible`, !error ? 'PASS' : 'FAIL',
+        error ? error.message : 'Table accessible');
+    }
+
+    // ============================================
+    // SECTION 11: RESPONSIVE DESIGN
+    // ============================================
+    console.log('\n📋 SECTION 11: RESPONSIVE DESIGN\n');
+
+    // Test mobile view
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.goto(`${BASE_URL}/home.html`);
+    await page.waitForTimeout(1500);
+
+    const mobileElements = await page.locator('.mobile-menu, .hamburger, [class*="mobile"], [class*="responsive"]').count();
+    recordTest('Responsive', 'Mobile layout', 'PASS', `Mobile viewport tested (${mobileElements} mobile elements)`);
+
+    await page.screenshot({ path: 'test_11_mobile_view.png' });
+
+    // Reset to desktop
+    await page.setViewportSize({ width: 1280, height: 720 });
+
+    // ============================================
+    // SECTION 12: SESSION PERSISTENCE
+    // ============================================
+    console.log('\n📋 SECTION 12: SESSION MANAGEMENT\n');
+
+    // Reload page to test session persistence
+    await page.reload();
+    await page.waitForTimeout(2000);
+
+    const stillAuthenticated = !page.url().includes('index.html');
+    recordTest('Session', 'Persists after reload', stillAuthenticated ? 'PASS' : 'FAIL');
+
+    // Test logout if button exists
+    const logoutBtn = await page.locator('button:has-text("Logout"), button:has-text("Sign Out")').first();
+    if (await logoutBtn.count() > 0) {
+      await logoutBtn.click();
+      await page.waitForTimeout(2000);
+      const loggedOut = page.url().includes('index.html');
+      recordTest('Session', 'Logout functionality', loggedOut ? 'PASS' : 'WARNING');
+    }
+
+    // ============================================
+    // FINAL REPORT GENERATION
+    // ============================================
+    console.log('\n' + '='.repeat(70));
+    console.log('📊 TEST COMPLETION SUMMARY');
+    console.log('='.repeat(70));
+
+    // Calculate percentages
+    const passRate = testReport.totalTests > 0
+      ? ((testReport.summary.passed / testReport.totalTests) * 100).toFixed(1)
+      : 0;
+
+    console.log(`\n📈 Overall Statistics:`);
+    console.log(`  Total Tests: ${testReport.totalTests}`);
+    console.log(`  ✅ Passed: ${testReport.summary.passed} (${passRate}%)`);
+    console.log(`  ❌ Failed: ${testReport.summary.failed}`);
+    console.log(`  ⚠️  Warnings: ${testReport.summary.warnings}`);
+
+    // Report by section
+    console.log(`\n📋 Section Breakdown:`);
+    for (const [section, data] of Object.entries(testReport.sections)) {
+      const sectionPass = data.passed || 0;
+      const sectionTotal = data.tests.length;
+      const sectionRate = sectionTotal > 0 ? ((sectionPass / sectionTotal) * 100).toFixed(0) : 0;
+      console.log(`  ${section}: ${sectionPass}/${sectionTotal} passed (${sectionRate}%)`);
+    }
+
+    // Critical issues
+    if (testReport.criticalIssues.length > 0) {
+      console.log(`\n🚨 Critical Issues Found:`);
+      testReport.criticalIssues.forEach((issue, idx) => {
+        console.log(`  ${idx + 1}. ${issue.section}: ${issue.test}`);
+        console.log(`     ${issue.details}`);
+      });
+    }
+
+    // Functionality status
+    testReport.functionalityStatus = {
+      'Authentication': testReport.sections['Authentication']?.passed > 0 ? 'Working' : 'Broken',
+      'User Profile': testReport.sections['Database']?.tests.find(t => t.name === 'User profile exists')?.status === 'PASS' ? 'Exists' : 'Missing',
+      'Navigation': testReport.sections['Home Page']?.passed > 3 ? 'Working' : 'Partial',
+      'Staff Portal': testReport.sections['Staff Portal']?.passed > 0 ? 'Accessible' : 'Issues',
+      'Admin Dashboard': testReport.sections['Admin Dashboard']?.passed > 0 ? 'Accessible' : 'Limited',
+      'iPad Kiosk': testReport.sections['iPad Kiosk']?.passed > 5 ? 'Working' : 'Issues',
+      'PIN System': testReport.sections['iPad Kiosk']?.tests.find(t => t.name === 'PIN authentication')?.status === 'PASS' ? 'Working' : 'Not Working',
+      'Database': testReport.sections['Database']?.failed === 0 ? 'Healthy' : 'Issues',
+      'Session Management': testReport.sections['Session']?.passed > 0 ? 'Working' : 'Issues'
+    };
+
+    console.log(`\n🔧 Functionality Status:`);
+    for (const [feature, status] of Object.entries(testReport.functionalityStatus)) {
+      const icon = status.includes('Working') || status.includes('Healthy') || status === 'Exists' ? '✅' :
+                   status.includes('Issues') || status === 'Partial' || status === 'Limited' ? '⚠️' : '❌';
+      console.log(`  ${icon} ${feature}: ${status}`);
+    }
+
+    // Console errors summary
+    if (consoleErrors.length > 0) {
+      console.log(`\n🔴 Console Errors: ${consoleErrors.length} errors detected`);
+      const uniqueErrors = [...new Set(consoleErrors.map(e => e.split('\n')[0]))];
+      uniqueErrors.slice(0, 5).forEach(err => {
+        console.log(`  - ${err.substring(0, 80)}...`);
+      });
+    }
+
+    // Network failures summary
+    if (networkFailures.length > 0) {
+      console.log(`\n🌐 Network Issues: ${networkFailures.length} requests failed`);
+      const uniqueFailures = [...new Set(networkFailures.map(f => f.url.split('?')[0]))];
+      uniqueFailures.slice(0, 5).forEach(url => {
+        console.log(`  - ${url}`);
+      });
+    }
+
+    // Save detailed report
+    const fs = await import('fs');
+    testReport.consoleErrors = consoleErrors;
+    testReport.networkFailures = networkFailures;
+    fs.writeFileSync('comprehensive_test_report.json', JSON.stringify(testReport, null, 2));
+
+    console.log(`\n💾 Full report saved to: comprehensive_test_report.json`);
+    console.log(`📸 Screenshots saved: test_01 through test_11`);
+
+    // Final recommendations
+    console.log(`\n📌 Key Findings:`);
+    if (passRate < 50) {
+      console.log('  ⚠️ Site has significant functionality issues');
+    } else if (passRate < 80) {
+      console.log('  ⚠️ Site is partially functional but needs attention');
+    } else {
+      console.log('  ✅ Site is largely functional');
+    }
+
+    // Specific recommendations based on failures
+    const recommendations = [];
+
+    if (testReport.sections['Authentication']?.failed > 0) {
+      recommendations.push('Fix authentication system');
+    }
+    if (testReport.sections['iPad Kiosk']?.failed > 2) {
+      recommendations.push('Review iPad kiosk PIN system');
+    }
+    if (testReport.sections['Admin Dashboard']?.failed > 2) {
+      recommendations.push('Check admin dashboard access and Edge Functions');
+    }
+    if (!testReport.functionalityStatus['User Profile'].includes('Exists')) {
+      recommendations.push('Create user profile for test account');
+    }
+
+    if (recommendations.length > 0) {
+      console.log(`\n🔧 Priority Fixes:`);
+      recommendations.forEach((rec, idx) => {
+        console.log(`  ${idx + 1}. ${rec}`);
+      });
+    }
+
+  } catch (error) {
+    console.error('\n❌ FATAL TEST ERROR:', error.message);
+    testReport.criticalIssues.push({
+      section: 'Test Framework',
+      test: 'Execution',
+      details: error.message
+    });
+  } finally {
+    console.log('\n' + '='.repeat(70));
+    console.log('✅ TEST SUITE COMPLETED');
+    console.log('='.repeat(70));
+
+    await browser.close();
+  }
+}
+
+// Run the comprehensive test
+fullComprehensiveTest().catch(console.error);

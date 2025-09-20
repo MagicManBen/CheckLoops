@@ -24,7 +24,7 @@ test.describe('Staff Dashboard', () => {
     await takeScreenshot(page, 'staff-dashboard-initial');
 
     // Topbar pills and logout button
-    await expect(page.locator('#site-pill')).toBeVisible({ timeout: 10000 });
+    // Site pill has been removed
     await expect(page.locator('#email-pill')).toBeVisible();
     await expect(page.locator('#role-pill')).toBeVisible();
     await expect(page.locator('#logout-btn')).toBeVisible();

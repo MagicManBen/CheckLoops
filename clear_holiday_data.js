@@ -25,36 +25,36 @@ async function clearAllHolidayData() {
       console.log(`✅ Cleared holiday_requests table (${requestsCount || 'all'} records)`);
     }
 
-    // 2. Clear holiday_entitlements table
-    console.log('Clearing holiday_entitlements table...');
+    // 2. Clear master_users table
+    console.log('Clearing master_users table...');
     const { error: entitlementsError, count: entitlementsCount } = await supabase
-      .from('holiday_entitlements')
+      .from('master_users')
       .delete()
       .neq('id', 0); // This will delete all records since id is never 0
     
     if (entitlementsError) {
       console.error('❌ Error clearing holiday_entitlements:', entitlementsError);
     } else {
-      console.log(`✅ Cleared holiday_entitlements table (${entitlementsCount || 'all'} records)`);
+      console.log(`✅ Cleared master_users table (${entitlementsCount || 'all'} records)`);
     }
 
-    // 3. Clear working_patterns table (optional - contains work schedule data)
-    console.log('Clearing working_patterns table...');
+    // 3. Clear master_users table (optional - contains work schedule data)
+    console.log('Clearing master_users table...');
     const { error: patternsError, count: patternsCount } = await supabase
-      .from('working_patterns')
+      .from('master_users')
       .delete()
       .neq('id', 0); // This will delete all records since id is never 0
     
     if (patternsError) {
       console.error('❌ Error clearing working_patterns:', patternsError);
     } else {
-      console.log(`✅ Cleared working_patterns table (${patternsCount || 'all'} records)`);
+      console.log(`✅ Cleared master_users table (${patternsCount || 'all'} records)`);
     }
 
     // 4. Clear any staff_app_welcome entries that might have been created for holiday purposes
     console.log('Clearing staff_app_welcome entries with placeholder user_ids...');
     const { error: welcomeError, count: welcomeCount } = await supabase
-      .from('staff_app_welcome')
+      .from('master_users')
       .delete()
       .like('user_id', 'placeholder-%');
     
@@ -87,11 +87,11 @@ async function verifyTablesEmpty() {
       .select('*', { count: 'exact', head: true });
     
     const { count: entitlementsCount } = await supabase
-      .from('holiday_entitlements')
+      .from('master_users')
       .select('*', { count: 'exact', head: true });
     
     const { count: patternsCount } = await supabase
-      .from('working_patterns')
+      .from('master_users')
       .select('*', { count: 'exact', head: true });
 
     console.log(`holiday_requests: ${requestsCount || 0} records`);

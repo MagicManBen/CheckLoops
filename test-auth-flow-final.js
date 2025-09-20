@@ -81,10 +81,8 @@ async function testAuthFlow() {
     console.log('  Role Pill:', rolePill);
     const roleVisible = rolePill !== '—' && rolePill !== '';
     
-    // Check for site in the topbar
-    const sitePill = await page.locator('#site-pill').textContent().catch(() => 'Site: —');
-    console.log('  Site Pill:', sitePill);
-    const siteVisible = sitePill !== 'Site: —';
+    // Check for site in the topbar - site pill has been removed
+    const siteVisible = true; // Always true now since we removed it
     
     // Check for welcome message
     const welcomeText = await page.locator('#welcome').textContent().catch(() => '');

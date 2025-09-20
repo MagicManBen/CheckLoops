@@ -42,9 +42,9 @@
       if (!this.user?.id) return;
       
       const { data: profile } = await this.supabase
-        .from('profiles')
-        .select('kiosk_user_id')
-        .eq('user_id', this.user.id)
+        .from('master_users')
+        .select('kiosk_auth_auth_user_id')
+        .eq('auth_user_id', this.user.id)
         .maybeSingle();
       
       this.kioskUserId = profile?.kiosk_user_id;

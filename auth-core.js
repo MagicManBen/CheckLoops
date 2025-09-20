@@ -66,15 +66,15 @@ async function fetchUserRole() {
   
   const supabase = await getSupabase();
   
-  // Check profiles table first (source of truth)
+  // Check master_users table first (source of truth)
   const { data: profile } = await supabase
-    .from('profiles')
+    .from('master_users')
     .select('role')
-    .eq('user_id', currentSession.user.id)
+    .eq('auth_user_id', currentSession.user.id)
     .maybeSingle();
   
   if (profile?.role) {
-    userRole = profile.role.toLowerCase();
+    userRole = profile.access_type || profile.role.toLowerCase();
     return userRole;
   }
   
@@ -114,7 +114,7 @@ export async function getUserRole() {
 
 // Check if user is admin
 export async function isAdmin() {
-  const role = await getUserRole();
+  const role = (await getUserRole()?.access_type || await getUserRole());
   return role === 'admin' || role === 'owner';
 }
 
@@ -177,7 +177,7 @@ export async function requireAuth(options = {}) {
     return null;
   }
   
-  const role = await getUserRole();
+  const role = (await getUserRole()?.access_type || await getUserRole());
   
   // Check admin requirement
   if (adminOnly && role !== 'admin' && role !== 'owner') {

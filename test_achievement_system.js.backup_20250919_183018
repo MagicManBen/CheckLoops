@@ -1,0 +1,104 @@
+import { chromium } from 'playwright';
+import { createClient } from '@supabase/supabase-js';
+
+// Test the complete achievement system
+async function testAchievementSystem() {
+  console.log('🚀 Testing Achievement System...\n');
+
+  // Initialize Supabase client
+  const supabase = createClient(
+    'https://unveoqnlqnobufhublyw.supabase.co',
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTAxNzI3NiwiZXhwIjoyMDcwNTkzMjc2fQ.CJxV14F0T2TWkAjeR4bpYiBIOwLwyfzF9WzAWwS99Xc'
+  );
+
+  const testEmail = 'benhowardmagic@hotmail.com';
+  const testPassword = 'Hello1!';
+
+  console.log('📋 Test 1: Check Database Structure');
+  // Check if all required achievements exist
+  const { data: achievements, error: achError } = await supabase
+    .from('achievements')
+    .select('key, name');
+
+  console.log('Available achievements:', achievements?.map(a => a.key));
+
+  console.log('\n📋 Test 2: Check User Profile');
+  // Get user info
+  const { data: users } = await supabase.auth.admin.listUsers();
+  const testUser = users.users.find(u => u.email === testEmail);
+
+  if (testUser) {
+    console.log('User found:', testUser.id);
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('kiosk_user_id, onboarding_complete')
+      .eq('user_id', testUser.id)
+      .single();
+
+    console.log('Profile:', profile);
+  }
+
+  console.log('\n📋 Test 3: Browser Test - Quiz Submission');
+  const browser = await chromium.launch({
+    headless: false,
+    slowMo: 500
+  });
+
+  const context = await browser.newContext();
+  const page = await context.newPage();
+
+  try {
+    // Login
+    await page.goto('http://127.0.0.1:58156/index.html');
+    await page.locator('#email').fill(testEmail);
+    await page.locator('input[type="password"]').fill(testPassword);
+    await page.click('button:has-text("Sign In")');
+    await page.waitForTimeout(2000);
+
+    // Navigate to quiz
+    await page.goto('http://127.0.0.1:58156/staff-quiz.html');
+    await page.waitForTimeout(2000);
+
+    // Check if achievements are displayed
+    console.log('\n📋 Test 4: Check Achievement Display on Homepage');
+    await page.goto('http://127.0.0.1:58156/staff.html');
+    await page.waitForTimeout(2000);
+
+    // Look for achievement cards
+    const achievementCards = await page.locator('.achievement-card').count();
+    console.log('Achievement cards visible:', achievementCards);
+
+    // Take screenshot
+    await page.screenshot({
+      path: 'achievement_test.png',
+      fullPage: true
+    });
+    console.log('Screenshot saved as achievement_test.png');
+
+  } catch (error) {
+    console.error('Browser test error:', error);
+  }
+
+  console.log('\n📋 Test 5: Check User Achievements in Database');
+  if (testUser) {
+    const { data: userAchievements } = await supabase
+      .from('user_achievements')
+      .select('achievement_key, status, unlocked_at')
+      .eq('user_id', testUser.id);
+
+    console.log('User achievements:', userAchievements);
+  }
+
+  await browser.close();
+
+  console.log('\n✅ Achievement System Test Complete!');
+  console.log('\nNext Steps:');
+  console.log('1. Run the SQL migrations in fix_achievements.sql');
+  console.log('2. Clear browser cache and refresh');
+  console.log('3. Try submitting a practice quiz');
+  console.log('4. Check if achievements appear on homepage');
+}
+
+// Run the test
+testAchievementSystem().catch(console.error);

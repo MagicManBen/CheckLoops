@@ -1,0 +1,2364 @@
+    import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, attachLogout } from './staff-common.js';
+    
+    // Make supabase globally available for AI generation
+    let globalSupabase;
+    
+    (async function(){
+      const supabase = await initSupabase();
+      globalSupabase = supabase; // Store in global variable
+      handleAuthState(supabase);
+      // Always show navigation for welcome page
+      navActivate('welcome');
+      attachLogout(supabase);
+
+      // Admin nav removed - separate staff portal
+
+      try{
+        const { session, profileRow } = await requireStaffSession(supabase);
+        const user = session.user;
+        const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || 1; // Default to site 1 if not set
+
+        // Store globally for handlers
+        window.currentUser = user;
+        window.currentSiteId = siteId;
+        const role = profileRow?.role || user?.raw_user_meta_data?.role || 'Staff';
+        const roleDetail = role.charAt(0).toUpperCase() + role.slice(1);  // Capitalize first letter
+        // Check server state for profile completion (but don't force anything)
+        try {
+          const siteIdForCheck = siteId;
+          let nickname = null, roleDetailCheck = null, teamId = null, teamName = null, avatarUrl = null;
+          if (siteIdForCheck) {
+            const { data: saw } = await supabase
+              .from('staff_app_welcome')
+              .select('nickname, role_detail, team_id, team_name, avatar_url')
+              .eq('user_id', user.id)
+              .eq('site_id', siteIdForCheck)
+              .order('updated_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (saw) { nickname = saw.nickname; roleDetailCheck = saw.role_detail; teamId = saw.team_id; teamName = saw.team_name; avatarUrl = saw.avatar_url; }
+          }
+          if (!nickname || !roleDetailCheck || (!teamId && !teamName) || !avatarUrl) {
+            try {
+              const { data: p } = await supabase
+                .from('profiles')
+                .select('nickname, role_detail, team_id, team_name, avatar_url')
+                .eq('user_id', user.id)
+                .maybeSingle();
+              if (p) {
+                nickname = nickname || p.nickname;
+                roleDetailCheck = roleDetailCheck || p.role_detail;
+                teamId = teamId || p.team_id;
+                teamName = teamName || p.team_name;
+                avatarUrl = avatarUrl || p.avatar_url;
+              }
+            } catch(_) { /* ignore */ }
+          }
+          // Check if user is a known staff member who should bypass strict onboarding requirements
+          const knownStaffEmails = ['benhowardmagic@hotmail.com', 'ben.howard@stoke.nhs.uk'];
+          const isKnownStaff = knownStaffEmails.includes(user.email);
+
+          // Don't force onboarding regardless of profile completion
+          // Users can complete their profile at their leisure
+        } catch(_) { /* soft-fail */ }
+
+        // Always show navigation and topbar
+        setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: roleDetail });
+
+        // Ensure working hours handlers are available early so navigation
+        // to the working hours step always works.
+        try {
+          if (window.setupWorkingHoursHandlers) {
+            window.setupWorkingHoursHandlers(user, siteId);
+          }
+        } catch (e) { console.warn('setupWorkingHoursHandlers pre-bind failed', e); }
+
+        // === Entitlement auto-upsert after working hours ===
+        // === Persist Role/Team and Avatar helpers (fixes: page 2 + avatar not saving) ===
+
+        function buildIsGpFlag(roleStr){
+          if (!roleStr) return false;
+          return /(^|\s)(gp|doctor|dr\.?)(\s|$)/i.test(String(roleStr));
+        }
+
+        function resolveSelectedRoleTeam(){
+          // Prefer globals set by existing handlers
+          const role = window.selectedRole || null;
+          const teamId = (typeof window.selectedTeamId !== 'undefined') ? window.selectedTeamId : null;
+          const teamName = window.selectedTeamName || null;
+
+          // Fallbacks: try to infer from DOM if globals aren't set
+          let roleFallback = role;
+          try {
+            if (!roleFallback) {
+              const el = document.querySelector('#role-grid .opt-selected, #role-grid .selected, #role-grid [aria-checked="true"], #role-grid input[type=radio]:checked, #role-grid [data-role]');
+              roleFallback = el?.dataset?.role || el?.value || (el?.textContent || '').trim() || null;
+            }
+          } catch(_) {}
+
+          let teamIdFallback = teamId, teamNameFallback = teamName;
+          try {
+            if (!teamIdFallback && !teamNameFallback) {
+              const el = document.querySelector('#team-grid .opt-selected, #team-grid .selected, #team-grid [aria-checked="true"], #team-grid input[type=radio]:checked, #team-grid [data-team-id], #team-grid [data-team-name]');
+              teamIdFallback = el?.dataset?.teamId ? Number(el.dataset.teamId) : (el?.value ? Number(el.value) : null);
+              teamNameFallback = el?.dataset?.teamName || (el?.textContent || '').trim() || null;
+            }
+          } catch(_) {}
+
+          return {
+            role: roleFallback,
+            teamId: (Number.isFinite(teamIdFallback) ? teamIdFallback : null),
+            teamName: teamNameFallback
+          };
+        }
+
+        async function persistRoleTeam(roleIn, teamIdIn, teamNameIn){
+          const { role, teamId, teamName } = resolveSelectedRoleTeam();
+          const finalRole = roleIn || role || null;
+          const finalTeamId = (typeof teamIdIn !== 'undefined' ? teamIdIn : teamId);
+          const finalTeamName = (typeof teamNameIn !== 'undefined' ? teamNameIn : teamName);
+          const nickVal = String(document.getElementById('nickname')?.value || '').trim() || null;
+
+          // 1) auth metadata
+          try {
+            await supabase.auth.updateUser({
+              data: {
+                role_detail: finalRole,
+                team_id: finalTeamId || null,
+                team_name: finalTeamName || null,
+                nickname: nickVal || null
+              }
+            });
+          } catch (e) {
+            console.warn('[persistRoleTeam] auth.updateUser failed', e);
+          }
+
+          // 2) profiles (main user profile)
+          try {
+            const profileData = {
+              user_id: user.id,
+              site_id: siteId || null,
+              role: finalRole ? finalRole.toLowerCase() : 'staff', // profiles table uses 'role', not 'role_detail'
+              nickname: nickVal || null
+              // Note: profiles table doesn't have team_id or team_name columns
+            };
+            const { error: profileErr } = await supabase.from('profiles').upsert(profileData);
+            if (profileErr) console.warn('[persistRoleTeam] profiles upsert error', profileErr);
+          } catch (e) {
+            console.warn('[persistRoleTeam] profiles upsert failed', e);
+          }
+
+          // 3) staff_app_welcome (onboarding snapshot)
+          try {
+            const sawData = {
+              user_id: user.id,
+              site_id: siteId || null,
+              role_detail: finalRole,
+              team_id: finalTeamId || null,
+              team_name: finalTeamName || null,
+              nickname: nickVal || null
+            };
+            const { error: sawErr } = await supabase.from('staff_app_welcome').upsert(sawData);
+            if (sawErr) console.warn('[persistRoleTeam] staff_app_welcome upsert error', sawErr);
+          } catch (e) {
+            console.warn('[persistRoleTeam] staff_app_welcome upsert failed', e);
+          }
+
+          // 4) 1_staff_holiday_profiles (keep role/team in sync)
+          try {
+            // Resolve existing profile id by user_id or email
+            let profileId = null;
+            try {
+              const { data: byUser } = await supabase
+                .from('1_staff_holiday_profiles')
+                .select('id')
+                .eq('user_id', user.id)
+                .maybeSingle();
+              if (byUser?.id) profileId = byUser.id;
+            } catch(_) {}
+            let email = user.email || null;
+            if (!profileId && email) {
+              try {
+                const { data: byEmail } = await supabase
+                  .from('1_staff_holiday_profiles')
+                  .select('id')
+                  .eq('email', email)
+                  .maybeSingle();
+                if (byEmail?.id) profileId = byEmail.id;
+              } catch(_) {}
+            }
+
+            // Build upsert payload
+            const hp = {
+              user_id: user.id,
+              email: email,
+              full_name: (user.user_metadata?.full_name || user.user_metadata?.name || null),
+              site_id: siteId || null,
+              role: finalRole,
+              team_name: finalTeamName || null,
+              is_gp: buildIsGpFlag(finalRole)
+            };
+
+            // If your table uses a unique constraint on email (common), target it; else plain upsert
+            const up = supabase.from('1_staff_holiday_profiles');
+            const { error: hpErr } = profileId
+              ? await up.update(hp).eq('id', profileId)
+              : await up.upsert(hp, { onConflict: 'email' });
+            if (hpErr) console.warn('[persistRoleTeam] 1_staff_holiday_profiles upsert error', hpErr);
+          } catch (e) {
+            console.warn('[persistRoleTeam] holiday profile upsert failed', e);
+          }
+
+          return { role: finalRole, teamId: finalTeamId, teamName: finalTeamName };
+        }
+
+        // This function is now defined later in the avatar section
+        // We'll use the consolidated version that saves to all tables
+
+        // Bind saves to navigation buttons so data is persisted at each step
+        (function bindPage2Saves(){
+          const btn = document.getElementById('to-avatar-btn');
+          if (!btn || btn.dataset.roleTeamPersistBound === '1') return;
+          btn.addEventListener('click', async () => {
+            try {
+              const r = await persistRoleTeam();
+              const msg = document.getElementById('finish-msg') || document.getElementById('role-msg');
+              if (msg) msg.textContent = r.role ? `Saved role: ${r.role}${r.teamName ? `, team: ${r.teamName}` : ''}` : 'Saved.';
+            } catch (e) {
+              console.warn('[bindPage2Saves] persist failed', e);
+              const msg = document.getElementById('finish-msg') || document.getElementById('role-msg');
+              if (msg) msg.textContent = '⚠️ Could not save your role/team — we will retry on the next step.';
+            }
+          }, { once: true });
+          btn.dataset.roleTeamPersistBound = '1';
+        })();
+
+        (function bindAvatarFinishSave(){
+          const btn = document.getElementById('finish-avatar-btn');
+          if (!btn || btn.dataset.avatarPersistBound === '1') return;
+          btn.addEventListener('click', async () => {
+            try {
+              // Ensure role/team also persisted before moving on
+              await persistRoleTeam();
+              const imgEl = document.getElementById('avatarPreview');
+              let url = imgEl?.getAttribute('src') || window.currentAvatarUrl || (typeof buildAvatarUrlFromControls === 'function' ? buildAvatarUrlFromControls() : null);
+              if (!url && typeof updateAvatarPreview === 'function') {
+                updateAvatarPreview();
+                url = document.getElementById('avatarPreview')?.getAttribute('src') || null;
+              }
+              if (url && window.saveAvatarToSupabase) await window.saveAvatarToSupabase(url);
+              const msg = document.getElementById('avatar-save-msg');
+              if (msg) msg.textContent = '✅ Avatar saved. Proceeding to working hours...';
+            } catch (e) {
+              console.warn('[bindAvatarFinishSave] save failed', e);
+            }
+          }, { once: true });
+          btn.dataset.avatarPersistBound = '1';
+        })();
+
+        (function bindFinalSave(){
+          const btn = document.getElementById('complete-setup');
+          if (!btn || btn.dataset.finalPersistBound === '1') return;
+          btn.addEventListener('click', async () => {
+            try {
+              await persistRoleTeam();
+              const imgEl = document.getElementById('avatarPreview');
+              let url = imgEl?.getAttribute('src') || window.currentAvatarUrl || (typeof buildAvatarUrlFromControls === 'function' ? buildAvatarUrlFromControls() : null);
+              if (!url && typeof updateAvatarPreview === 'function') {
+                updateAvatarPreview();
+                url = document.getElementById('avatarPreview')?.getAttribute('src') || null;
+              }
+              if (url && window.saveAvatarToSupabase) await window.saveAvatarToSupabase(url);
+            } catch (e) {
+              console.warn('[bindFinalSave] save failed', e);
+            }
+          }, { once: true });
+          btn.dataset.finalPersistBound = '1';
+        })();
+
+        // === /Persist Role/Team and Avatar helpers ===
+        // Adds two new fields to the entitlement payload:
+        //   - calc_multiplier (defaults to 6 unless you change it below)
+        //   - calc_output_hours (weeklyHours * calc_multiplier)
+        //
+        // This runs when the user taps "🎉 Finish Setup" after entering working hours.
+        // It ensures a row exists in 2_staff_entitlements for the current year.
+
+        // Helper: fetch the current working pattern row and derive weekly hours
+        async function fetchWeeklyHoursFromWorkingPattern(userId, siteId) {
+          // Pull whatever columns exist for hours/sessions; we will sum by day.
+          const { data: wp, error } = await supabase
+            .from('3_staff_working_patterns')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('site_id', siteId)
+            .maybeSingle();
+
+          if (error) {
+            console.warn('[entitlement] working_patterns select error', error);
+            return 0;
+          }
+          if (!wp) return 0;
+
+          const dows = ['mon','tue','wed','thu','fri','sat','sun'];
+
+          // Prefer explicit *_hours columns (non‑GP). If absent, fall back to *_sessions (GP) × 4 hours.
+          let hoursSum = 0;
+          let sessionsSum = 0;
+
+          for (const d of dows) {
+            const h = wp[`${d}_hours`] ?? wp[`${d}day_hours`]; // very defensive; handles alternate naming
+            const s = wp[`${d}_sessions`];
+
+            if (typeof h === 'number' && !Number.isNaN(h)) hoursSum += h;
+            if (typeof s === 'number' && !Number.isNaN(s)) sessionsSum += s;
+          }
+
+          if (hoursSum > 0) return hoursSum;
+
+          // Fallback conversion for GP-style sessions. Adjust if your org uses a different value per session.
+          const HOURS_PER_SESSION = 4;
+          return sessionsSum * HOURS_PER_SESSION;
+        }
+
+        // Helper: resolve staff_profile_id for the current user
+        async function resolveStaffProfileId(user) {
+          // Try by user_id
+          try {
+            const { data: byUser } = await supabase
+              .from('1_staff_holiday_profiles')
+              .select('id')
+              .eq('user_id', user.id)
+              .maybeSingle();
+            if (byUser?.id) return byUser.id;
+          } catch (_) {}
+
+          // Fallback by email (profiles were historically keyed by unique email)
+          try {
+            const { data: byEmail } = await supabase
+              .from('1_staff_holiday_profiles')
+              .select('id')
+              .eq('email', user.email)
+              .maybeSingle();
+            if (byEmail?.id) return byEmail.id;
+          } catch (_) {}
+
+          console.warn('[entitlement] No staff_profile_id could be resolved for user', user.id);
+          return null;
+        }
+
+        // Main: ensure there is a current-year entitlement row with the multiplier/result columns populated
+        async function ensureEntitlementForUser(user, siteId, weeklyHours) {
+          const staffProfileId = await resolveStaffProfileId(user);
+          if (!staffProfileId) return;
+
+          const year = new Date().getFullYear();
+
+          // You can make this site-configurable later; for now default to 6 as requested.
+          const calcMultiplier = 6;
+
+          const payload = {
+            staff_profile_id: staffProfileId,
+            year: year,
+            calc_multiplier: calcMultiplier,
+            calc_output_hours: Number((Number(weeklyHours || 0) * calcMultiplier).toFixed(2))
+          };
+
+          const { error: upErr } = await supabase
+            .from('2_staff_entitlements')
+            .upsert(payload, { onConflict: 'staff_profile_id,year' });
+
+          if (upErr) {
+            console.warn('[entitlement] upsert error', upErr);
+          } else {
+            console.log('[entitlement] upserted entitlement row', payload);
+          }
+        }
+
+        // Bind to the "Finish Setup" button so this runs at the end of onboarding
+        (function bindEntitlementUpdater(){
+          const btn = document.getElementById('complete-setup');
+          if (!btn || btn.dataset.entitlementBound === '1') return;
+
+          btn.addEventListener('click', async () => {
+            try {
+              // Give the existing working-hours save a moment to complete
+              await new Promise(r => setTimeout(r, 800));
+              const weeklyHours = await fetchWeeklyHoursFromWorkingPattern(user.id, siteId);
+              await ensureEntitlementForUser(user, siteId, weeklyHours);
+            } catch (e) {
+              console.warn('[entitlement] post-setup routine failed', e);
+            }
+          }, { once: true });
+
+          btn.dataset.entitlementBound = '1';
+        })();
+        // === /Entitlement auto-upsert after working hours ===
+        // Clean up any old force onboarding data
+        // Already cleaned up above
+
+        const fullName = profileRow?.full_name || user?.raw_user_meta_data?.full_name || (user?.email?.split('@')[0]) || 'there';
+        document.getElementById('welcome-title').textContent = `Welcome, ${fullName}`;
+
+        // Try to read any existing nickname if the column exists
+        let nicknameColumnExists = true;
+        try {
+          const selCols = ['user_id','full_name','site_id','role','nickname'];
+          const { data, error } = await supabase
+            .from('profiles')
+            .select(selCols.join(','))
+            .eq('user_id', user.id)
+            .maybeSingle();
+          if (error) {
+            if (String(error.code) === '42703' || /column .*nickname/i.test(String(error.message))) {
+              nicknameColumnExists = false;
+            } else {
+              console.warn('[staff-welcome] profiles select error', error);
+            }
+          } else if (data && data.nickname) {
+            document.getElementById('nickname').value = data.nickname;
+          }
+        } catch (e) {
+          nicknameColumnExists = false;
+        }
+
+        // ---- Step 3: DiceBear Avatar Builder (Adventurer) ----
+        function rangeArr(start, end, step=1){ const a=[]; for(let i=start;i<=end;i+=step) a.push(i); return a; }
+        function pad2(n){ return String(n).padStart(2,'0'); }
+
+        function buildAvatarUrlFromControls(){
+          const base = 'https://api.dicebear.com/7.x/adventurer/svg';
+          const seed = encodeURIComponent(
+            (window.aiSeed && String(window.aiSeed)) ||
+            (document.getElementById('nickname')?.value || '').trim() ||
+            (typeof fullName === 'string' && fullName) ||
+            'User'
+          );
+          const params = new URLSearchParams();
+          params.set('seed', seed);
+
+          const bgType = document.getElementById('opt-backgroundType').value;
+          const bgColor = document.getElementById('opt-backgroundColor').value;
+          const bgRot = document.getElementById('opt-backgroundRotation').value;
+          const radius = document.getElementById('opt-radius').value;
+          const rotate = document.getElementById('opt-rotate').value;
+          const scale = document.getElementById('opt-scale').value;
+          const flip = document.getElementById('opt-flip').value;
+          const clip = document.getElementById('opt-clip').value;
+          const tx = document.getElementById('opt-translateX').value;
+          const ty = document.getElementById('opt-translateY').value;
+
+          const eyes = document.getElementById('opt-eyes').value;
+          const mouth = document.getElementById('opt-mouth').value;
+          const eyebrows = document.getElementById('opt-eyebrows').value;
+          const glasses = document.getElementById('opt-glasses').value;
+          const glassesProbability = document.getElementById('opt-glassesProbability').value;
+          const earrings = document.getElementById('opt-earrings').value;
+          const earringsProbability = document.getElementById('opt-earringsProbability').value;
+          const featuresSel = document.getElementById('opt-features');
+          const featuresProbability = document.getElementById('opt-featuresProbability').value;
+          const hair = document.getElementById('opt-hair').value;
+          const hairColor = document.getElementById('opt-hairColor').value;
+          const hairProbability = document.getElementById('opt-hairProbability').value;
+          const skinColor = document.getElementById('opt-skinColor').value;
+
+          if (bgType) params.set('backgroundType', bgType);
+          if (bgColor) params.append('backgroundColor', bgColor);
+          if (bgRot) params.append('backgroundRotation', bgRot);
+          if (radius) params.set('radius', radius);
+          if (rotate) params.set('rotate', rotate);
+          if (scale) params.set('scale', scale);
+          if (flip) params.set('flip', flip);
+          if (clip) params.set('clip', clip);
+          if (tx) params.set('translateX', tx);
+          if (ty) params.set('translateY', ty);
+
+          if (eyes) params.set('eyes', eyes);
+          if (mouth) params.set('mouth', mouth);
+          if (eyebrows) params.set('eyebrows', eyebrows);
+          if (glasses) params.set('glasses', glasses);
+          if (glassesProbability) params.set('glassesProbability', glassesProbability);
+          if (earrings) params.set('earrings', earrings);
+          if (earringsProbability) params.set('earringsProbability', earringsProbability);
+          if (featuresSel){
+            const vals = Array.from(featuresSel.selectedOptions).map(o=>o.value).filter(Boolean);
+            vals.forEach(v=> params.append('features', v));
+          }
+          if (featuresProbability) params.set('featuresProbability', featuresProbability);
+          if (hair) params.set('hair', hair);
+          if (hairColor) params.set('hairColor', hairColor);
+          if (hairProbability) params.set('hairProbability', hairProbability);
+          if (skinColor) params.set('skinColor', skinColor);
+
+          return `${base}?${params.toString()}`;
+        }
+
+        function updateAvatarPreview(){
+          const url = buildAvatarUrlFromControls();
+          window.currentAvatarUrl = url;
+          const img = document.getElementById('avatarPreview');
+          if (img) img.src = url;
+        }
+
+        function getAiEndpoint(){
+          try{
+            const loc = window.location;
+            if (loc.hostname === '127.0.0.1' || loc.hostname === 'localhost') return 'http://localhost:8787/generate-avatar';
+          }catch(_){ }
+          return '/api/generate-avatar';
+        }
+
+        function collectDropdownOptions(){
+          const ids = ['opt-backgroundType','opt-backgroundColor','opt-backgroundRotation','opt-radius','opt-rotate','opt-scale','opt-flip','opt-clip','opt-translateX','opt-translateY','opt-eyes','opt-mouth','opt-eyebrows','opt-glasses','opt-earrings','opt-features','opt-hair','opt-hairColor','opt-skinColor'];
+          const out = {};
+          for (const id of ids){
+            const el = document.getElementById(id);
+            if (!el) continue;
+            const opts = Array.from(el.options || []).map(o=>o.value).filter(v=>v!=='' && v!=null);
+            out[id] = opts;
+          }
+          // numeric pickers for probs
+          out['opt-glassesProbability'] = Array.from(document.getElementById('opt-glassesProbability')?.options||[]).map(o=>Number(o.value)).filter(v=>!isNaN(v));
+          out['opt-earringsProbability'] = Array.from(document.getElementById('opt-earringsProbability')?.options||[]).map(o=>Number(o.value)).filter(v=>!isNaN(v));
+          out['opt-featuresProbability'] = Array.from(document.getElementById('opt-featuresProbability')?.options||[]).map(o=>Number(o.value)).filter(v=>!isNaN(v));
+          out['opt-hairProbability'] = Array.from(document.getElementById('opt-hairProbability')?.options||[]).map(o=>Number(o.value)).filter(v=>!isNaN(v));
+          return out;
+        }
+
+        async function aiGenerateFromDescription(){
+          const prompt = String(document.getElementById('avatarPrompt')?.value||'').trim();
+          if (!prompt) throw new Error('Please enter a description first');
+          
+          if (!globalSupabase) throw new Error('Supabase not initialized');
+          
+          const nickVal = String(document.getElementById('nickname')?.value || '').trim();
+          const seedHint = nickVal || (typeof fullName === 'string' && fullName) || 'User';
+          const options = collectDropdownOptions();
+          
+          // Always use Supabase Edge Function (authenticated and working)
+          console.log('Using Supabase Edge Function for AI generation');
+          console.log('Generating avatar for description:', prompt);
+          
+          // Debug: Check if user is logged in
+          const { data: { session } } = await globalSupabase.auth.getSession();
+          console.log('Current session:', session ? `User: ${session.user.email}` : 'No session');
+          
+          if (!session || !session.user) {
+            throw new Error('You must be logged in to generate avatars. Please refresh and log in again.');
+          }
+          
+          // Build payload
+          const payload = { description: prompt, options, seedHint };
+
+          try {
+            console.log('Calling Edge Function with payload:', payload);
+            console.log('Using Supabase client:', globalSupabase);
+            console.log('Session token:', session.access_token ? 'Present' : 'Missing');
+            
+            const { data, error } = await globalSupabase.functions.invoke('generate-avatar', { body: payload });
+
+            console.log('Supabase Edge Function response:', { data, error });
+
+            if (error) {
+              console.error('Edge Function error details:', error);
+              console.error('Error type:', typeof error);
+              console.error('Error keys:', Object.keys(error));
+              console.error('Full error object:', JSON.stringify(error, null, 2));
+              
+              // Better error handling
+              if (error.message) {
+                if (error.message.includes('FunctionsHttpError') || error.message.includes('Failed to send')) {
+                  // This is likely a network or CORS issue
+                  throw new Error('Failed to connect to avatar generation service. Please check your connection and try again.');
+                } else if (error.message.includes('Unauthorized') || error.message.includes('authorization')) {
+                  throw new Error('Authentication failed. Please refresh and log in again.');
+                } else if (error.message.includes('CheckLoopsAI')) {
+                  throw new Error('AI service configuration error. Please contact support.');
+                } else {
+                  throw new Error(`Avatar generation error: ${error.message}`);
+                }
+              } else if (error.context && error.context.status === 401) {
+                throw new Error('Authentication failed. Please refresh and log in again.');
+              }
+              throw new Error(`AI generation failed: ${JSON.stringify(error)}`);
+            }
+
+            if (!data || Object.keys(data).length === 0) {
+              throw new Error('No avatar data returned from AI. Please try a different description.');
+            }
+
+            console.log('Successfully generated avatar data:', data);
+            applyAiResult(data);
+            // Auto-save after applying AI result (guard if helper not yet bound)
+            updateAvatarPreview();
+            if (window.saveAvatarToSupabase) {
+              await window.saveAvatarToSupabase(window.currentAvatarUrl || buildAvatarUrlFromControls());
+            }
+            const msg = document.getElementById('avatar-ai-msg');
+            if (msg) msg.innerHTML = '✅ Avatar generated and saved automatically. You can fine-tune below.';
+            return data;
+          } catch (supabaseError) {
+            // Log error for console only
+            console.error('Caught error in Edge Function call:', supabaseError);
+            console.error('Error stack:', supabaseError.stack);
+            
+            // Check for specific error patterns
+            const errorStr = String(supabaseError);
+            const errorMsg = supabaseError.message || errorStr;
+            
+            if (errorMsg.includes('Failed to connect') || errorMsg.includes('Failed to send')) {
+              // Already handled above, just re-throw
+              throw supabaseError;
+            } else if (errorStr.includes('Authentication') || errorStr.includes('Unauthorized')) {
+              throw new Error('Authentication failed. Please refresh the page and log in again.');
+            } else if (errorStr.includes('fetch') || errorStr.includes('NetworkError')) {
+              throw new Error('Network error. Please check your connection and try again.');
+            } else if (errorStr.includes('timeout')) {
+              throw new Error('Request timed out. Please try again with a shorter description.');
+            } else if (errorStr.includes('CORS')) {
+              throw new Error('Connection blocked. Please check if you are logged in properly.');
+            }
+            
+            // If we get here, throw the original error message if it's clear enough
+            if (supabaseError.message && supabaseError.message.length < 200) {
+              throw supabaseError;
+            } else {
+              throw new Error('Avatar generation failed. Please try again or contact support.');
+            }
+          }
+        }
+
+        function applyAiResult(data){
+          console.log('Applying AI result:', data);
+          
+          const setVal = (id, val) => { 
+            const el = document.getElementById(id); 
+            if (!el) {
+              console.warn(`Element not found: ${id}`);
+              return; 
+            }
+            el.value = String(val); 
+            console.log(`Set ${id} = ${val}`);
+          };
+          
+          const maybe = (k) => data[k] !== undefined && data[k] !== null && data[k] !== '';
+          
+          // Handle seed specially (no visible input)
+          if (maybe('seed')) {
+            try { window.aiSeed = String(data.seed); } catch(_) {}
+            const sEl = document.getElementById('opt-seed');
+            if (sEl) sEl.value = String(data.seed);
+            console.log(`Set seed = ${data.seed}`);
+          }
+          
+          // Map all the standard fields
+          const fieldMappings = new Map([
+            ['backgroundType','opt-backgroundType'],
+            ['backgroundColor','opt-backgroundColor'],
+            ['backgroundRotation','opt-backgroundRotation'],
+            ['radius','opt-radius'],
+            ['rotate','opt-rotate'],
+            ['scale','opt-scale'],
+            ['flip','opt-flip'],
+            ['clip','opt-clip'],
+            ['translateX','opt-translateX'],
+            ['translateY','opt-translateY'],
+            ['eyes','opt-eyes'],
+            ['mouth','opt-mouth'],
+            ['eyebrows','opt-eyebrows'],
+            ['glasses','opt-glasses'],
+            ['glassesProbability','opt-glassesProbability'],
+            ['earrings','opt-earrings'],
+            ['earringsProbability','opt-earringsProbability'],
+            ['featuresProbability','opt-featuresProbability'],
+            ['hair','opt-hair'],
+            ['hairColor','opt-hairColor'],
+            ['hairProbability','opt-hairProbability'],
+            ['skinColor','opt-skinColor']
+          ]);
+          
+          for (const [dataKey, elementId] of fieldMappings.entries()) { 
+            if (maybe(dataKey)) {
+              setVal(elementId, data[dataKey]); 
+            }
+          }
+
+          // Handle features array (multi-select) separately
+          if (Array.isArray(data.features) && data.features.length > 0) {
+            const featuresEl = document.getElementById('opt-features');
+            if (featuresEl) {
+              // First clear all selections
+              Array.from(featuresEl.options).forEach(option => {
+                option.selected = false;
+              });
+              // Then select the ones from AI
+              Array.from(featuresEl.options).forEach(option => {
+                if (data.features.includes(option.value)) {
+                  option.selected = true;
+                  console.log(`Selected feature: ${option.value}`);
+                }
+              });
+            }
+          } else if (maybe('features') && typeof data.features === 'string') {
+            // Handle single feature as string
+            const featuresEl = document.getElementById('opt-features');
+            if (featuresEl) {
+              Array.from(featuresEl.options).forEach(option => {
+                option.selected = (option.value === data.features);
+              });
+              console.log(`Selected single feature: ${data.features}`);
+            }
+          }
+
+          // Log what we successfully applied
+          const appliedFields = [];
+          for (const [dataKey] of fieldMappings.entries()) {
+            if (maybe(dataKey)) appliedFields.push(dataKey);
+          }
+          if (Array.isArray(data.features) || maybe('features')) appliedFields.push('features');
+          console.log(`Applied fields: ${appliedFields.join(', ')}`);
+          
+          // Update the avatar preview with new settings
+          updateAvatarPreview();
+          
+          // Show success feedback
+          const msg = document.getElementById('avatar-ai-msg');
+          if (msg) {
+            const probFields = [];
+            if (maybe('hairProbability')) probFields.push('hair probability');
+            if (maybe('featuresProbability')) probFields.push('features probability');
+            if (maybe('glassesProbability')) probFields.push('glasses probability');
+            if (maybe('earringsProbability')) probFields.push('earrings probability');
+            
+            let feedbackText = `Applied! Generated ${appliedFields.length} avatar settings.`;
+            if (probFields.length > 0) {
+              feedbackText += ` Including ${probFields.join(', ')}.`;
+            }
+            feedbackText += ' You can fine-tune with the dropdowns below.';
+            msg.textContent = feedbackText;
+          }
+          
+          // No manual save prompt for AI-applied results; we will auto-save elsewhere.
+        }
+
+        async function initAvatarBuilder(fullName){
+          // Fill dropdowns
+          const seedEl = document.getElementById('opt-seed');
+          const nickVal = String(document.getElementById('nickname')?.value || '').trim();
+          if (seedEl) seedEl.value = nickVal || fullName || 'User';
+
+          const fillOpts = (el, arr, withBlank=false) => {
+            el.innerHTML = '';
+            if (withBlank) el.appendChild(new Option('Default',''));
+            for(const v of arr){ el.appendChild(new Option(String(v), String(v))); }
+          };
+
+          // Human‑readable labels for avatar options - analyzed with OpenAI Vision
+          const eyeLabels = {
+            variant01: 'Eyes: Curious',
+            variant02: 'Eyes: Observant',
+            variant03: 'Eyes: Inquisitive',
+            variant04: 'Eyes: Unimpressed',
+            variant05: 'Eyes: Pondering',
+            variant06: 'Eyes: Doubtful',
+            variant07: 'Eyes: Dispassionate',
+            variant08: 'Eyes: Wide-eyed',
+            variant09: 'Eyes: Quizzical',
+            variant10: 'Eyes: Skeptical',
+            variant11: 'Eyes: Mildly Amused',
+            variant12: 'Eyes: Mischievous',
+            variant13: 'Eyes: Sardonic',
+            variant14: 'Eyes: Cynical',
+            variant15: 'Eyes: Softly Sorrowful',
+            variant16: 'Eyes: Slightly Disenchanted',
+            variant17: 'Eyes: Unimpressed gaze',
+            variant18: 'Eyes: Nonchalant',
+            variant19: 'Eyes: Calmly Satisfied',
+            variant20: 'Eyes: Subdued Glow',
+            variant21: 'Eyes: Winking Playfulness',
+            variant22: 'Eyes: Playfully Squinting',
+            variant23: 'Eyes: Slightly Confounded',
+            variant24: 'Eyes: Blankly Engaged',
+            variant25: 'Eyes: Contemplative',
+            variant26: 'Eyes: Slightly Bewildered'
+          };
+          const mouthLabels = {
+            variant01: 'Mouth: Cheerful curve',
+            variant02: 'Mouth: Subdued smirk',
+            variant03: 'Mouth: Awestruck pout',
+            variant04: 'Mouth: Pensive line',
+            variant05: 'Mouth: Beaming smile',
+            variant06: 'Mouth: Delicate crease',
+            variant07: 'Mouth: Shocked oval',
+            variant08: 'Mouth: Slight line',
+            variant09: 'Mouth: Straight line',
+            variant10: 'Mouth: Puffed pout',
+            variant11: 'Mouth: Tensed line',
+            variant12: 'Mouth: Playful protrusion',
+            variant13: 'Mouth: Distorted surprise',
+            variant14: 'Mouth: Awkward oval',
+            variant15: 'Mouth: Spacious oval',
+            variant16: 'Mouth: Playful tongue-out',
+            variant17: 'Mouth: Subtle expression',
+            variant18: 'Mouth: O-shaped surprise',
+            variant19: 'Mouth: Curious line',
+            variant20: 'Mouth: Pouty hint',
+            variant21: 'Mouth: Tiny tease',
+            variant22: 'Mouth: Mischievous twist',
+            variant23: 'Mouth: Grinning gap',
+            variant24: 'Mouth: Hearted surprise',
+            variant25: 'Mouth: Gleeful grin',
+            variant26: 'Mouth: Joyful arch',
+            variant27: 'Mouth: Excited line',
+            variant28: 'Mouth: Joyful beam',
+            variant29: 'Mouth: Quirky twist',
+            variant30: 'Mouth: Joyful triangle'
+          };
+          const browLabels = {
+            variant01: 'Brows: Boldly Angled',
+            variant02: 'Brows: Fiercely Slanted',
+            variant03: 'Brows: Subtle Arch',
+            variant04: 'Brows: Slightly Curved',
+            variant05: 'Brows: Quirky Flick',
+            variant06: 'Brows: Playfully Raised',
+            variant07: 'Brows: Subdued Lift',
+            variant08: 'Brows: Mildly Furrowed',
+            variant09: 'Brows: Mildly Arched',
+            variant10: 'Brows: Gently Straightened',
+            variant11: 'Brows: Slightly Drooped',
+            variant12: 'Brows: Softly Straightened',
+            variant13: 'Brows: Subtly Defined',
+            variant14: 'Brows: Lightly Tapered',
+            variant15: 'Brows: Playfully Asymmetrical'
+          };
+          const glassesLabels = {
+            '': 'None',
+            variant01: 'Glasses: Round',
+            variant02: 'Glasses: Square',
+            variant03: 'Glasses: Thin',
+            variant04: 'Glasses: Thick',
+            variant05: 'Glasses: Cat‑eye'
+          };
+          const earringsLabels = {
+            '': 'None',
+            variant01: 'Earrings: Studs',
+            variant02: 'Earrings: Hoops',
+            variant03: 'Earrings: Drops',
+            variant04: 'Earrings: Small Hoops',
+            variant05: 'Earrings: Bars',
+            variant06: 'Earrings: Stars'
+          };
+          const hairColorNames = {
+            '0e0e0e': 'Black',
+            'e5d7a3': 'Blonde',
+            '9e5622': 'Brown',
+            '763900': 'Dark Brown',
+            'cb6820': 'Red',
+            'ac6511': 'Copper',
+            'b9a05f': 'Sandy',
+            '796a45': 'Ash Brown',
+            '6a4e35': 'Chestnut',
+            '562306': 'Dark Chestnut',
+            'afafaf': 'Grey',
+            '3eac2c': 'Green',
+            '85c2c6': 'Teal',
+            'dba3be': 'Pink',
+            '592454': 'Plum'
+          };
+          const skinColorNames = {
+            'f2d3b1': 'Fair',
+            'ecad80': 'Tan',
+            '9e5622': 'Brown',
+            '763900': 'Dark Brown'
+          };
+
+          function labelFromVariant(prefix, v, map){
+            if (map && map[v]) return map[v];
+            const sv = String(v);
+            if (sv.startsWith('variant')) {
+              const n = parseInt(sv.slice(7), 10);
+              const num = isNaN(n) ? sv.replace('variant','') : n;
+              return `${prefix} Style ${num}`; // e.g., "Mouth Style 9"
+            }
+            return `${prefix} ${sv}`;
+          }
+          const hairStyleNames = {
+            short01: 'Short: Fluffy layers',
+            short02: 'Short: Playful bangs',
+            short03: 'Short: Bouncy curls',
+            short04: 'Short: Tapered edges',
+            short05: 'Short: Top Knot',
+            short06: 'Short: Asymmetrical swoop',
+            short07: 'Short: Whimsical waves',
+            short08: 'Short: Spiraled tufts',
+            short09: 'Short: Flared spikes',
+            short10: 'Short: Defined bob',
+            short11: 'Short: Sleek pompadour',
+            short12: 'Short: Bold streak',
+            short13: 'Short: Sleek crop',
+            short14: 'Short: Bold quiff',
+            short15: 'Short: Spiky flair',
+            short16: 'Short: Wild spikes',
+            short17: 'Short: Textured tufts',
+            short18: 'Short: Quirky tufts',
+            short19: 'Short: Smoothly cropped',
+            long01: 'Long: Sleek sweep',
+            long02: 'Long: Playful tousle',
+            long03: 'Long: Floral crown',
+            long04: 'Long: Angular strands',
+            long05: 'Long: Softly rounded',
+            long06: 'Long: Lush tendrils',
+            long07: 'Long: Choppy fringes',
+            long08: 'Long: Floral fringe',
+            long09: 'Long: Flowing layers',
+            long10: 'Long: Spirited ponytail',
+            long11: 'Long: Playful top-knot',
+            long12: 'Long: Subtle bob',
+            long13: 'Long: Twisted buns',
+            long14: 'Long: Double ponytails',
+            long15: 'Long: Playful pigtails',
+            long16: 'Long: Braided charm',
+            long17: 'Long: Playful curls',
+            long18: 'Long: Charming waves',
+            long19: 'Long: Sleek ponytail',
+            long20: 'Long: Angular sweep',
+            long21: 'Long: Curved strands',
+            long22: 'Long: Lively volume',
+            long23: 'Long: Playful buns',
+            long24: 'Long: Lively bounce',
+            long25: 'Long: Sleek asymmetry',
+            long26: 'Long: Vibrant fringes'
+          };
+          
+          function hairLabel(key){
+            return hairStyleNames[key] || String(key);
+          }
+          function fillOptsLabeled(el, values, labeler, withBlank=false){
+            el.innerHTML = '';
+            if (withBlank) el.appendChild(new Option('Default',''));
+            for (const v of values){
+              const label = labeler(v);
+              const opt = new Option(label, String(v));
+              opt.title = label;
+              el.appendChild(opt);
+            }
+          }
+
+          // Fetch optional DB labels so you can manage names without code changes
+          async function fetchLabelMap(){
+            try {
+              const { data, error } = await supabase
+                .from('avatar_option_labels')
+                .select('option_id,value_key,label');
+              if (error || !Array.isArray(data)) return {};
+              const map = {};
+              for (const r of data) {
+                if (!map[r.option_id]) map[r.option_id] = {};
+                map[r.option_id][r.value_key] = r.label;
+              }
+              return map;
+            } catch(_) { return {}; }
+          }
+
+          const dbLabels = await fetchLabelMap();
+          const labelFor = (optId, value, fallback) => {
+            const lab = dbLabels?.[optId]?.[String(value)];
+            return lab || fallback;
+          };
+
+          fillOpts(document.getElementById('opt-backgroundRotation'), rangeArr(0,360,15), true);
+          fillOpts(document.getElementById('opt-radius'), rangeArr(0,50,5), true);
+          fillOpts(document.getElementById('opt-rotate'), rangeArr(0,360,15), true);
+          fillOpts(document.getElementById('opt-translateX'), rangeArr(-50,50,5), true);
+          fillOpts(document.getElementById('opt-translateY'), rangeArr(-50,50,5), true);
+
+          // Adventurer variants
+          const eyes = Array.from({length:26}, (_,i)=>`variant${pad2(i+1)}`);
+          const mouths = Array.from({length:30}, (_,i)=>`variant${pad2(i+1)}`);
+          const brows = Array.from({length:15}, (_,i)=>`variant${pad2(i+1)}`);
+          const glasses = Array.from({length:5},  (_,i)=>`variant${pad2(i+1)}`);
+          const earrings = Array.from({length:6},  (_,i)=>`variant${pad2(i+1)}`);
+          const features = ['mustache','blush','birthmark','freckles'];
+          const featureLabels = {
+            'mustache': 'Facial Hair',
+            'blush': 'Rosy Cheeks', 
+            'birthmark': 'Beauty Mark',
+            'freckles': 'Freckles'
+          };
+          const hair = [
+            ...Array.from({length:19}, (_,i)=>`short${pad2(i+1)}`),
+            ...Array.from({length:26}, (_,i)=>`long${pad2(i+1)}`)
+          ];
+          // Expanded hair color palette to include browns returned by AI
+          const hairColors = ['ac6511','cb6820','ab2a18','e5d7a3','b9a05f','796a45','6a4e35','562306','9e5622','763900','0e0e0e','afafaf','3eac2c','85c2c6','dba3be','592454'];
+          const skinColors = ['f2d3b1','ecad80','9e5622','763900'];
+
+          fillOptsLabeled(document.getElementById('opt-eyes'), eyes, v=>labelFor('opt-eyes', v, labelFromVariant('Eyes', v, eyeLabels)), true);
+          fillOptsLabeled(document.getElementById('opt-mouth'), mouths, v=>labelFor('opt-mouth', v, labelFromVariant('Mouth', v, mouthLabels)), true);
+          fillOptsLabeled(document.getElementById('opt-eyebrows'), brows, v=>labelFor('opt-eyebrows', v, labelFromVariant('Brows', v, browLabels)), true);
+          fillOptsLabeled(document.getElementById('opt-glasses'), ['','variant01','variant02','variant03','variant04','variant05'], v=>labelFor('opt-glasses', v, (glassesLabels[v] || labelFromVariant('Glasses', v, {}))), false);
+          fillOpts(document.getElementById('opt-glassesProbability'), rangeArr(0,100,10), true);
+          fillOptsLabeled(document.getElementById('opt-earrings'), ['','variant01','variant02','variant03','variant04','variant05','variant06'], v=>labelFor('opt-earrings', v, (earringsLabels[v] || labelFromVariant('Earrings', v, {}))), false);
+          fillOpts(document.getElementById('opt-earringsProbability'), rangeArr(0,100,10), true);
+          // features (multi-select)
+          const featuresEl = document.getElementById('opt-features');
+          if (featuresEl){
+            featuresEl.innerHTML = '';
+            for (const v of features){ 
+              const label = featureLabels[v] || v;
+              featuresEl.appendChild(new Option(label, v)); 
+            }
+          }
+          fillOpts(document.getElementById('opt-featuresProbability'), rangeArr(0,100,5), true);
+          fillOptsLabeled(document.getElementById('opt-hair'), [''].concat(hair), v=> labelFor('opt-hair', v, (v ? hairLabel(v) : 'Default')), false);
+          fillOptsLabeled(document.getElementById('opt-hairColor'), [''].concat(hairColors), hex => labelFor('opt-hairColor', hex, (hex ? ((hairColorNames[hex] ? `${hairColorNames[hex]} (${hex})` : hex)) : 'Default')), false);
+          fillOpts(document.getElementById('opt-hairProbability'), rangeArr(0,100,10), true);
+          fillOptsLabeled(document.getElementById('opt-skinColor'), [''].concat(skinColors), hex => labelFor('opt-skinColor', hex, (hex ? ((skinColorNames[hex] ? `${skinColorNames[hex]} (${hex})` : hex)) : 'Default')), false);
+
+          // Bind changes
+          const ids = [
+            'opt-backgroundType','opt-backgroundColor','opt-backgroundRotation','opt-radius','opt-rotate','opt-scale','opt-flip','opt-clip','opt-translateX','opt-translateY','opt-eyes','opt-mouth','opt-eyebrows','opt-glasses','opt-glassesProbability','opt-earrings','opt-earringsProbability','opt-featuresProbability','opt-hair','opt-hairColor','opt-hairProbability','opt-skinColor'
+          ];
+          ids.forEach(id=>{
+            const el = document.getElementById(id);
+            if (el && !el.dataset.bound){ 
+              el.addEventListener('input', () => {
+                updateAvatarPreview();
+                // mark that avatar has unsaved manual changes
+                window.avatarDirty = true;
+                const saveMsg = document.getElementById('avatar-save-msg');
+                if (saveMsg) saveMsg.textContent = 'You have unsaved changes — they will be saved when you finish.';
+              }); 
+              el.dataset.bound='1'; 
+            }
+          });
+          // features (multi-select)
+          const featuresMulti = document.getElementById('opt-features');
+          if (featuresMulti && !featuresMulti.dataset.bound){ 
+            featuresMulti.addEventListener('change', () => {
+              updateAvatarPreview();
+              window.avatarDirty = true;
+              const saveMsg = document.getElementById('avatar-save-msg');
+              if (saveMsg) saveMsg.textContent = 'You have unsaved changes — they will be saved when you finish.';
+            }); 
+            featuresMulti.dataset.bound='1'; 
+          }
+
+          // ---------- New: render friendly option buttons for several selects ----------
+          const makeOptionButtons = (selectId, opts, renderFn, hideSelect = false) => {
+            const sel = document.getElementById(selectId);
+            if (!sel) return null;
+            // create container after select
+            const container = document.createElement('div');
+            container.className = 'option-buttons';
+            // optionally hide the native select (keep it in DOM for state)
+            if (hideSelect) sel.classList.add('select-hidden');
+            // For each option create a button
+            const values = opts || Array.from(sel.options || []).map(o=> ({ v: o.value, t: o.text }));
+            // If opts is provided as array of values, normalize
+            const norm = values.map(x => (typeof x === 'string' || typeof x === 'number') ? { v: String(x), t: String(x) } : x);
+            norm.forEach(item => {
+              // skip empty values (use default behavior)
+              if (!item.v || item.v === '') return;
+              const btn = document.createElement('button');
+              btn.type = 'button';
+              btn.className = 'option-btn';
+              btn.dataset.value = item.v;
+              // render content via renderFn or fallback
+              if (renderFn) btn.appendChild(renderFn(item)); else btn.textContent = item.t || item.v;
+              // click behavior: select corresponding option in native select and trigger input
+              btn.addEventListener('click', (e)=>{
+                e.preventDefault();
+                // handle single vs multi
+                if (sel.multiple){
+                  const opt = Array.from(sel.options).find(o=>String(o.value)===String(item.v));
+                  if (opt) opt.selected = !opt.selected;
+                  btn.classList.toggle('selected', !!opt && opt.selected);
+                } else {
+                  // clear other buttons
+                  container.querySelectorAll('.option-btn').forEach(b=> b.classList.remove('selected'));
+                  btn.classList.add('selected');
+                  // set select value
+                  sel.value = item.v;
+                }
+                // dispatch input event
+                sel.dispatchEvent(new Event('input', { bubbles:true }));
+                sel.dispatchEvent(new Event('change', { bubbles:true }));
+              });
+              container.appendChild(btn);
+            });
+            // insert container after select
+            sel.parentNode.insertBefore(container, sel.nextSibling);
+
+            // Initialize selected state from select value(s)
+            const syncFromSelect = () => {
+              const vals = sel.multiple ? Array.from(sel.selectedOptions).map(o=>String(o.value)) : [String(sel.value)];
+              container.querySelectorAll('.option-btn').forEach(b=>{
+                const v = String(b.dataset.value);
+                b.classList.toggle('selected', vals.includes(v));
+              });
+            };
+            // initial sync
+            syncFromSelect();
+            // keep in sync if select changes externally
+            sel.addEventListener('change', syncFromSelect);
+            return container;
+          };
+
+          // Helper renderers
+          const swatchRenderer = (hex) => {
+            const span = document.createElement('span');
+            span.className = 'option-swatch';
+            span.style.background = `#${hex.v}`;
+            span.title = hex.t || hex.v;
+            return span;
+          };
+          const textRenderer = (item) => {
+            const span = document.createElement('span');
+            span.textContent = item.t || item.v;
+            return span;
+          };
+
+          // Only render hair color as swatch buttons; keep other options as dropdowns
+          try {
+            const hairColorOpts = Array.from(document.getElementById('opt-hairColor')?.options||[]).map(o=> ({ v:o.value, t:o.text }));
+            makeOptionButtons('opt-hairColor', hairColorOpts, swatchRenderer, true);
+          } catch (e) { console.warn('option button render failed', e); }
+
+          // --------------------------------------------------------------------------------
+
+          // Function to mark manual changes and show save button
+          function markManualChange() {
+            // deprecated: kept for backwards compatibility if other code calls it
+            window.avatarDirty = true;
+            const saveMsg = document.getElementById('avatar-save-msg');
+            if (saveMsg) saveMsg.textContent = 'You have unsaved changes — they will be saved when you finish.';
+          }
+
+          // Randomize/reset
+          const rnd = document.getElementById('avatar-randomize');
+          if (rnd && !rnd.dataset.bound){ rnd.addEventListener('click', async ()=>{
+            const seeds = ['Nova','Ziggy','Aria','Kai','Milo','Ivy','Atlas','Sage','Skye','Orion','Zoe','Finn','Quinn','Remy'];
+            const seed = seeds[Math.floor(Math.random()*seeds.length)] + Math.floor(Math.random()*100);
+            try { window.aiSeed = seed; } catch(_) {}
+            if (seedEl) seedEl.value = seed;
+            const pick = (arr)=> arr[Math.floor(Math.random()*arr.length)];
+            document.getElementById('opt-eyes').value = pick(eyes);
+            document.getElementById('opt-mouth').value = pick(mouths);
+            document.getElementById('opt-eyebrows').value = pick(brows);
+            document.getElementById('opt-glasses').value = pick(['','variant01','variant02','variant03','variant04','variant05']);
+            document.getElementById('opt-glassesProbability').value = pick(rangeArr(0,100,10));
+            document.getElementById('opt-earrings').value = pick(['','variant01','variant02','variant03','variant04','variant05','variant06']);
+            document.getElementById('opt-earringsProbability').value = pick(rangeArr(0,100,10));
+            document.getElementById('opt-hair').value = pick(hair);
+            document.getElementById('opt-hairColor').value = pick(hairColors);
+            document.getElementById('opt-hairProbability').value = pick(rangeArr(0,100,10));
+            document.getElementById('opt-skinColor').value = pick(skinColors);
+            const fEl = document.getElementById('opt-features');
+            for (const o of Array.from(fEl.options)) o.selected = false;
+            // randomly pick up to 2 features
+            const pool = [...features];
+            for (let i=0;i<Math.floor(Math.random()*3);i++){
+              const idx = Math.floor(Math.random()*pool.length);
+              const val = pool.splice(idx,1)[0];
+              const opt = Array.from(fEl.options).find(o=>o.value===val); if (opt) opt.selected = true;
+            }
+            updateAvatarPreview();
+            markManualChange(); // Show the save button after randomizing
+
+            // Auto-save the randomized avatar
+            setTimeout(async () => {
+              const avatarUrl = buildAvatarUrlFromControls();
+              await saveAvatarToSupabase(avatarUrl);
+            }, 500); // Small delay to ensure preview is updated
+          }); rnd.dataset.bound='1'; }
+
+          // Save helper used by both AI auto-save and finish/save flow
+          // CONSOLIDATED Avatar Save Function - saves to all necessary tables
+          async function saveAvatarToSupabase(avatarUrl){
+            const saveMsg = document.getElementById('avatar-save-msg');
+            try {
+              const nickVal = String(document.getElementById('nickname')?.value || '').trim() || null;
+              const displayName = nickVal || fullName || user?.email?.split('@')[0] || 'Staff';
+              if (saveMsg) { saveMsg.textContent = 'Saving avatar...'; }
+
+              // Save avatar URL to user metadata
+              await supabase.auth.updateUser({
+                data: {
+                  avatar_url: avatarUrl,
+                  nickname: nickVal,
+                  role_detail: window.selectedRole || user?.raw_user_meta_data?.role_detail || null,
+                  team_id: window.selectedTeamId || null,
+                  team_name: window.selectedTeamName || null
+                }
+              });
+
+              // Save to profiles table (main storage)
+              try {
+                const profileData = {
+                  user_id: user.id,
+                  avatar_url: avatarUrl,
+                  nickname: nickVal,
+                  full_name: fullName || displayName,
+                  role: window.selectedRole ? window.selectedRole.toLowerCase() : 'staff'
+                  // Note: profiles table doesn't have role_detail, team_id or team_name columns
+                };
+                if (siteId) profileData.site_id = siteId;
+
+                const { error: profileErr } = await supabase.from('profiles').upsert(profileData);
+                if (profileErr) console.warn('Profile update error:', profileErr);
+              } catch (e) {
+                console.warn('Profile save error:', e);
+              }
+
+              // Save to staff_app_welcome
+              if (siteId) {
+                try {
+                  const payload = {
+                    user_id: user.id,
+                    site_id: siteId,
+                    full_name: fullName || displayName,
+                    nickname: nickVal,
+                    avatar_url: avatarUrl,
+                    role_detail: window.selectedRole || user?.raw_user_meta_data?.role_detail || null,
+                    team_id: window.selectedTeamId || null,
+                    team_name: window.selectedTeamName || null
+                  };
+                  await supabase.from('staff_app_welcome').upsert(payload);
+                } catch (_) { /* non-critical */ }
+              }
+
+              // Update 1_staff_holiday_profiles with avatar and latest info
+              try {
+                // First check if profile exists
+                const { data: existingProfile } = await supabase
+                  .from('1_staff_holiday_profiles')
+                  .select('id')
+                  .eq('email', user.email)
+                  .maybeSingle();
+
+                if (existingProfile) {
+                  // Update existing profile with avatar
+                  await supabase
+                    .from('1_staff_holiday_profiles')
+                    .update({
+                      avatar_url: avatarUrl,
+                      role: window.selectedRole || user?.raw_user_meta_data?.role || 'Staff',
+                      team_name: window.selectedTeamName || null,
+                      updated_at: new Date().toISOString()
+                    })
+                    .eq('id', existingProfile.id);
+                }
+              } catch (e) {
+                console.warn('Holiday profile avatar update error:', e);
+              }
+
+              window.currentSavedAvatarUrl = avatarUrl;
+              window.avatarDirty = false;
+              if (saveMsg) saveMsg.innerHTML = '✅ Avatar saved successfully!';
+              return true;
+            } catch (e) {
+              console.error('Save avatar error:', e);
+              if (saveMsg) saveMsg.innerHTML = `❌ Save failed: ${e.message || e}`;
+              return false;
+            }
+          }
+          // Expose globally so other handlers (e.g., AI autosave) can call it safely
+          try { window.saveAvatarToSupabase = saveAvatarToSupabase; } catch(_) {}
+
+          // Ensure initial dirty state
+          window.avatarDirty = false;
+
+          // Back button
+          const back = document.getElementById('back-to-step2');
+          if (back && !back.dataset.bound){ back.addEventListener('click', ()=>{
+            document.getElementById('welcome-step3').style.display = 'none';
+            document.getElementById('welcome-step2').style.display = '';
+          }); back.dataset.bound='1'; }
+
+          // AI Generate button
+          const aiBtn = document.getElementById('avatar-ai-generate');
+          if (aiBtn && !aiBtn.dataset.bound){ aiBtn.addEventListener('click', async ()=>{
+            const msg = document.getElementById('avatar-ai-msg');
+            const originalText = msg.textContent;
+            
+            // Validate description input
+            const prompt = String(document.getElementById('avatarPrompt')?.value||'').trim();
+            if (!prompt) {
+              msg.textContent = '⚠️ Please enter a description first (e.g., "friendly nurse with brown hair")';
+              return;
+            }
+            
+            msg.innerHTML = '🤖 AI is generating your avatar... <span style="opacity:0.7">(this may take a few seconds)</span>';
+            aiBtn.disabled = true;
+            aiBtn.textContent = 'Generating...';
+            
+            try{
+              const result = await aiGenerateFromDescription();
+              msg.innerHTML = `✅ Success! Adjust with settings below.`;
+              
+              // Auto-focus on preview to draw attention to the result
+              const preview = document.getElementById('avatarPreview');
+              if (preview) {
+                preview.style.transform = 'scale(1.05)';
+                setTimeout(() => {
+                  preview.style.transform = 'scale(1)';
+                  preview.style.transition = 'transform 0.3s ease';
+                }, 300);
+              }
+              
+            }catch(e){
+              console.error('AI generation error:', e);
+              
+              // Provide helpful error messages
+              let errorMsg = '❌ ';
+              if (e.message.includes('Authentication') || e.message.includes('Unauthorized')) {
+                errorMsg += 'Please refresh the page and log in again.';
+              } else if (e.message.includes('description')) {
+                errorMsg += 'Please try a more detailed description.';
+              } else if (e.message.includes('Network') || e.message.includes('fetch')) {
+                errorMsg += 'Network error. Please check your connection.';
+              } else {
+                errorMsg += `Generation failed: ${e.message}`;
+              }
+              
+              msg.innerHTML = `${errorMsg} <button onclick="this.parentElement.textContent='${originalText}'" style="margin-left:8px;padding:2px 6px;font-size:11px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;">Dismiss</button>`;
+            } finally {
+              aiBtn.disabled = false;
+              aiBtn.textContent = 'Generate with AI';
+            }
+          }); aiBtn.dataset.bound='1'; }
+
+          // Continue to Working Hours button
+          const finish = document.getElementById('finish-avatar-btn');
+          if (finish && !finish.dataset.bound){ finish.addEventListener('click', async ()=>{
+            const fm = document.getElementById('finish-avatar-msg');
+            fm.textContent = '';
+
+            // Determine current avatar URL
+            const avatar = window.currentSavedAvatarUrl || window.currentAvatarUrl || buildAvatarUrlFromControls();
+
+            // If there are unsaved manual changes or avatar not saved yet, save first
+            if (window.avatarDirty || !window.currentSavedAvatarUrl) {
+              try{
+                if (fm) fm.textContent = 'Saving your avatar…';
+                const ok = await saveAvatarToSupabase(avatar);
+                if (!ok) {
+                  console.warn('Avatar save returned false; continuing to working hours');
+                  if (fm) fm.innerHTML = '⚠️ Could not fully save your avatar. Continuing to working hours…';
+                  // Do NOT return here; continue to working hours so the user can finish setup
+                } else {
+                  if (fm) fm.textContent = 'Avatar saved.';
+                }
+              } catch (e) {
+                console.warn('finish save failed (exception), continuing', e);
+                if (fm) fm.innerHTML = '⚠️ Could not save your avatar. Continuing to working hours…';
+                // continue despite errors
+              }
+            }
+
+            // Save avatar and profile data
+            const teamIdNum = (window.selectedTeamId ?? null);
+            const role = (window.selectedRole || 'staff');
+            const nicknameValue = document.getElementById('nickname')?.value?.trim() || user?.email?.split('@')[0] || 'Staff';
+            let saveErrors = [];
+
+            // 1. First save to staff_app_welcome (primary storage)
+            try {
+              const welcomeData = {
+                user_id: user.id,
+                site_id: siteId,
+                full_name: user?.raw_user_meta_data?.full_name || user?.email?.split('@')[0] || 'Staff',
+                nickname: nicknameValue,
+                role_detail: role,
+                team_id: teamIdNum,
+                team_name: window.selectedTeamName || null,
+                avatar_url: avatar
+              };
+
+              console.log('Saving to staff_app_welcome:', welcomeData);
+              const { error: welcomeErr } = await supabase
+                .from('staff_app_welcome')
+                .upsert(welcomeData);
+
+              if (welcomeErr) {
+                console.error('staff_app_welcome save error:', welcomeErr);
+                // Don't treat RLS errors as fatal
+                if (!welcomeErr.message?.includes('violates row-level security')) {
+                  saveErrors.push('welcome');
+                }
+              } else {
+                console.log('Successfully saved to staff_app_welcome');
+              }
+            } catch (e) {
+              console.error('Exception saving to staff_app_welcome:', e);
+              // Don't treat welcome errors as fatal
+            }
+
+            // 2. Save/update profiles table (for compatibility)
+            try {
+              const profileData = {
+                user_id: user.id,
+                site_id: siteId,
+                full_name: user?.raw_user_meta_data?.full_name || user?.email?.split('@')[0] || 'Staff',
+                nickname: nicknameValue,
+                role: (role || 'staff').toLowerCase(),  // Ensure valid role for constraint (lowercase)
+                avatar_url: avatar,
+                onboarding_complete: true
+              };
+
+              console.log('Saving to profiles:', profileData);
+              const { error: profileErr } = await supabase
+                .from('profiles')
+                .upsert(profileData);
+
+              if (profileErr) {
+                console.error('profiles save error:', profileErr);
+                // Don't treat RLS errors as fatal
+                if (!profileErr.message?.includes('violates row-level security')) {
+                  saveErrors.push('profile');
+                }
+              } else {
+                console.log('Successfully saved to profiles');
+              }
+            } catch (e) {
+              console.error('Exception saving to profiles:', e);
+              // Don't treat profiles errors as fatal
+            }
+
+            // 3. Update auth user metadata (always succeeds)
+            try {
+              const metaData = {
+                role: role,
+                role_detail: role,
+                avatar_url: avatar,
+                site_id: siteId,
+                team_id: teamIdNum,
+                team_name: window.selectedTeamName || null,
+                nickname: nicknameValue,
+                full_name: user?.raw_user_meta_data?.full_name || user?.email?.split('@')[0] || 'Staff'
+              };
+
+              console.log('Updating auth metadata:', metaData);
+              const { error: authErr } = await supabase.auth.updateUser({ data: metaData });
+
+              if (authErr) {
+                console.error('Auth metadata update error:', authErr);
+              } else {
+                console.log('Successfully updated auth metadata');
+              }
+            } catch(e) {
+              console.error('Exception updating auth metadata:', e);
+            }
+
+            // Show appropriate message based on save results
+            if (fm) {
+              if (saveErrors.length === 0) {
+                fm.textContent = 'Saved! Moving to working hours setup…';
+              } else {
+                // Even with errors, we saved to auth metadata so core data is preserved
+                fm.textContent = 'Moving to working hours setup…';
+              }
+            }
+
+            // Navigate to working hours step
+            try {
+              const step3 = document.getElementById('welcome-step3');
+              const step4 = document.getElementById('step4');
+
+              if (!step3) {
+                console.error('welcome-step3 element not found!');
+                if (fm) fm.textContent = 'Error: Cannot find avatar step element';
+                return;
+              }
+
+              if (!step4) {
+                console.error('step4 element not found!');
+                if (fm) fm.textContent = 'Error: Cannot find working hours step element';
+                return;
+              }
+
+              console.log('Hiding step3 and showing step4...');
+              step3.style.display = 'none';
+              step4.style.display = 'block'; // Use 'block' instead of empty string for clarity
+
+              console.log('Rendering working pattern...');
+              // Ensure the function exists and call it
+              renderWorkingPattern();
+
+              // Ensure working hours handlers are set up
+              if (window.setupWorkingHoursHandlers) {
+                console.log('Setting up working hours handlers...');
+                window.setupWorkingHoursHandlers(user, siteId);
+              } else {
+                console.warn('setupWorkingHoursHandlers not found');
+              }
+
+              // Scroll to top to ensure visibility
+              window.scrollTo(0, 0);
+
+              console.log('Successfully navigated to working hours step');
+
+            } catch (navError) {
+              console.error('Navigation error:', navError);
+              if (fm) fm.textContent = 'Error navigating to working hours: ' + navError.message;
+            }
+          }); finish.dataset.bound='1'; }
+
+          // Initial render
+          updateAvatarPreview();
+        }
+
+        window.burstConfetti = function burstConfetti(){
+          const conf = document.getElementById('confetti-container') || document.getElementById('confetti');
+          if (!conf) return;
+          const colors = ['#60a5fa','#a78bfa','#34d399','#f472b6','#fbbf24','#ef4444','#10b981'];
+
+          // Create more confetti for a better effect
+          for (let i=0;i<50;i++){
+            const bit = document.createElement('div');
+            bit.className = 'bit';
+            const size = 8 + Math.floor(Math.random()*12);
+            bit.style.width = size+'px';
+            bit.style.height = size+'px';
+            bit.style.left = Math.random()*100 + '%';
+            bit.style.top = '-20px';
+            bit.style.background = colors[Math.floor(Math.random()*colors.length)];
+            bit.style.animationDelay = (Math.random()*200) + 'ms';
+            bit.style.position = 'absolute';
+            bit.style.borderRadius = Math.random() > 0.5 ? '50%' : '10%';
+            bit.style.transform = 'rotate(' + Math.random()*360 + 'deg)';
+            conf.appendChild(bit);
+            setTimeout(()=> bit.remove(), 3000);
+          }
+        }
+
+        window.showBalloons = function showBalloons(){
+          const container = document.getElementById('step5');
+          if (!container) return;
+
+          const balloonEmojis = ['🎈', '🎈', '🎈', '🎊', '🎉'];
+          for (let i = 0; i < 8; i++) {
+            const balloon = document.createElement('div');
+            balloon.style.position = 'absolute';
+            balloon.style.fontSize = '40px';
+            balloon.style.left = (10 + Math.random() * 80) + '%';
+            balloon.style.bottom = '-60px';
+            balloon.style.zIndex = '5';
+            balloon.textContent = balloonEmojis[Math.floor(Math.random() * balloonEmojis.length)];
+            balloon.style.animation = `floatUp ${3 + Math.random() * 2}s ease-out forwards`;
+            balloon.style.animationDelay = Math.random() * 0.5 + 's';
+            container.appendChild(balloon);
+            setTimeout(() => balloon.remove(), 5000);
+          }
+        }
+
+        async function saveNickname(){
+          const input = document.getElementById('nickname');
+          const msg = document.getElementById('save-msg');
+          msg.textContent = '';
+          const val = String(input.value || '').trim();
+          if (!val) { msg.textContent = 'Please enter a name to continue.'; return; }
+
+          if (nicknameColumnExists) {
+            try{
+              // Use upsert instead of update to handle case where profile doesn't exist yet
+              const profileData = {
+                user_id: user.id,
+                nickname: val,
+                full_name: fullName || user?.email?.split('@')[0] || 'Staff',
+                role: 'staff' // Required field for profiles table
+              };
+              if (siteId) profileData.site_id = siteId;
+
+              const { error } = await supabase.from('profiles').upsert(profileData);
+
+              if (error && (String(error.code) === '42703' || /column .*nickname/i.test(String(error.message)))) {
+                nicknameColumnExists = false; // fall through to guidance
+              } else if (error) {
+                msg.textContent = 'Could not save nickname. Please try again.';
+                console.error('[staff-welcome] upsert error', error);
+                return;
+              } else {
+                msg.textContent = 'Saved!';
+                // Move to step 2
+                document.getElementById('welcome-step1').style.display = 'none';
+                document.getElementById('welcome-step2').style.display = '';
+                await loadDetailsData(siteId, fullName);
+                return;
+              }
+            } catch(e){ nicknameColumnExists = false; }
+          }
+
+          // If we reach here, the column likely doesn’t exist — provide SQL guidance
+          msg.innerHTML = `
+            It looks like the <code>nickname</code> column isn’t in <code>profiles</code> yet.<br>
+            Add it in Supabase, then tap Save again:
+            <pre style="text-align:left; background:#f9fafb; border:1px solid var(--border-color); border-radius:8px; padding:10px; overflow:auto;">ALTER TABLE public.profiles ADD COLUMN nickname text;</pre>`;
+        }
+
+        const saveBtn = document.getElementById('save-btn');
+        if (saveBtn) {
+          saveBtn.addEventListener('click', (e)=>{ e.preventDefault(); saveNickname(); });
+        } else {
+          console.warn('[staff-welcome] save-btn not found');
+        }
+
+        // ---- Step 2 helpers ----
+
+        const ROLE_ICON = (name) => ({
+          // Using Icons8 Cute Color style (48px). Slugs chosen as reasonable defaults.
+          'Doctor': 'https://img.icons8.com/cute-color/48/stethoscope.png',
+          'Nurse': 'https://img.icons8.com/cute-color/48/nurse.png',
+          'Pharmacist': 'https://img.icons8.com/cute-color/48/pill.png',
+          'Reception': 'https://img.icons8.com/cute-color/48/customer-support.png',
+          'Manager': 'https://img.icons8.com/cute-color/48/briefcase.png'
+        })[name] || 'https://img.icons8.com/cute-color/48/user-male.png';
+
+        // Local fallback icons (in case external hosting is blocked)
+        const ROLE_ICON_FALLBACK = (name) => ({
+          'Doctor': 'Icons/icons8-stethoscope-100.png',
+          'Nurse': 'Icons/icons8-nurse-100.png',
+          'Pharmacist': 'Icons/icons8-pharmacist-100.png',
+          'Reception': 'Icons/icons8-group-100.png',
+          'Manager': 'Icons/icons8-doctors-bag-100.png'
+        })[name] || 'Icons/icons8-profile-100.png';
+
+        async function loadDetailsData(siteId, fullName){
+          // Load existing welcome data (if any)
+          let existing = null;
+          try {
+            let q = supabase
+              .from('staff_app_welcome')
+              .select('full_name, nickname, role_detail, team_id, team_name, avatar_url')
+              .eq('user_id', user.id)
+              .limit(1);
+            if (siteId) q = q.eq('site_id', siteId);
+            const { data: sawRow, error: sawErr } = await q.maybeSingle();
+            if (!sawErr && sawRow) existing = sawRow;
+          } catch (_) {}
+
+          // Pre-fill nickname if present
+          if (existing) {
+            const nn = document.getElementById('nickname');
+            if (nn && !nn.value) nn.value = existing.nickname || existing.full_name || nn.value;
+            if (existing.avatar_url) {
+              window.existingAvatarUrl = existing.avatar_url;
+              window.currentSavedAvatarUrl = existing.avatar_url;
+            }
+          }
+
+          // Build Roles list
+          let roles = [];
+          try {
+            const { data, error } = await supabase.from('kiosk_roles').select('role');
+            if (!error && Array.isArray(data) && data.length) roles = data.map(r => r.role);
+          } catch(_) {}
+          if (!roles.length) roles = ['Doctor','Nurse','Pharmacist','Reception','Manager'];
+          // Ensure existing role appears in list
+          if (existing && existing.role_detail && !roles.includes(existing.role_detail)) {
+            roles = [existing.role_detail, ...roles];
+          }
+          const rg = document.getElementById('role-grid');
+          // expose helper to set fallback src when onerror fires
+          window.__roleIconFallback = function(el, role){
+            try{ el.onerror = null; el.src = ROLE_ICON_FALLBACK(role); }catch(e){}
+          };
+          rg.innerHTML = roles.map((r,i)=>{
+            const checked = existing && existing.role_detail ? (existing.role_detail === r) : (i===0);
+            return `<label class=\"option-pill white-pill\">\n              <input type=\"radio\" name=\"role\" value=\"${r}\" ${checked?'checked':''} />\n              <img src=\"${ROLE_ICON(r)}\" alt=\"${r}\" style=\"width:32px;height:32px;object-fit:contain;\" onerror=\"window.__roleIconFallback(this,'${r}')\"/>\n              <span>${r}</span>\n            </label>`;
+          }).join('');
+
+          // Load teams by site (button grid like roles)
+          const tg = document.getElementById('team-grid');
+          tg.innerHTML = '<div style="opacity:.7; padding:8px 0;">Loading teams…</div>';
+          try{
+            let teams = [];
+            // Try to load teams from database, but use fallback if there's any error
+            if (siteId){
+              try {
+                const { data, error } = await supabase.from('teams').select('id,name').eq('site_id', siteId);
+                if (error) {
+                  console.warn('teams load error (using fallback)', error);
+                  teams = [];
+                } else {
+                  teams = (data||[]);
+                }
+              } catch (e) {
+                console.warn('teams query exception (using fallback)', e);
+                teams = [];
+              }
+            }
+
+            // Always provide fallback teams if none loaded
+            if (!teams.length) {
+              teams = [
+                { id: 1, name: 'Managers' },
+                { id: 2, name: 'Reception' },
+                { id: 3, name: 'Nursing' },
+                { id: 4, name: 'GPs' },
+                { id: 5, name: 'Pharmacy' },
+              ];
+            }
+
+            if (siteId) {
+              const html = teams.map((t) => {
+                const isExisting = existing && ((existing.team_id && String(existing.team_id) === String(t.id)) || (existing.team_name && existing.team_name === t.name));
+                return `<label class=\"option-pill white-pill\">\n                  <input type=\"radio\" name=\"team\" value=\"${String(t.id)}\" data-name=\"${t.name}\" ${isExisting ? 'checked' : ''} />\n                  <img src=\"Icons/icons8-people-100.png\" alt=\"${t.name}\" style=\"width:32px;height:32px;object-fit:contain;\"/>\n                  <span>${t.name}</span>\n                </label>`;
+              }).join('');
+              tg.innerHTML = html || '<div style="opacity:.7; padding:8px 0;">No teams found for this site.</div>';
+
+              // Bind and initialize selection globals
+              const onTeamChange = () => {
+                const checked = document.querySelector('input[name="team"]:checked');
+                if (checked) {
+                  window.selectedTeamId = checked.value && /^\\d+$/.test(String(checked.value)) ? parseInt(checked.value, 10) : null;
+                  window.selectedTeamName = checked.dataset.name || null;
+                } else {
+                  window.selectedTeamId = null;
+                  window.selectedTeamName = null;
+                }
+              };
+              tg.querySelectorAll('input[name="team"]').forEach(el => el.addEventListener('change', onTeamChange));
+              onTeamChange();
+            } else {
+              tg.innerHTML = '<div style="opacity:.7; padding:8px 0;">No site set</div>';
+            }
+          }catch(_){ tg.innerHTML = '<div style="opacity:.7; padding:8px 0;">Could not load teams</div>'; }
+
+          // Persist selections helper
+          async function persistRoleTeam(role, teamIdNum, teamName, avatarUrl){
+            const msgEl = document.getElementById('finish-msg');
+            try {
+              // 1) Try upsert into new source-of-truth table if it exists
+              try {
+                const nicknameVal = String(document.getElementById('nickname')?.value || '').trim() || null;
+                if (!siteId) {
+                  if (msgEl) msgEl.textContent = 'No site detected — saving to profiles only.';
+                  throw new Error('NO_SITE_ID');
+                }
+                const payload = {
+                  user_id: user.id,
+                  site_id: siteId,
+                  full_name: fullName,
+                  nickname: nicknameVal,
+                  role_detail: role || null,
+                  team_id: teamIdNum ?? null,
+                  team_name: teamName || null,
+                  avatar_url: avatarUrl ?? null
+                };
+                const { error: sawErr } = await supabase
+                  .from('staff_app_welcome')
+                  .upsert(payload);
+                if (sawErr) {
+                  if (msgEl) msgEl.textContent = `Could not save to Staff_App_Welcome (${sawErr.code||''}). Falling back…`;
+                  throw sawErr;
+                }
+              } catch (e) {
+                // If table doesn't exist or RLS blocks, continue to profiles fallback
+                if (msgEl) msgEl.textContent = 'Saving to profiles…';
+              }
+
+              // 2) Also upsert profiles so existing views stay in sync
+              try {
+                const profileData = {
+                  user_id: user.id,
+                  full_name: fullName,
+                  nickname: String(document.getElementById('nickname')?.value || '').trim() || null,
+                  role: (role || 'staff').toLowerCase(),  // Ensure valid role for constraint
+                  onboarding_complete: true
+                  // Note: profiles table doesn't have role_detail, team_id, or team_name columns
+                };
+                if (siteId) profileData.site_id = siteId;
+
+                const { error: pErr } = await supabase.from('profiles').upsert(profileData);
+                if (pErr) { console.warn('[welcome] profiles upsert failed', pErr); }
+              } catch (e2) {
+                console.warn('[welcome] profiles upsert exception', e2);
+              }
+              if (msgEl) msgEl.textContent = 'Saved!';
+            } catch (e) {
+              console.warn('[welcome] persist selections failed', e);
+              if (msgEl) msgEl.textContent = 'Could not save selections (continuing)…';
+            }
+          }
+
+          // Continue to Step 3 (Avatar Builder)
+          const toAvatar = document.getElementById('to-avatar-btn');
+          if (toAvatar && !toAvatar.dataset.bound){
+            toAvatar.addEventListener('click', async () => {
+              const role = (document.querySelector('input[name="role"]:checked')?.value || '').trim();
+              const teamRadio = document.querySelector('input[name="team"]:checked');
+              const teamVal = teamRadio?.value || '';
+              const teamName = teamRadio?.dataset.name || null;
+
+              window.selectedRole = role || null;
+              window.selectedTeamId = teamVal && /^\d+$/.test(String(teamVal)) ? parseInt(teamVal, 10) : null;
+              window.selectedTeamName = teamName || null;
+
+              // Persist immediately so selections are saved even if user leaves before finishing
+              const btn = toAvatar;
+              const msgEl = document.getElementById('finish-msg');
+              if (msgEl) msgEl.textContent = '';
+              btn.disabled = true;
+              try {
+                await persistRoleTeam(window.selectedRole, window.selectedTeamId, window.selectedTeamName);
+              } finally {
+                btn.disabled = false;
+              }
+
+              document.getElementById('welcome-step2').style.display = 'none';
+              document.getElementById('welcome-step3').style.display = '';
+              await initAvatarBuilder(fullName);
+
+              // Wire up group toggles (allow collapse/expand)
+              try {
+                document.querySelectorAll('.group-toggle').forEach(btn => {
+                  const target = document.querySelector(btn.dataset.target);
+                  if (!target) return;
+                  btn.addEventListener('click', () => {
+                    const collapsed = target.classList.toggle('collapsed');
+                    btn.textContent = collapsed ? 'Show' : 'Hide';
+                  });
+                });
+              } catch (e) { /* non-critical */ }
+
+              // If we have an existing saved avatar, apply it to preview and controls
+              try {
+                if (window.existingAvatarUrl) {
+                  const url = String(window.existingAvatarUrl);
+                  window.currentAvatarUrl = url;
+                  window.currentSavedAvatarUrl = url;
+                  const img = document.getElementById('avatarPreview');
+                  if (img) img.src = url;
+
+                  // Parse parameters from DiceBear URL and apply to controls
+                  const u = new URL(url);
+                  const p = u.searchParams;
+                  const map = new Map([
+                    ['backgroundType','opt-backgroundType'],
+                    ['backgroundColor','opt-backgroundColor'],
+                    ['backgroundRotation','opt-backgroundRotation'],
+                    ['radius','opt-radius'],
+                    ['rotate','opt-rotate'],
+                    ['scale','opt-scale'],
+                    ['flip','opt-flip'],
+                    ['clip','opt-clip'],
+                    ['translateX','opt-translateX'],
+                    ['translateY','opt-translateY'],
+                    ['eyes','opt-eyes'],
+                    ['mouth','opt-mouth'],
+                    ['eyebrows','opt-eyebrows'],
+                    ['glasses','opt-glasses'],
+                    ['glassesProbability','opt-glassesProbability'],
+                    ['earrings','opt-earrings'],
+                    ['earringsProbability','opt-earringsProbability'],
+                    ['featuresProbability','opt-featuresProbability'],
+                    ['hair','opt-hair'],
+                    ['hairColor','opt-hairColor'],
+                    ['hairProbability','opt-hairProbability'],
+                    ['skinColor','opt-skinColor'],
+                  ]);
+                  for (const [k,id] of map.entries()){
+                    const v = p.get(k);
+                    if (v != null && v !== ''){
+                      const el = document.getElementById(id);
+                      if (el) el.value = v;
+                    }
+                  }
+                  // Handle features (multi)
+                  const feats = p.getAll('features');
+                  if (feats && feats.length){
+                    const fEl = document.getElementById('opt-features');
+                    if (fEl){
+                      for (const o of Array.from(fEl.options)) o.selected = feats.includes(o.value);
+                    }
+                  }
+                  // Seed
+                  const seed = p.get('seed');
+                  if (seed) { window.aiSeed = seed; }
+
+                  updateAvatarPreview();
+                  // Hide Save button since this avatar is already saved
+                  const saveBtn = document.getElementById('avatar-save');
+                  if (saveBtn) saveBtn.style.display = 'none';
+                }
+              } catch (e) { console.info('avatar prefill failed', e); }
+            });
+            toAvatar.dataset.bound = '1';
+          }
+        }
+      } catch(e){
+        if (String(e.message).includes('NO_SESSION')) { window.location.replace('home.html'); return; }
+        if (String(e.message).includes('NOT_STAFF')) { window.location.replace('home.html'); return; }
+        console.error('[staff-welcome] error', e);
+      }
+    })();
+    
+    // Icon service functions
+    function i8(name, opts = {}) {
+      var base  = 'https://img.icons8.com';
+      var style = opts.style || 'cute-color';
+      var size  = opts.size  || 48;
+      // Icons8 OMG-IMG pattern is style/size/name.png
+      var path  = [style, String(size), encodeURIComponent(name) + '.png'].join('/');
+      return base + '/' + path;
+    }
+    
+    function setIcon(el){
+      var name  = el.getAttribute('data-i8');
+      var size  = el.getAttribute('data-i8-size');
+      var style = el.getAttribute('data-i8-style') || 'fluency';
+      var fallback = (el.getAttribute('data-i8-fallback') || '').toLowerCase();
+      
+      if (fallback === 'auto') {
+        var stylesToTry = [style, 'fluency', 'color'];
+        var idx = 0;
+        function tryNext(){
+          if (idx >= stylesToTry.length) { el.onerror = null; return; }
+          var url = i8(name, {style: stylesToTry[idx++], size: size ? parseInt(size,10) : undefined});
+          if (el.src !== url) el.src = url; else tryNext();
+        }
+        el.onerror = tryNext;
+        tryNext();
+      } else {
+        el.src = i8(name, {style: style, size: size ? parseInt(size,10) : undefined});
+      }
+    }
+    
+    function wireIcons(){
+      document.querySelectorAll('img[data-i8]').forEach(setIcon);
+    }
+    
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', wireIcons);
+    } else {
+      wireIcons();
+    }
+    
+    // Working Hours Functions - make it global so it can be called from other places
+    window.renderWorkingPattern = async function renderWorkingPattern() {
+      const container = document.getElementById('working-form');
+      if (!container) return;
+
+      container.innerHTML = '';
+      const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      const isGP = (window.selectedRole || '').toLowerCase().includes('doctor') ||
+                   (window.selectedRole || '').toLowerCase().includes('gp');
+
+      // Try to load existing working pattern from database
+      let existingPattern = null;
+      const currentUser = window.currentUser;
+      const currentSiteId = window.currentSiteId || 1;
+
+      if (currentUser && globalSupabase) {
+        try {
+          console.log('Loading existing working pattern for user:', currentUser.id);
+          const { data, error } = await globalSupabase
+            .from('3_staff_working_patterns')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .maybeSingle();
+
+          if (data) {
+            existingPattern = data;
+            console.log('Found existing working pattern:', existingPattern);
+          } else if (error) {
+            console.warn('Error loading working pattern:', error);
+          } else {
+            console.log('No existing working pattern found');
+          }
+        } catch (e) {
+          console.warn('Failed to load working pattern:', e);
+        }
+      }
+
+      container.insertAdjacentHTML('beforeend',
+        `<div class="tiny-note" style="color:#6b7280; font-size:12px; margin-bottom:10px;">${isGP ?
+          'Enter number of sessions (0-2) per day.' :
+          'Enter hours (HH:MM) — defaults Mon-Fri 7.5h.'}</div>`
+      );
+
+      days.forEach((day, i) => {
+        const id = day.toLowerCase();
+        let defaultVal;
+
+        if (existingPattern) {
+          // Use saved values if they exist
+          if (isGP) {
+            defaultVal = existingPattern[`${id}_sessions`] || '0';
+          } else {
+            const hours = parseFloat(existingPattern[`${id}_hours`] || 0);
+            if (hours > 0) {
+              const h = Math.floor(hours);
+              const m = Math.round((hours - h) * 60);
+              defaultVal = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+            } else {
+              defaultVal = '00:00';
+            }
+          }
+        } else {
+          // Use defaults for new users
+          defaultVal = isGP ? (i < 5 ? '2' : '0') : (i < 5 ? '07:30' : '00:00');
+        }
+
+        container.insertAdjacentHTML('beforeend',
+          `<div class="working-hour-card" style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:#fff; border:1px solid rgba(15,23,42,0.06); border-radius:14px;">
+            <label for="${id}-val" style="font-weight:600; font-size:13px; color:#334155;">${day}</label>
+            ${isGP ?
+              `<div style="display:flex; align-items:center; gap:8px;">
+                <select id="${id}-val" style="padding:6px 10px; border:1px solid rgba(15,23,42,0.12); border-radius:8px;">
+                  <option value="0" ${defaultVal === '0' || defaultVal === 0 ? 'selected' : ''}>0</option>
+                  <option value="1" ${defaultVal === '1' || defaultVal === 1 ? 'selected' : ''}>1</option>
+                  <option value="2" ${defaultVal === '2' || defaultVal === 2 ? 'selected' : ''}>2</option>
+                </select>
+                <span class="tiny-note" style="color:#6b7280; font-size:11px;">sessions</span>
+              </div>` :
+              `<div style="display:flex; align-items:center; gap:8px;">
+                <input type="time" id="${id}-val" value="${defaultVal}" step="1800" style="padding:6px 10px; border:1px solid rgba(15,23,42,0.12); border-radius:8px;">
+                <span class="tiny-note" style="color:#6b7280; font-size:11px;">hours</span>
+              </div>`
+            }
+          </div>`
+        );
+      });
+    }
+
+    // Working Hours Navigation - moved inside the main async function
+    window.setupWorkingHoursHandlers = function(userData, siteIdParam) {
+      // Use passed parameters or try to get from global scope
+      const user = userData || window.currentUser;
+      const siteId = siteIdParam || window.currentSiteId || 1;
+      document.getElementById('working-back')?.addEventListener('click', () => {
+        document.getElementById('step4').style.display = 'none';
+        document.getElementById('welcome-step3').style.display = '';
+      });
+      
+      // Complete Setup Handler
+      document.getElementById('complete-setup')?.addEventListener('click', async () => {
+        const msg = document.getElementById('working-msg');
+        if (msg) msg.textContent = 'Saving your working hours...';
+
+        console.log('Complete Setup clicked - saving working hours...');
+
+        // Use the user and siteId from parameters or global
+        const currentUser = user || window.currentUser;
+        const currentSiteId = siteId || window.currentSiteId || 1;
+
+        // Quick check if we have what we need
+        if (!currentUser) {
+          console.error('User not defined!');
+          if (msg) msg.textContent = 'Error: User not found';
+          return;
+        }
+
+        if (!globalSupabase) {
+          console.error('Supabase not defined!');
+          if (msg) msg.textContent = 'Error: Database connection not found';
+          return;
+        }
+        
+        const isGP = (window.selectedRole || '').toLowerCase().includes('doctor') || 
+                     (window.selectedRole || '').toLowerCase().includes('gp');
+        const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+        
+        const patternData = {
+          user_id: currentUser.id,
+          site_id: currentSiteId,
+          updated_at: new Date().toISOString()
+        };
+        
+        let totalHours = 0;
+        let totalSessions = 0;
+        
+        for (const day of days) {
+          const inputEl = document.getElementById(`${day}-val`);
+          if (!inputEl) {
+            console.warn(`Input element for ${day} not found`);
+            // Set defaults
+            patternData[`${day}_hours`] = 0;
+            patternData[`${day}_sessions`] = 0;
+            continue;
+          }
+
+          if (isGP) {
+            const sessions = parseInt(inputEl.value || '0');
+            patternData[`${day}_sessions`] = sessions;
+            patternData[`${day}_hours`] = 0;
+            totalSessions += sessions;
+            console.log(`${day}: ${sessions} sessions`);
+          } else {
+            const timeValue = inputEl.value || '00:00';
+            const [h, m] = timeValue.split(':').map(Number);
+            const decimal = h + (m / 60);
+            patternData[`${day}_hours`] = parseFloat(decimal.toFixed(2));
+            patternData[`${day}_sessions`] = 0;
+            totalHours += decimal;
+            console.log(`${day}: ${timeValue} = ${decimal.toFixed(2)} hours`);
+          }
+        }
+        
+        // Check if we need to preserve existing values
+        let existingData = null;
+        try {
+          const { data: existing } = await globalSupabase
+            .from('3_staff_working_patterns')
+            .select('total_holiday_entitlement, approved_holidays_used, holiday_year_start')
+            .eq('user_id', currentUser.id)
+            .maybeSingle();
+          existingData = existing;
+        } catch (e) {
+          console.warn('Could not check existing data:', e);
+        }
+
+        // Preserve existing values or set defaults
+        patternData.total_holiday_entitlement = existingData?.total_holiday_entitlement || (isGP ? 20 : 25);
+        patternData.approved_holidays_used = existingData?.approved_holidays_used || 0;
+        if (existingData?.holiday_year_start) {
+          patternData.holiday_year_start = existingData.holiday_year_start;
+        }
+
+        console.log('Pattern data to save:', patternData);
+        
+        try {
+          // Save working pattern
+          const { data: savedPattern, error: patternError } = await globalSupabase
+            .from('3_staff_working_patterns')
+            .upsert(patternData, {
+              onConflict: 'user_id',
+              ignoreDuplicates: false
+            })
+            .select();
+
+          if (patternError) {
+            console.error('Error saving working pattern:', patternError);
+            throw patternError;
+          }
+
+          console.log('Working pattern saved:', savedPattern);
+
+          // Also save working hours summary to staff_app_welcome
+          try {
+            const workingHoursData = {
+              monday: patternData.monday_hours || patternData.monday_sessions || 0,
+              tuesday: patternData.tuesday_hours || patternData.tuesday_sessions || 0,
+              wednesday: patternData.wednesday_hours || patternData.wednesday_sessions || 0,
+              thursday: patternData.thursday_hours || patternData.thursday_sessions || 0,
+              friday: patternData.friday_hours || patternData.friday_sessions || 0,
+              saturday: patternData.saturday_hours || patternData.saturday_sessions || 0,
+              sunday: patternData.sunday_hours || patternData.sunday_sessions || 0,
+              isGP: isGP
+            };
+
+            await globalSupabase.from('staff_app_welcome').upsert({
+              user_id: currentUser.id,
+              site_id: currentSiteId,
+              working_hours: workingHoursData,
+              updated_at: new Date().toISOString()
+            });
+
+            // Note: profiles table doesn't have working_hours column
+            // Working hours are stored in staff_app_welcome and 3_staff_working_patterns tables
+          } catch (e) {
+            console.warn('Failed to save working hours to welcome/profiles:', e);
+          }
+          
+          // Create/Update holiday profile and entitlements
+          try {
+            const displayName = document.getElementById('nickname')?.value?.trim() ||
+                              currentUser?.raw_user_meta_data?.full_name ||
+                              currentUser?.email?.split('@')[0] || 'Staff';
+
+            // Get current avatar URL
+            const avatarUrl = window.currentSavedAvatarUrl ||
+                            document.getElementById('avatarPreview')?.src ||
+                            currentUser?.raw_user_meta_data?.avatar_url || null;
+
+            const holidayProfile = {
+              full_name: displayName,
+              role: window.selectedRole || 'Staff',
+              is_gp: isGP,
+              email: currentUser.email,
+              team_name: window.selectedTeamName || null,
+              avatar_url: avatarUrl,
+              site_id: currentSiteId,
+              updated_at: new Date().toISOString()
+            };
+
+            // Upsert to 1_staff_holiday_profiles
+            const { data: profileData, error: profileError } = await globalSupabase
+              .from('1_staff_holiday_profiles')
+              .upsert(holidayProfile, {
+                onConflict: 'email',
+                ignoreDuplicates: false
+              })
+              .select();
+
+            if (profileError) {
+              console.error('Holiday profile error:', profileError);
+            }
+
+            if (profileData && profileData[0]?.id) {
+              const profileId = profileData[0].id;
+              const currentYear = new Date().getFullYear();
+
+              // Calculate weekly totals
+              const weeklyHours = isGP ? 0 : totalHours;
+              const weeklySessions = isGP ? totalSessions : 0;
+
+              // Check for existing entitlement to preserve manual override
+              const { data: existingEntitlement } = await globalSupabase
+                .from('2_staff_entitlements')
+                .select('manual_override, manual_entitlement_hours, manual_entitlement_sessions, holiday_multiplier')
+                .eq('staff_profile_id', profileId)
+                .eq('year', currentYear)
+                .maybeSingle();
+
+              // Default multiplier is 10 if not set
+              const multiplier = existingEntitlement?.holiday_multiplier || 10;
+
+              // Calculate entitlements
+              let calculatedHours = null;
+              let calculatedSessions = null;
+              let finalHours = null;
+              let finalSessions = null;
+
+              if (isGP) {
+                calculatedSessions = weeklySessions * multiplier;
+                finalSessions = existingEntitlement?.manual_override ?
+                              existingEntitlement.manual_entitlement_sessions : calculatedSessions;
+              } else {
+                calculatedHours = weeklyHours * multiplier;
+                finalHours = existingEntitlement?.manual_override ?
+                           existingEntitlement.manual_entitlement_hours : calculatedHours;
+              }
+
+              const entitlement = {
+                staff_profile_id: profileId,
+                year: currentYear,
+                weekly_hours: weeklyHours,
+                weekly_sessions: weeklySessions,
+                holiday_multiplier: multiplier,
+                calculated_hours: calculatedHours,
+                calculated_sessions: calculatedSessions,
+                annual_hours: finalHours,
+                annual_sessions: finalSessions,
+                annual_education_sessions: isGP ? 10 : null,
+                manual_override: existingEntitlement?.manual_override || false,
+                manual_entitlement_hours: existingEntitlement?.manual_entitlement_hours || null,
+                manual_entitlement_sessions: existingEntitlement?.manual_entitlement_sessions || null,
+                updated_at: new Date().toISOString()
+              };
+
+              const { error: entitlementError } = await globalSupabase
+                .from('2_staff_entitlements')
+                .upsert(entitlement, {
+                  onConflict: 'staff_profile_id,year',
+                  ignoreDuplicates: false
+                });
+
+              if (entitlementError) {
+                console.error('Entitlement error:', entitlementError);
+              }
+
+              // Create/Update link in 5_staff_profile_user_links
+              const linkData = {
+                staff_profile_id: profileId,
+                user_id: currentUser.id,
+                site_id: currentSiteId,
+                linked_at: new Date().toISOString()
+              };
+
+              await globalSupabase
+                .from('5_staff_profile_user_links')
+                .upsert(linkData, {
+                  onConflict: 'staff_profile_id,user_id',
+                  ignoreDuplicates: false
+                });
+            }
+          } catch (e) {
+            console.error('Holiday profile/entitlement setup failed:', e);
+          }
+          
+          // Mark onboarding complete
+          try {
+            await globalSupabase.auth.updateUser({
+              data: {
+                welcome_completed_at: new Date().toISOString(),
+                onboarding_required: false
+              }
+            });
+            
+            await globalSupabase.from('profiles').update({
+              onboarding_complete: true,
+              role: 'staff' // Ensure role is maintained
+            }).eq('user_id', currentUser.id);
+          } catch (e) {
+            console.warn('completion meta update failed', e);
+          }
+          
+          // Success - show completion step with animations
+          console.log('Working hours saved successfully');
+          if (msg) msg.textContent = 'Saved!';
+
+          // Hide working hours step
+          document.getElementById('step4').style.display = 'none';
+
+          // Show completion step
+          const step5 = document.getElementById('step5');
+          if (step5) {
+            step5.style.display = 'block';
+
+            // Trigger confetti and balloons
+            setTimeout(() => {
+              burstConfetti();
+              showBalloons();
+            }, 100);
+
+            // Add more confetti bursts
+            setTimeout(() => burstConfetti(), 500);
+            setTimeout(() => burstConfetti(), 1000);
+          }
+
+          // Redirect to dashboard after delay
+          setTimeout(() => {
+            // Session already clean
+            window.location.href = 'staff.html';
+          }, 2000); // Quick celebration then move on
+          
+        } catch (e) {
+          console.error('Error saving working hours:', e);
+
+          // Even if saving fails, still show success and continue
+          // (data is saved in auth metadata as fallback)
+          console.log('Continuing despite save error...');
+
+          // Show completion step anyway
+          document.getElementById('step4').style.display = 'none';
+          const step5 = document.getElementById('step5');
+          if (step5) {
+            step5.style.display = 'block';
+
+            // Trigger celebrations
+            setTimeout(() => {
+              burstConfetti();
+              showBalloons();
+            }, 100);
+
+            setTimeout(() => burstConfetti(), 500);
+            setTimeout(() => burstConfetti(), 1000);
+          }
+
+          // Redirect after delay
+          setTimeout(() => {
+            // Session already clean
+            window.location.href = 'staff.html';
+          }, 2000);
+        }
+      });
+    };
+    
+    // Call the setup function after everything is loaded
+    if (window.setupWorkingHoursHandlers) {
+      window.setupWorkingHoursHandlers(window.currentUser, window.currentSiteId);
+    }

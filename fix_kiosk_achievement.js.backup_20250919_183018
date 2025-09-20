@@ -1,0 +1,123 @@
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = 'https://unveoqnlqnobufhublyw.supabase.co';
+const supabaseServiceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTAxNzI3NiwiZXhwIjoyMDcwNTkzMjc2fQ.CJxV14F0T2TWkAjeR4bpYiBIOwLwyfzF9WzAWwS99Xc';
+
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+async function fixKioskAndAchievement() {
+  console.log('🔧 Fixing kiosk user and achievement for benhowardmagic@hotmail.com...\n');
+
+  const userId = '55f1b4e6-01f4-452d-8d6c-617fe7794873';
+  const userEmail = 'benhowardmagic@hotmail.com';
+
+  try {
+    // Get profile data
+    const { data: profileData, error: profileError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    console.log('Profile data:', profileData);
+    if (profileError) console.error('Profile error:', profileError);
+
+    // Try to get existing kiosk user
+    const { data: existingKioskUser, error: kioskFetchError } = await supabase
+      .from('kiosk_users')
+      .select('*')
+      .eq('email', userEmail)
+      .maybeSingle();
+
+    console.log('\nExisting kiosk user:', existingKioskUser);
+    if (kioskFetchError) console.error('Kiosk fetch error:', kioskFetchError);
+
+    let kioskUserId = null;
+
+    if (existingKioskUser) {
+      kioskUserId = existingKioskUser.id;
+      console.log('Using existing kiosk_user_id:', kioskUserId);
+    } else {
+      // Try to create kiosk user
+      console.log('\nAttempting to create kiosk user...');
+      const kioskData = {
+        site_id: profileData?.site_id || 2, // You mentioned site_id 2 in the data
+        full_name: profileData?.full_name || 'Ben Howard',
+        email: userEmail,
+        role: profileData?.role || 'staff',
+        created_at: new Date().toISOString()
+      };
+      console.log('Kiosk data to insert:', kioskData);
+
+      const { data: newKioskUser, error: createError } = await supabase
+        .from('kiosk_users')
+        .insert(kioskData)
+        .select()
+        .single();
+
+      if (createError) {
+        console.error('Error creating kiosk user:', createError);
+        // If error is duplicate key, try to find by other means
+        if (createError.code === '23505') {
+          console.log('Duplicate key error - trying alternative search...');
+          const { data: altKiosk } = await supabase
+            .from('kiosk_users')
+            .select('*')
+            .eq('full_name', profileData?.full_name || 'Ben Howard')
+            .eq('site_id', profileData?.site_id || 2)
+            .maybeSingle();
+
+          if (altKiosk) {
+            kioskUserId = altKiosk.id;
+            console.log('Found kiosk user by name/site:', kioskUserId);
+          }
+        }
+      } else {
+        kioskUserId = newKioskUser.id;
+        console.log('Created new kiosk_user_id:', kioskUserId);
+      }
+    }
+
+    if (!kioskUserId) {
+      console.log('\n❌ Could not get/create kiosk user');
+      return;
+    }
+
+    // Now unlock the achievement
+    console.log('\nUnlocking achievement for kiosk_user_id:', kioskUserId);
+
+    const { data: achievementData, error: achievementError } = await supabase
+      .from('user_achievements')
+      .upsert({
+        kiosk_user_id: kioskUserId,
+        achievement_key: 'first_practice_quiz',
+        status: 'unlocked',
+        progress_percent: 100,
+        unlocked_at: new Date().toISOString()
+      }, {
+        onConflict: 'kiosk_user_id,achievement_key'
+      })
+      .select();
+
+    if (achievementError) {
+      console.error('Error unlocking achievement:', achievementError);
+    } else {
+      console.log('✅ Achievement unlocked successfully!', achievementData);
+    }
+
+    // Verify the achievement
+    const { data: checkAchievement } = await supabase
+      .from('user_achievements')
+      .select('*')
+      .eq('kiosk_user_id', kioskUserId)
+      .eq('achievement_key', 'first_practice_quiz')
+      .single();
+
+    console.log('\n📋 Final achievement status:', checkAchievement);
+
+  } catch (error) {
+    console.error('Unexpected error:', error);
+  }
+}
+
+fixKioskAndAchievement().catch(console.error);

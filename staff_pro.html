@@ -269,7 +269,7 @@
         <!-- Navigation will be rendered by staff-common.js -->
       </nav>
       <div class="spacer"></div>
-      <div class="pill" id="site-pill" aria-live="polite">Site: —</div>
+      
       <div class="pill" id="email-pill" aria-live="polite">—</div>
       <div class="pill" id="role-pill" aria-live="polite">—</div>
       <button class="btn" id="logout-btn">Sign Out</button>
@@ -363,9 +363,9 @@
         if (!session) { alert('Please sign in to access My Holidays.'); return; }
 
         const { data: userData, error } = await supabase
-          .from('kiosk_users')
+          .from('master_users')
           .select('holiday_approved')
-          .eq('user_id', session.user.id)
+          .eq('auth_user_id', session.user.id)
           .single();
 
         if (error) { console.error('Error checking holiday approval:', error); alert('Unable to check holiday access. Please try again later.'); return; }
@@ -407,9 +407,9 @@
       // Check holiday approval status and update button
       try {
         const { data: userData, error } = await supabase
-          .from('kiosk_users')
+          .from('master_users')
           .select('holiday_approved')
-          .eq('user_id', session.user.id)
+          .eq('auth_user_id', session.user.id)
           .single();
 
         if (!error && userData) {
@@ -437,7 +437,7 @@
         console.error('Error checking holiday approval status:', error);
       }
 
-      const role = (profileRow?.role || session.user?.raw_user_meta_data?.role || '').toLowerCase();
+      const role = ((profileRow?.role || session.user?.raw_user_meta_data?.role || '').toLowerCase()?.access_type || (profileRow?.role || session.user?.raw_user_meta_data?.role || '').toLowerCase());
       if (role === 'admin' || role === 'owner') {
         const adminPanel = document.getElementById('admin-access-panel');
         if (adminPanel) adminPanel.style.display = 'block';
@@ -451,12 +451,12 @@
     async function loadDashboard(user, profileRow){
       let displayName = profileRow?.full_name || user?.raw_user_meta_data?.full_name || (user?.email?.split('@')[0]) || 'Staff Member';
       try{
-        const { data: nickRow } = await supabase.from('profiles').select('nickname').eq('user_id', user.id).maybeSingle();
+        const { data: nickRow } = await supabase.from('master_users').select('nickname').eq('auth_user_id', user.id).maybeSingle();
         if (nickRow?.nickname) displayName = nickRow.nickname;
       }catch(_){/* ignore */}
 
       const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
-      const role = profileRow?.role || user?.raw_user_meta_data?.role || 'Staff';
+      const role = (profileRow?.role || user?.raw_user_meta_data?.role || 'Staff'?.access_type || profileRow?.role || user?.raw_user_meta_data?.role || 'Staff');
       const roleDetail = role.charAt(0).toUpperCase() + role.slice(1);
 
       document.getElementById('welcome').textContent = \`Welcome, \${displayName}\`;
@@ -466,17 +466,17 @@
       try {
         let avatarUrl = null;
         try {
-          const { data: p } = await supabase.from('profiles').select('avatar_url').eq('user_id', user.id).maybeSingle();
+          const { data: p } = await supabase.from('master_users').select('avatar_url').eq('auth_user_id', user.id).maybeSingle();
           if (p?.avatar_url) avatarUrl = p.avatar_url;
-        } catch(e) { console.warn('Avatar from profiles err:', e); }
+        } catch(e) { console.warn('Avatar from master_users err:', e); }
 
         if (!avatarUrl) {
           try {
             if (siteId) {
               const { data: saw } = await supabase
-                .from('staff_app_welcome')
+                .from('master_users')
                 .select('avatar_url, updated_at')
-                .eq('user_id', user.id)
+                .eq('auth_user_id', user.id)
                 .eq('site_id', siteId)
                 .order('updated_at', { ascending: false })
                 .limit(1)
@@ -500,7 +500,7 @@
         }
       } catch(_){}
 
-      setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: roleDetail });
+      setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: roleDetail , access_type: profileRow?.access_type || profileRow?.role});
       if (!siteId){ document.getElementById('site-subtitle').textContent = 'Your staff dashboard'; }
 
       let valid = 0, due = 0, total = 0, ringPct = 0;
@@ -807,5 +807,6 @@
 
     <!-- Debug Console - Persistent across all pages -->
     <script src="debug-console.js"></script>
+    <script src="supabase-debug.js"></script>
 </body>
 </html>

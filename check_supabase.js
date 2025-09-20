@@ -28,10 +28,10 @@ async function checkBenHoward() {
         }
     }
 
-    // 2. Check profiles table
-    console.log('\n2. Checking profiles table...');
+    // 2. Check master_users table
+    console.log('\n2. Checking master_users table...');
     const { data: profiles, error: profileError } = await supabase
-        .from('profiles')
+        .from('master_users')
         .select('*')
         .or('full_name.ilike.%Ben Howard%,user_id.eq.' + (authUser?.users?.find(u => u.email === 'benhowardmagic@hotmail.com')?.id || 'none'));
 
@@ -55,10 +55,10 @@ async function checkBenHoward() {
         console.log('✗ No profiles found for Ben Howard');
     }
 
-    // 3. Check kiosk_users table
-    console.log('\n3. Checking kiosk_users table...');
+    // 3. Check master_users table
+    console.log('\n3. Checking master_users table...');
     const { data: kioskUsers, error: kioskError } = await supabase
-        .from('kiosk_users')
+        .from('master_users')
         .select('*')
         .ilike('full_name', '%Ben Howard%');
 
@@ -84,8 +84,8 @@ async function checkBenHoward() {
     if (profiles && profiles.length > 0 && profiles[0].site_id) {
         console.log('\n4. Checking all profiles at site', profiles[0].site_id, '...');
         const { data: siteProfiles, error: siteError } = await supabase
-            .from('profiles')
-            .select('user_id, full_name, kiosk_user_id, role, active')
+            .from('master_users')
+            .select('auth_user_id, full_name, kiosk_auth_user_id, role, active')
             .eq('site_id', profiles[0].site_id);
 
         if (siteError) {
@@ -109,7 +109,7 @@ async function checkBenHoward() {
     // 5. Check max kiosk_user id
     console.log('\n5. Checking kiosk_users ID range...');
     const { data: maxId, error: maxError } = await supabase
-        .from('kiosk_users')
+        .from('master_users')
         .select('id')
         .order('id', { ascending: false })
         .limit(1);

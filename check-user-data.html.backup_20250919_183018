@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Check User Data</title>
+</head>
+<body>
+    <h1>Checking User Data...</h1>
+    <div id="output"></div>
+
+    <script type="module">
+        import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+        const supabase = createClient(
+            'https://unveoqnlqnobufhublyw.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME'
+        );
+
+        function log(message) {
+            console.log(message);
+            document.getElementById('output').innerHTML += message + '<br>';
+        }
+
+        async function checkUserData() {
+            try {
+                log('🔍 Checking user data for benhowardmagic@hotmail.com');
+                
+                // First sign in to get the user's session
+                const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+                    email: 'benhowardmagic@hotmail.com',
+                    password: 'Hello1!'
+                });
+                
+                if (authError) {
+                    log('❌ Authentication failed: ' + authError.message);
+                    return;
+                }
+                
+                const user = authData.user;
+                log('📊 AUTH USER DATA:');
+                log('User ID: ' + user.id);
+                log('Email: ' + user.email);
+                log('Raw User Metadata: ' + JSON.stringify(user.raw_user_meta_data, null, 2));
+                log('User Metadata: ' + JSON.stringify(user.user_metadata, null, 2));
+                
+                // Check profiles table
+                log('📊 PROFILES TABLE DATA:');
+                const { data: profiles, error: profileError } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('user_id', user.id);
+                
+                if (profileError) {
+                    log('❌ Error fetching profiles: ' + profileError.message);
+                } else if (profiles.length === 0) {
+                    log('❌ NO PROFILE FOUND in profiles table!');
+                } else {
+                    log('✅ Profile found: ' + JSON.stringify(profiles[0], null, 2));
+                    
+                    // Check if site exists
+                    if (profiles[0].site_id) {
+                        log('📊 SITE DATA:');
+                        const { data: site, error: siteError } = await supabase
+                            .from('sites')
+                            .select('*')
+                            .eq('id', profiles[0].site_id)
+                            .single();
+                        
+                        if (siteError) {
+                            log('❌ Error fetching site: ' + siteError.message);
+                        } else {
+                            log('✅ Site found: ' + JSON.stringify(site, null, 2));
+                        }
+                    } else {
+                        log('❌ NO SITE_ID in profile!');
+                    }
+                }
+                
+                // Check site_invites table
+                log('📊 SITE_INVITES DATA:');
+                const { data: invites, error: inviteError } = await supabase
+                    .from('site_invites')
+                    .select('*')
+                    .eq('email', user.email);
+                
+                if (inviteError) {
+                    log('❌ Error fetching invites: ' + inviteError.message);
+                } else if (invites.length === 0) {
+                    log('ℹ️  No site invites found');
+                } else {
+                    log('✅ Site invites found: ' + JSON.stringify(invites, null, 2));
+                }
+                
+                // Summary
+                log('🔍 ANALYSIS:');
+                if (profiles.length === 0) {
+                    log('❌ ISSUE: User has no profile in profiles table');
+                    log('   This is why admin page shows default "User" and "Site"');
+                    log('   Need to create a profile record');
+                } else if (!profiles[0].site_id) {
+                    log('❌ ISSUE: User profile exists but has no site_id');
+                    log('   Need to assign user to a site');
+                } else if (!profiles[0].full_name) {
+                    log('⚠️  WARNING: User profile has no full_name');
+                    log('   Will show email-derived name');
+                } else {
+                    log('✅ Profile data looks complete');
+                }
+                
+            } catch (error) {
+                log('💥 Error: ' + error.message);
+            }
+        }
+
+        // Run the check
+        checkUserData();
+    </script>
+
+    <!-- Debug Console - Persistent across all pages -->
+    <script src="debug-console.js"></script>
+</body>
+</html>

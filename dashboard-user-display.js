@@ -52,9 +52,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Try to get user profile information
     const { data: profile, error: profileError } = await supabase
-      .from('profiles')
+      .from('master_users')
       .select('first_name, last_name, role')
-      .eq('user_id', session.user.id)
+      .eq('auth_user_id', session.user.id)
       .maybeSingle();
     
     let displayName = '';

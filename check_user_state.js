@@ -39,21 +39,21 @@ async function checkUserState() {
       
       // 2. profiles
       const { data: profiles } = await supabase
-        .from('profiles')
+        .from('master_users')
         .select('*')
         .or(`email.eq.${email},full_name.eq.John Smith`);
       results.tables.profiles = profiles || [];
       
       // 3. kiosk_users
       const { data: kiosk } = await supabase
-        .from('kiosk_users')
+        .from('master_users')
         .select('*')
         .or('full_name.eq.John Smith,full_name.ilike.%John%');
       results.tables.kiosk_users = kiosk || [];
       
       // 4. staff_app_welcome
       const { data: saw } = await supabase
-        .from('staff_app_welcome')
+        .from('master_users')
         .select('*')
         .or('full_name.eq.John Smith,full_name.ilike.%John%');
       results.tables.staff_app_welcome = saw || [];

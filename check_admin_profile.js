@@ -1,4 +1,4 @@
-// Check if benhowardmagic@hotmail.com has admin role in profiles table
+// Check if benhowardmagic@hotmail.com has admin role in master_users table
 import { createClient } from '@supabase/supabase-js';
 
 // Load config
@@ -28,11 +28,11 @@ async function checkAdminProfile() {
     console.log('User email:', authData.user.email);
     console.log('User metadata role:', authData.user.raw_user_meta_data?.role);
     
-    // Check the profiles table
+    // Check the master_users table
     const { data: profile, error: profileError } = await supabase
-      .from('profiles')
+      .from('master_users')
       .select('*')
-      .eq('user_id', authData.user.id)
+      .eq('auth_user_id', authData.user.id)
       .maybeSingle();
     
     if (profileError) {
@@ -44,7 +44,7 @@ async function checkAdminProfile() {
       // Try to create the profile
       console.log('\n📝 Attempting to create admin profile...');
       const { data: newProfile, error: createError } = await supabase
-        .from('profiles')
+        .from('master_users')
         .insert({
           user_id: authData.user.id,
           role: 'admin',
@@ -70,9 +70,9 @@ async function checkAdminProfile() {
         console.log('📝 Updating role to admin...');
         
         const { data: updatedProfile, error: updateError } = await supabase
-          .from('profiles')
+          .from('master_users')
           .update({ role: 'admin' })
-          .eq('user_id', authData.user.id)
+          .eq('auth_user_id', authData.user.id)
           .select()
           .single();
         

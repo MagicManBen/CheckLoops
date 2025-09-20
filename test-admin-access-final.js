@@ -41,10 +41,9 @@ async function testAdminAccess() {
     console.log('\n📍 Staff page details:');
     const staffEmail = await page.locator('#email-pill').textContent();
     const staffRole = await page.locator('#role-pill').textContent();
-    const staffSite = await page.locator('#site-pill').textContent();
+    // Site pill has been removed
     console.log('  Email:', staffEmail);
     console.log('  Role:', staffRole);
-    console.log('  Site:', staffSite);
     
     // Now click Admin Site button
     console.log('\n📍 Clicking Admin Site button...');

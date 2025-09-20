@@ -21,7 +21,7 @@
       const nicknameInput = document.getElementById('nickname');
       let nicknameColumnExists = true;
       try {
-        const { data, error } = await supabase.from('profiles').select('nickname').eq('user_id', user.id).maybeSingle();
+        const { data, error } = await supabase.from('master_users').select('nickname').eq('auth_user_id', user.id).maybeSingle();
         if (error) {
           if (String(error.code) === '42703') nicknameColumnExists = false; else console.warn('profiles nickname check error', error);
         } else if (data && data.nickname) nicknameInput.value = data.nickname;
@@ -32,7 +32,7 @@
         if (!val) { msg.textContent = 'Enter a name first.'; return; }
         if (!nicknameColumnExists){ msg.innerHTML = 'Add nickname column first:<pre style="text-align:left; background:#f1f5f9; padding:8px; border-radius:6px; border:1px solid #e2e8f0;">ALTER TABLE public.profiles ADD COLUMN nickname text;</pre>'; return; }
         try {
-          const { error } = await supabase.from('profiles').update({ nickname: val }).eq('user_id', user.id);
+          const { error } = await supabase.from('master_users').update({ nickname: val }).eq('auth_user_id', user.id);
           if (error) { msg.textContent = 'Save failed'; console.warn(error); return; }
           msg.textContent = 'Saved!';
           burstConfetti();
@@ -122,12 +122,12 @@
           window.aiSeed = seedPool[Math.floor(Math.random()*seedPool.length)] + Math.floor(Math.random()*100); document.getElementById('seedDisplay').textContent = 'Seed: '+window.aiSeed; ['eyes','mouth','eyebrows','glasses','earrings','hair','hairColor','skinColor'].forEach(f=>{ const el=document.getElementById('opt-'+f); if(!el) return; const opts=Array.from(el.options).filter(o=>o.value); const pick=opts[Math.floor(Math.random()*opts.length)]; el.value=pick?.value||''; }); ['glassesProbability','earringsProbability','featuresProbability','hairProbability'].forEach(f=>{ const el=document.getElementById('opt-'+f); if(!el) return; const opts=Array.from(el.options); el.value=opts[Math.floor(Math.random()*opts.length)].value; }); const feats=document.getElementById('opt-features'); Array.from(feats.options).forEach(o=> o.selected=false); const fPool=['mustache','blush','birthmark','freckles']; const count=Math.floor(Math.random()*3); for(let i=0;i<count;i++){ const val=fPool[Math.floor(Math.random()*fPool.length)]; const opt=Array.from(feats.options).find(o=>o.value===val); if(opt) opt.selected=true; } window.avatarDirty=true; updateAvatar(); });
         document.getElementById('avatar-save').addEventListener('click', async ()=> { await saveAvatar(); });
         document.getElementById('ai-generate').addEventListener('click', async ()=> { await runAIGeneration(); });
-        try { const { data: existing } = await supabase.from('staff_app_welcome').select('avatar_url, role_detail, team_id, team_name, nickname').eq('user_id', user.id).maybeSingle(); if (existing){ if(existing.avatar_url){ window.currentAvatarUrl=existing.avatar_url; document.getElementById('avatarPreview').src=existing.avatar_url; } if(existing.role_detail) window.selectedRole=existing.role_detail; if(existing.team_id) window.selectedTeamId=existing.team_id; if(existing.team_name) window.selectedTeamName=existing.team_name; if(existing.nickname && !nicknameInput.value) nicknameInput.value=existing.nickname; } } catch(_){ }
+        try { const { data: existing } = await supabase.from('master_users').select('avatar_url, role_detail, team_id, team_name, nickname').eq('auth_user_id', user.id).maybeSingle(); if (existing){ if(existing.avatar_url){ window.currentAvatarUrl=existing.avatar_url; document.getElementById('avatarPreview').src=existing.avatar_url; } if(existing.role_detail) window.selectedRole=existing.role_detail; if(existing.team_id) window.selectedTeamId=existing.team_id; if(existing.team_name) window.selectedTeamName=existing.team_name; if(existing.nickname && !nicknameInput.value) nicknameInput.value=existing.nickname; } } catch(_){ }
       }
-      async function saveAvatar(){ const msg=document.getElementById('avatar-save-msg'); try { const url=window.currentAvatarUrl || buildAvatarUrl(); const nick=nicknameInput.value.trim()||null; const meta={ avatar_url:url, nickname:nick, role_detail: window.selectedRole||null}; await supabase.auth.updateUser({ data: meta }); try { await supabase.from('staff_app_welcome').upsert({ user_id:user.id, site_id: siteId, full_name: fullName, nickname:nick, avatar_url:url, role_detail: window.selectedRole||null, team_id: window.selectedTeamId||null, team_name: window.selectedTeamName||null }); } catch(_){ } msg.textContent='Saved!'; window.avatarDirty=false; return true; } catch(e){ console.warn('avatar save failed', e); msg.textContent='Save failed'; return false; } }
+      async function saveAvatar(){ const msg=document.getElementById('avatar-save-msg'); try { const url=window.currentAvatarUrl || buildAvatarUrl(); const nick=nicknameInput.value.trim()||null; const meta={ avatar_url:url, nickname:nick, role_detail: window.selectedRole||null}; await supabase.auth.updateUser({ data: meta }); try { await supabase.from('master_users').upsert({ user_id:user.id, site_id: siteId, full_name: fullName, nickname:nick, avatar_url:url, role_detail: window.selectedRole||null, team_id: window.selectedTeamId||null, team_name: window.selectedTeamName||null }); } catch(_){ } msg.textContent='Saved!'; window.avatarDirty=false; return true; } catch(e){ console.warn('avatar save failed', e); msg.textContent='Save failed'; return false; } }
       async function runAIGeneration(){ const out=document.getElementById('aiOutput'); const prompt=String(document.getElementById('aiPrompt').value||'').trim(); if(!prompt){ out.textContent='Enter a description first.'; return; } out.textContent='Generating...'; try { const options = { description: prompt, seedHint: nicknameInput.value.trim()||fullName||'User' }; const { data, error } = await supabase.functions.invoke('generate-avatar', { body: options }); if (error) throw error; if (!data || Object.keys(data).length===0) throw new Error('No data'); applyAIResult(data); await saveAvatar(); out.textContent='Applied! Tweak below if you like.'; } catch(e){ console.warn('AI gen failed', e); out.textContent='AI failed: '+(e.message||e); } }
       function applyAIResult(data){ const map = new Map([['eyes','opt-eyes'],['mouth','opt-mouth'],['eyebrows','opt-eyebrows'],['glasses','opt-glasses'],['glassesProbability','opt-glassesProbability'],['earrings','opt-earrings'],['earringsProbability','opt-earringsProbability'],['featuresProbability','opt-featuresProbability'],['hair','opt-hair'],['hairColor','opt-hairColor'],['hairProbability','opt-hairProbability'],['skinColor','opt-skinColor']]); for(const [k,id] of map.entries()){ if(data[k]!=null){ const el=document.getElementById(id); if(el) el.value=String(data[k]); } } if(Array.isArray(data.features)){ const feats=document.getElementById('opt-features'); if(feats){ Array.from(feats.options).forEach(o=> o.selected = data.features.includes(o.value)); } } if (data.seed) window.aiSeed = String(data.seed); updateAvatar(); }
-      async function persistRoleTeam(role, teamIdNum, teamName){ try { const nicknameVal = nicknameInput.value.trim()||null; if (siteId){ await supabase.from('staff_app_welcome').upsert({ user_id:user.id, site_id:siteId, full_name:fullName, nickname:nicknameVal, role_detail:role||null, team_id:teamIdNum||null, team_name:teamName||null }); } await supabase.from('profiles').update({ role_detail:role||null, team_id:teamIdNum||null, team_name:teamName||null }).eq('user_id', user.id); } catch(e){ console.warn('persistRoleTeam failed', e); } }
+      async function persistRoleTeam(role, teamIdNum, teamName){ try { const nicknameVal = nicknameInput.value.trim()||null; if (siteId){ await supabase.from('master_users').upsert({ user_id:user.id, site_id:siteId, full_name:fullName, nickname:nicknameVal, role_detail:role||null, team_id:teamIdNum||null, team_name:teamName||null }); } await supabase.from('master_users').update({ role_detail:role||null, team_id:teamIdNum||null, team_name:teamName||null }).eq('auth_user_id', user.id); } catch(e){ console.warn('persistRoleTeam failed', e); } }
       document.getElementById('avatar-back').addEventListener('click', ()=> step(3));
       document.getElementById('avatar-next').addEventListener('click', async ()=> { 
         if (window.avatarDirty){ 
@@ -206,7 +206,7 @@
           
           try { 
             await supabase.auth.updateUser({ data: { welcome_completed_at: new Date().toISOString(), onboarding_required: false } }); 
-            await supabase.from('profiles').update({ onboarding_complete: true }).eq('user_id', user.id); 
+            await supabase.from('master_users').update({ onboarding_complete: true }).eq('auth_user_id', user.id); 
           } catch(e){ 
             console.warn('completion meta update failed', e); 
           } 
@@ -996,7 +996,7 @@
                 }
               });
 
-              // 2. Save to profiles table (main storage) - CRITICAL FOR HOMEPAGE DISPLAY
+              // 2. Save to master_users table (main storage) - CRITICAL FOR HOMEPAGE DISPLAY
               try {
                 // First, ensure we have the correct role
                 const userRole = window.selectedRole ? window.selectedRole.toLowerCase() : 'staff';
@@ -1020,7 +1020,7 @@
 
                 console.log('[saveAvatarToSupabase] Upserting to profiles:', profileData);
                 const { data: profileResult, error: profileErr } = await supabase
-                  .from('profiles')
+                  .from('master_users')
                   .upsert(profileData, {
                     onConflict: 'user_id',
                     ignoreDuplicates: false
@@ -1052,7 +1052,7 @@
                     team_name: window.selectedTeamName || null
                   };
                   console.log('[saveAvatarToSupabase] Upserting to staff_app_welcome:', payload);
-                  await supabase.from('staff_app_welcome').upsert(payload);
+                  await supabase.from('master_users').upsert(payload);
                 } catch (e) {
                   console.warn('[saveAvatarToSupabase] staff_app_welcome save error:', e);
                   // Non-critical, continue
@@ -1198,12 +1198,12 @@
 
               // Update profiles as backup/sync
               try {
-                let qp = supabase.from('profiles').update({
+                let qp = supabase.from('master_users').update({
                   role_detail: role,
                   avatar_url: avatar,
                   team_id: teamIdNum,
                   team_name: (window.selectedTeamName || null)
-                }).eq('user_id', user.id);
+                }).eq('auth_user_id', user.id);
                 if (siteId) qp = qp.eq('site_id', siteId);
                 const { error: upErr } = await qp;
                 if (upErr) { console.warn('profiles update failed', upErr); }
@@ -1214,16 +1214,16 @@
               try{
                 let kioskId = null;
                 const { data: ku } = await supabase
-                  .from('kiosk_users')
+                  .from('master_users')
                   .select('id')
                   .eq('site_id', siteId)
                   .eq('full_name', fullName)
                   .maybeSingle();
                 kioskId = ku?.id || null;
                 if (kioskId){
-                  await supabase.from('kiosk_users').update({ role, team_id: teamIdNum, team_name: (window.selectedTeamName || null), active: true }).eq('id', kioskId);
+                  await supabase.from('master_users').update({ role, team_id: teamIdNum, team_name: (window.selectedTeamName || null), active: true }).eq('id', kioskId);
                 } else {
-                  await supabase.from('kiosk_users').insert({ site_id: siteId, full_name: fullName, role, team_id: teamIdNum, team_name: (window.selectedTeamName || null), active: true });
+                  await supabase.from('master_users').insert({ site_id: siteId, full_name: fullName, role, team_id: teamIdNum, team_name: (window.selectedTeamName || null), active: true });
                 }
               } catch(kuErr){ console.info('kiosk_users upsert skipped/failed (policy likely).', kuErr?.message || kuErr); }
 
@@ -1237,12 +1237,12 @@
                 if (upd.error) console.warn('Could not stamp completion metadata:', upd.error);
               } catch (metaErr) { console.warn('metadata completion update failed', metaErr); }
 
-              // Also update the profiles table to mark onboarding as complete
+              // Also update the master_users table to mark onboarding as complete
               try {
                 const { error: profileUpdateError } = await supabase
-                  .from('profiles')
+                  .from('master_users')
                   .update({ onboarding_complete: true })
-                  .eq('user_id', user.id);
+                  .eq('auth_user_id', user.id);
                 
                 if (profileUpdateError) {
                   console.warn('Could not update onboarding_complete in profiles:', profileUpdateError);
@@ -1305,9 +1305,9 @@
                 console.warn('Auth metadata update failed:', e); 
               }
               
-              // 2. Update profiles table
+              // 2. Update master_users table
               try { 
-                await supabase.from('profiles').update({ avatar_url: js.full_body_url }).eq('user_id', session.user.id); 
+                await supabase.from('master_users').update({ avatar_url: js.full_body_url }).eq('auth_user_id', session.user.id); 
               } catch(e) { 
                 console.warn('Profiles table update failed:', e); 
               }
@@ -1315,7 +1315,7 @@
               // 3. Update staff_app_welcome if we have siteId
               if (siteId) {
                 try {
-                  await supabase.from('staff_app_welcome').update({ avatar_url: js.full_body_url }).eq('user_id', session.user.id);
+                  await supabase.from('master_users').update({ avatar_url: js.full_body_url }).eq('auth_user_id', session.user.id);
                 } catch(e) {
                   console.warn('staff_app_welcome update failed:', e);
                 }
@@ -1423,9 +1423,9 @@
                   try {
                     const completedAt = new Date().toISOString();
                     await globalSupabase
-                      .from('profiles')
+                      .from('master_users')
                       .update({ onboarding_completed_at: completedAt })
-                      .eq('user_id', globalUser.id);
+                      .eq('auth_user_id', globalUser.id);
                   } catch (e) {
                     console.warn('Failed to update profile onboarding status:', e);
                   }
@@ -1541,12 +1541,12 @@
                   if (upd.error) console.warn('Could not stamp completion metadata:', upd.error);
                 } catch (metaErr) { console.warn('metadata completion update failed', metaErr); }
 
-                // Also update the profiles table to mark onboarding as complete
+                // Also update the master_users table to mark onboarding as complete
                 try {
                   const { error: profileUpdateError } = await supabase
-                    .from('profiles')
+                    .from('master_users')
                     .update({ onboarding_complete: true })
-                    .eq('user_id', user.id);
+                    .eq('auth_user_id', user.id);
                   
                   if (profileUpdateError) {
                     console.warn('Could not update onboarding_complete in profiles:', profileUpdateError);
@@ -1720,7 +1720,7 @@
 
           if (nicknameColumnExists) {
             try{
-              let q = supabase.from('profiles').update({ nickname: val }).eq('user_id', user.id);
+              let q = supabase.from('master_users').update({ nickname: val }).eq('auth_user_id', user.id);
               if (siteId) q = q.eq('site_id', siteId);
               const { error } = await q;
               if (error && (String(error.code) === '42703' || /column .*nickname/i.test(String(error.message)))) {
@@ -1775,9 +1775,9 @@
           let existing = null;
           try {
             let q = supabase
-              .from('staff_app_welcome')
+              .from('master_users')
               .select('full_name, nickname, role_detail, team_id, team_name, avatar_url')
-              .eq('user_id', user.id)
+              .eq('auth_user_id', user.id)
               .limit(1);
             if (siteId) q = q.eq('site_id', siteId);
             const { data: sawRow, error: sawErr } = await q.maybeSingle();
@@ -1878,7 +1878,7 @@
                   avatar_url: avatarUrl ?? null
                 };
                 const { error: sawErr } = await supabase
-                  .from('staff_app_welcome')
+                  .from('master_users')
                   .upsert(payload);
                 if (sawErr) {
                   if (msgEl) msgEl.textContent = `Could not save to Staff_App_Welcome (${sawErr.code||''}). Falling back…`;
@@ -1891,11 +1891,11 @@
 
               // 2) Also update profiles so existing views stay in sync
               try {
-                let qp2 = supabase.from('profiles').update({
+                let qp2 = supabase.from('master_users').update({
                   role_detail: role || null,
                   team_id: teamIdNum ?? null,
                   team_name: teamName || null
-                }).eq('user_id', user.id);
+                }).eq('auth_user_id', user.id);
                 if (siteId) qp2 = qp2.eq('site_id', siteId);
                 const { error: pErr } = await qp2;
                 if (pErr) { console.warn('[welcome] profiles sync failed', pErr); }

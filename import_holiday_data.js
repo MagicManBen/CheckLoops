@@ -63,7 +63,7 @@ async function clearExistingData() {
   
   // Clear holiday_entitlements
   const { error: entError } = await supabase
-    .from('holiday_entitlements')
+    .from('master_users')
     .delete()
     .in('user_id', [BEN_ID, TOM_ID]);
   
@@ -109,7 +109,7 @@ async function insertEntitlements() {
     };
     
     const { error } = await supabase
-      .from('holiday_entitlements')
+      .from('master_users')
       .insert(entitlement);
     
     if (error) {
@@ -229,7 +229,7 @@ async function verifyImport() {
   
   // Check entitlements
   const { data: entitlements, error: entError } = await supabase
-    .from('holiday_entitlements')
+    .from('master_users')
     .select('*')
     .in('user_id', [BEN_ID, TOM_ID]);
   

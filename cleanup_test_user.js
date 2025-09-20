@@ -40,11 +40,11 @@ async function cleanupTestUser() {
         console.log('✓ Cleaned up site_invitations');
       }
 
-      // Delete from staff_app_welcome
+      // DELETE FROM master_users
       const { error: welcomeError } = await supabase
-        .from('staff_app_welcome')
+        .from('master_users')
         .delete()
-        .eq('user_id', testUser.id);
+        .eq('auth_user_id', testUser.id);
 
       if (welcomeError) {
         console.log('Staff app welcome cleanup:', welcomeError.message);
@@ -54,9 +54,9 @@ async function cleanupTestUser() {
 
       // Delete from working_patterns
       const { error: patternError } = await supabase
-        .from('working_patterns')
+        .from('master_users')
         .delete()
-        .eq('user_id', testUser.id);
+        .eq('auth_user_id', testUser.id);
 
       if (patternError) {
         console.log('Working patterns cleanup:', patternError.message);
@@ -64,9 +64,9 @@ async function cleanupTestUser() {
         console.log('✓ Cleaned up working_patterns');
       }
 
-      // Delete from staff_holiday_profiles (using full_name)
+      // DELETE FROM master_users (using full_name)
       const { error: holidayError } = await supabase
-        .from('staff_holiday_profiles')
+        .from('master_users')
         .delete()
         .eq('full_name', 'Benjamin Howard');
 
@@ -76,11 +76,11 @@ async function cleanupTestUser() {
         console.log('✓ Cleaned up staff_holiday_profiles');
       }
 
-      // Delete from profiles
+      // DELETE FROM master_users
       const { error: profileError } = await supabase
-        .from('profiles')
+        .from('master_users')
         .delete()
-        .eq('user_id', testUser.id);
+        .eq('auth_user_id', testUser.id);
 
       if (profileError) {
         console.log('Profiles cleanup:', profileError.message);
@@ -114,7 +114,7 @@ async function cleanupTestUser() {
     // Clean up duplicate holiday profiles
     console.log('\nStep 4: Cleaning up duplicate holiday profiles...');
     const { data: duplicates } = await supabase
-      .from('staff_holiday_profiles')
+      .from('master_users')
       .select('*')
       .eq('full_name', 'Benjamin Howard');
 
@@ -122,7 +122,7 @@ async function cleanupTestUser() {
       // Keep the first one, delete the rest
       for (let i = 1; i < duplicates.length; i++) {
         await supabase
-          .from('staff_holiday_profiles')
+          .from('master_users')
           .delete()
           .eq('id', duplicates[i].id);
       }

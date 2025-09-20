@@ -6,12 +6,12 @@ const serviceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSI
 const supabase = createClient(supabaseUrl, serviceKey);
 
 async function checkKioskUsersSchema() {
-  console.log('🔍 Checking kiosk_users table schema...');
+  console.log('🔍 Checking master_users table schema...');
   
   try {
-    // Check kiosk_users table structure
+    // Check master_users table structure
     const { data: kioskSample, error: kioskError } = await supabase
-      .from('kiosk_users')
+      .from('master_users')
       .select('*')
       .limit(1);
     
@@ -24,13 +24,13 @@ async function checkKioskUsersSchema() {
       console.log('kiosk_users columns:', Object.keys(kioskSample[0]));
       console.log('Sample record:', kioskSample[0]);
     } else {
-      console.log('kiosk_users table is empty');
+      console.log('master_users table is empty');
     }
     
-    // Check profiles table to see how it maps to auth users
-    console.log('\n🔍 Checking profiles table schema...');
+    // Check master_users table to see how it maps to auth users
+    console.log('\n🔍 Checking master_users table schema...');
     const { data: profilesSample, error: profilesError } = await supabase
-      .from('profiles')
+      .from('master_users')
       .select('*')
       .limit(3);
     

@@ -75,11 +75,11 @@
                 
                 log('');
                 
-                // 2. Check kiosk_users table and holiday_approved column
-                log('📋 2. Investigating kiosk_users table...');
+                // 2. Check master_users table and holiday_approved column
+                log('📋 2. Investigating master_users table...');
                 try {
                     const { data: kioskData, error: kioskError } = await supabase
-                        .from('kiosk_users')
+                        .from('master_users')
                         .select('*')
                         .limit(1);
                     
@@ -87,7 +87,7 @@
                         log(`   ❌ kiosk_users error: ${kioskError.message}`, 'error');
                         log(`   🔍 Error code: ${kioskError.code}`, 'error');
                     } else {
-                        log('   ✅ kiosk_users table exists', 'success');
+                        log('   ✅ master_users table exists', 'success');
                         if (kioskData && kioskData.length > 0) {
                             const columns = Object.keys(kioskData[0]);
                             log(`   📝 Columns: ${columns.join(', ')}`);
@@ -108,18 +108,18 @@
                 
                 log('');
                 
-                // 3. Check profiles table for PIN columns
-                log('📋 3. Investigating profiles table...');
+                // 3. Check master_users table for PIN columns
+                log('📋 3. Investigating master_users table...');
                 try {
                     const { data: profilesData, error: profilesError } = await supabase
-                        .from('profiles')
+                        .from('master_users')
                         .select('*')
                         .limit(1);
                     
                     if (profilesError) {
                         log(`   ❌ profiles error: ${profilesError.message}`, 'error');
                     } else {
-                        log('   ✅ profiles table exists', 'success');
+                        log('   ✅ master_users table exists', 'success');
                         if (profilesData && profilesData.length > 0) {
                             const columns = Object.keys(profilesData[0]);
                             log(`   📝 Total columns: ${columns.length}`);
@@ -163,9 +163,9 @@
                 for (const testCase of testUUIDs) {
                     try {
                         const { data, error } = await supabase
-                            .from('kiosk_users')
-                            .select('user_id')
-                            .eq('user_id', testCase.value)
+                            .from('master_users')
+                            .select('auth_auth_user_id')
+                            .eq('auth_user_id', testCase.value)
                             .limit(1);
                         
                         if (error) {
@@ -189,8 +189,8 @@
                 // First get a real user ID to test with
                 try {
                     const { data: testUser, error: testUserError } = await supabase
-                        .from('kiosk_users')
-                        .select('user_id, holiday_approved')
+                        .from('master_users')
+                        .select('auth_auth_user_id, holiday_approved')
                         .limit(1)
                         .maybeSingle();
                     
@@ -200,9 +200,9 @@
                         
                         // Test update (using same value to avoid changing data)
                         const { data: updateResult, error: updateError } = await supabase
-                            .from('kiosk_users')
+                            .from('master_users')
                             .update({ holiday_approved: testUser.holiday_approved })
-                            .eq('user_id', testUser.user_id)
+                            .eq('auth_user_id', testUser.user_id)
                             .select();
                         
                         if (updateError) {
@@ -219,9 +219,9 @@
                         for (const badUUID of problemUUIDs) {
                             try {
                                 const { error: badError } = await supabase
-                                    .from('kiosk_users')
+                                    .from('master_users')
                                     .update({ holiday_approved: true })
-                                    .eq('user_id', badUUID);
+                                    .eq('auth_user_id', badUUID);
                                 
                                 if (badError) {
                                     log(`   ❌ UUID "${badUUID}" causes: ${badError.message}`, 'error');

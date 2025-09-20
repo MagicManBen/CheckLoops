@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Supabase Connection</title>
+    <script src="config.js"></script>
+</head>
+<body>
+    <h1>Testing Supabase Connection</h1>
+    <div id="output"></div>
+    <button id="testBtn">Test Sign In</button>
+
+    <script type="module">
+        import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+        const output = document.getElementById('output');
+
+        function log(message) {
+            console.log(message);
+            output.innerHTML += message + '<br>';
+        }
+
+        log('CONFIG values:');
+        log(`- SUPABASE_URL: ${CONFIG.SUPABASE_URL}`);
+        log(`- SUPABASE_ANON_KEY: ${CONFIG.SUPABASE_ANON_KEY ? CONFIG.SUPABASE_ANON_KEY.substring(0, 20) + '...' : 'MISSING'}`);
+
+        // Create Supabase client
+        const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
+            auth: {
+                persistSession: true,
+                autoRefreshToken: true,
+                detectSessionInUrl: true,
+                flowType: 'pkce',
+                storage: window.localStorage,
+                storageKey: `sb-${CONFIG.SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`
+            }
+        });
+
+        log('<br>Supabase client created successfully');
+
+        document.getElementById('testBtn').addEventListener('click', async () => {
+            log('<br>Testing sign in...');
+
+            try {
+                const { data, error } = await supabase.auth.signInWithPassword({
+                    email: 'benhowardmagic@hotmail.com',
+                    password: 'Hello1!'
+                });
+
+                if (error) {
+                    log(`<span style="color:red">Error: ${error.message}</span>`);
+                    log(`Error details: ${JSON.stringify(error)}`);
+                } else {
+                    log(`<span style="color:green">Success! User signed in</span>`);
+                    log(`User ID: ${data.user?.id}`);
+                    log(`Email: ${data.user?.email}`);
+
+                    // Check profile
+                    const { data: profile, error: profileError } = await supabase
+                        .from('master_users')
+                        .select('role, full_name')
+                        .eq('user_id', data.user.id)
+                        .maybeSingle();
+
+                    if (profile) {
+                        log(`Profile role: ${profile.role}`);
+                        log(`Full name: ${profile.full_name}`);
+                    }
+
+                    // Sign out for clean test
+                    await supabase.auth.signOut();
+                    log('Signed out for clean test');
+                }
+            } catch (err) {
+                log(`<span style="color:red">Caught error: ${err.message}</span>`);
+                log(`Stack: ${err.stack}`);
+            }
+        });
+
+        // Also test basic connectivity
+        log('<br>Testing database connectivity...');
+        supabase
+            .from('master_users')
+            .select('count')
+            .limit(1)
+            .then(({ data, error }) => {
+                if (error) {
+                    log(`<span style="color:red">Database connection error: ${error.message}</span>`);
+                } else {
+                    log(`<span style="color:green">Database connection successful!</span>`);
+                }
+            });
+    </script>
+
+    <!-- Debug Console - Persistent across all pages -->
+    <script src="debug-console.js"></script>
+</body>
+</html>

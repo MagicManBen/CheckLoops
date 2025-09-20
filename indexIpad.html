@@ -1294,7 +1294,7 @@ function stopScanTrollyCycle(){
       debugLog('Cleared staff authentication');
 
       // Fetch profile -> site id
-      const { data: prof, error } = await sb.from('profiles').select('site_id, full_name, role').eq('user_id', session.user.id).limit(1);
+      const { data: prof, error } = await sb.from('master_users').select('site_id, full_name, role').eq('auth_user_id', session.user.id).limit(1);
       if (error || !prof || !prof.length) {
         debugLog('Profile error or no profile found', { error, prof });
         show('screen-login');
@@ -1416,7 +1416,7 @@ function stopScanTrollyCycle(){
         S.staff = {
           name: data.full_name,
           role: data.access_type || 'staff',
-          master_user_id: data.id,  // Store the master_users ID instead of kiosk_user_id
+          master_user_id: data.id,  // Store the master_users ID
           user_id: data.auth_user_id  // The actual auth user ID
         };
 
@@ -1487,41 +1487,41 @@ function stopScanTrollyCycle(){
 
     // --- PIN Setup Screen Logic ---
     async function populateKioskUsers() {
-  const selectEl = $('pinSetupUser');
-  selectEl.innerHTML = '<option value="">Select Staff Member...</option>';
-  if (!S.siteId) {
-      $('pinSetupMsg').textContent = 'Error: Site not loaded.';
-      return;
-  }
-  
-  // Get ALL staff from master_users for this site
-  console.log('Loading staff from master_users for site:', S.siteId);
-  const { data: users, error } = await readClient()
-      .from('master_users')
-      .select('auth_user_id, full_name, email')
-      .eq('site_id', S.siteId)
-      .not('full_name', 'is', null)  // Only get users with names
-      .eq('active', true)  // Only active users
-      .order('full_name');
+      const selectEl = $('pinSetupUser');
+      selectEl.innerHTML = '<option value="">Select Staff Member...</option>';
+      if (!S.siteId) {
+          $('pinSetupMsg').textContent = 'Error: Site not loaded.';
+          return;
+      }
+      
+      // Get ALL staff from master_users for this site
+      console.log('Loading staff from master_users for site:', S.siteId);
+      const { data: users, error } = await readClient()
+          .from('master_users')
+          .select('auth_user_id, full_name, email')
+          .eq('site_id', S.siteId)
+          .not('full_name', 'is', null)  // Only get users with names
+          .eq('active', true)  // Only active users
+          .order('full_name');
 
-  console.log('Loaded master_users:', users);
-  if (error) {
-      console.error('Error loading master_users:', error);
-      $('pinSetupMsg').textContent = 'Could not load staff list.';
-      return;
-  }
+      console.log('Loaded master_users:', users);
+      if (error) {
+          console.error('Error loading master_users:', error);
+          $('pinSetupMsg').textContent = 'Could not load staff list.';
+          return;
+      }
 
-  if (users && users.length > 0) {
-      users.forEach(user => {
-          const option = document.createElement('option');
-          option.value = user.auth_user_id;  // Use auth_user_id as the identifier
-          option.textContent = user.full_name;
-          selectEl.appendChild(option);
-      });
-  } else {
-      $('pinSetupMsg').textContent = 'No staff found for this site.';
-  }
-}
+      if (users && users.length > 0) {
+          users.forEach(user => {
+              const option = document.createElement('option');
+              option.value = user.auth_user_id;  // Use auth_user_id as the identifier
+              option.textContent = user.full_name;
+              selectEl.appendChild(option);
+          });
+      } else {
+          $('pinSetupMsg').textContent = 'No staff found for this site.';
+      }
+    }
 
     $('btnPinSetup').addEventListener('click', () => {
       populateKioskUsers();
@@ -1537,51 +1537,51 @@ function stopScanTrollyCycle(){
     });
 
     $('btnPinSetupSave').addEventListener('click', async () => {
-  const msgEl = $('pinSetupMsg');
-  msgEl.textContent = 'Saving...';
-  const userId = $('pinSetupUser').value;  // This is the auth_user_id from master_users
-  const newPin = $('pinSetupNew').value;
-  const confirmPin = $('pinSetupConfirm').value;
+      const msgEl = $('pinSetupMsg');
+      msgEl.textContent = 'Saving...';
+      const userId = $('pinSetupUser').value;  // This is the auth_user_id from master_users
+      const newPin = $('pinSetupNew').value;
+      const confirmPin = $('pinSetupConfirm').value;
 
-  if (!userId) {
-      msgEl.textContent = 'Please select a staff member.';
-      return;
-  }
-  if (!/^\d{4}$/.test(newPin)) {
-      msgEl.textContent = 'PIN must be exactly 4 digits.';
-      return;
-  }
-  if (newPin !== confirmPin) {
-      msgEl.textContent = 'PINs do not match.';
-      return;
-  }
+      if (!userId) {
+          msgEl.textContent = 'Please select a staff member.';
+          return;
+      }
+      if (!/^\d{4}$/.test(newPin)) {
+          msgEl.textContent = 'PIN must be exactly 4 digits.';
+          return;
+      }
+      if (newPin !== confirmPin) {
+          msgEl.textContent = 'PINs do not match.';
+          return;
+      }
 
-  // Update the PIN directly in master_users table
-  const { error: pinError } = await sb
-      .from('master_users')
-      .update({
-          pin_hash: newPin,  // Store PIN in pin_hash column (consider hashing in production)
-          updated_at: new Date().toISOString()
-      })
-      .eq('auth_user_id', userId)
-      .eq('site_id', S.siteId);
+      // Update the PIN directly in master_users table
+      const { error: pinError } = await sb
+          .from('master_users')
+          .update({
+              pin_hash: newPin,  // Store PIN in pin_hash column (consider hashing in production)
+              updated_at: new Date().toISOString()
+          })
+          .eq('auth_user_id', userId)
+          .eq('site_id', S.siteId);
 
-  if (pinError) {
-      console.error('PIN save error:', pinError);
-      msgEl.textContent = `Error: ${pinError.message}`;
-  } else {
-      console.log('PIN saved successfully for user:', userId);
-      msgEl.textContent = 'PIN updated successfully!';
-      toast('PIN Saved!');
-      setTimeout(() => {
-          $('pinSetupUser').selectedIndex = 0;
-          $('pinSetupNew').value = '';
-          $('pinSetupConfirm').value = '';
-          msgEl.textContent = '';
-          show('screen-pin');
-      }, 1500);
-  }
-});
+      if (pinError) {
+          console.error('PIN save error:', pinError);
+          msgEl.textContent = `Error: ${pinError.message}`;
+      } else {
+          console.log('PIN saved successfully for user:', userId);
+          msgEl.textContent = 'PIN updated successfully!';
+          toast('PIN Saved!');
+          setTimeout(() => {
+              $('pinSetupUser').selectedIndex = 0;
+              $('pinSetupNew').value = '';
+              $('pinSetupConfirm').value = '';
+              msgEl.textContent = '';
+              show('screen-pin');
+          }, 1500);
+      }
+    });
 
     async function refreshReview() {
       // Normalise scanned codes (strings, trimmed, unique)
@@ -1836,5 +1836,6 @@ function stopScanTrollyCycle(){
 
     <!-- Debug Console - Persistent across all pages -->
     <script src="debug-console.js"></script>
+    <script src="supabase-debug.js"></script>
 </body>
 </html>

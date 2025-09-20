@@ -28,17 +28,17 @@ async function checkUserData() {
     console.log('Raw User Metadata:', user.raw_user_meta_data);
     console.log('User Metadata:', user.user_metadata);
     
-    // Check profiles table
+    // Check master_users table
     console.log('\n📊 PROFILES TABLE DATA:');
     const { data: profiles, error: profileError } = await supabase
-      .from('profiles')
+      .from('master_users')
       .select('*')
-      .eq('user_id', user.id);
+      .eq('auth_user_id', user.id);
     
     if (profileError) {
       console.error('❌ Error fetching profiles:', profileError);
     } else if (profiles.length === 0) {
-      console.log('❌ NO PROFILE FOUND in profiles table!');
+      console.log('❌ NO PROFILE FOUND in master_users table!');
     } else {
       console.log('✅ Profile found:', profiles[0]);
       
@@ -79,7 +79,7 @@ async function checkUserData() {
     // Summary
     console.log('\n🔍 ANALYSIS:');
     if (profiles.length === 0) {
-      console.log('❌ ISSUE: User has no profile in profiles table');
+      console.log('❌ ISSUE: User has no profile in master_users table');
       console.log('   This is why admin page shows default "User" and "Site"');
       console.log('   Need to create a profile record');
     } else if (!profiles[0].site_id) {

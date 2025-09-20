@@ -24,9 +24,9 @@ async function checkAdminRole() {
             return;
         }
         
-        // Check profiles table
+        // Check master_users table
         const { data: profile, error: profileError } = await supabase
-            .from('profiles')
+            .from('master_users')
             .select('*')
             .eq('id', adminUser.id)
             .single();
@@ -38,11 +38,11 @@ async function checkAdminRole() {
             console.log(JSON.stringify(profile, null, 2));
         }
         
-        // Check user_roles table if it exists
+        // Check master_users table if it exists
         const { data: userRole, error: roleError } = await supabase
-            .from('user_roles')
+            .from('master_users')
             .select('*')
-            .eq('user_id', adminUser.id);
+            .eq('auth_user_id', adminUser.id);
             
         console.log('\nUser roles data:');
         if (roleError) {
@@ -51,11 +51,11 @@ async function checkAdminRole() {
             console.log(JSON.stringify(userRole, null, 2));
         }
         
-        // Check onboarding table if it exists
+        // Check master_users table if it exists
         const { data: onboarding, error: onboardingError } = await supabase
-            .from('onboarding')
+            .from('master_users')
             .select('*')
-            .eq('user_id', adminUser.id);
+            .eq('auth_user_id', adminUser.id);
             
         console.log('\nOnboarding data:');
         if (onboardingError) {

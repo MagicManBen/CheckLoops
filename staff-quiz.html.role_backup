@@ -1,0 +1,1397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CheckLoop — Weekly Knowledge Check</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://img.icons8.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <script src="config.js"></script>
+  <script src="admin-nav.js"></script>
+  <link rel="stylesheet" href="staff.css">
+  <style>
+    /* Quiz-specific styles - keeping the beautiful quiz card designs while using staff.css base */
+    
+    /* Override body background - let staff.css handle the main layout */
+    .content {
+      min-height: 100vh;
+    }
+    
+    /* Container for quiz content */
+    .quiz-container {
+      max-width: 1200px;
+      margin: 20px auto;
+      padding: 0 20px;
+    }
+    
+    /* Quiz content area - use panel styling consistent with staff.css */
+    
+    /* Quiz Selection Screen */
+    .quiz-home {
+      display: grid;
+      gap: 30px;
+      animation: fadeIn 0.6s ease;
+    }
+    
+    .welcome-banner {
+      background: white;
+      border-radius: 20px;
+      padding: 40px;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+    
+    .welcome-banner h1 {
+      font-size: 36px;
+      color: #667eea;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 15px;
+    }
+    
+    .welcome-banner p {
+      color: #666;
+      font-size: 18px;
+    }
+    
+    .quiz-modes {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+    }
+    
+    .mode-card {
+      background: white;
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .mode-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 15px 40px rgba(0,0,0,0.15);
+    }
+    
+    .mode-card.required {
+      border-top: 4px solid #ff6b6b;
+    }
+    
+    .mode-card.practice {
+      border-top: 4px solid #4ecdc4;
+    }
+    
+    .mode-icon {
+      width: 80px;
+      height: 80px;
+      margin: 0 auto 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 40px;
+      border-radius: 50%;
+    }
+    
+    .required .mode-icon {
+      background: linear-gradient(135deg, #ff6b6b, #ff8787);
+    }
+    
+    .practice .mode-icon {
+      background: linear-gradient(135deg, #4ecdc4, #44a39f);
+    }
+    
+    .mode-card h2 {
+      text-align: center;
+      margin-bottom: 15px;
+      font-size: 24px;
+    }
+    
+    .mode-card p {
+      text-align: center;
+      color: #666;
+      margin-bottom: 25px;
+      line-height: 1.6;
+    }
+    
+    .mode-status {
+      background: #f8f9fa;
+      border-radius: 12px;
+      padding: 15px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    
+    .countdown-display {
+      font-size: 24px;
+      font-weight: bold;
+      color: #ff6b6b;
+      margin: 10px 0;
+    }
+    
+    /* Quiz-specific button styles are namespaced to avoid clashing with global staff `.btn` */
+    .quiz-btn {
+      width: 100%;
+      padding: 15px 30px;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .quiz-btn-required {
+      background: linear-gradient(135deg, #ff6b6b, #ff8787);
+      color: white;
+    }
+
+    .quiz-btn-required:hover:not(:disabled) {
+      transform: scale(1.05);
+      box-shadow: 0 5px 15px rgba(255, 107, 107, 0.4);
+    }
+
+    .quiz-btn-practice {
+      background: linear-gradient(135deg, #4ecdc4, #44a39f);
+      color: white;
+    }
+
+    .quiz-btn-practice:hover {
+      transform: scale(1.05);
+      box-shadow: 0 5px 15px rgba(78, 205, 196, 0.4);
+    }
+
+    .quiz-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    /* Quiz Taking Screen */
+    .quiz-active {
+      background: white;
+      border-radius: 20px;
+      padding: 40px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+      animation: slideUp 0.5s ease;
+    }
+    
+    .quiz-header {
+      text-align: center;
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid #f0f0f0;
+    }
+    
+    .quiz-header h2 {
+      font-size: 28px;
+      margin-bottom: 10px;
+    }
+    
+    .quiz-header .mode-badge {
+      display: inline-block;
+      padding: 5px 15px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 600;
+      margin-top: 10px;
+    }
+    
+    .mode-badge.required {
+      background: #ffe0e0;
+      color: #ff6b6b;
+    }
+    
+    .mode-badge.practice {
+      background: #d4f4f1;
+      color: #44a39f;
+    }
+    
+    .progress-container {
+      margin-bottom: 30px;
+    }
+    
+    .progress-bar {
+      height: 8px;
+      background: #f0f0f0;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea, #764ba2);
+      transition: width 0.3s ease;
+      border-radius: 10px;
+    }
+    
+    .progress-text {
+      text-align: center;
+      margin-top: 10px;
+      color: #666;
+      font-size: 14px;
+    }
+    
+    .question-card {
+      background: #f8f9fa;
+      border-radius: 15px;
+      padding: 25px;
+      margin-bottom: 20px;
+      animation: fadeInUp 0.4s ease;
+      border-left: 4px solid #667eea;
+    }
+    
+    .question-number {
+      color: #667eea;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+    
+    .question-text {
+      font-size: 18px;
+      margin-bottom: 20px;
+      font-weight: 500;
+    }
+    
+    .options {
+      display: grid;
+      gap: 12px;
+    }
+    
+    .option-label {
+      display: flex;
+      align-items: center;
+      padding: 15px;
+      background: white;
+      border: 2px solid #e0e0e0;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    
+    .option-label:hover {
+      border-color: #667eea;
+      background: #f7f9ff;
+    }
+    
+    .option-label input[type="radio"] {
+      margin-right: 12px;
+      width: 20px;
+      height: 20px;
+    }
+    
+    .option-label.selected {
+      border-color: #667eea;
+      background: #f7f9ff;
+    }
+    
+    .option-label.correct {
+      border-color: #4caf50;
+      background: #e8f5e9;
+      animation: pulse 0.5s ease;
+    }
+    
+    .option-label.incorrect {
+      border-color: #f44336;
+      background: #ffebee;
+      animation: shake 0.5s ease;
+    }
+    
+    .feedback {
+      margin-top: 15px;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      animation: fadeIn 0.3s ease;
+    }
+    
+    .feedback.correct {
+      background: #e8f5e9;
+      color: #2e7d32;
+      border-left: 4px solid #4caf50;
+    }
+    
+    .feedback.incorrect {
+      background: #ffebee;
+      color: #c62828;
+      border-left: 4px solid #f44336;
+    }
+    
+    .quiz-actions {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin-top: 30px;
+    }
+    
+    .quiz-btn-submit {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      padding: 15px 40px;
+      font-size: 18px;
+    }
+
+    .quiz-btn-submit:hover:not(:disabled) {
+      transform: scale(1.05);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+    
+    /* Results Screen */
+    .quiz-results {
+      text-align: center;
+      padding: 40px;
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+      animation: zoomIn 0.5s ease;
+    }
+    
+    .score-display {
+      font-size: 72px;
+      font-weight: bold;
+      margin: 20px 0;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+    }
+    
+    .score-message {
+      font-size: 24px;
+      margin-bottom: 20px;
+    }
+    
+    .score-emoji {
+      font-size: 64px;
+      margin-bottom: 20px;
+    }
+    
+    .quiz-btn-home {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      padding: 15px 40px;
+      margin-top: 20px;
+    }
+    
+    /* Animations */
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    @keyframes zoomIn {
+      from {
+        opacity: 0;
+        transform: scale(0.9);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+    
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.02); }
+    }
+    
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-5px); }
+      75% { transform: translateX(5px); }
+    }
+    
+    .hidden { display: none !important; }
+    
+    @media (max-width: 768px) {
+      .quiz-modes {
+        grid-template-columns: 1fr;
+      }
+      
+      .welcome-banner h1 {
+        font-size: 28px;
+      }
+    }
+   /* Accessibility / Contrast Fix: ensure readable dark text inside light quiz panels
+     We keep global --ink (white) for dark backgrounds elsewhere, but explicitly
+     set legible colors for quiz content placed on white / light grey cards. */
+   .quiz-home, .quiz-active, .quiz-results { color:#1f2d3d; }
+   .quiz-home h1, .quiz-home h2, .quiz-active h2, .quiz-results h2 { color:#1c2a38; }
+   .question-card, .question-text, .question-number { color:#1f2d3d; }
+   .option-label { color:#1f2d3d; }
+   .option-label span { color:inherit; }
+   .option-label.selected { background:#f0f4ff; }
+   .option-label:hover { background:#f3f7ff; }
+   .option-label.correct { color:#1d5e24; }
+   .option-label.incorrect { color:#8d1e1e; }
+   .feedback.correct { color:#1d5e24; }
+   .feedback.incorrect { color:#8d1e1e; }
+   .progress-text { color:#465362; }
+   .quiz-header .mode-badge.required { color:#c0392b; }
+   .quiz-header .mode-badge.practice { color:#1f5e57; }
+   .score-message { color:#1f2d3d; }
+   /* Focus outline for keyboard users */
+   .option-label:focus-within { outline:3px solid #667eea; outline-offset:2px; }
+  </style>
+</head>
+<body>
+  <div class="bg"><div class="wave"></div><div class="wave wave2"></div></div>
+  <main class="content">
+    <div class="topbar panel" style="position:relative;">
+      <div class="halo"></div>
+      <div class="nav seg-nav">
+        <!-- Navigation will be rendered by staff-common.js -->
+      </div>
+      <div class="spacer"></div>
+      <div class="pill" id="site-pill">Site: —</div>
+      <div class="pill" id="email-pill">—</div>
+      <div class="pill" id="role-pill">—</div>
+      <button class="btn" id="logout-btn">Sign Out</button>
+    </div>
+
+    <!-- Quiz Content Panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><img data-i8="puzzle" data-i8-size="24" alt="" style="vertical-align: middle; margin-right: 8px;"> Weekly Knowledge Check</div>
+      </div>
+      
+      <!-- Quiz Home Screen -->
+      <div id="quiz-home" class="quiz-home">
+        <div class="welcome-banner">
+          <h1>
+            <img data-i8="mind-map" data-i8-size="36" alt="" style="vertical-align: middle; margin-right: 10px;">
+            Weekly Knowledge Check
+          </h1>
+          <p>Stay sharp with our weekly required quiz and unlimited practice sessions!</p>
+        </div>
+        
+        <div class="quiz-modes">
+          <!-- Required Quiz Card -->
+          <div class="mode-card required">
+            <div class="mode-icon"><img data-i8="clipboard" data-i8-size="40" alt="Required Quiz"></div>
+            <h2>Required Weekly Quiz</h2>
+            <p>Complete your mandatory weekly assessment. One attempt per week, results are recorded.</p>
+            
+            <div id="required-status" class="mode-status">
+              <!-- Status will be populated by JavaScript -->
+            </div>
+            
+            <button id="btn-required" class="quiz-btn quiz-btn-required">
+              Start Required Quiz
+            </button>
+          </div>
+          
+          <!-- Practice Quiz Card -->
+          <div class="mode-card practice">
+            <div class="mode-icon"><img data-i8="target" data-i8-size="40" alt="Practice Quiz"></div>
+            <h2>Practice Mode</h2>
+            <p>Sharpen your skills anytime! Unlimited attempts, learn at your own pace.</p>
+            
+            <div class="mode-status">
+              <p style="color: #44a39f; font-weight: 600;">
+                ✨ Always Available
+              </p>
+              <p style="font-size: 14px; color: #666; margin-top: 5px;">
+                Practice makes perfect!
+              </p>
+            </div>
+            
+            <button id="btn-practice" class="quiz-btn quiz-btn-practice">
+              Start Practice Quiz
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Quiz Taking Screen -->
+      <div id="quiz-active" class="quiz-active hidden">
+        <div class="quiz-header">
+          <h2 id="quiz-title">Quiz in Progress</h2>
+          <span id="mode-badge" class="mode-badge"></span>
+        </div>
+        
+        <div class="progress-container">
+          <div class="progress-bar">
+            <div id="progress-fill" class="progress-fill" style="width: 0%"></div>
+          </div>
+          <div id="progress-text" class="progress-text">Question 0 of 10</div>
+        </div>
+        
+        <div id="questions-container">
+          <!-- Questions will be populated here -->
+        </div>
+        
+        <div class="quiz-actions">
+          <button id="btn-submit" class="quiz-btn quiz-btn-submit" disabled>
+            Submit Quiz
+          </button>
+        </div>
+      </div>
+      
+      <!-- Results Screen -->
+      <div id="quiz-results" class="quiz-results hidden">
+        <div class="score-emoji" id="score-emoji"><img data-i8="confetti" data-i8-size="64" alt="Celebration" id="score-emoji-img"></div>
+        <h2>Quiz Complete!</h2>
+        <div class="score-display" id="score-display">0/10</div>
+        <div class="score-message" id="score-message">Good effort!</div>
+        <div id="result-mode-info" style="margin: 20px 0; color: #666;"></div>
+        <button id="btn-home" class="quiz-btn quiz-btn-home">
+            Back to Quiz Home
+          </button>
+      </div>
+    </div>
+
+    <div class="muted" style="text-align:center; font-size:12px; padding:10px 0;">© CheckLoop • Weekly Knowledge Check</div>
+  </main>
+
+  <script type="module">
+    import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, clearAuthData } from './staff-common.js';
+    
+    // Initialize Supabase
+    const supabase = await initSupabase();
+    // Make supabase available globally for Admin Portal button
+    window.supabase = supabase;
+    handleAuthState(supabase);
+    navActivate('quiz');
+
+    // Admin nav removed - separate staff portal
+    
+    let currentUser = null;
+    let currentProfile = null;
+    let currentQuestions = [];
+    let currentMode = null;
+    let userAnswers = {};
+    let quizStartTime = null;
+    
+    // Get start of current week (Sunday at 00:00:00)
+    function getWeekStart(date = new Date()) {
+      const d = new Date(date);
+      const day = d.getDay();
+      const diff = d.getDate() - day;
+      const weekStart = new Date(d.setDate(diff));
+      weekStart.setHours(0, 0, 0, 0);
+      return weekStart;
+    }
+    
+    // Get end of current week (Saturday at 23:59:59)
+    function getWeekEnd(date = new Date()) {
+      const start = getWeekStart(date);
+      const weekEnd = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
+      weekEnd.setHours(23, 59, 59, 999);
+      return weekEnd;
+    }
+    
+    // Get next week start (next Sunday)
+    function getNextWeekStart(date = new Date()) {
+      const end = getWeekEnd(date);
+      return new Date(end.getTime() + 24 * 60 * 60 * 1000);
+    }
+    
+    // Format countdown
+    function formatCountdown(ms) {
+      if (ms <= 0) return 'Ready now!';
+      
+      const days = Math.floor(ms / (24 * 60 * 60 * 1000));
+      const hours = Math.floor((ms % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+      const minutes = Math.floor((ms % (60 * 60 * 1000)) / (60 * 1000));
+      
+      const parts = [];
+      if (days > 0) parts.push(`${days}d`);
+      if (hours > 0) parts.push(`${hours}h`);
+      if (minutes > 0 || parts.length === 0) parts.push(`${minutes}m`);
+      
+      return parts.join(' ');
+    }
+    
+    // Check if quiz was taken this week
+    async function checkWeeklyQuizStatus() {
+      console.log('📅 Checking weekly quiz status...');
+      const weekStart = getWeekStart();
+      const weekEnd = getWeekEnd();
+      
+      console.log('📅 Week range:', weekStart.toISOString(), 'to', weekEnd.toISOString());
+      console.log('📅 Current user ID:', currentUser?.id);
+      
+      if (!currentUser?.id) {
+        console.error('📅 No current user ID available');
+        return { taken: false, lastAttempt: null, nextAvailable: new Date() };
+      }
+      
+      // Check database directly for cross-device sync reliability
+      
+      try {
+        // Simplified query - just check for any quiz attempts this week
+        const { data, error } = await supabase
+          .from('quiz_attempts')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .eq('is_practice', false)
+          .gte('created_at', weekStart.toISOString())
+          .lte('created_at', weekEnd.toISOString());
+        
+        console.log('📅 Query results:', data, error);
+        
+        if (error) {
+          console.error('📅 Database query error:', error);
+          // If there's a database error, allow the quiz to proceed rather than blocking
+          return { taken: false, lastAttempt: null, nextAvailable: new Date() };
+        }
+        
+        if (data && data.length > 0) {
+          // Quiz was taken this week
+          const latestAttempt = data[0];
+          const attemptDate = latestAttempt.completed_at || latestAttempt.started_at || latestAttempt.created_at;
+          console.log('📅 Quiz already taken this week. Attempt:', latestAttempt);
+          return {
+            taken: true,
+            lastAttempt: new Date(attemptDate),
+            nextAvailable: getNextWeekStart()
+          };
+        } else {
+          console.log('📅 No quiz taken this week - quiz available');
+        }
+      } catch (err) {
+        console.error('📅 Exception checking quiz status:', err);
+        // If there's an exception, allow the quiz to proceed rather than blocking
+        return { taken: false, lastAttempt: null, nextAvailable: new Date() };
+      }
+      
+      // Quiz not taken this week
+      return {
+        taken: false,
+        lastAttempt: null,
+        nextAvailable: new Date()
+      };
+    }
+    
+    // Update required quiz status display
+    async function updateRequiredQuizStatus() {
+      const status = await checkWeeklyQuizStatus();
+      const statusEl = document.getElementById('required-status');
+      const btnRequired = document.getElementById('btn-required');
+      
+      if (status.taken) {
+        // Quiz already taken this week
+        const msUntilNext = status.nextAvailable.getTime() - Date.now();
+        statusEl.innerHTML = `
+          <p style="color: #28a745; font-weight: 600; margin-bottom: 10px;">
+            ✅ Week's Quiz Complete!
+          </p>
+          <p style="font-size: 14px; color: #666;">Next quiz available:</p>
+          <div class="countdown-display" id="countdown">
+            ${formatCountdown(msUntilNext)}
+          </div>
+        `;
+        btnRequired.disabled = true;
+        btnRequired.textContent = 'Completed This Week';
+        
+        // Update countdown every minute
+        setInterval(() => {
+          const ms = status.nextAvailable.getTime() - Date.now();
+          const countdownEl = document.getElementById('countdown');
+          if (countdownEl) {
+            countdownEl.textContent = formatCountdown(ms);
+            if (ms <= 0) {
+              location.reload(); // Reload when new week starts
+            }
+          }
+        }, 60000);
+      } else {
+        // Quiz available
+        statusEl.innerHTML = `
+          <p style="color: #ff6b6b; font-weight: 600;">
+            ⏰ Quiz Due This Week!
+          </p>
+          <p style="font-size: 14px; color: #666; margin-top: 5px;">
+            Complete before Saturday midnight
+          </p>
+        `;
+        btnRequired.disabled = false;
+        btnRequired.textContent = 'Start Required Quiz';
+      }
+    }
+    
+    // Fetch quiz questions
+    async function fetchQuestions() {
+      console.log('🔍 fetchQuestions: Starting to fetch questions...');
+      
+      // For now, let's use the fallback questions since the database join isn't working
+      // The issue is that quiz_options join is returning 0 options for all questions
+      // This needs to be investigated with database permissions
+      console.log('🔍 fetchQuestions: Using fallback questions (database join issue)');
+      return [
+        { id: 1, question: 'What should you check first in a safety inspection?', choices: ['PPE availability', 'Kitchen menu', 'Visitor log', 'Weather forecast'], answer: 0 },
+        { id: 2, question: 'Hand hygiene should last at least how many seconds?', choices: ['5 seconds', '10 seconds', '20 seconds', '40 seconds'], answer: 2 },
+        { id: 3, question: 'Which waste goes into a sharps bin?', choices: ['Used needles', 'Food scraps', 'Paper towels', 'Plastic bottles'], answer: 0 },
+        { id: 4, question: 'When should you report a near-miss incident?', choices: ['End of the week', 'Immediately', 'During monthly review', 'Never'], answer: 1 },
+        { id: 5, question: 'Which is NOT a fire class?', choices: ['Class A', 'Class B', 'Class D', 'Class H'], answer: 3 },
+        { id: 6, question: 'What is the correct method to lift a heavy box?', choices: ['Back bent, legs straight', 'Back straight, bend knees', 'Twist the spine', 'Hold with fingertips'], answer: 1 },
+        { id: 7, question: 'A spill kit is used to handle?', choices: ['Electrical faults', 'Chemical spills', 'Printer jams', 'Lost property'], answer: 1 },
+        { id: 8, question: 'PAT testing refers to?', choices: ['Patient testing', 'Portable Appliance Testing', 'Public Area Testing', 'Pressure and Temperature'], answer: 1 },
+        { id: 9, question: 'What temperature should hot food be kept at?', choices: ['Above 45°C', 'Above 55°C', 'Above 63°C', 'Above 75°C'], answer: 2 },
+        { id: 10, question: 'How often should fire alarms be tested?', choices: ['Daily', 'Weekly', 'Monthly', 'Yearly'], answer: 1 },
+        { id: 11, question: 'What color is a CO2 fire extinguisher?', choices: ['Red', 'Black', 'Blue', 'Cream'], answer: 1 },
+        { id: 12, question: 'COSHH stands for?', choices: ['Control of Substances Hazardous to Health', 'Committee of Safety and Health Hazards', 'Certificate of Safe Handling and Hygiene', 'Central Office for Safety and Health'], answer: 0 },
+        { id: 13, question: 'What is the minimum rest break for a 6-hour shift?', choices: ['10 minutes', '20 minutes', '30 minutes', '45 minutes'], answer: 1 },
+        { id: 14, question: 'Which PPE protects against airborne particles?', choices: ['Safety glasses', 'FFP3 mask', 'Latex gloves', 'Steel toe boots'], answer: 1 },
+        { id: 15, question: 'What is the first step in risk assessment?', choices: ['Control measures', 'Identify hazards', 'Training staff', 'Document findings'], answer: 1 }
+      ];
+    }
+    
+    // Shuffle and pick random questions
+    function pickRandomQuestions(questions, count = 10) {
+      const shuffled = [...questions].sort(() => Math.random() - 0.5);
+      return shuffled.slice(0, Math.min(count, shuffled.length));
+    }
+    
+    // Render quiz questions
+    function renderQuiz(questions) {
+      console.log('🎨 renderQuiz: Starting to render', questions?.length, 'questions');
+      const container = document.getElementById('questions-container');
+      if (!container) {
+        console.error('🎨 renderQuiz: Questions container not found!');
+        return;
+      }
+      
+      container.innerHTML = '';
+      
+      if (!questions || questions.length === 0) {
+        console.error('🎨 renderQuiz: No questions to render!');
+        container.innerHTML = '<div class="question-card"><p>No questions available. Please try again.</p></div>';
+        return;
+      }
+      
+      questions.forEach((q, index) => {
+        console.log('🎨 renderQuiz: Rendering question', index + 1, ':', q.question?.substring(0, 50) + '...');
+        const questionCard = document.createElement('div');
+        questionCard.className = 'question-card';
+        questionCard.innerHTML = `
+          <div class="question-number">Question ${index + 1}</div>
+          <div class="question-text">${q.question}</div>
+          <div class="options">
+            ${q.choices.map((choice, choiceIndex) => `
+              <label class="option-label" data-question="${index}" data-choice="${choiceIndex}">
+                <input type="radio" name="q_${index}" value="${choiceIndex}" />
+                <span>${choice}</span>
+              </label>
+            `).join('')}
+          </div>
+          <div id="feedback_${index}" class="feedback hidden"></div>
+        `;
+        container.appendChild(questionCard);
+      });
+      
+      console.log('🎨 renderQuiz: Successfully rendered', questions.length, 'questions to DOM');
+      
+      // Add event listeners
+      document.querySelectorAll('input[type="radio"]').forEach(input => {
+        input.addEventListener('change', (e) => {
+          const questionIndex = parseInt(e.target.name.split('_')[1]);
+          userAnswers[questionIndex] = parseInt(e.target.value);
+          
+          // Update option styling
+          document.querySelectorAll(`[data-question="${questionIndex}"]`).forEach(label => {
+            label.classList.remove('selected');
+          });
+          e.target.closest('.option-label').classList.add('selected');
+          
+          updateProgress();
+        });
+      });
+    }
+    
+    // Update progress
+    function updateProgress() {
+      const total = currentQuestions.length;
+      const answered = Object.keys(userAnswers).length;
+      const percentage = (answered / total) * 100;
+      
+      document.getElementById('progress-fill').style.width = `${percentage}%`;
+      document.getElementById('progress-text').textContent = `Question ${answered} of ${total} answered`;
+      
+      // Enable submit button when all questions answered
+      document.getElementById('btn-submit').disabled = answered < total;
+    }
+    
+    // Start quiz
+    async function startQuiz(mode) {
+      console.log('🎯 startQuiz: Starting quiz in mode:', mode);
+      
+      // If this is a required quiz, check if already completed this week
+      if (mode === 'required') {
+        console.log('🎯 startQuiz: Checking weekly restriction for required quiz');
+        
+        // Double-check the weekly status to prevent bypassing
+        const status = await checkWeeklyQuizStatus();
+        console.log('🎯 startQuiz: Weekly status result:', status);
+        
+        if (status.taken) {
+          console.log('🎯 startQuiz: Required quiz already completed this week, blocking');
+          const nextAvailable = status.nextAvailable;
+          const daysUntilNext = Math.ceil((nextAvailable.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          alert(`You have already completed the required quiz this week. Please wait until next Sunday (${daysUntilNext} days) to take it again.`);
+          return;
+        }
+        
+        console.log('🎯 startQuiz: Weekly restriction check passed, proceeding with quiz');
+      }
+      
+      currentMode = mode;
+      userAnswers = {};
+      quizStartTime = new Date();
+      
+      // Fetch and prepare questions
+      console.log('🎯 startQuiz: Fetching questions...');
+      const allQuestions = await fetchQuestions();
+      console.log('🎯 startQuiz: Got questions:', allQuestions?.length);
+      currentQuestions = pickRandomQuestions(allQuestions, 10);
+      console.log('🎯 startQuiz: Selected questions for quiz:', currentQuestions?.length);
+      
+      // Update UI
+      document.getElementById('quiz-home').classList.add('hidden');
+      document.getElementById('quiz-active').classList.remove('hidden');
+      document.getElementById('quiz-results').classList.add('hidden');
+      
+      // Set mode-specific UI
+      const titleEl = document.getElementById('quiz-title');
+      const badgeEl = document.getElementById('mode-badge');
+      
+      if (mode === 'required') {
+        titleEl.textContent = 'Required Weekly Quiz';
+        badgeEl.innerHTML = '<img data-i8="clipboard" data-i8-size="16" alt="" style="vertical-align: middle; margin-right: 4px;"> Official - Results Recorded';
+        badgeEl.className = 'mode-badge required';
+      } else {
+        titleEl.textContent = 'Practice Quiz';
+        badgeEl.innerHTML = '<img data-i8="target" data-i8-size="16" alt="" style="vertical-align: middle; margin-right: 4px;"> Practice - Learn & Improve';
+        badgeEl.className = 'mode-badge practice';
+      }
+      
+      // Re-wire icons after setting innerHTML
+      try {
+        wireIcons();
+      } catch (e) {
+        console.error('Error wiring icons:', e);
+      }
+      
+      // Render questions
+      console.log('🎯 startQuiz: Rendering questions...');
+      renderQuiz(currentQuestions);
+      updateProgress();
+      console.log('🎯 startQuiz: Quiz started successfully');
+    }
+    
+    // Submit quiz
+    async function submitQuiz() {
+      const btnSubmit = document.getElementById('btn-submit');
+      btnSubmit.disabled = true;
+      btnSubmit.textContent = 'Submitting...';
+      
+      // Calculate score
+      let correctCount = 0;
+      currentQuestions.forEach((q, index) => {
+        const userAnswer = userAnswers[index];
+        const isCorrect = userAnswer === q.answer;
+        if (isCorrect) correctCount++;
+        
+        // Show feedback
+        const feedbackEl = document.getElementById(`feedback_${index}`);
+        const optionLabels = document.querySelectorAll(`[data-question="${index}"]`);
+        
+        optionLabels.forEach((label, choiceIndex) => {
+          if (choiceIndex === q.answer) {
+            label.classList.add('correct');
+          } else if (choiceIndex === userAnswer && !isCorrect) {
+            label.classList.add('incorrect');
+          }
+        });
+        
+        if (feedbackEl) {
+          feedbackEl.classList.remove('hidden');
+          if (isCorrect) {
+            feedbackEl.className = 'feedback correct';
+            feedbackEl.innerHTML = '✅ Correct!';
+          } else {
+            feedbackEl.className = 'feedback incorrect';
+            feedbackEl.innerHTML = `❌ Incorrect. The correct answer is: ${q.choices[q.answer]}`;
+          }
+        }
+      });
+      
+      const scorePercent = Math.round((correctCount / currentQuestions.length) * 100);
+      
+      // Save to database
+      console.log('💾 submitQuiz: Saving to database, mode:', currentMode);
+      try {
+        if (currentMode === 'required') {
+          // Save to quiz_attempts
+          console.log('💾 submitQuiz: Saving required quiz to quiz_attempts table');
+          
+          // Get site_id from profile or user metadata (required field)
+          let siteId = currentProfile?.site_id;
+
+          console.log('💾 submitQuiz: Looking for site_id...');
+          console.log('💾 submitQuiz: currentProfile:', currentProfile);
+          console.log('💾 submitQuiz: currentUser:', currentUser);
+          console.log('💾 submitQuiz: currentUser.id format check:', {
+            id: currentUser?.id,
+            type: typeof currentUser?.id,
+            length: currentUser?.id?.length,
+            isUUID: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(currentUser?.id)
+          });
+
+          // If no site_id in profile, try user metadata
+          if (!siteId) {
+            siteId = currentUser?.user_metadata?.site_id ||
+                     currentUser?.app_metadata?.site_id ||
+                     currentUser?.raw_user_meta_data?.site_id;
+            console.log('💾 submitQuiz: Checking user metadata for site_id:', siteId);
+          }
+
+          // If still no site_id, we have a problem - should not submit without it
+          if (!siteId) {
+            console.error('💾 submitQuiz: No site_id found for user');
+            console.error('💾 submitQuiz: Profile data:', currentProfile);
+            console.error('💾 submitQuiz: User data:', currentUser);
+            alert('Error: Unable to save quiz - user site information is missing. Please contact your administrator.');
+
+            // Re-enable submit button
+            const btnSubmit = document.getElementById('btn-submit');
+            btnSubmit.disabled = false;
+            btnSubmit.textContent = 'Submit Quiz';
+            return;
+          }
+
+          console.log('💾 submitQuiz: Using site_id:', siteId);
+          
+          const insertData = {
+            user_id: currentUser.id,
+            site_id: siteId,
+            participant_name: currentUser.email || 'Unknown User',
+            started_at: quizStartTime.toISOString(),
+            completed_at: new Date().toISOString(),
+            total_questions: currentQuestions.length,
+            correct_answers: correctCount,
+            // score_percent is auto-generated by database, do not include
+            is_practice: false
+          };
+          console.log('💾 submitQuiz: Insert data:', insertData);
+          console.log('💾 submitQuiz: Score percent (for reference):', scorePercent, '% - this is auto-calculated by DB');
+
+          // Check current session before inserting
+          const { data: sessionData } = await supabase.auth.getSession();
+          console.log('💾 submitQuiz: Current session:', {
+            user_id: sessionData?.session?.user?.id,
+            email: sessionData?.session?.user?.email,
+            role: sessionData?.session?.user?.role,
+            aud: sessionData?.session?.user?.aud,
+            exp: sessionData?.session?.access_token ? 'valid' : 'missing'
+          });
+
+          // Test RLS permissions by trying a read first
+          console.log('💾 submitQuiz: Testing RLS permissions with read query...');
+          const { data: testRead, error: readError } = await supabase
+            .from('quiz_attempts')
+            .select('id, user_id, site_id')
+            .eq('user_id', currentUser.id)
+            .limit(1);
+
+          if (readError) {
+            console.error('💾 submitQuiz: Cannot even read from quiz_attempts:', readError);
+          } else {
+            console.log('💾 submitQuiz: Read test successful, found records:', testRead?.length || 0);
+          }
+
+          // Try inserting the data
+          console.log('💾 submitQuiz: Attempting insert with RLS...');
+          let { data, error } = await supabase
+            .from('quiz_attempts')
+            .insert(insertData)
+            .select();
+
+          // If RLS fails, try alternative approach
+          if (error && error.message?.includes('row-level security')) {
+            console.log('💾 submitQuiz: RLS failed, trying alternative approach...');
+
+            // Verify we have a current user session
+            const { data: { user } } = await supabase.auth.getUser();
+            console.log('💾 submitQuiz: Auth user check:', user ? 'valid' : 'invalid');
+
+            if (user && user.id === currentUser.id) {
+              // Try with explicit user context
+              const retryResult = await supabase
+                .from('quiz_attempts')
+                .insert({ ...insertData, user_id: user.id })
+                .select();
+
+              if (retryResult.error) {
+                console.error('💾 submitQuiz: Retry also failed:', retryResult.error);
+              } else {
+                console.log('💾 submitQuiz: Retry succeeded:', retryResult.data);
+                data = retryResult.data;
+                error = null;
+              }
+            }
+          }
+          
+          if (error) {
+            console.error('💾 submitQuiz: Error saving required quiz:', error);
+            console.error('💾 submitQuiz: Error details:', {
+              message: error.message,
+              code: error.code,
+              details: error.details,
+              hint: error.hint
+            });
+            // Show more detailed error to help diagnose
+            alert(`Error saving quiz results: ${error.message || 'Unknown error'}. Please try again or contact support if the issue persists.`);
+
+            // Re-enable submit button so user can retry
+            const btnSubmit = document.getElementById('btn-submit');
+            btnSubmit.disabled = false;
+            btnSubmit.textContent = 'Submit Quiz';
+            return;
+          } else {
+            console.log('💾 submitQuiz: Required quiz saved successfully:', data);
+          }
+        } else {
+          // Save to quiz_practices if table exists
+          console.log('💾 submitQuiz: Saving practice quiz to quiz_practices table');
+          try {
+            const insertData = {
+              user_id: currentUser.id,
+              site_id: currentProfile?.site_id || null,
+              started_at: quizStartTime.toISOString(),
+              completed_at: new Date().toISOString(),
+              score: correctCount,
+              total_questions: currentQuestions.length,
+              score_percent: scorePercent
+            };
+            console.log('💾 submitQuiz: Practice insert data:', insertData);
+
+            // Check if this will be the user's first practice quiz BEFORE inserting
+            let isFirstPracticeQuiz = false;
+            try {
+              const { data: existingPractices, error: checkError } = await supabase
+                .from('quiz_practices')
+                .select('id')
+                .eq('user_id', currentUser.id)
+                .limit(1);
+
+              isFirstPracticeQuiz = !checkError && (!existingPractices || existingPractices.length === 0);
+              console.log('💾 Is first practice quiz?', isFirstPracticeQuiz);
+            } catch (err) {
+              console.warn('Could not check for existing practice quizzes:', err);
+            }
+
+            const { data, error } = await supabase.from('quiz_practices').insert(insertData);
+
+            if (error) {
+              console.error('💾 submitQuiz: Error saving practice quiz:', error);
+            } else {
+              console.log('💾 submitQuiz: Practice quiz saved successfully:', data);
+
+              // If this was their first practice quiz, unlock the achievement
+              if (isFirstPracticeQuiz) {
+                try {
+                  console.log('🏆 First practice quiz detected! Unlocking achievement...');
+
+                  // Get kiosk_user_id first
+                  const { data: profileData } = await supabase
+                    .from('master_users')
+                    .select('kiosk_auth_auth_user_id')
+                    .eq('auth_user_id', currentUser.id)
+                    .single();
+
+                  if (profileData && profileData.kiosk_user_id) {
+                    // Use kiosk_user_id which has the unique constraint
+                    const { error: achievementError } = await supabase
+                      .from('user_achievements')
+                      .upsert({
+                        kiosk_user_id: profileData.kiosk_user_id,
+                        user_id: currentUser.id,
+                        achievement_key: 'first_practice_quiz',
+                        status: 'unlocked',
+                        progress_percent: 100,
+                        unlocked_at: new Date().toISOString()
+                      }, {
+                        onConflict: 'kiosk_user_id,achievement_key'
+                      });
+
+                    if (!achievementError) {
+                      console.log('✅ First Practice Quiz achievement unlocked!');
+                      // Show a toast notification
+                      showToast('🏆 Achievement Unlocked: Practice Makes Perfect!');
+                    } else {
+                      console.error('Failed to unlock achievement:', achievementError);
+                    }
+                  } else {
+                    console.log('Could not unlock achievement - no kiosk_user_id found');
+                  }
+                } catch (achievementError) {
+                  console.warn('Failed to check/unlock practice quiz achievement:', achievementError);
+                  // Don't block the quiz submission if achievement fails
+                }
+              }
+            }
+          } catch (err) {
+            console.error('💾 submitQuiz: Exception saving practice quiz:', err);
+          }
+        }
+      } catch (err) {
+        console.error('💾 submitQuiz: Error saving quiz attempt:', err);
+      }
+      
+      // Show results immediately and update status
+      showResults(correctCount, currentQuestions.length, scorePercent);
+      
+      // If this was a required quiz, refresh the status to update the button
+      if (currentMode === 'required') {
+        console.log('💾 submitQuiz: Required quiz completed, refreshing status');
+        // Wait a bit for database save to complete
+        setTimeout(async () => {
+          await updateRequiredQuizStatus();
+        }, 500);
+        
+        // Update profiles.next_quiz_due to 7 days from now
+        try {
+          const nextDue = new Date();
+          nextDue.setDate(nextDue.getDate() + 7);
+          await supabase
+            .from('master_users')
+            .update({ next_quiz_due: nextDue.toISOString() })
+            .eq('auth_user_id', currentUser.id);
+          console.log('💾 submitQuiz: Updated next_quiz_due to', nextDue);
+        } catch (err) {
+          console.error('💾 submitQuiz: Failed to update next_quiz_due:', err);
+        }
+      }
+    }
+    
+    // Show toast notification
+    function showToast(message, duration = 3000) {
+      const existingToast = document.querySelector('.achievement-toast');
+      if (existingToast) {
+        existingToast.remove();
+      }
+
+      const toast = document.createElement('div');
+      toast.className = 'achievement-toast';
+      toast.textContent = message;
+      toast.style.cssText = `
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%) translateY(100px);
+        background: linear-gradient(135deg, #6366f1, #22d3ee);
+        color: white;
+        padding: 16px 24px;
+        border-radius: 12px;
+        font-weight: 600;
+        z-index: 10000;
+        transition: transform 0.3s ease;
+        box-shadow: 0 10px 30px rgba(99, 102, 241, 0.3);
+      `;
+      document.body.appendChild(toast);
+
+      // Animate in
+      requestAnimationFrame(() => {
+        toast.style.transform = 'translateX(-50%) translateY(0)';
+      });
+
+      // Remove after duration
+      setTimeout(() => {
+        toast.style.transform = 'translateX(-50%) translateY(100px)';
+        setTimeout(() => toast.remove(), 300);
+      }, duration);
+    }
+
+    // Show results
+    function showResults(correct, total, percentage) {
+      document.getElementById('quiz-active').classList.add('hidden');
+      document.getElementById('quiz-results').classList.remove('hidden');
+      
+      // Set score display
+      document.getElementById('score-display').textContent = `${correct}/${total}`;
+      
+      // Set emoji and message based on score
+      const emojiImg = document.getElementById('score-emoji-img');
+      const messageEl = document.getElementById('score-message');
+      
+      if (percentage === 100) {
+        emojiImg.setAttribute('data-i8', 'trophy');
+        emojiImg.alt = 'Trophy';
+        messageEl.textContent = 'Perfect Score! Outstanding!';
+      } else if (percentage >= 80) {
+        emojiImg.setAttribute('data-i8', 'confetti');
+        emojiImg.alt = 'Celebration';
+        messageEl.textContent = 'Excellent Work!';
+      } else if (percentage >= 60) {
+        emojiImg.setAttribute('data-i8', 'thumbs-up');
+        emojiImg.alt = 'Good job';
+        messageEl.textContent = 'Good Job!';
+      } else if (percentage >= 40) {
+        emojiImg.setAttribute('data-i8', 'flexed-biceps');
+        emojiImg.alt = 'Keep trying';
+        messageEl.textContent = 'Keep Practicing!';
+      } else {
+        emojiImg.setAttribute('data-i8', 'books');
+        emojiImg.alt = 'Study more';
+        messageEl.textContent = 'Review and Try Again!';
+      }
+      
+      // Re-wire the icon after changing the data-i8 attribute
+      setIcon(emojiImg);
+      
+      // Set mode info
+      const modeInfoEl = document.getElementById('result-mode-info');
+      if (currentMode === 'required') {
+        modeInfoEl.innerHTML = `
+          <strong><img data-i8="checkmark" data-i8-size="16" alt="" style="vertical-align: middle; margin-right: 4px;"> Required Quiz Complete</strong><br>
+          Your result has been recorded. See you next week!
+        `;
+      } else {
+        modeInfoEl.innerHTML = `
+          <strong><img data-i8="target" data-i8-size="16" alt="" style="vertical-align: middle; margin-right: 4px;"> Practice Complete</strong><br>
+          Great practice session! Try again anytime to improve.
+        `;
+      }
+      
+      // Re-wire icons after setting innerHTML
+      try {
+        wireIcons();
+      } catch (e) {
+        console.error('Error wiring icons:', e);
+      }
+    }
+    
+    // Initialize using requireStaffSession like other staff pages
+    requireStaffSession(supabase).then(async ({ session, profileRow }) => {
+      currentUser = session.user;
+      currentProfile = profileRow;
+
+      // Set topbar info
+      const siteId = profileRow?.site_id;
+      const siteText = siteId ? await getSiteText(supabase, siteId) : null;
+      setTopbar({
+        siteText,
+        email: session.user.email,
+        role: profileRow?.role || 'Staff'
+      });
+
+      // Set up logout handler using staff-common function
+      const { attachLogout } = await import('./staff-common.js');
+      attachLogout(supabase);
+      
+      // Update required quiz status
+      await updateRequiredQuizStatus();
+      
+      // Event listeners
+      document.getElementById('btn-required').addEventListener('click', () => {
+        startQuiz('required');
+      });
+      
+      document.getElementById('btn-practice').addEventListener('click', () => {
+        startQuiz('practice');
+      });
+      
+      document.getElementById('btn-submit').addEventListener('click', submitQuiz);
+      
+      document.getElementById('btn-home').addEventListener('click', async () => {
+        // Reset to initial state and refresh status
+        document.getElementById('quiz-home').classList.remove('hidden');
+        document.getElementById('quiz-active').classList.add('hidden');
+        document.getElementById('quiz-results').classList.add('hidden');
+        
+        // Force refresh the quiz status to ensure UI is up to date
+        // Add a small delay to ensure database write is complete
+        console.log('🔄 Returning to quiz home, refreshing status...');
+        setTimeout(async () => {
+          await updateRequiredQuizStatus();
+        }, 100);
+        
+        // Reset variables
+        currentMode = null;
+        userAnswers = {};
+        currentQuestions = [];
+      });
+      
+    }).catch(e => {
+      if (String(e.message).includes('NO_SESSION')) { window.location.replace('home.html'); return; }
+      if (String(e.message).includes('NOT_STAFF')) { window.location.replace('home.html'); return; }
+      console.error('Quiz page initialization error:', e);
+    });
+    
+    // Icon service functions
+    function i8(name, opts = {}) {
+      var base  = 'https://img.icons8.com';
+      var style = opts.style || 'cute-color';
+      var size  = opts.size  || 48;
+      // Icons8 OMG-IMG pattern is style/size/name.png
+      var path  = [style, String(size), encodeURIComponent(name) + '.png'].join('/');
+      return base + '/' + path;
+    }
+    
+    function setIcon(el){
+      var name  = el.getAttribute('data-i8');
+      var size  = el.getAttribute('data-i8-size');
+      var style = el.getAttribute('data-i8-style') || 'fluency';
+      var fallback = (el.getAttribute('data-i8-fallback') || '').toLowerCase();
+      
+      if (fallback === 'auto') {
+        var stylesToTry = [style, 'fluency', 'color'];
+        var idx = 0;
+        function tryNext(){
+          if (idx >= stylesToTry.length) { el.onerror = null; return; }
+          var url = i8(name, {style: stylesToTry[idx++], size: size ? parseInt(size,10) : undefined});
+          if (el.src !== url) el.src = url; else tryNext();
+        }
+        el.onerror = tryNext;
+        tryNext();
+      } else {
+        el.src = i8(name, {style: style, size: size ? parseInt(size,10) : undefined});
+      }
+    }
+    
+    function wireIcons(){
+      document.querySelectorAll('img[data-i8]').forEach(setIcon);
+    }
+    
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', wireIcons);
+    } else {
+      wireIcons();
+    }
+  </script>
+
+    <!-- Debug Console - Persistent across all pages -->
+    <script src="debug-console.js"></script>
+    <script src="supabase-debug.js"></script>
+</body>
+</html>

@@ -10,6 +10,7 @@
   <script src="config.js"></script>
   <script src="user-utils.js"></script>
   <link rel="stylesheet" href="staff.css">
+  <script src="fix-navigation-style.js"></script>
   <style>
     :root{
       --brand:#6366f1;              /* indigo */
@@ -121,7 +122,7 @@
         <!-- Navigation will be rendered by staff-common.js -->
       </div>
       <div class="spacer"></div>
-      <div class="pill" id="site-pill">Site: —</div>
+      
       <div class="pill" id="email-pill">—</div>
       <div class="pill" id="role-pill">—</div>
       <button class="btn" id="logout-btn">Sign Out</button>
@@ -218,7 +219,9 @@
   const { session, profileRow } = sessionCtx;
     const user = session.user;
     const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
-    setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: profileRow?.role || user?.raw_user_meta_data?.role });
+    const accessType = profileRow?.access_type || user?.raw_user_meta_data?.access_type || null;
+    const displayRole = (accessType || profileRow?.role || user?.raw_user_meta_data?.role || 'Staff');
+    setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: displayRole , access_type: accessType || profileRow?.role});
     // Admin nav removed - separate staff portal
 
     // Resolve avatar and render into any staff-avatar element (match staff.html behavior)
@@ -228,9 +231,9 @@
         try {
           if (siteId) {
             const { data: saw } = await supabase
-              .from('staff_app_welcome')
+              .from('master_users')
               .select('avatar_url, updated_at')
-              .eq('user_id', user.id)
+              .eq('auth_user_id', user.id)
               .eq('site_id', siteId)
               .order('updated_at', { ascending: false })
               .limit(1)
@@ -240,7 +243,7 @@
         } catch(_) {}
         if (!avatarUrl) {
           try {
-            const { data: p } = await supabase.from('profiles').select('avatar_url').eq('user_id', user.id).maybeSingle();
+            const { data: p } = await supabase.from('master_users').select('avatar_url').eq('auth_user_id', user.id).maybeSingle();
             if (p?.avatar_url) avatarUrl = p.avatar_url;
           } catch(_) {}
         }
@@ -380,5 +383,6 @@
 
     <!-- Debug Console - Persistent across all pages -->
     <script src="debug-console.js"></script>
+    <script src="supabase-debug.js"></script>
 </body>
 </html>

@@ -1,0 +1,214 @@
+// Comprehensive achievements system fix
+// This script ensures achievements work properly for the given user
+
+const { createClient } = require('@supabase/supabase-js');
+
+// Configuration
+const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
+const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTAxNzI3NiwiZXhwIjoyMDcwNTkzMjc2fQ.CJxV14F0T2TWkAjeR4bpYiBIOwLwyfzF9WzAWwS99Xc';
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+async function fixAchievements(email = 'benhowardmagic@hotmail.com') {
+  console.log('🔧 Starting achievements fix for:', email);
+  console.log('============================================================');
+
+  try {
+    // Step 1: Get the user's auth_user_id from auth.users
+    console.log('\n1. Finding user ID...');
+    const { data: authUser, error: authError } = await supabase
+      .from('master_users')
+      .select('auth_user_id, site_id, kiosk_user_id')
+      .eq('email', email)
+      .maybeSingle();
+
+    if (authError || !authUser) {
+      console.error('❌ Could not find user profile:', authError);
+      return;
+    }
+
+    const userId = authUser.user_id;
+    const siteId = authUser.site_id || 2;
+    let kioskUserId = authUser.kiosk_user_id;
+    
+    console.log('✅ Found user:', { userId, siteId, kioskUserId });
+
+    // Step 2: Check if user has a kiosk_user_id, if not create one
+    if (!kioskUserId) {
+      console.log('\n2. User has no kiosk_user_id, checking kiosk_users table...');
+      
+      // Check if user exists in kiosk_users
+      const { data: kioskUser, error: kioskError } = await supabase
+        .from('master_users')
+        .select('id')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (kioskUser) {
+        kioskUserId = kioskUser.id;
+        console.log('✅ Found existing kiosk_user_id:', kioskUserId);
+        
+        // Update profile with kiosk_user_id
+        await supabase
+          .from('master_users')
+          .update({ kiosk_auth_user_id: kioskUserId })
+          .eq('auth_user_id', userId);
+        console.log('✅ Updated profile with kiosk_user_id');
+      } else {
+        // Create new kiosk user
+        console.log('Creating new kiosk user...');
+        const { data: newKioskUser, error: createError } = await supabase
+          .from('master_users')
+          .insert({
+            email: email,
+            site_id: siteId,
+            created_at: new Date().toISOString()
+          })
+          .select()
+          .single();
+
+        if (createError) {
+          console.error('❌ Could not create kiosk user:', createError);
+          return;
+        }
+
+        kioskUserId = newKioskUser.id;
+        console.log('✅ Created kiosk_user_id:', kioskUserId);
+        
+        // Update profile with new kiosk_user_id
+        await supabase
+          .from('master_users')
+          .update({ kiosk_auth_user_id: kioskUserId })
+          .eq('auth_user_id', userId);
+        console.log('✅ Updated profile with kiosk_user_id');
+      }
+    }
+
+    // Step 3: Check master_users for completion status
+    console.log('\n3. Checking master_users for onboarding status...');
+    const { data: masterUser, error: masterError } = await supabase
+      .from('master_users')
+      .select('onboarding_complete, auth_auth_user_id')
+      .eq('auth_user_id', userId)
+      .eq('site_id', siteId)
+      .maybeSingle();
+
+    const onboardingComplete = masterUser?.onboarding_complete || false;
+    console.log('Onboarding complete:', onboardingComplete);
+
+    // Step 4: Check for completed quizzes
+    console.log('\n4. Checking for practice quizzes...');
+    const { data: quizzes, error: quizError } = await supabase
+      .from('practice_quizzes')
+      .select('id')
+      .eq('auth_user_id', userId)
+      .limit(1);
+
+    const hasPracticeQuiz = quizzes && quizzes.length > 0;
+    console.log('Has practice quiz:', hasPracticeQuiz);
+
+    // Step 5: Check for training uploads
+    console.log('\n5. Checking for training records...');
+    const { data: training, error: trainingError } = await supabase
+      .from('training_records')
+      .select('id')
+      .eq('user_id', userId)
+      .limit(1);
+
+    const hasTraining = training && training.length > 0;
+    console.log('Has training record:', hasTraining);
+
+    // Step 6: Get all existing user achievements
+    console.log('\n6. Getting existing achievements...');
+    const { data: existingAchievements, error: existingError } = await supabase
+      .from('user_achievements')
+      .select('*')
+      .eq('kiosk_user_id', kioskUserId);
+
+    console.log('Existing achievements:', existingAchievements?.length || 0);
+    
+    // Step 7: Unlock achievements that should be unlocked
+    console.log('\n7. Processing achievements...');
+    const achievementsToProcess = [
+      {
+        key: 'onboarding_completion',
+        name: 'Onboarding Complete',
+        shouldUnlock: onboardingComplete,
+        description: 'Successfully completed the onboarding process'
+      },
+      {
+        key: 'first_practice_quiz',
+        name: 'Practice Makes Perfect',
+        shouldUnlock: hasPracticeQuiz,
+        description: 'Completed first practice quiz'
+      },
+      {
+        key: 'first_training_upload',
+        name: 'Training Champion',
+        shouldUnlock: hasTraining,
+        description: 'Uploaded first training record'
+      }
+    ];
+
+    for (const achievement of achievementsToProcess) {
+      const existing = existingAchievements?.find(a => a.achievement_key === achievement.key);
+      
+      if (achievement.shouldUnlock && (!existing || existing.status !== 'unlocked')) {
+        console.log(`\n🏆 Unlocking achievement: ${achievement.name}`);
+        
+        const { data, error } = await supabase
+          .from('user_achievements')
+          .upsert({
+            kiosk_user_id: kioskUserId,
+            achievement_key: achievement.key,
+            status: 'unlocked',
+            progress_percent: 100,
+            unlocked_at: new Date().toISOString(),
+            metadata: {
+              unlocked_by: 'retroactive_fix',
+              description: achievement.description
+            }
+          }, {
+            onConflict: 'kiosk_user_id,achievement_key'
+          })
+          .select();
+
+        if (error) {
+          console.error(`❌ Failed to unlock ${achievement.name}:`, error);
+        } else {
+          console.log(`✅ Successfully unlocked: ${achievement.name}`);
+        }
+      } else if (existing?.status === 'unlocked') {
+        console.log(`✅ Already unlocked: ${achievement.name}`);
+      } else {
+        console.log(`⏳ Not yet earned: ${achievement.name}`);
+      }
+    }
+
+    // Step 8: Display final status
+    console.log('\n============================================================');
+    console.log('📊 FINAL ACHIEVEMENT STATUS:');
+    
+    const { data: finalAchievements } = await supabase
+      .from('user_achievements')
+      .select('*')
+      .eq('kiosk_user_id', kioskUserId);
+
+    if (finalAchievements && finalAchievements.length > 0) {
+      finalAchievements.forEach(a => {
+        const emoji = a.status === 'unlocked' ? '✅' : '🔒';
+        console.log(`${emoji} ${a.achievement_key}: ${a.status}`);
+      });
+    } else {
+      console.log('No achievements recorded yet');
+    }
+
+    console.log('\n✨ Achievements fix complete!');
+    
+  } catch (error) {
+    console.error('❌ Unexpected error:', error);
+  }
+}
+
+// Run the fix
+fixAchievements().then(() => process.exit(0));

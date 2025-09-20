@@ -1,0 +1,145 @@
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = 'https://unveoqnlqnobufhublyw.supabase.co';
+const serviceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTAxNzI3NiwiZXhwIjoyMDcwNTkzMjc2fQ.CJxV14F0T2TWkAjeR4bpYiBIOwLwyfzF9WzAWwS99Xc';
+
+const supabase = createClient(supabaseUrl, serviceKey);
+
+async function fixTrainingRecordsSchema() {
+  console.log('🔧 Starting training_records schema migration...');
+  
+  try {
+    // Step 1: Check current schema
+    console.log('\n1. Checking current training_records schema...');
+    const { data: sampleRecord, error: sampleError } = await supabase
+      .from('training_records')
+      .select('*')
+      .limit(1);
+    
+    if (sampleRecord && sampleRecord[0]) {
+      console.log('Current columns:', Object.keys(sampleRecord[0]));
+    }
+    
+    // Step 2: Add user_id column if it doesn't exist
+    console.log('\n2. Adding user_id column...');
+    const addUserIdResult = await supabase.rpc('exec_sql', {
+      sql: `
+        ALTER TABLE training_records 
+        ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
+      `
+    });
+    
+    if (addUserIdResult.error) {
+      console.error('Error adding user_id column:', addUserIdResult.error);
+      throw addUserIdResult.error;
+    }
+    console.log('✅ user_id column added successfully');
+    
+    // Step 3: Create index on user_id for performance
+    console.log('\n3. Creating index on user_id...');
+    const indexResult = await supabase.rpc('exec_sql', {
+      sql: `
+        CREATE INDEX IF NOT EXISTS idx_training_records_user_id 
+        ON training_records(user_id);
+      `
+    });
+    
+    if (indexResult.error) {
+      console.error('Error creating index:', indexResult.error);
+      throw indexResult.error;
+    }
+    console.log('✅ Index created successfully');
+    
+    // Step 4: Migrate existing staff_id data to user_id where possible
+    console.log('\n4. Migrating existing staff_id records to user_id...');
+    
+    // First check if master_users table exists and has data
+    const { data: kioskCheck, error: kioskError } = await supabase
+      .from('master_users')
+      .select('id, auth_user_id')
+      .limit(1);
+    
+    if (kioskCheck && !kioskError) {
+      // Migrate using kiosk_users mapping
+      console.log('   Found master_users table, migrating via kiosk_users mapping...');
+      const migrationResult = await supabase.rpc('exec_sql', {
+        sql: `
+          UPDATE training_records 
+          SET user_id = ku.user_id
+          FROM kiosk_users ku
+          WHERE training_records.staff_id = ku.id 
+          AND training_records.user_id IS NULL;
+        `
+      });
+      
+      if (migrationResult.error) {
+        console.error('Migration via kiosk_users failed:', migrationResult.error);
+      } else {
+        console.log('✅ Migrated existing records via kiosk_users mapping');
+      }
+    } else {
+      console.log('   No kiosk_users mapping available, skipping migration');
+    }
+    
+    // Step 5: Check results
+    console.log('\n5. Checking migration results...');
+    const { data: finalCheck, error: finalError } = await supabase
+      .from('training_records')
+      .select('id, staff_id, user_id, site_id')
+      .limit(5);
+    
+    if (finalError) {
+      console.error('Error checking results:', finalError);
+    } else {
+      console.log('Sample records after migration:');
+      finalCheck.forEach(record => {
+        console.log(`  ID: ${record.id}, staff_id: ${record.staff_id}, user_id: ${record.user_id || 'null'}`);
+      });
+    }
+    
+    // Step 6: Count records with user_id vs staff_id
+    const { data: counts } = await supabase.rpc('exec_sql', {
+      sql: `
+        SELECT 
+          COUNT(*) as total,
+          COUNT(user_id) as with_user_id,
+          COUNT(staff_id) as with_staff_id
+        FROM training_records;
+      `
+    });
+    
+    if (counts && counts.length > 0) {
+      const stats = counts[0];
+      console.log(`\n📊 Migration Statistics:`);
+      console.log(`   Total records: ${stats.total}`);
+      console.log(`   Records with user_id: ${stats.with_user_id}`);
+      console.log(`   Records with staff_id: ${stats.with_staff_id}`);
+    }
+    
+    console.log('\n🎉 Schema migration completed successfully!');
+    console.log('\nNext steps:');
+    console.log('- Update staff-training.html to use user_id instead of staff_id');
+    console.log('- Update other training queries to prefer user_id over staff_id');
+    console.log('- Consider making staff_id nullable in the future');
+    
+  } catch (error) {
+    console.error('💥 Migration failed:', error);
+    throw error;
+  }
+}
+
+// Alternative approach using direct SQL execution
+async function executeSQL(sql) {
+  try {
+    const { data, error } = await supabase.rpc('exec_sql', { sql });
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    // If exec_sql doesn't exist, try direct table operations
+    console.log('exec_sql not available, using alternative approach...');
+    return null;
+  }
+}
+
+// Run the migration
+fixTrainingRecordsSchema().catch(console.error);

@@ -24,7 +24,7 @@ async function addQuizQuestions() {
     
     // Get the user's site_id from profile
     const { data: profile } = await supabase
-      .from('profiles')
+      .from('master_users')
       .select('site_id')
       .eq('id', authData.user.id)
       .single();

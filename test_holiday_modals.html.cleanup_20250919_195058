@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Holiday System Functions</title>
+  <script src="config.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
+    .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 8px; }
+    .test-button { margin: 10px 5px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    .test-button:hover { background: #0056b3; }
+    .result { margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 4px; }
+    .error { background: #f8d7da; color: #721c24; }
+    .success { background: #d4edda; color: #155724; }
+    pre { background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>🧪 Holiday System Function Testing</h1>
+  
+  <div class="test-section">
+    <h2>Test Sample User IDs</h2>
+    <p>Testing with expected user IDs from master_users table:</p>
+    <ul>
+      <li><strong>Ben Howard:</strong> 5e364f1d-2d4d-49c7-89c9-57de785c6cf5 (Staff)</li>
+      <li><strong>Tom Donlan:</strong> 68a1a111-ac7c-44a3-8fd3-8c37ff07e0a2 (GP)</li>
+    </ul>
+  </div>
+
+  <div class="test-section">
+    <h2>Function Availability Tests</h2>
+    <button class="test-button" onclick="testFunctionExists()">Test Function Existence</button>
+    <div id="function-test-result" class="result" style="display: none;"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>Working Pattern Modal Tests</h2>
+    <button class="test-button" onclick="testWorkingPatternModal('5e364f1d-2d4d-49c7-89c9-57de785c6cf5', 'Ben Howard', 'Reception Staff')">
+      Test Staff Working Pattern
+    </button>
+    <button class="test-button" onclick="testWorkingPatternModal('68a1a111-ac7c-44a3-8fd3-8c37ff07e0a2', 'Tom Donlan', 'GP')">
+      Test GP Working Pattern
+    </button>
+    <div id="working-pattern-result" class="result" style="display: none;"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>Holiday Request Modal Tests</h2>
+    <button class="test-button" onclick="testHolidayRequestModal('5e364f1d-2d4d-49c7-89c9-57de785c6cf5', 'Ben Howard')">
+      Test Holiday Request
+    </button>
+    <div id="holiday-request-result" class="result" style="display: none;"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>Holiday History Modal Tests</h2>
+    <button class="test-button" onclick="testHolidayHistoryModal('5e364f1d-2d4d-49c7-89c9-57de785c6cf5', 'Ben Howard')">
+      Test Holiday History
+    </button>
+    <div id="holiday-history-result" class="result" style="display: none;"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>Database Connection Test</h2>
+    <button class="test-button" onclick="testDatabaseConnection()">Test Supabase Connection</button>
+    <div id="database-result" class="result" style="display: none;"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>Instructions</h2>
+    <ol>
+      <li><strong>First run the SQL setup:</strong> Execute the <code>setup_holiday_test_data.sql</code> file in Supabase SQL Editor</li>
+      <li><strong>Test functions:</strong> Click the buttons above to test each function</li>
+      <li><strong>Check browser console:</strong> Open Developer Tools → Console for detailed logs</li>
+      <li><strong>Manual test:</strong> Navigate to <code>http://127.0.0.1:54341/admin-dashboard.html</code> and click Staff to see the working system</li>
+    </ol>
+  </div>
+
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+    
+    let supabase;
+    
+    // Initialize Supabase
+    try {
+      supabase = createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+      console.log('✅ Supabase client initialized');
+    } catch (error) {
+      console.error('❌ Failed to initialize Supabase:', error);
+    }
+
+    window.testFunctionExists = function() {
+      const result = document.getElementById('function-test-result');
+      result.style.display = 'block';
+      
+      const functions = [
+        'openWorkingPatternModal',
+        'closeWorkingPatternModal', 
+        'saveWorkingPattern',
+        'openHolidayRequestModal',
+        'viewHolidayHistory',
+        'closeHolidayRequestModal',
+        'closeHolidayHistoryModal',
+        'saveHolidayRequest',
+        'updateHolidayStatus'
+      ];
+      
+      const results = functions.map(funcName => {
+        const exists = typeof window[funcName] === 'function';
+        return `${funcName}: ${exists ? '✅' : '❌'}`;
+      });
+      
+      const allExist = functions.every(funcName => typeof window[funcName] === 'function');
+      
+      result.innerHTML = `
+        <h4>${allExist ? '✅ All Functions Available' : '❌ Some Functions Missing'}</h4>
+        <pre>${results.join('\n')}</pre>
+      `;
+      result.className = `result ${allExist ? 'success' : 'error'}`;
+    };
+
+    window.testWorkingPatternModal = function(userId, fullName, roleDetail) {
+      const result = document.getElementById('working-pattern-result');
+      result.style.display = 'block';
+      
+      try {
+        console.log(`Testing working pattern modal for: ${fullName} (${roleDetail})`);
+        
+        if (typeof window.openWorkingPatternModal === 'function') {
+          window.openWorkingPatternModal(userId, fullName, roleDetail);
+          result.innerHTML = `✅ Successfully opened working pattern modal for ${fullName}`;
+          result.className = 'result success';
+        } else {
+          result.innerHTML = '❌ openWorkingPatternModal function not available';
+          result.className = 'result error';
+        }
+      } catch (error) {
+        console.error('Error testing working pattern modal:', error);
+        result.innerHTML = `❌ Error: ${error.message}`;
+        result.className = 'result error';
+      }
+    };
+
+    window.testHolidayRequestModal = function(userId, fullName) {
+      const result = document.getElementById('holiday-request-result');
+      result.style.display = 'block';
+      
+      try {
+        console.log(`Testing holiday request modal for: ${fullName}`);
+        
+        if (typeof window.openHolidayRequestModal === 'function') {
+          window.openHolidayRequestModal(userId, fullName);
+          result.innerHTML = `✅ Successfully opened holiday request modal for ${fullName}`;
+          result.className = 'result success';
+        } else {
+          result.innerHTML = '❌ openHolidayRequestModal function not available';
+          result.className = 'result error';
+        }
+      } catch (error) {
+        console.error('Error testing holiday request modal:', error);
+        result.innerHTML = `❌ Error: ${error.message}`;
+        result.className = 'result error';
+      }
+    };
+
+    window.testHolidayHistoryModal = function(userId, fullName) {
+      const result = document.getElementById('holiday-history-result');
+      result.style.display = 'block';
+      
+      try {
+        console.log(`Testing holiday history modal for: ${fullName}`);
+        
+        if (typeof window.viewHolidayHistory === 'function') {
+          window.viewHolidayHistory(userId, fullName);
+          result.innerHTML = `✅ Successfully opened holiday history modal for ${fullName}`;
+          result.className = 'result success';
+        } else {
+          result.innerHTML = '❌ viewHolidayHistory function not available';
+          result.className = 'result error';
+        }
+      } catch (error) {
+        console.error('Error testing holiday history modal:', error);
+        result.innerHTML = `❌ Error: ${error.message}`;
+        result.className = 'result error';
+      }
+    };
+
+    window.testDatabaseConnection = async function() {
+      const result = document.getElementById('database-result');
+      result.style.display = 'block';
+      result.innerHTML = '🔄 Testing database connection...';
+      result.className = 'result';
+      
+      try {
+        console.log('Testing Supabase database connection...');
+        
+        // Test master_users table
+        const { data: staffData, error: staffError } = await supabase
+          .from('master_users')
+          .select('auth_user_id, full_name, role_detail')
+          .eq('site_id', 2)
+          .limit(5);
+          
+        if (staffError) {
+          throw new Error(`Staff data error: ${staffError.message}`);
+        }
+        
+        // Test working patterns table
+        const { data: patternsData, error: patternsError } = await supabase
+          .from('master_users')
+          .select('*')
+          .limit(5);
+          
+        if (patternsError) {
+          console.warn('Working patterns error:', patternsError.message);
+        }
+        
+        // Test holiday requests table  
+        const { data: holidaysData, error: holidaysError } = await supabase
+          .from('4_holiday_requests')
+          .select('*')
+          .limit(5);
+          
+        if (holidaysError) {
+          console.warn('Holiday requests error:', holidaysError.message);
+        }
+        
+        result.innerHTML = `
+          <h4>✅ Database Connection Successful</h4>
+          <p><strong>Staff found:</strong> ${staffData?.length || 0}</p>
+          <p><strong>Working patterns:</strong> ${patternsData?.length || 0}</p>
+          <p><strong>Holiday requests:</strong> ${holidaysData?.length || 0}</p>
+          <details>
+            <summary>Staff Data</summary>
+            <pre>${JSON.stringify(staffData, null, 2)}</pre>
+          </details>
+          <details>
+            <summary>Working Patterns</summary>
+            <pre>${JSON.stringify(patternsData, null, 2)}</pre>
+          </details>
+          <details>
+            <summary>Holiday Requests</summary>
+            <pre>${JSON.stringify(holidaysData, null, 2)}</pre>
+          </details>
+        `;
+        result.className = 'result success';
+        
+      } catch (error) {
+        console.error('Database connection test failed:', error);
+        result.innerHTML = `❌ Database Error: ${error.message}`;
+        result.className = 'result error';
+      }
+    };
+  </script>
+
+    <!-- Debug Console - Persistent across all pages -->
+    <script src="debug-console.js"></script>
+</body>
+</html>

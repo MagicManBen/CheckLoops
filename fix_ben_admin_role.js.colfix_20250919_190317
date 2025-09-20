@@ -1,0 +1,121 @@
+// JavaScript fix for ben.howard@stoke.nhs.uk admin role issue
+// This can be run in browser console on any admin page
+
+(async function fixBenAdminRole() {
+  try {
+    console.log('🔧 Fixing ben.howard@stoke.nhs.uk admin role...');
+    
+    // Import the functions
+    const { initSupabase } = await import('./staff-common.js');
+    const supabase = await initSupabase();
+    
+    // Find ben.howard@stoke.nhs.uk user ID
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    // Check if current user is ben.howard@stoke.nhs.uk
+    if (session?.user?.email !== 'ben.howard@stoke.nhs.uk') {
+      console.log('⚠️ This fix is specifically for ben.howard@stoke.nhs.uk');
+      console.log('Current user:', session?.user?.email);
+      return;
+    }
+    
+    const userId = session.user.id;
+    console.log('🆔 User ID:', userId);
+    
+    // Check current state
+    console.log('📊 BEFORE FIX:');
+    
+    const { data: profileBefore } = await supabase
+      .from('master_users')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+    console.log('   Profiles role:', profileBefore?.role);
+    
+    const { data: sawBefore } = await supabase
+      .from('master_users')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+    console.log('   SAW nickname:', sawBefore?.nickname);
+    console.log('   SAW role_detail:', sawBefore?.role_detail);
+    
+    console.log('   Raw meta role:', session.user.raw_user_meta_data?.role);
+    console.log('   Raw meta role_detail:', session.user.raw_user_meta_data?.role_detail);
+    
+    // Fix 1: Update master_users table to ensure role is admin
+    console.log('\n🔧 Fix 1: Updating master_users table...');
+    const { error: profileError } = await supabase
+      .from('master_users')
+      .update({ role: 'admin' })
+      .eq('user_id', userId);
+    
+    if (profileError) {
+      console.log('❌ Profile update error:', profileError);
+    } else {
+      console.log('✅ Profiles table updated');
+    }
+    
+    // Fix 2: Update auth user meta data
+    console.log('\n🔧 Fix 2: Updating user meta data...');
+    const newMetaData = {
+      ...session.user.raw_user_meta_data,
+      role: 'admin',
+      role_detail: 'Admin'
+    };
+    
+    const { error: authError } = await supabase.auth.updateUser({
+      data: newMetaData
+    });
+    
+    if (authError) {
+      console.log('❌ Auth update error:', authError);
+    } else {
+      console.log('✅ User meta data updated');
+    }
+    
+    // Fix 3: Update master_users table
+    console.log('\n🔧 Fix 3: Updating master_users table...');
+    const { error: sawError } = await supabase
+      .from('master_users')
+      .update({ 
+        nickname: 'Ben',
+        role_detail: 'Admin'
+      })
+      .eq('user_id', userId);
+    
+    if (sawError) {
+      console.log('❌ SAW update error:', sawError);
+    } else {
+      console.log('✅ Staff_app_welcome table updated');
+    }
+    
+    // Verify fixes
+    console.log('\n📊 AFTER FIX:');
+    
+    const { data: profileAfter } = await supabase
+      .from('master_users')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+    console.log('   Profiles role:', profileAfter?.role);
+    
+    const { data: sawAfter } = await supabase
+      .from('master_users')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+    console.log('   SAW nickname:', sawAfter?.nickname);
+    console.log('   SAW role_detail:', sawAfter?.role_detail);
+    
+    // Get updated session
+    const { data: { session: newSession } } = await supabase.auth.getSession();
+    console.log('   Raw meta role:', newSession?.user?.raw_user_meta_data?.role);
+    console.log('   Raw meta role_detail:', newSession?.user?.raw_user_meta_data?.role_detail);
+    
+    console.log('\n✅ Fix completed! Please refresh the page to see changes.');
+    
+  } catch (error) {
+    console.error('❌ Fix failed:', error);
+  }
+})();

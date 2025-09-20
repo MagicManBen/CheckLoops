@@ -31,12 +31,12 @@ async function createAdminInvite() {
     } else {
       console.log('✅ Admin invite created successfully:', data);
 
-      // Also check if we need to update the profiles table
-      console.log('\nChecking profiles table...');
+      // Also check if we need to update the master_users table
+      console.log('\nChecking master_users table...');
       const { data: profile, error: profileError } = await supabase
-        .from('profiles')
+        .from('master_users')
         .select('*')
-        .eq('user_id', '55f1b4e6-01f4-452d-8d6c-617fe7794873') // Known user ID from logs
+        .eq('auth_user_id', '55f1b4e6-01f4-452d-8d6c-617fe7794873') // Known user ID from logs
         .maybeSingle();
 
       if (profileError) {
@@ -47,9 +47,9 @@ async function createAdminInvite() {
         if (profile.role !== 'admin') {
           console.log('Updating profile role to admin...');
           const { error: updateError } = await supabase
-            .from('profiles')
+            .from('master_users')
             .update({ role: 'admin' })
-            .eq('user_id', '55f1b4e6-01f4-452d-8d6c-617fe7794873');
+            .eq('auth_user_id', '55f1b4e6-01f4-452d-8d6c-617fe7794873');
 
           if (updateError) {
             console.error('Error updating profile role:', updateError);

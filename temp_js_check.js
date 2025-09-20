@@ -29,9 +29,9 @@
           let nickname = null, roleDetailCheck = null, teamId = null, teamName = null, avatarUrl = null;
           if (siteIdForCheck) {
             const { data: saw } = await supabase
-              .from('staff_app_welcome')
+              .from('master_users')
               .select('nickname, role_detail, team_id, team_name, avatar_url')
-              .eq('user_id', user.id)
+              .eq('auth_user_id', user.id)
               .eq('site_id', siteIdForCheck)
               .order('updated_at', { ascending: false })
               .limit(1)
@@ -41,9 +41,9 @@
           if (!nickname || !roleDetailCheck || (!teamId && !teamName) || !avatarUrl) {
             try {
               const { data: p } = await supabase
-                .from('profiles')
+                .from('master_users')
                 .select('nickname, role_detail, team_id, team_name, avatar_url')
-                .eq('user_id', user.id)
+                .eq('auth_user_id', user.id)
                 .maybeSingle();
               if (p) {
                 nickname = nickname || p.nickname;
@@ -138,11 +138,11 @@
             const profileData = {
               user_id: user.id,
               site_id: siteId || null,
-              role: finalRole ? finalRole.toLowerCase() : 'staff', // profiles table uses 'role', not 'role_detail'
+              role: finalRole ? finalRole.toLowerCase() : 'staff', // master_users table uses 'role', not 'role_detail'
               nickname: nickVal || null
-              // Note: profiles table doesn't have team_id or team_name columns
+              // Note: master_users table doesn't have team_id or team_name columns
             };
-            const { error: profileErr } = await supabase.from('profiles').upsert(profileData);
+            const { error: profileErr } = await supabase.from('master_users').upsert(profileData);
             if (profileErr) console.warn('[persistRoleTeam] profiles upsert error', profileErr);
           } catch (e) {
             console.warn('[persistRoleTeam] profiles upsert failed', e);
@@ -158,7 +158,7 @@
               team_name: finalTeamName || null,
               nickname: nickVal || null
             };
-            const { error: sawErr } = await supabase.from('staff_app_welcome').upsert(sawData);
+            const { error: sawErr } = await supabase.from('master_users').upsert(sawData);
             if (sawErr) console.warn('[persistRoleTeam] staff_app_welcome upsert error', sawErr);
           } catch (e) {
             console.warn('[persistRoleTeam] staff_app_welcome upsert failed', e);
@@ -170,9 +170,9 @@
             let profileId = null;
             try {
               const { data: byUser } = await supabase
-                .from('1_staff_holiday_profiles')
+                .from('master_users')
                 .select('id')
-                .eq('user_id', user.id)
+                .eq('auth_user_id', user.id)
                 .maybeSingle();
               if (byUser?.id) profileId = byUser.id;
             } catch(_) {}
@@ -180,7 +180,7 @@
             if (!profileId && email) {
               try {
                 const { data: byEmail } = await supabase
-                  .from('1_staff_holiday_profiles')
+                  .from('master_users')
                   .select('id')
                   .eq('email', email)
                   .maybeSingle();
@@ -200,7 +200,7 @@
             };
 
             // If your table uses a unique constraint on email (common), target it; else plain upsert
-            const up = supabase.from('1_staff_holiday_profiles');
+            const up = supabase.from('master_users');
             const { error: hpErr } = profileId
               ? await up.update(hp).eq('id', profileId)
               : await up.upsert(hp, { onConflict: 'email' });
@@ -288,9 +288,9 @@
         async function fetchWeeklyHoursFromWorkingPattern(userId, siteId) {
           // Pull whatever columns exist for hours/sessions; we will sum by day.
           const { data: wp, error } = await supabase
-            .from('3_staff_working_patterns')
+            .from('master_users')
             .select('*')
-            .eq('user_id', userId)
+            .eq('auth_user_id', userId)
             .eq('site_id', siteId)
             .maybeSingle();
 
@@ -326,9 +326,9 @@
           // Try by user_id
           try {
             const { data: byUser } = await supabase
-              .from('1_staff_holiday_profiles')
+              .from('master_users')
               .select('id')
-              .eq('user_id', user.id)
+              .eq('auth_user_id', user.id)
               .maybeSingle();
             if (byUser?.id) return byUser.id;
           } catch (_) {}
@@ -336,7 +336,7 @@
           // Fallback by email (profiles were historically keyed by unique email)
           try {
             const { data: byEmail } = await supabase
-              .from('1_staff_holiday_profiles')
+              .from('master_users')
               .select('id')
               .eq('email', user.email)
               .maybeSingle();
@@ -405,9 +405,9 @@
         try {
           const selCols = ['user_id','full_name','site_id','role','nickname'];
           const { data, error } = await supabase
-            .from('profiles')
+            .from('master_users')
             .select(selCols.join(','))
-            .eq('user_id', user.id)
+            .eq('auth_user_id', user.id)
             .maybeSingle();
           if (error) {
             if (String(error.code) === '42703' || /column .*nickname/i.test(String(error.message))) {
@@ -1193,7 +1193,7 @@
                 }
               });
 
-              // Save to profiles table (main storage)
+              // Save to master_users table (main storage)
               try {
                 const profileData = {
                   user_id: user.id,
@@ -1201,11 +1201,11 @@
                   nickname: nickVal,
                   full_name: fullName || displayName,
                   role: window.selectedRole ? window.selectedRole.toLowerCase() : 'staff'
-                  // Note: profiles table doesn't have role_detail, team_id or team_name columns
+                  // Note: master_users table doesn't have role_detail, team_id or team_name columns
                 };
                 if (siteId) profileData.site_id = siteId;
 
-                const { error: profileErr } = await supabase.from('profiles').upsert(profileData);
+                const { error: profileErr } = await supabase.from('master_users').upsert(profileData);
                 if (profileErr) console.warn('Profile update error:', profileErr);
               } catch (e) {
                 console.warn('Profile save error:', e);
@@ -1224,7 +1224,7 @@
                     team_id: window.selectedTeamId || null,
                     team_name: window.selectedTeamName || null
                   };
-                  await supabase.from('staff_app_welcome').upsert(payload);
+                  await supabase.from('master_users').upsert(payload);
                 } catch (_) { /* non-critical */ }
               }
 
@@ -1232,7 +1232,7 @@
               try {
                 // First check if profile exists
                 const { data: existingProfile } = await supabase
-                  .from('1_staff_holiday_profiles')
+                  .from('master_users')
                   .select('id')
                   .eq('email', user.email)
                   .maybeSingle();
@@ -1240,7 +1240,7 @@
                 if (existingProfile) {
                   // Update existing profile with avatar
                   await supabase
-                    .from('1_staff_holiday_profiles')
+                    .from('master_users')
                     .update({
                       avatar_url: avatarUrl,
                       role: window.selectedRole || user?.raw_user_meta_data?.role || 'Staff',
@@ -1378,7 +1378,7 @@
 
               console.log('Saving to staff_app_welcome:', welcomeData);
               const { error: welcomeErr } = await supabase
-                .from('staff_app_welcome')
+                .from('master_users')
                 .upsert(welcomeData);
 
               if (welcomeErr) {
@@ -1395,7 +1395,7 @@
               // Don't treat welcome errors as fatal
             }
 
-            // 2. Save/update profiles table (for compatibility)
+            // 2. Save/update master_users table (for compatibility)
             try {
               const profileData = {
                 user_id: user.id,
@@ -1409,7 +1409,7 @@
 
               console.log('Saving to profiles:', profileData);
               const { error: profileErr } = await supabase
-                .from('profiles')
+                .from('master_users')
                 .upsert(profileData);
 
               if (profileErr) {
@@ -1567,11 +1567,11 @@
                 user_id: user.id,
                 nickname: val,
                 full_name: fullName || user?.email?.split('@')[0] || 'Staff',
-                role: 'staff' // Required field for profiles table
+                role: 'staff' // Required field for master_users table
               };
               if (siteId) profileData.site_id = siteId;
 
-              const { error } = await supabase.from('profiles').upsert(profileData);
+              const { error } = await supabase.from('master_users').upsert(profileData);
 
               if (error && (String(error.code) === '42703' || /column .*nickname/i.test(String(error.message)))) {
                 nicknameColumnExists = false; // fall through to guidance
@@ -1629,9 +1629,9 @@
           let existing = null;
           try {
             let q = supabase
-              .from('staff_app_welcome')
+              .from('master_users')
               .select('full_name, nickname, role_detail, team_id, team_name, avatar_url')
-              .eq('user_id', user.id)
+              .eq('auth_user_id', user.id)
               .limit(1);
             if (siteId) q = q.eq('site_id', siteId);
             const { data: sawRow, error: sawErr } = await q.maybeSingle();
@@ -1748,7 +1748,7 @@
                   avatar_url: avatarUrl ?? null
                 };
                 const { error: sawErr } = await supabase
-                  .from('staff_app_welcome')
+                  .from('master_users')
                   .upsert(payload);
                 if (sawErr) {
                   if (msgEl) msgEl.textContent = `Could not save to Staff_App_Welcome (${sawErr.code||''}). Falling back…`;
@@ -1767,11 +1767,11 @@
                   nickname: String(document.getElementById('nickname')?.value || '').trim() || null,
                   role: (role || 'staff').toLowerCase(),  // Ensure valid role for constraint
                   onboarding_complete: true
-                  // Note: profiles table doesn't have role_detail, team_id, or team_name columns
+                  // Note: master_users table doesn't have role_detail, team_id, or team_name columns
                 };
                 if (siteId) profileData.site_id = siteId;
 
-                const { error: pErr } = await supabase.from('profiles').upsert(profileData);
+                const { error: pErr } = await supabase.from('master_users').upsert(profileData);
                 if (pErr) { console.warn('[welcome] profiles upsert failed', pErr); }
               } catch (e2) {
                 console.warn('[welcome] profiles upsert exception', e2);
@@ -1955,9 +1955,9 @@
         try {
           console.log('Loading existing working pattern for user:', currentUser.id);
           const { data, error } = await globalSupabase
-            .from('3_staff_working_patterns')
+            .from('master_users')
             .select('*')
-            .eq('user_id', currentUser.id)
+            .eq('auth_user_id', currentUser.id)
             .maybeSingle();
 
           if (data) {
@@ -2102,9 +2102,9 @@
         let existingData = null;
         try {
           const { data: existing } = await globalSupabase
-            .from('3_staff_working_patterns')
+            .from('master_users')
             .select('total_holiday_entitlement, approved_holidays_used, holiday_year_start')
-            .eq('user_id', currentUser.id)
+            .eq('auth_user_id', currentUser.id)
             .maybeSingle();
           existingData = existing;
         } catch (e) {
@@ -2123,7 +2123,7 @@
         try {
           // Save working pattern
           const { data: savedPattern, error: patternError } = await globalSupabase
-            .from('3_staff_working_patterns')
+            .from('master_users')
             .upsert(patternData, {
               onConflict: 'user_id',
               ignoreDuplicates: false
@@ -2150,15 +2150,15 @@
               isGP: isGP
             };
 
-            await globalSupabase.from('staff_app_welcome').upsert({
+            await globalSupabase.from('master_users').upsert({
               user_id: currentUser.id,
               site_id: currentSiteId,
               working_hours: workingHoursData,
               updated_at: new Date().toISOString()
             });
 
-            // Note: profiles table doesn't have working_hours column
-            // Working hours are stored in staff_app_welcome and 3_staff_working_patterns tables
+            // Note: master_users table doesn't have working_hours column
+            // Working hours are stored in staff_app_welcome and master_users tables
           } catch (e) {
             console.warn('Failed to save working hours to welcome/profiles:', e);
           }
@@ -2187,7 +2187,7 @@
 
             // Upsert to 1_staff_holiday_profiles
             const { data: profileData, error: profileError } = await globalSupabase
-              .from('1_staff_holiday_profiles')
+              .from('master_users')
               .upsert(holidayProfile, {
                 onConflict: 'email',
                 ignoreDuplicates: false
@@ -2289,10 +2289,10 @@
               }
             });
             
-            await globalSupabase.from('profiles').update({
+            await globalSupabase.from('master_users').update({
               onboarding_complete: true,
               role: 'staff' // Ensure role is maintained
-            }).eq('user_id', currentUser.id);
+            }).eq('auth_user_id', currentUser.id);
           } catch (e) {
             console.warn('completion meta update failed', e);
           }

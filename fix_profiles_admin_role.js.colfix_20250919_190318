@@ -1,0 +1,71 @@
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = 'https://unveoqnlqnobufhublyw.supabase.co';
+const serviceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTAxNzI3NiwiZXhwIjoyMDcwNTkzMjc2fQ.CJxV14F0T2TWkAjeR4bpYiBIOwLwyfzF9WzAWwS99Xc';
+
+const supabase = createClient(supabaseUrl, serviceKey);
+
+async function fixProfilesTableRole() {
+    try {
+        console.log('🔧 FIXING PROFILES TABLE ADMIN ROLE\n');
+        
+        // Get user ID
+        const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
+        if (authError) {
+            console.error('Error fetching users:', authError);
+            return;
+        }
+        
+        const adminUser = authUsers.users.find(user => user.email === 'benhowardmagic@hotmail.com');
+        if (!adminUser) {
+            console.log('❌ User not found');
+            return;
+        }
+
+        console.log('User ID:', adminUser.id);
+        console.log('Auth metadata role:', adminUser.user_metadata.role);
+        console.log('Auth admin_access:', adminUser.user_metadata.admin_access);
+
+        // Update master_users table to match auth metadata
+        const { data: updateResult, error: updateError } = await supabase
+            .from('master_users')
+            .update({
+                role: 'admin'  // Change from 'staff' to 'admin'
+            })
+            .eq('user_id', adminUser.id)
+            .select();
+
+        if (updateError) {
+            console.error('❌ Error updating master_users table:', updateError);
+            return;
+        }
+
+        console.log('✅ Successfully updated master_users table');
+        console.log('Updated data:', updateResult);
+
+        // Verify the fix
+        const { data: verifyProfile, error: verifyError } = await supabase
+            .from('master_users')
+            .select('*')
+            .eq('user_id', adminUser.id)
+            .single();
+
+        if (verifyError) {
+            console.error('Error verifying update:', verifyError);
+        } else {
+            console.log('\n✅ VERIFICATION - Profiles table now shows:');
+            console.log('role:', verifyProfile.role);
+            console.log('nickname:', verifyProfile.nickname);
+            console.log('full_name:', verifyProfile.full_name);
+        }
+
+        console.log('\n🎉 FIX COMPLETE!');
+        console.log('The admin login should now work properly.');
+        console.log('Both auth metadata AND master_users table now show role: "admin"');
+        
+    } catch (error) {
+        console.error('Unexpected error:', error);
+    }
+}
+
+fixProfilesTableRole();

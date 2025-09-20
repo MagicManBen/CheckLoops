@@ -41,10 +41,10 @@ async function investigateSchema() {
       console.log('   ✅ master_users structure:', masterUsersInfo);
     }
 
-    // 2. Check if kiosk_users table exists and has holiday_approved column
-    console.log('\n📋 2. Checking kiosk_users table...');
+    // 2. Check if master_users table exists and has holiday_approved column
+    console.log('\n📋 2. Checking master_users table...');
     const { data: kioskData, error: kioskError } = await supabase
-      .from('kiosk_users')
+      .from('master_users')
       .select('*')
       .limit(1);
 
@@ -75,8 +75,8 @@ async function investigateSchema() {
       console.log('   ❌ Could not get kiosk_users columns');
     }
 
-    // 4. Check profiles table for pin columns
-    console.log('\n📋 4. Checking profiles table for PIN columns...');
+    // 4. Check master_users table for pin columns
+    console.log('\n📋 4. Checking master_users table for PIN columns...');
     const { data: profilesColumns, error: profilesColError } = await supabase
       .from('information_schema.columns')
       .select('column_name, data_type, is_nullable')
@@ -98,8 +98,8 @@ async function investigateSchema() {
     
     // First, get a sample user
     const { data: sampleUser, error: sampleError } = await supabase
-      .from('kiosk_users')
-      .select('user_id, holiday_approved')
+      .from('master_users')
+      .select('auth_auth_user_id, holiday_approved')
       .limit(1)
       .maybeSingle();
 
@@ -109,9 +109,9 @@ async function investigateSchema() {
       
       // Try to update (but don't actually change it)
       const { data: updateTest, error: updateError } = await supabase
-        .from('kiosk_users')
+        .from('master_users')
         .update({ holiday_approved: sampleUser.holiday_approved }) // Same value to not change anything
-        .eq('user_id', sampleUser.user_id)
+        .eq('auth_user_id', sampleUser.user_id)
         .select();
 
       if (updateError) {
@@ -156,9 +156,9 @@ async function investigateSchema() {
     for (const testUUID of testUUIDs) {
       try {
         const { data, error } = await supabase
-          .from('kiosk_users')
-          .select('user_id')
-          .eq('user_id', testUUID)
+          .from('master_users')
+          .select('auth_auth_user_id')
+          .eq('auth_user_id', testUUID)
           .limit(1);
         
         if (error) {

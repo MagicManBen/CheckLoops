@@ -28,10 +28,10 @@ async function clearExistingData() {
     try {
         // Clear in correct order due to foreign keys
         await supabase.from('holiday_bookings').delete().neq('id', 0);
-        await supabase.from('staff_working_patterns').delete().neq('id', 0);
-        await supabase.from('holiday_entitlements').delete().neq('id', 0);
+        await supabase.from('master_users').delete().neq('id', 0);
+        await supabase.from('master_users').delete().neq('id', 0);
         await supabase.from('staff_profile_user_links').delete().neq('id', 0);
-        await supabase.from('staff_holiday_profiles').delete().neq('id', 0);
+        await supabase.from('master_users').delete().neq('id', 0);
         
         console.log('✅ Existing data cleared');
     } catch (error) {
@@ -77,7 +77,7 @@ async function importData() {
     });
     
     const { data: insertedProfiles, error: profileError } = await supabase
-        .from('staff_holiday_profiles')
+        .from('master_users')
         .upsert(profilesData, { onConflict: 'full_name' })
         .select();
     
@@ -90,7 +90,7 @@ async function importData() {
     
     // Get all profiles with IDs
     const { data: allProfiles } = await supabase
-        .from('staff_holiday_profiles')
+        .from('master_users')
         .select('id, full_name');
     
     const profileIdMap = {};
@@ -134,7 +134,7 @@ async function importData() {
     });
     
     if (workingPatterns.length > 0) {
-        await supabase.from('staff_working_patterns').upsert(workingPatterns);
+        await supabase.from('master_users').upsert(workingPatterns);
         console.log(`✅ Created ${workingPatterns.length} working patterns`);
     }
     
@@ -185,7 +185,7 @@ async function importData() {
     });
     
     if (entitlements.length > 0) {
-        await supabase.from('holiday_entitlements').upsert(entitlements);
+        await supabase.from('master_users').upsert(entitlements);
         console.log(`✅ Created ${entitlements.length} entitlements`);
     }
     
@@ -285,9 +285,9 @@ async function importData() {
     // Verify the import
     console.log('\n📊 Import Summary:');
     
-    const { data: finalProfiles } = await supabase.from('staff_holiday_profiles').select('id');
+    const { data: finalProfiles } = await supabase.from('master_users').select('id');
     const { data: finalBookings } = await supabase.from('holiday_bookings').select('id');
-    const { data: finalEntitlements } = await supabase.from('holiday_entitlements').select('id');
+    const { data: finalEntitlements } = await supabase.from('master_users').select('id');
     const { data: finalLinks } = await supabase.from('staff_profile_user_links').select('id');
     
     console.log(`  Staff Profiles: ${finalProfiles?.length || 0}`);

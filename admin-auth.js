@@ -27,63 +27,28 @@ export async function initAdminSupabase() {
 // Check if user has admin privileges
 export async function checkAdminAccess(supabase) {
   try {
-    // Get current session first
     const { data: { session }, error } = await supabase.auth.getSession();
-    
     if (error || !session) {
       console.log('❌ No active session found');
       return false;
     }
-    
-    // Normalize helper
-    const isAdminRole = (val) => {
-      const r = String(val || '').trim().toLowerCase();
-      return r === 'admin' || r === 'owner';
-    };
 
-    // Try profiles table first
+    // Authoritative check: master_users.access_type only
     const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('user_id', session.user.id)
+      .from('master_users')
+      .select('access_type')
+      .eq('auth_user_id', session.user.id)
       .maybeSingle();
 
-    if (!profileError && profile && isAdminRole(profile.role)) {
-      console.log('✅ Admin access confirmed via profiles for', session.user.email);
-      return true;
-    }
-
     if (profileError) {
-      console.warn('Profiles role check error, falling back:', profileError);
-    } else {
-      console.log('Profiles role not admin/owner, checking fallbacks…');
+      console.error('Failed to load master_users profile:', profileError);
+      return false;
     }
 
-    // Fallback 1: user metadata
-    const metaRole = session.user.raw_user_meta_data?.role || session.user.user_metadata?.role;
-    if (isAdminRole(metaRole)) {
-      console.log('✅ Admin access confirmed via metadata for', session.user.email);
-      return true;
-    }
-
-    // Fallback 2: site_invites (admin/owner invite present for user email)
-    try {
-      const { data: invite, error: inviteError } = await supabase
-        .from('site_invites')
-        .select('role')
-        .eq('email', session.user.email)
-        .in('role', ['admin', 'owner'])
-        .maybeSingle();
-      if (!inviteError && invite && isAdminRole(invite.role)) {
-        console.log('✅ Admin access confirmed via site_invites for', session.user.email);
-        return true;
-      }
-    } catch (e) {
-      console.warn('site_invites fallback check failed:', e);
-    }
-
-    console.log('❌ User does not have admin privileges');
-    return false;
+    const accessType = String(profile?.access_type || '').toLowerCase();
+    const isAdmin = accessType === 'admin' || accessType === 'owner';
+    console.log('Admin access via master_users.access_type:', accessType, '=>', isAdmin);
+    return isAdmin;
   } catch (err) {
     console.error('Error checking admin access:', err);
     return false;
@@ -97,9 +62,8 @@ export async function requireAdminSession() {
     const isAdmin = await checkAdminAccess(supabase);
     
     if (!isAdmin) {
-      // Sign out and redirect to admin login
+      // Sign out and redirect to staff login per navigation rules
       await supabase.auth.signOut();
-      alert('Admin privileges required. Please log in with an administrator account.');
       window.location.replace('home.html');
       return null;
     }
@@ -109,7 +73,7 @@ export async function requireAdminSession() {
     return { supabase, session };
   } catch (err) {
     console.error('Error requiring admin session:', err);
-    window.location.replace('admin-login.html');
+    window.location.replace('home.html');
     return null;
   }
 }
