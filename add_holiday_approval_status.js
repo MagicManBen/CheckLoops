@@ -1,4 +1,4 @@
-// Script to add holiday approval status to kiosk_users table
+// Script to add holiday approval status to master_users table
 
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
@@ -10,7 +10,7 @@ const SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhY
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
 async function addHolidayApprovalColumn() {
-  console.log('Adding holiday_approved column to kiosk_users table...');
+  console.log('Adding holiday_approved column to master_users table...');
 
   try {
     // Add the column using raw SQL
@@ -27,13 +27,13 @@ async function addHolidayApprovalColumn() {
 
       // Check if column already exists by trying to query it
       const { data: testData, error: testError } = await supabase
-        .from('kiosk_users')
+        .from('master_users')
         .select('holiday_approved')
         .limit(1);
 
       if (testError && testError.message.includes('column')) {
         console.log('Column does not exist, needs to be added manually through Supabase dashboard');
-        console.log('Please add the following column to kiosk_users table:');
+        console.log('Please add the following column to master_users table:');
         console.log('- Column name: holiday_approved');
         console.log('- Type: boolean');
         console.log('- Default value: false');
@@ -46,8 +46,8 @@ async function addHolidayApprovalColumn() {
 
     // Check current status
     const { data: users, error: usersError } = await supabase
-      .from('kiosk_users')
-      .select('user_id, full_name, holiday_approved')
+      .from('master_users')
+      .select('auth_auth_user_id, full_name, holiday_approved')
       .order('full_name');
 
     if (!usersError) {

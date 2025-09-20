@@ -10,6 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
   <script src="config.js"></script>
   <link rel="stylesheet" href="staff.css">
+  <script src="fix-navigation-style.js"></script>
   <!-- Flatpickr modern date picker -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
@@ -337,7 +338,7 @@
         <!-- Navigation will be rendered by staff-common.js -->
       </div>
       <div class="spacer"></div>
-      <div class="pill" id="site-pill">Site: —</div>
+      
       <div class="pill" id="email-pill">—</div>
       <div class="pill" id="role-pill">—</div>
       <button class="btn admin-portal-btn" id="admin-portal-btn" title="Access Admin Dashboard" style="display:none; background: linear-gradient(135deg, #4338ca, #3b82f6); margin-right: 8px;">Admin Portal</button>
@@ -392,7 +393,7 @@
       <!-- Booking Form -->
       <div class="panel" style="margin-top: 20px;">
         <div class="panel-header">
-          <div class="illus-circle" style="width:48px;height:48px;"><img src="https://img.icons8.com/fluency/48/plus.png" alt="Request" style="width:32px;height:32px;"/></div>
+          <div class="illus-circle" style="width:48px;height:48px;"><img src="https://img.icons8.com/pastel-color/64/add--v2.png" alt="Request" style="width:34px;height:34px;"/></div>
           <h3 class="panel-title" style="margin: 0;">Request Time Off</h3>
         </div>
 
@@ -434,7 +435,7 @@
       <!-- Bookings List -->
       <div class="panel" style="margin-top: 20px;">
         <div class="panel-header">
-          <div class="illus-circle" style="width:48px;height:48px;"><img src="https://img.icons8.com/fluency/48/list.png" alt="Requests" style="width:32px;height:32px;"/></div>
+          <div class="illus-circle" style="width:48px;height:48px;"><img src="https://img.icons8.com/pastel-color/64/todo-list--v2.png" alt="Requests" style="width:34px;height:34px;"/></div>
           <h3 class="panel-title" style="margin: 0;">Your Holiday Requests</h3>
         </div>
         <div id="bookings-container">
@@ -574,12 +575,12 @@
 
         const siteId = profileRow?.site_id || 1;
 
-        // Set topbar
-        const roleDetail = profileRow?.role || user?.raw_user_meta_data?.role || 'Staff';
+        // Set topbar: always use access_type as the authoritative role
         setTopbar({
           siteText: await getSiteText(supabase, siteId),
           email: user.email,
-          role: roleDetail.charAt(0).toUpperCase() + roleDetail.slice(1)
+          role: profileRow?.access_type || profileRow?.role || 'staff',
+          access_type: profileRow?.access_type || profileRow?.role
         });
 
         // Load holiday data from master_users (single source of truth)
@@ -598,7 +599,7 @@
           if (!holidaySummary) {
             document.getElementById('holidays').innerHTML = `
               <div class="panel-header">
-                <div class="illus-circle" style="width:64px;height:64px;"><img src="https://img.icons8.com/fluency/48/calendar.png" alt="Holidays" style="width:48px;height:48px;"/></div>
+                <div class="illus-circle" style="width:64px;height:64px;"><img src="https://img.icons8.com/pastel-color/64/calendar--v3.png" alt="Holidays" style="width:44px;height:44px;"/></div>
                 <div class="panel-title">Holiday Setup Required</div>
               </div>
               <p>Please complete your welcome process first to set up your holiday allowance.</p>
@@ -651,7 +652,7 @@
           const { data: approvedRows, error: usedErr } = await supabase
             .from('4_holiday_requests')
             .select('total_days, start_date, status')
-            .eq('user_id', user.id)
+            .eq('auth_user_id', user.id)
             .eq('status', 'approved')
             .gte('start_date', `${year}-01-01`)
             .lte('start_date', `${year}-12-31`);
@@ -1268,5 +1269,6 @@
 
     <!-- Debug Console - Persistent across all pages -->
     <script src="debug-console.js"></script>
+    <script src="supabase-debug.js"></script>
 </body>
 </html>

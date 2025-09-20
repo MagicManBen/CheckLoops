@@ -223,7 +223,7 @@
         <!-- Navigation will be rendered by staff-common.js -->
       </div>
       <div class="spacer"></div>
-      <div class="pill" id="site-pill">Site: —</div>
+      
       <div class="pill" id="email-pill">—</div>
       <div class="pill" id="role-pill">—</div>
       <button class="btn" id="logout-btn">Sign Out</button>
@@ -585,9 +585,9 @@
           let nickname = null, roleDetailCheck = null, teamId = null, teamName = null, avatarUrl = null;
           if (siteIdForCheck) {
             const { data: saw } = await supabase
-              .from('staff_app_welcome')
+              .from('master_users')
               .select('nickname, role_detail, team_id, team_name, avatar_url')
-              .eq('user_id', user.id)
+              .eq('auth_user_id', user.id)
               .eq('site_id', siteIdForCheck)
               .order('updated_at', { ascending: false })
               .limit(1)
@@ -597,9 +597,9 @@
           if (!nickname || !roleDetailCheck || (!teamId && !teamName) || !avatarUrl) {
             try {
               const { data: p } = await supabase
-                .from('profiles')
+                .from('master_users')
                 .select('nickname, role_detail, team_id, team_name, avatar_url')
-                .eq('user_id', user.id)
+                .eq('auth_user_id', user.id)
                 .maybeSingle();
               if (p) {
                 nickname = nickname || p.nickname;
@@ -643,9 +643,9 @@
         try {
           const selCols = ['user_id','full_name','site_id','role','nickname'];
           const { data, error } = await supabase
-            .from('profiles')
+            .from('master_users')
             .select(selCols.join(','))
-            .eq('user_id', user.id)
+            .eq('auth_user_id', user.id)
             .maybeSingle();
           if (error) {
             if (String(error.code) === '42703' || /column .*nickname/i.test(String(error.message))) {
@@ -1432,7 +1432,7 @@
                     team_id: window.selectedTeamId || null,
                     team_name: window.selectedTeamName || null
                   };
-                  await supabase.from('staff_app_welcome').upsert(payload);
+                  await supabase.from('master_users').upsert(payload);
                 } catch (_) { /* non-critical */ }
               }
               window.currentSavedAvatarUrl = avatarUrl;
@@ -1546,12 +1546,12 @@
 
               // Update profiles as backup/sync
               try {
-                let qp = supabase.from('profiles').update({
+                let qp = supabase.from('master_users').update({
                   role_detail: role,
                   avatar_url: avatar,
                   team_id: teamIdNum,
                   team_name: (window.selectedTeamName || null)
-                }).eq('user_id', user.id);
+                }).eq('auth_user_id', user.id);
                 if (siteId) qp = qp.eq('site_id', siteId);
                 const { error: upErr } = await qp;
                 if (upErr) { console.warn('profiles update failed', upErr); }
@@ -1562,16 +1562,16 @@
               try{
                 let kioskId = null;
                 const { data: ku } = await supabase
-                  .from('kiosk_users')
+                  .from('master_users')
                   .select('id')
                   .eq('site_id', siteId)
                   .eq('full_name', fullName)
                   .maybeSingle();
                 kioskId = ku?.id || null;
                 if (kioskId){
-                  await supabase.from('kiosk_users').update({ role, team_id: teamIdNum, team_name: (window.selectedTeamName || null), active: true }).eq('id', kioskId);
+                  await supabase.from('master_users').update({ role, team_id: teamIdNum, team_name: (window.selectedTeamName || null), active: true }).eq('id', kioskId);
                 } else {
-                  await supabase.from('kiosk_users').insert({ site_id: siteId, full_name: fullName, role, team_id: teamIdNum, team_name: (window.selectedTeamName || null), active: true });
+                  await supabase.from('master_users').insert({ site_id: siteId, full_name: fullName, role, team_id: teamIdNum, team_name: (window.selectedTeamName || null), active: true });
                 }
               } catch(kuErr){ console.info('kiosk_users upsert skipped/failed (policy likely).', kuErr?.message || kuErr); }
 
@@ -1585,12 +1585,12 @@
                 if (upd.error) console.warn('Could not stamp completion metadata:', upd.error);
               } catch (metaErr) { console.warn('metadata completion update failed', metaErr); }
 
-              // Also update the profiles table to mark onboarding as complete
+              // Also update the master_users table to mark onboarding as complete
               try {
                 const { error: profileUpdateError } = await supabase
-                  .from('profiles')
+                  .from('master_users')
                   .update({ onboarding_complete: true })
-                  .eq('user_id', user.id);
+                  .eq('auth_user_id', user.id);
                 
                 if (profileUpdateError) {
                   console.warn('Could not update onboarding_complete in profiles:', profileUpdateError);
@@ -1641,7 +1641,7 @@
 
           if (nicknameColumnExists) {
             try{
-              let q = supabase.from('profiles').update({ nickname: val }).eq('user_id', user.id);
+              let q = supabase.from('master_users').update({ nickname: val }).eq('auth_user_id', user.id);
               if (siteId) q = q.eq('site_id', siteId);
               const { error } = await q;
               if (error && (String(error.code) === '42703' || /column .*nickname/i.test(String(error.message)))) {
@@ -1695,9 +1695,9 @@
           let existing = null;
           try {
             let q = supabase
-              .from('staff_app_welcome')
+              .from('master_users')
               .select('full_name, nickname, role_detail, team_id, team_name, avatar_url')
-              .eq('user_id', user.id)
+              .eq('auth_user_id', user.id)
               .limit(1);
             if (siteId) q = q.eq('site_id', siteId);
             const { data: sawRow, error: sawErr } = await q.maybeSingle();
@@ -1798,7 +1798,7 @@
                   avatar_url: avatarUrl ?? null
                 };
                 const { error: sawErr } = await supabase
-                  .from('staff_app_welcome')
+                  .from('master_users')
                   .upsert(payload);
                 if (sawErr) {
                   if (msgEl) msgEl.textContent = `Could not save to Staff_App_Welcome (${sawErr.code||''}). Falling back…`;
@@ -1811,11 +1811,11 @@
 
               // 2) Also update profiles so existing views stay in sync
               try {
-                let qp2 = supabase.from('profiles').update({
+                let qp2 = supabase.from('master_users').update({
                   role_detail: role || null,
                   team_id: teamIdNum ?? null,
                   team_name: teamName || null
-                }).eq('user_id', user.id);
+                }).eq('auth_user_id', user.id);
                 if (siteId) qp2 = qp2.eq('site_id', siteId);
                 const { error: pErr } = await qp2;
                 if (pErr) { console.warn('[welcome] profiles sync failed', pErr); }

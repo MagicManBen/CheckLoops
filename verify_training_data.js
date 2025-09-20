@@ -82,7 +82,7 @@ async function verifyTrainingRecords() {
     // Check kiosk users to understand staff IDs
     console.log('\n--- Kiosk Users (Staff) ---');
     const { data: users, error: usersError } = await supabase
-      .from('kiosk_users')
+      .from('master_users')
       .select('id, full_name, role')
       .eq('site_id', 2)
       .eq('active', true)

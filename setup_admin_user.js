@@ -25,7 +25,7 @@ async function setupAdminUser() {
     // First, create a profile entry for the admin user
     console.log('📝 Creating profile for admin user...');
     const { data: profile, error: profileError } = await supabaseAdmin
-      .from('profiles')
+      .from('master_users')
       .upsert({
         user_id: adminUserId,
         role: 'admin',
@@ -41,9 +41,9 @@ async function setupAdminUser() {
       console.error('❌ Error creating profile:', profileError);
       // Try to update if insert fails
       const { error: updateError } = await supabaseAdmin
-        .from('profiles')
+        .from('master_users')
         .update({ role: 'admin' })
-        .eq('user_id', adminUserId);
+        .eq('auth_user_id', adminUserId);
       
       if (updateError) {
         console.error('❌ Error updating profile:', updateError);

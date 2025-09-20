@@ -40,8 +40,8 @@ async function populateKioskUsers() {
   
   // Now we get the profiles with kiosk_user_id
   const { data: users, error } = await readClient()
-      .from('profiles')
-      .select('kiosk_user_id, full_name')
+      .from('master_users')
+      .select('kiosk_auth_auth_user_id, full_name')
       .eq('site_id', S.siteId)
       .not('kiosk_user_id', 'is', null)
       .order('full_name');
@@ -85,8 +85,8 @@ $('btnPinSetupSave').addEventListener('click', async () => {
 
   // First get the user_id for this kiosk_user_id
   const { data: userData, error: userError } = await sb
-      .from('profiles')
-      .select('user_id')
+      .from('master_users')
+      .select('auth_auth_user_id')
       .eq('kiosk_user_id', kioskUserId)
       .eq('site_id', S.siteId)
       .single();

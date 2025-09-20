@@ -47,15 +47,15 @@ async function diagnoseBenAdminIssue() {
         
         // Get all relevant data
         const { data: profile } = await supabase
-          .from('profiles')
+          .from('master_users')
           .select('*')
-          .eq('user_id', session.user.id)
+          .eq('auth_user_id', session.user.id)
           .maybeSingle();
         
         const { data: saw } = await supabase
-          .from('staff_app_welcome')
+          .from('master_users')
           .select('*')
-          .eq('user_id', session.user.id)
+          .eq('auth_user_id', session.user.id)
           .maybeSingle();
         
         return {
@@ -94,9 +94,9 @@ async function diagnoseBenAdminIssue() {
         
         const { data: { session } } = await supabase.auth.getSession();
         const { data: profileRow } = await supabase
-          .from('profiles')
+          .from('master_users')
           .select('role, full_name, site_id')
-          .eq('user_id', session.user.id)
+          .eq('auth_user_id', session.user.id)
           .maybeSingle();
         
         // Test requireStaffSession logic
@@ -181,9 +181,9 @@ async function diagnoseBenAdminIssue() {
         
         // Fix 1: Update profiles
         const { error: profileError } = await supabase
-          .from('profiles')
+          .from('master_users')
           .update({ role: 'admin' })
-          .eq('user_id', userId);
+          .eq('auth_user_id', userId);
         
         // Fix 2: Update auth meta data
         const newMetaData = {
@@ -198,12 +198,12 @@ async function diagnoseBenAdminIssue() {
         
         // Fix 3: Update staff_app_welcome
         const { error: sawError } = await supabase
-          .from('staff_app_welcome')
+          .from('master_users')
           .update({ 
             nickname: 'Ben',
             role_detail: 'Admin'
           })
-          .eq('user_id', userId);
+          .eq('auth_user_id', userId);
         
         return {
           profileFixed: !profileError,

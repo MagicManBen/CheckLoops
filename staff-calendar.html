@@ -10,6 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
   <script src="config.js"></script>
   <link rel="stylesheet" href="staff.css">
+  <script src="fix-navigation-style.js"></script>
   <style>
     /* Page theme aligned with my-holidays */
     .filters {
@@ -22,27 +23,149 @@
       cursor: pointer; user-select: none;
     }
     .filter-chip.active { background: linear-gradient(135deg, #4338ca, #3b82f6); border-color: transparent; }
-    .calendar-grid {
-      display: grid; grid-template-columns: 220px repeat(7, 1fr); gap: 8px; margin-top: 12px;
+    .status-chip-group { display:flex; gap:8px; align-items:center; }
+    .status-chip {
+      position:relative; display:inline-flex; align-items:center; justify-content:center;
+      gap:6px; padding:6px 14px 6px 30px;
+      border-radius:14px; border:1px solid rgba(148,163,184,0.4);
+      background: rgba(255,255,255,0.92);
+      font-weight:600; color:#1f2937;
+      box-shadow:0 6px 16px rgba(15,23,42,0.08);
+      opacity:0.65;
+      cursor:pointer; transition: all .18s ease; min-width:78px;
     }
-    .cal-header { position: sticky; top: 0; z-index: 2; background: rgba(255,255,255,0.06); border:1px solid var(--border-color); border-radius: 10px; padding: 10px; text-align:center; font-weight:800; }
-    .cal-cell { background: rgba(255,255,255,0.05); border:1px solid var(--border-color); border-radius: 10px; min-height: 74px; padding: 8px; position: relative; overflow: hidden; }
-    .person-cell { display:flex; align-items:center; gap:10px; background: rgba(255,255,255,0.06); border:1px solid var(--border-color); border-radius: 10px; padding:8px; }
-    .person-avatar { width:36px; height:36px; border-radius:50%; background:#fff; background-size:cover; background-position:center; box-shadow:0 4px 10px rgba(2,6,23,.10); border:1px solid var(--border-color); }
-    .person-name { font-weight:800; color:var(--white); }
-    .badge { position:absolute; right:8px; top:8px; padding:4px 8px; border-radius:999px; font-size:11px; font-weight:800; }
-    .badge.in { background: rgba(34,197,94,.18); color:#86efac; border:1px solid rgba(34,197,94,.35); }
-    .badge.off { background: rgba(239,68,68,.18); color:#fca5a5; border:1px solid rgba(239,68,68,.35); }
-    .badge.holiday { background: rgba(59,130,246,.18); color:#93c5fd; border:1px solid rgba(59,130,246,.35); }
-    .day-label { font-size:12px; color:var(--muted); font-weight:700; }
-    .day-num { font-weight:900; color:var(--white); }
+    .status-chip::before{
+      content:''; position:absolute; left:10px; width:16px; height:16px; border-radius:6px;
+      border:2px solid rgba(148,163,184,0.5);
+      background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(226,232,240,0.7));
+      box-shadow: inset 0 2px 3px rgba(15,23,42,0.1);
+      transition: all .18s ease;
+    }
+    .status-chip::after{
+      content:''; position:absolute; left:14px; top:10px; width:8px; height:4px;
+      border-left:2px solid transparent; border-bottom:2px solid transparent;
+      transform: rotate(-45deg); opacity:0; transition: opacity .18s ease;
+    }
+    .status-chip.in{ border-color: rgba(34,197,94,0.4); }
+    .status-chip.off{ border-color: rgba(239,68,68,0.4); }
+    .status-chip.holiday{ border-color: rgba(59,130,246,0.4); }
+    .status-chip.in.active::before{ border-color: rgba(34,197,94,0.7); }
+    .status-chip.off.active::before{ border-color: rgba(239,68,68,0.7); }
+    .status-chip.holiday.active::before{ border-color: rgba(59,130,246,0.7); }
+    .status-chip.in.active::after{ border-color: rgba(34,197,94,0.85); opacity:1; }
+    .status-chip.off.active::after{ border-color: rgba(239,68,68,0.85); opacity:1; }
+    .status-chip.holiday.active::after{ border-color: rgba(59,130,246,0.85); opacity:1; }
+    .status-chip.active{ font-weight:700; color:#0f172a; box-shadow:0 10px 20px rgba(15,23,42,0.12); opacity:1; }
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .calendar-weekday {
+      text-align: center;
+      font-weight: 800;
+      padding: 12px;
+      border-radius: 14px;
+      background: linear-gradient(145deg, rgba(255,255,255,0.95), rgba(255,255,255,0.78));
+      border: 1px solid rgba(148,163,184,0.35);
+      color: #1e293b;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      box-shadow: 0 12px 24px rgba(15,23,42,0.08);
+    }
+    .calendar-day {
+      background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(248,250,252,0.86));
+      border: 1px solid rgba(148,163,184,0.28);
+      border-radius: 16px;
+      min-height: 160px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: 0 18px 36px rgba(15,23,42,0.12);
+      transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+    }
+    .calendar-day:hover { transform: translateY(-2px); box-shadow: 0 22px 40px rgba(15,23,42,0.18); }
+    .calendar-day.muted { opacity: 0.6; }
+    .calendar-day.today {
+      border-color: rgba(59,130,246,0.65);
+      box-shadow: 0 22px 42px rgba(59,130,246,0.22);
+    }
+    .day-top { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+    .day-num { font-weight:800; font-size:18px; color:#0f172a; }
+    .day-label { font-size:12px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.03em; }
+    .day-badges { display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end; }
+    .day-badge {
+      padding:2px 6px;
+      border-radius:999px;
+      font-size:11px;
+      font-weight:700;
+      border:1px solid transparent;
+    }
+    .day-badge.in { background: rgba(34,197,94,.18); color:#047857; border-color: rgba(34,197,94,.35); }
+    .day-badge.off { background: rgba(239,68,68,.18); color:#b91c1c; border-color: rgba(239,68,68,.35); }
+    .day-badge.holiday { background: rgba(59,130,246,.18); color:#1d4ed8; border-color: rgba(59,130,246,.35); }
+    .status-wrap { margin-top: 4px; display:flex; flex-direction:column; gap:8px; }
+    .status-group { background: rgba(15,23,42,0.04); border:1px solid rgba(148,163,184,0.2); border-radius:12px; padding:6px 8px; display:flex; flex-direction:column; gap:4px; }
+    .status-group.in { background: rgba(220,252,231,0.55); border-color: rgba(34,197,94,0.35); }
+    .status-group.holiday { background: rgba(219,234,254,0.55); border-color: rgba(59,130,246,0.35); }
+    .status-group.off { background: rgba(254,226,226,0.55); border-color: rgba(239,68,68,0.30); }
+    .status-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:#475569; }
+    .status-group.in .status-label { color:#047857; }
+    .status-group.holiday .status-label { color:#1d4ed8; }
+    .status-group.off .status-label { color:#b91c1c; }
+    .status-chips { display:flex; flex-wrap:wrap; gap:6px; }
+    .person-chip {
+      position:relative;
+      display:inline-flex;
+      align-items:center;
+      padding:4px 10px;
+      border-radius:999px;
+      font-weight:600;
+      font-size:12px;
+      background: rgba(255,255,255,0.9);
+      color:#0f172a;
+      box-shadow:0 6px 18px rgba(15,23,42,0.08);
+    }
+    .person-chip.in { background: rgba(220,252,231,0.9); color:#065f46; }
+    .person-chip.off { background: rgba(254,226,226,0.92); color:#991b1b; }
+    .person-chip.holiday { background: rgba(219,234,254,0.92); color:#1d4ed8; }
+    .avatar-tooltip {
+      position:absolute;
+      top:-60px;
+      left:50%;
+      transform: translate(-50%, -6px) scale(0.85);
+      opacity:0;
+      pointer-events:none;
+      width:50px;
+      height:50px;
+      border-radius:16px;
+      background: rgba(255,255,255,0.96);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-weight:700;
+      color:#0f172a;
+      box-shadow:0 12px 24px rgba(15,23,42,0.18);
+      transition: opacity .18s ease, transform .18s ease;
+    }
+    .avatar-tooltip.is-image { background-size: cover; background-position: center; color: transparent; }
+    .avatar-tooltip:not(.is-image) { border:1px solid rgba(148,163,184,0.35); }
+    .person-chip:hover .avatar-tooltip { opacity:1; transform: translate(-50%, -11px) scale(1); }
+    .status-placeholder { font-size:12px; color:rgba(100,116,139,0.9); text-align:center; padding:6px 0; }
     .legend { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
     .legend .chip { padding:6px 10px; border-radius:999px; font-size:12px; font-weight:800; border:1px solid var(--border-color); background: rgba(255,255,255,0.06); }
     .legend .in { background: rgba(34,197,94,.18); border-color: rgba(34,197,94,.35); color:#86efac; }
     .legend .off { background: rgba(239,68,68,.18); border-color: rgba(239,68,68,.35); color:#fca5a5; }
     .legend .holiday { background: rgba(59,130,246,.18); border-color: rgba(59,130,246,.35); color:#93c5fd; }
     .team-pill { padding: 2px 8px; border-radius: 999px; font-size: 11px; background: rgba(255,255,255,0.08); border: 1px solid var(--border-color); color:#e2e8f0; }
-    .team-filter { min-width: 180px; padding: 10px 12px; border-radius: 10px; border:1px solid var(--border-color); background: rgba(255,255,255,0.05); color: var(--white); }
+    .team-filter {
+      min-width: 180px; padding: 10px 12px; border-radius: 12px;
+      border:1px solid rgba(148,163,184,0.4); background: rgba(255,255,255,0.95);
+      color:#0f172a; box-shadow:0 6px 18px rgba(15,23,42,0.08);
+    }
     .week-switch { display:flex; gap:8px; align-items:center; }
     .week-btn { padding:8px 12px; border-radius:10px; border:1px solid var(--border-color); background: rgba(255,255,255,0.06); color:var(--white); font-weight:800; cursor:pointer; }
   </style>
@@ -64,16 +187,16 @@
     <section class="panel g-12" style="margin:0; position:relative; overflow:hidden;">
       <div class="halo"></div>
       <div class="hero" style="margin-bottom: 12px; display:flex; align-items:center; gap:14px;">
-        <div class="illus-circle" style="width:56px;height:56px; display:grid; place-items:center;"><img src="https://img.icons8.com/fluency/48/calendar.png" alt="Calendar" style="width:36px;height:36px;"/></div>
+        <div class="illus-circle" style="width:56px;height:56px; display:grid; place-items:center;"><img src="https://img.icons8.com/pastel-color/64/calendar--v3.png" alt="Calendar" style="width:40px;height:40px;"/></div>
         <div>
           <div class="h1" style="font-size:28px;">Staffing Calendar</div>
           <div class="subtitle">See who is in, off, or on holiday</div>
         </div>
         <div class="spacer"></div>
         <div class="week-switch">
-          <button id="prev-week" class="week-btn">← Previous</button>
-          <div id="week-label" class="pill">—</div>
-          <button id="next-week" class="week-btn">Next →</button>
+          <button id="prev-month" class="week-btn">← Previous</button>
+          <div id="month-label" class="pill">—</div>
+          <button id="next-month" class="week-btn">Next →</button>
         </div>
       </div>
 
@@ -86,14 +209,13 @@
           </div>
           <div class="spacer"></div>
           <select id="team-filter" class="team-filter" aria-label="Filter by team">
-            <option value="">All teams</option>
+            <option value="">All Teams</option>
           </select>
-          <div id="status-filters" class="filters" aria-label="Filter by status">
-            <button class="filter-chip active" data-status="in" title="Show people who are in">In</button>
-            <button class="filter-chip active" data-status="off" title="Show people who are off">Off</button>
-            <button class="filter-chip active" data-status="holiday" title="Show people on holiday">Holiday</button>
+          <div id="status-filters" class="status-chip-group" aria-label="Filter by status">
+            <button type="button" class="status-chip active in" data-status="in" title="Show people who are in">In</button>
+            <button type="button" class="status-chip active off" data-status="off" title="Show people who are off">Off</button>
+            <button type="button" class="status-chip active holiday" data-status="holiday" title="Show people on holiday">Holiday</button>
           </div>
-          <div class="filters" id="people-filters" aria-label="Filter by people"></div>
         </div>
 
         <div id="calendar" style="margin-top: 10px;">
@@ -108,9 +230,30 @@
   <script type="module">
     import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, attachLogout } from './staff-common.js';
 
+    const DAY_ORDER = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+
     function startOfWeek(d){ const c=new Date(d); const day=c.getDay(); c.setDate(c.getDate()-day); c.setHours(0,0,0,0); return c; }
     function endOfWeek(d){ const s=startOfWeek(d); const e=new Date(s.getTime()+6*24*60*60*1000); e.setHours(23,59,59,999); return e; }
-    function fmtDay(d){ return d.toLocaleDateString(undefined,{weekday:'short', month:'short', day:'numeric'}); }
+    function startOfMonth(d){ const c=new Date(d); c.setHours(0,0,0,0); c.setDate(1); return c; }
+    function endOfMonth(d){ const c=startOfMonth(d); c.setMonth(c.getMonth()+1,0); c.setHours(23,59,59,999); return c; }
+    function startOfGrid(d){ return startOfWeek(startOfMonth(d)); }
+    function endOfGrid(d){ return endOfWeek(endOfMonth(d)); }
+    function fmtMonth(d){ return d.toLocaleDateString(undefined,{ month:'long', year:'numeric' }); }
+    function shiftMonth(date, delta){ const c=startOfMonth(date); c.setMonth(c.getMonth()+delta); return c; }
+    function dayKey(d){ return d.toISOString().slice(0,10); }
+    function dateOnly(v){ const dt=new Date(v); dt.setHours(0,0,0,0); return dt; }
+    function getInitials(name){ return (name||'?').split(/\s+/).filter(Boolean).map(part=>part[0]).slice(0,2).join('').toUpperCase() || '?'; }
+    function toNumber(value, fallback = 0){ if (value === null || value === undefined) return fallback; if (typeof value === 'number' && Number.isFinite(value)) return value; if (typeof value === 'string'){ const trimmed = value.trim(); if (!trimmed) return fallback; if (trimmed.includes(':')){ const [h='0', m='0'] = trimmed.split(':'); const hours = parseInt(h,10) || 0; const mins = parseInt(m,10) || 0; return hours + (mins/60); } const parsed = Number(trimmed); return Number.isFinite(parsed) ? parsed : fallback; } return fallback; }
+    function toInt(value, fallback = 0){ if (value === null || value === undefined) return fallback; if (typeof value === 'number' && Number.isFinite(value)) return value; const parsed = Number(String(value).trim()); return Number.isFinite(parsed) ? parsed : fallback; }
+    function statusFor(person, requests, day){
+      const target=dateOnly(day);
+      const hasHoliday=(requests||[]).some(r=>r.start<=target && target<=r.end);
+      if(hasHoliday) return 'holiday';
+      const wd=target.getDay();
+      const hasHours=toNumber(person.wpHours?.[wd])>0;
+      const hasSessions=toInt(person.wpSessions?.[wd])>0;
+      return (hasHours||hasSessions)?'in':'off';
+    }
 
     (async function(){
       const supabase = await initSupabase();
@@ -131,88 +274,107 @@
             .single();
           siteId = meRow?.site_id || null;
         }
-        setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: (profileRow?.role || 'Staff') });
+        setTopbar({ 
+          siteText: await getSiteText(supabase, siteId), 
+          email: user.email, 
+          role: profileRow?.access_type || profileRow?.role || 'staff',
+          access_type: profileRow?.access_type || profileRow?.role
+        });
 
-        // Load teams
-        const { data: teams } = await supabase.from('teams').select('id,name').eq('site_id', siteId);
+        const { data: teams } = await supabase.from('teams').select('id,name').eq('site_id', siteId).order('name', { ascending: true });
         const teamSel = document.getElementById('team-filter');
-        (teams||[]).forEach(t=>{ const o=document.createElement('option'); o.value=String(t.id); o.textContent=t.name; teamSel.appendChild(o); });
+        teamSel.innerHTML = '<option value="" data-team-name="">All Teams</option>';
+        (teams||[]).forEach(team=>{
+          const option=document.createElement('option');
+          option.value=String(team.id);
+          option.textContent=team.name;
+          option.dataset.teamName = (team.name || '').toLowerCase();
+          teamSel.appendChild(option);
+        });
 
-        // Build staff list by site using master_users only (profiles table not required)
-        const { data: muRows } = await supabase
+        const staffQuery = supabase
           .from('master_users')
           .select(`
             auth_user_id, full_name, email, site_id, role, team_id, team_name, avatar_url, is_gp,
             monday_hours, tuesday_hours, wednesday_hours, thursday_hours, friday_hours, saturday_hours, sunday_hours,
             monday_sessions, tuesday_sessions, wednesday_sessions, thursday_sessions, friday_sessions, saturday_sessions, sunday_sessions
-          `)
-          .eq('site_id', siteId);
+          `);
+        if (siteId) staffQuery.eq('site_id', siteId);
+        const { data: muRows, error: muError } = await staffQuery;
 
-        const people = (muRows||[]).map((m, idx)=>({
-          id: m.auth_user_id,
-          key: String(m.auth_user_id || m.email || m.full_name || `user-${idx}`),
-          name: m.full_name || m.email || 'Unknown',
-          email: m.email,
-          teamId: m.team_id || null,
-          teamName: m.team_name || null,
-          avatar: m.avatar_url || null,
-          isGP: !!m.is_gp,
-          wpHours: {
-            0: Number(m.sunday_hours||0),
-            1: Number(m.monday_hours||0),
-            2: Number(m.tuesday_hours||0),
-            3: Number(m.wednesday_hours||0),
-            4: Number(m.thursday_hours||0),
-            5: Number(m.friday_hours||0),
-            6: Number(m.saturday_hours||0)
-          },
-          wpSessions: {
-            0: Number(m.sunday_sessions||0),
-            1: Number(m.monday_sessions||0),
-            2: Number(m.tuesday_sessions||0),
-            3: Number(m.wednesday_sessions||0),
-            4: Number(m.thursday_sessions||0),
-            5: Number(m.friday_sessions||0),
-            6: Number(m.saturday_sessions||0)
-          }
-        }));
+        if (muError) {
+          console.warn('[staff-calendar] master_users lookup failed', muError);
+        }
 
-        // Build people filter chips
-        const peopleFilters = document.getElementById('people-filters');
-        people.forEach(p=>{
-          const chip = document.createElement('button');
-          chip.className = 'filter-chip active';
-          chip.dataset.personKey = p.key;
-          chip.textContent = p.name.split(' ')[0];
-          chip.title = p.name;
-          chip.addEventListener('click', ()=>{
-            chip.classList.toggle('active');
-            render();
+        console.log('[staff-calendar] staff rows fetched:', muRows?.length || 0, 'for site', siteId);
+
+        const people = (muRows || []).map((m, idx) => {
+          const authId = m.auth_user_id || null;
+          const keyFallback = `${m.email || m.full_name || 'user'}-${idx}`;
+          const hours = {};
+          const sessions = {};
+          const fullName = (m.full_name || '').trim();
+          const fallbackEmail = m.email || '';
+          const displayName = fullName || fallbackEmail || 'Unknown';
+          const shortName = fullName ? fullName.split(/\s+/)[0] : (fallbackEmail ? fallbackEmail.split('@')[0] : 'Staff');
+          const teamName = (m.team_name || '').trim();
+          const teamNameLower = teamName.toLowerCase();
+          DAY_ORDER.forEach((dayName, dayIdx) => {
+            hours[dayIdx] = toNumber(m[`${dayName}_hours`]);
+            sessions[dayIdx] = toInt(m[`${dayName}_sessions`]);
           });
-          peopleFilters.appendChild(chip);
+          return {
+            id: authId ? String(authId) : null,
+            key: authId ? String(authId) : keyFallback,
+            name: displayName,
+            shortName,
+            email: m.email,
+            teamId: m.team_id == null ? null : String(m.team_id),
+            teamName: teamName || null,
+            teamNameLower,
+            avatar: m.avatar_url || '',
+            isGP: !!m.is_gp,
+            wpHours: hours,
+            wpSessions: sessions
+          };
         });
 
-        // Wire status filter toggles
-        document.getElementById('status-filters').addEventListener('click', (e)=>{
-          const btn = e.target.closest('.filter-chip');
-          if (!btn) return;
-          btn.classList.toggle('active');
-          // Ensure at least one status stays active
-          const activeCount = document.querySelectorAll('#status-filters .filter-chip.active').length;
-          if (activeCount === 0) btn.classList.add('active');
+        if (!people.length) {
+          console.warn('[staff-calendar] No staff records found for site', siteId);
+        } else {
+          people.sort((a, b) => a.name.localeCompare(b.name));
+        }
+
+        const statusFilters = document.getElementById('status-filters');
+        const statusButtons = Array.from(statusFilters.querySelectorAll('.status-chip'));
+        statusButtons.forEach(btn => btn.setAttribute('aria-pressed','true'));
+        statusFilters.addEventListener('click', (event)=>{
+          const toggle=event.target.closest('.status-chip');
+          if(!toggle) return;
+          toggle.classList.toggle('active');
+          const activeCount=statusButtons.filter(btn => btn.classList.contains('active')).length;
+          if(activeCount===0) toggle.classList.add('active');
+          toggle.setAttribute('aria-pressed', toggle.classList.contains('active'));
+          statusButtons.forEach(btn => {
+            if(btn !== toggle) btn.setAttribute('aria-pressed', btn.classList.contains('active'));
+          });
           render();
         });
 
-        // Week state
-        let cursor = startOfWeek(new Date());
-        document.getElementById('prev-week').addEventListener('click', ()=>{ cursor = new Date(cursor.getTime()-7*86400000); render(); });
-        document.getElementById('next-week').addEventListener('click', ()=>{ cursor = new Date(cursor.getTime()+7*86400000); render(); });
-
         teamSel.addEventListener('change', render);
 
+        const prevBtn = document.getElementById('prev-month');
+        const nextBtn = document.getElementById('next-month');
+        let cursor = startOfMonth(new Date());
+        prevBtn.addEventListener('click', ()=>{ cursor = shiftMonth(cursor, -1); render(); });
+        nextBtn.addEventListener('click', ()=>{ cursor = shiftMonth(cursor, 1); render(); });
+
+        const monthLabel = document.getElementById('month-label');
+        const calendar = document.getElementById('calendar');
+        let renderToken = 0;
+
         async function loadStatuses(fromISO, toISO){
-          // Load holiday requests overlapping window
-          const { data: reqs } = await supabase
+          const { data: reqs, error } = await supabase
             .from('4_holiday_requests')
             .select('user_id,start_date,end_date,status')
             .eq('site_id', siteId)
@@ -220,124 +382,191 @@
             .lte('start_date', toISO)
             .gte('end_date', fromISO);
 
+          if (error) {
+            console.error('Unable to load holiday data', error);
+            return new Map();
+          }
+
+          console.log('[staff-calendar] holiday requests fetched:', (reqs||[]).length, 'between', fromISO, 'and', toISO);
+
           const byUser = new Map();
-          (reqs||[]).forEach(r=>{
-            const arr = byUser.get(r.user_id) || [];
-            arr.push(r);
-            byUser.set(r.user_id, arr);
+          (reqs||[]).forEach(row=>{
+            const rawId=row.user_id;
+            if(!rawId) return;
+            const key=String(rawId);
+            const entry={ start: dateOnly(row.start_date), end: dateOnly(row.end_date), status: row.status };
+            const existing=byUser.get(key);
+            if(existing) existing.push(entry); else byUser.set(key,[entry]);
           });
           return byUser;
         }
 
-        function dayKey(d){ return d.toISOString().slice(0,10); }
-        function dateOnly(d){ const x=new Date(d); x.setHours(0,0,0,0); return x; }
-
         async function render(){
-          const weekStart = startOfWeek(cursor);
-          const weekEnd   = endOfWeek(cursor);
-          const fromISO = weekStart.toISOString().slice(0,10);
-          const toISO   = weekEnd.toISOString().slice(0,10);
-          document.getElementById('week-label').textContent = `${fmtDay(weekStart)} — ${fmtDay(weekEnd)}`;
-
-          // Active people filter
-          const activeKeys = new Set(Array.from(document.querySelectorAll('#people-filters .filter-chip.active'))
-            .map(c=>c.dataset.personKey));
-
-          // Team filter
-          const teamFilterVal = teamSel.value;
-
-          const statusesByUser = await loadStatuses(fromISO, toISO);
-
-          const days = Array.from({length:7}, (_,i)=> new Date(weekStart.getTime()+i*86400000));
-
-          // Selected statuses
-          const selectedStatuses = new Set(Array.from(document.querySelectorAll('#status-filters .filter-chip.active')).map(b=>b.dataset.status));
-
-          // Helper to compute daily status for a user/day
-          function statusFor(p, userReqs, d){
-            const day = dateOnly(d);
-            const inHoliday = (userReqs||[]).some(r=>{
-              const a = dateOnly(r.start_date);
-              const b = dateOnly(r.end_date);
-              return a <= day && day <= b;
-            });
-            if (inHoliday) return 'holiday';
-            const wd = d.getDay();
-            const hasHours = Number(p.wpHours?.[wd]||0) > 0;
-            const hasSessions = Number(p.wpSessions?.[wd]||0) > 0;
-            return (hasHours || hasSessions) ? 'in' : 'off';
+          const token=++renderToken;
+          const monthStart=startOfMonth(cursor);
+          const gridStart=startOfGrid(cursor);
+          const gridEnd=endOfGrid(cursor);
+          const days=[];
+          for(let iter=new Date(gridStart); iter<=gridEnd; iter.setDate(iter.getDate()+1)){
+            days.push(new Date(iter));
           }
 
-          // Compute visibility considering team, people and status filters
-          const visiblePeople = people.filter(p => {
-            if (activeKeys.size && !activeKeys.has(p.key)) return false;
-            if (teamFilterVal && String(p.teamId||'') !== teamFilterVal) return false;
-            const userReqs = statusesByUser.get(p.id) || [];
-            // If all statuses are selected, no need to check
-            if (selectedStatuses.size >= 3) return true;
-            return days.some(d => selectedStatuses.has(statusFor(p, userReqs, d)));
+          monthLabel.textContent=fmtMonth(monthStart);
+
+          const selectedStatuses=new Set(statusButtons.filter(btn=>btn.classList.contains('active')).map(btn=>btn.dataset.status));
+          const teamFilterVal=teamSel.value;
+          const selectedOption = teamSel.options[teamSel.selectedIndex];
+          const selectedTeamName = (selectedOption?.dataset?.teamName || '').toLowerCase();
+
+          const fromISO=gridStart.toISOString().slice(0,10);
+          const toISO=gridEnd.toISOString().slice(0,10);
+          const statusesByUser=await loadStatuses(fromISO, toISO);
+          if(token!==renderToken) return;
+
+          const totalStatusOptions = statusButtons.length || 3;
+          const showAllStatuses = selectedStatuses.size === 0 || selectedStatuses.size === totalStatusOptions;
+
+          const visiblePeople=people.filter(person=>{
+            if(teamFilterVal){
+              const idMatch = String(person.teamId||'') === teamFilterVal;
+              const nameMatch = selectedTeamName && person.teamNameLower === selectedTeamName;
+              if(!idMatch && !nameMatch) return false;
+            }
+            if(showAllStatuses) return true;
+            const reqs=person.id ? statusesByUser.get(person.id) : undefined;
+            return days.some(day=>selectedStatuses.has(statusFor(person, reqs, day)));
           });
 
-          // Build grid
-          const container = document.getElementById('calendar');
-          const grid = document.createElement('div');
-          grid.className = 'calendar-grid';
+          const today=dayKey(new Date());
+          const grid=document.createElement('div');
+          grid.className='calendar-grid';
 
-          // Header row
-          const hCorner = document.createElement('div'); hCorner.className = 'cal-header'; hCorner.textContent = 'Staff'; grid.appendChild(hCorner);
-          days.forEach(d=>{
-            const h = document.createElement('div');
-            h.className = 'cal-header';
-            h.innerHTML = `<div class="day-label">${d.toLocaleDateString(undefined,{ weekday:'short'})}</div><div class="day-num">${d.getDate()}</div>`;
-            grid.appendChild(h);
+          days.slice(0,7).forEach(day=>{
+            const header=document.createElement('div');
+            header.className='calendar-weekday';
+            header.textContent=day.toLocaleDateString(undefined,{ weekday:'long' });
+            grid.appendChild(header);
           });
 
-          // Rows per person
-          visiblePeople.forEach(p=>{
-            const personCol = document.createElement('div');
-            personCol.className = 'person-cell';
-            personCol.innerHTML = `
-              <div class="person-avatar" style="background-image:url('${p.avatar || ''}')">${p.avatar ? '' : (p.name||'?').charAt(0).toUpperCase()}</div>
-              <div style="display:flex; flex-direction:column; gap:2px;">
-                <div class="person-name">${p.name}</div>
-                ${p.teamName ? `<div class="team-pill">${p.teamName}</div>` : ''}
-              </div>
-            `;
-            grid.appendChild(personCol);
+          const statusOrder=['in','holiday','off'];
+          const statusLabels={ in:'In', holiday:'Holiday', off:'Off' };
 
-            const userReqs = statusesByUser.get(p.id) || [];
+          function createChip(person, status){
+            const chip=document.createElement('span');
+            chip.className=`person-chip ${status}`;
+            chip.textContent=person.shortName || person.name;
+            chip.title=`${person.name} — ${status.charAt(0).toUpperCase()+status.slice(1)}`;
 
-            days.forEach(d=>{
-              const cell = document.createElement('div');
-              cell.className = 'cal-cell';
-              const st = statusFor(p, userReqs, d);
-              const b = document.createElement('div');
-              b.className = `badge ${st}`;
-              b.textContent = st.charAt(0).toUpperCase()+st.slice(1);
-              cell.appendChild(b);
-              grid.appendChild(cell);
+            const tooltip=document.createElement('div');
+            tooltip.className='avatar-tooltip';
+            if(person.avatar){
+              const safe=person.avatar.replace(/"/g,'%22');
+              tooltip.classList.add('is-image');
+              tooltip.style.backgroundImage=`url("${safe}")`;
+            }else{
+              tooltip.textContent=getInitials(person.name);
+            }
+            chip.appendChild(tooltip);
+            return chip;
+          }
+
+          days.forEach(day=>{
+            const cell=document.createElement('div');
+            cell.className='calendar-day';
+            if(day.getMonth() !== monthStart.getMonth()) cell.classList.add('muted');
+            if(dayKey(day)===today) cell.classList.add('today');
+
+            const top=document.createElement('div');
+            top.className='day-top';
+
+            const num=document.createElement('div');
+            num.className='day-num';
+            num.textContent=day.getDate();
+            top.appendChild(num);
+
+            const badges=document.createElement('div');
+            badges.className='day-badges';
+            top.appendChild(badges);
+
+            cell.appendChild(top);
+
+          const counts={ in:0, holiday:0, off:0 };
+          const statusLists={ in:[], holiday:[], off:[] };
+
+          visiblePeople.forEach(person=>{
+            const reqs=person.id ? statusesByUser.get(person.id) : undefined;
+            const status=statusFor(person, reqs, day);
+            counts[status]=(counts[status]||0)+1;
+            if (statusLists[status]) statusLists[status].push(person);
+          });
+
+          ['in','holiday','off'].forEach(status=>{
+            if(!counts[status] || (!showAllStatuses && !selectedStatuses.has(status))) return;
+            const badge=document.createElement('span');
+            badge.className=`day-badge ${status}`;
+            badge.title=`${counts[status]} ${status}`;
+            badge.textContent=counts[status];
+            badges.appendChild(badge);
+          });
+
+          const statusWrap=document.createElement('div');
+          statusWrap.className='status-wrap';
+
+          statusOrder.forEach(status=>{
+            if(!showAllStatuses && !selectedStatuses.has(status)) return;
+            const list=statusLists[status];
+            if(!list.length) return;
+            const group=document.createElement('div');
+            group.className=`status-group ${status}`;
+
+            const label=document.createElement('div');
+            label.className='status-label';
+            label.textContent=statusLabels[status];
+            group.appendChild(label);
+
+            const chipRow=document.createElement('div');
+            chipRow.className='status-chips';
+
+            list.forEach(person=>{
+              const chip=createChip(person, status);
+              chipRow.appendChild(chip);
             });
+
+            group.appendChild(chipRow);
+            statusWrap.appendChild(group);
           });
 
-          container.innerHTML = '';
-          container.appendChild(grid);
+          if(!statusWrap.childElementCount){
+            const placeholder=document.createElement('div');
+            placeholder.className='status-placeholder';
+            placeholder.textContent=showAllStatuses ? 'No one scheduled' : 'No one for selected filters';
+            statusWrap.appendChild(placeholder);
+          }
+
+          cell.appendChild(statusWrap);
+          grid.appendChild(cell);
+          });
+
+          calendar.innerHTML='';
+          calendar.appendChild(grid);
         }
 
         await render();
-      }catch(e){
-        console.error(e);
-        if (String(e.message).includes('NO_SESSION') || String(e.message).includes('NOT_STAFF')) {
+      }catch(err){
+        console.error(err);
+        if (String(err.message).includes('NO_SESSION') || String(err.message).includes('NOT_STAFF')) {
           window.location.replace('home.html');
         }
       }
     })();
   </script>
 
+
   <script>
     (function(){
       function i8(name, opts = {}) {
         var base  = 'https://img.icons8.com';
-        var style = opts.style || 'cute-color';
+        var style = opts.style || 'pastel-color';
         var size  = opts.size  || 48;
         var path  = [style, String(size), encodeURIComponent(name) + '.png'].join('/');
         return base + '/' + path;
@@ -345,10 +574,10 @@
       function setIcon(el){
         var name  = el.getAttribute('data-i8');
         var size  = el.getAttribute('data-i8-size');
-        var style = el.getAttribute('data-i8-style') || 'fluency';
+        var style = el.getAttribute('data-i8-style') || 'pastel-color';
         var fallback = (el.getAttribute('data-i8-fallback') || '').toLowerCase();
         if (fallback === 'auto') {
-          var stylesToTry = [style, 'fluency', 'color'];
+          var stylesToTry = [style, 'pastel-glyph'];
           var idx = 0;
           function tryNext(){
             if (idx >= stylesToTry.length) { el.onerror = null; return; }

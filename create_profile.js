@@ -23,9 +23,9 @@ async function createStaffProfile() {
 
     // Check if profile already exists
     const { data: existingProfile } = await supabase
-      .from('profiles')
+      .from('master_users')
       .select('*')
-      .eq('user_id', session.user.id)
+      .eq('auth_user_id', session.user.id)
       .maybeSingle();
 
     if (existingProfile) {
@@ -41,9 +41,9 @@ async function createStaffProfile() {
       };
 
       const { error: updateError } = await supabase
-        .from('profiles')
+        .from('master_users')
         .update(updateData)
-        .eq('user_id', session.user.id);
+        .eq('auth_user_id', session.user.id);
 
       if (updateError) {
         console.error('Error updating profile:', updateError);
@@ -63,7 +63,7 @@ async function createStaffProfile() {
       };
 
       const { error: insertError } = await supabase
-        .from('profiles')
+        .from('master_users')
         .insert(profileData);
 
       if (insertError) {
@@ -86,7 +86,7 @@ async function createStaffProfile() {
     };
 
     const { error: welcomeError } = await supabase
-      .from('staff_app_welcome')
+      .from('master_users')
       .upsert(welcomeData);
 
     if (welcomeError) {

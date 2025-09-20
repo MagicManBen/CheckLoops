@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CheckLoop — Achievements</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+  <script src="config.js"></script>
+  <script src="user-utils.js"></script>
+  <link rel="stylesheet" href="staff.css">
+  <style>
+    :root{
+      --brand:#6366f1;              /* indigo */
+      --brand-2:#22d3ee;            /* cyan */
+      --ok:#16a34a;                 /* green */
+      --warn:#f59e0b;               /* amber */
+      --danger:#ef4444;             /* red */
+      --ring-bg: rgba(2,6,23,.08);
+      --muted:#374151;              /* darker gray for better contrast */
+      --text-secondary:#4b5563;     /* secondary text color */
+      --card-bg: var(--panel-bg, #fff);
+      --border-color: rgba(2,6,23,.10);
+      --ink: #0f172a;
+    }
+    /* Page halo */
+    body::before{
+      content:"";
+      position:fixed; inset:-20% -10% auto -10%; height:42vh;
+      background:
+        radial-gradient(600px 260px at 15% 40%, #8b5cf61a, transparent 60%),
+        radial-gradient(520px 240px at 85% 20%, #22c55e1a, transparent 60%),
+        radial-gradient(640px 260px at 50% 90%, #06b6d41a, transparent 60%);
+      pointer-events:none; z-index:-1; filter: blur(18px);
+    }
+
+    /* Layout */
+    .ach-wrap{ display:grid; gap:20px; max-width: 1200px; margin: 0 auto; }
+
+    /* Toolbar */
+    .ach-toolbar{ display:flex; gap:16px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+    .seg{ display:flex; gap:6px; padding:4px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:999px; box-shadow:0 6px 16px rgba(2,6,23,.05); }
+  .seg button{ border:0; padding:10px 18px; border-radius:999px; background:transparent; font-weight:600; cursor:pointer; color: rgba(255,255,255,0.95); transition: all 0.2s ease; }
+    .seg button:hover{ background:rgba(99,102,241,.1); }
+    .seg button.active{ background:linear-gradient(135deg,var(--brand),var(--brand-2)); color:#fff; }
+  .ach-search{ flex:1; min-width:220px; max-width:360px; padding:12px 16px; border-radius:12px; border:1px solid var(--border-color); background: rgba(255,255,255,0.03); box-shadow:0 2px 6px rgba(2,6,23,.06) inset; color: #cfe8ff; font-size: 14px; }
+    .ach-search::placeholder{ color: var(--text-secondary); }
+
+    /* Summary */
+    .ach-summary{ display:flex; gap:20px; align-items:center; padding:20px; border-radius:16px; border:1px solid var(--border-color); background:linear-gradient(135deg, rgba(99,102,241,.08), rgba(34,211,238,.08)); }
+    .ach-summary .illus-circle{ width:64px; height:64px; border-radius:16px; display:grid; place-items:center; background:linear-gradient(135deg,#fff,rgba(255,255,255,.9)); border:1px solid var(--border-color); box-shadow:0 4px 12px rgba(2,6,23,.1); }
+  .ach-summary h3{ margin:0; font-size:20px; letter-spacing:.2px; color: #f8fbff; font-weight: 700; }
+    .ach-kpis{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top: 12px; }
+  .kpi{ padding:8px 12px; border-radius:999px; background:#fff; border:1px solid var(--border-color); font-weight:700; font-size:13px; color:#0b1220; box-shadow: 0 2px 4px rgba(2,6,23,.05); }
+  .meter{ flex:1; min-width:220px; height:12px; background:rgba(255,255,255,0.06); border-radius:999px; position:relative; overflow:hidden; margin-top: 8px; }
+  .meter > i{ position:absolute; inset:0; display:block; background:linear-gradient(90deg,var(--brand),var(--brand-2)); width:0%; border-radius:999px; transition:width .6s ease; box-shadow: 0 4px 12px rgba(99,102,241,.12) inset; }
+
+    /* Grid */
+    .ach-list{ display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:20px; }
+
+    /* Responsive tweaks to prevent overlap at tight widths */
+    @media (max-width: 480px){
+      .ach-card{ grid-template-columns:56px 1fr; grid-template-rows:auto auto; grid-template-areas: "ico meta" "ico actions"; }
+      .ach-actions{ justify-content:flex-start; }
+    }
+
+  /* Cards */
+  .ach-card{ position:relative; padding:18px; border-radius:16px; background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(2,6,23,0.04)); box-shadow:0 6px 18px rgba(2,6,23,.08); border:1px solid rgba(2,6,23,.06); display:grid; grid-template-columns:64px 1fr auto; grid-template-rows:auto auto; grid-template-areas:"ico meta actions" "ico meta actions"; column-gap:16px; row-gap:10px; align-items:start; transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease; min-height:120px; color: #eaf4ff; }
+  .ach-card:hover{ transform:translateY(-2px); box-shadow:0 10px 28px rgba(2,6,23,.14); }
+  .ach-card.unlocked{ border-color:rgba(99,102,241,.38); box-shadow:0 10px 28px rgba(99,102,241,.12); background: linear-gradient(135deg, rgba(255,255,255,0.03), rgba(99,102,241,.03)); }
+  .ach-ico{ width:64px; height:64px; border-radius:16px; display:grid; place-items:center; font-weight:700; font-size:28px; color:#eaf4ff; border:1px solid rgba(2,6,23,.06); grid-area: ico; }
+  .ach-ico.cat-milestone{ background:linear-gradient(135deg,#fde68a,#f59e0b); }
+  .ach-ico.cat-behavior{ background:linear-gradient(135deg,#a7f3d0,#10b981); }
+  .ach-ico.cat-streak{ background:linear-gradient(135deg,#c7d2fe,#6366f1); }
+  .ach-meta{ min-width: 0; grid-area: meta; }
+  .ach-meta .title{ font-weight:700; margin:0 0 6px; letter-spacing:.2px; color:#f8fbff; font-size: 16px; line-height: 1.3; }
+  .ach-meta .desc{ color:rgba(255,255,255,0.78); font-size:14px; line-height: 1.45; margin-bottom: 8px; }
+  .ach-meta .meta-note{ margin-top:12px; font-size:13px; color:rgba(255,255,255,0.65); font-weight:600; }
+  .ach-meta { word-break: break-word; }
+  /* Actions float to the right to avoid overlap with badges */
+  .ach-actions{ grid-area: actions; display:flex; gap:12px; align-items:center; justify-content:flex-end; }
+
+  /* Points removed from achievement system */
+
+    /* Progress ring */
+  .pr{ width:56px; height:56px; border-radius:50%; background:conic-gradient(var(--brand) var(--p,0%), var(--ring-bg) 0); padding:4px; display:grid; place-items:center; box-shadow:inset 0 0 0 1px rgba(2,6,23,.06); }
+  .pr-inner{ width:100%; height:100%; border-radius:50%; background:rgba(255,255,255,0.02); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px; color: #f8fbff; }
+
+    /* Buttons */
+    .btn.small{ padding:10px 16px; font-size:13px; font-weight: 600; }
+    .btn.primary{ background:linear-gradient(135deg,var(--brand),var(--brand-2)); color:#fff; border:0; }
+    .btn.primary:disabled{ filter:grayscale(.3); opacity:.7; }
+
+  /* Staff avatar (small) */
+  .staff-avatar{ width:64px; height:64px; border-radius:50%; background:#fff; background-size:cover; background-position:center; box-shadow:0 4px 10px rgba(2,6,23,.10); border:1px solid var(--border-color); display:none; }
+
+    /* Skeletons */
+    .skeleton-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; }
+    .skeleton-card{ height:116px; border-radius:14px; background:linear-gradient(100deg, rgba(2,6,23,.08), rgba(2,6,23,.04) 40%, rgba(2,6,23,.08) 80%); background-size:200% 100%; animation:shimmer 1.2s infinite; }
+    @keyframes shimmer{ 0%{background-position:0% 0} 100%{background-position:200% 0} }
+
+    /* Empty state */
+    .ach-empty{ display:grid; place-items:center; padding:40px 24px; color:var(--text-secondary); font-size: 16px; text-align: center; }
+
+    /* Confetti */
+    .confetti{ position:fixed; width:8px; height:8px; background:#000; top:0; left:0; pointer-events:none; opacity:0; transform:translate(-50%,-50%); animation:confetti-fall 900ms ease-out forwards; z-index:60; }
+    @keyframes confetti-fall{ 0%{opacity:1; transform:translate(-50%,-50%) scale(1)} 100%{ opacity:0; transform:translate(calc(-50% + var(--dx,0px)), calc(-50% + var(--dy,40px))) rotate(var(--rot,0deg)); } }
+
+    /* Toast */
+    .toast{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px); background:#111; color:#fff; padding:12px 18px; border-radius:12px; opacity:0; transition:opacity .2s, transform .2s; font-weight:600; box-shadow:0 8px 24px rgba(2,6,23,.3); z-index:70; font-size: 14px; }
+    .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+  <div class="bg"><div class="wave"></div><div class="wave wave2"></div></div>
+  <main class="content">
+    <div class="topbar panel" style="position:relative;">
+      <div class="halo"></div>
+      <div class="nav seg-nav">
+        <!-- Navigation will be rendered by staff-common.js -->
+      </div>
+      <div class="spacer"></div>
+      <div class="pill" id="site-pill">Site: —</div>
+      <div class="pill" id="email-pill">—</div>
+      <div class="pill" id="role-pill">—</div>
+      <button class="btn" id="logout-btn">Sign Out</button>
+    </div>
+
+    <section class="panel g-12" style="margin:0; padding: 24px;">
+        <div class="panel-header" style="gap:12px; align-items:center; margin-bottom: 24px;">
+        <div class="illus-circle"><img id="ach-header-avatar" src="Icons/icons8-trophy-100.png" alt="Avatar" style="width:100%; height:100%; object-fit:cover; border-radius:50%; display:block;"/></div>
+        <div class="panel-title" style="font-size:24px; color: #f8fbff; font-weight: 700;">My Achievements</div>
+      </div>
+
+      <div class="ach-wrap">
+        <div class="ach-toolbar">
+          <div class="seg" role="tablist" aria-label="Filter achievements">
+            <button class="active" data-filter="all" role="tab" aria-selected="true">All</button>
+            <button data-filter="unlocked" role="tab" aria-selected="false">Unlocked</button>
+            <button data-filter="locked" role="tab" aria-selected="false">Locked</button>
+          </div>
+          <!-- search removed per request -->
+        </div>
+
+        <div class="ach-summary" id="ach-summary">
+          <div class="illus-circle" aria-hidden="true" style="display:grid; place-items:center; font-size:30px;">🏆</div>
+          <div style="flex:1; min-width:220px;">
+            <h3>Progress</h3>
+            <div class="meter" aria-hidden="true"><i id="ach-meter"></i></div>
+            <div class="ach-kpis" style="margin-top:8px;">
+              <div class="kpi"><span id="ach-unlocked">0</span>/<span id="ach-total">0</span> unlocked</div>
+            </div>
+          </div>
+        </div>
+
+        <div id="ach-loading" aria-live="polite">
+          <div class="skeleton-grid">
+            <div class="skeleton-card"></div>
+            <div class="skeleton-card"></div>
+            <div class="skeleton-card"></div>
+          </div>
+        </div>
+        <div id="ach-empty" class="ach-empty" style="display:none">No achievements yet. Come back after completing some checks ✨</div>
+        <div class="ach-list" id="ach-list" style="display:none;"></div>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script type="module">
+    import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, attachLogout, fmtDate } from './staff-common.js';
+    const supabase = await initSupabase();
+    // Make supabase available globally for Admin Portal button
+    window.supabase = supabase;
+    handleAuthState(supabase);
+    navActivate('achievements');
+    attachLogout(supabase);
+
+    // Admin nav removed - separate staff portal
+
+    // Utils
+    const iconMap = { star:'⭐', clock:'⏰', calendar:'📅', certificate:'🎓', trophy:'🏆' };
+    const esc = (s)=> (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;');
+    const $ = (sel, root=document)=> root.querySelector(sel);
+
+    function toast(msg){
+      const el = $('#toast'); if (!el) return;
+      el.textContent = msg;
+      el.classList.add('show');
+      setTimeout(()=> el.classList.remove('show'), 1600);
+    }
+    function confettiBurst(x, y){
+      const colors = ['#60a5fa','#a78bfa','#34d399','#f472b6','#fbbf24'];
+      for (let i=0;i<28;i++){
+        const n = document.createElement('div');
+        n.className = 'confetti';
+        n.style.left = x+'px'; n.style.top = y+'px';
+        const dx = (Math.random() * 180 - 90);
+        const dy = (Math.random() * 120 + 60);
+        const rot = (Math.random()*500|0)+'deg';
+        n.style.setProperty('--dx', dx + 'px');
+        n.style.setProperty('--dy', dy + 'px');
+        n.style.setProperty('--rot', rot);
+        n.style.background = colors[Math.floor(Math.random()*colors.length)];
+        document.body.appendChild(n);
+        setTimeout(()=> n.remove(), 1000);
+      }
+    }
+
+    const sessionCtx = await requireStaffSession(supabase).catch(e => {
+      if (String(e.message).includes('NO_SESSION')) { window.location.replace('home.html'); return; }
+      if (String(e.message).includes('NOT_STAFF')) { window.location.replace('home.html'); return; }
+      console.error(e);
+    });
+    if (!sessionCtx) throw new Error('No session context');
+  const { session, profileRow } = sessionCtx;
+    const user = session.user;
+    const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
+    setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: profileRow?.role || user?.raw_user_meta_data?.role });
+    // Admin nav removed - separate staff portal
+
+    // Resolve avatar and render into any staff-avatar element (match staff.html behavior)
+    (async function(){
+      try{
+        let avatarUrl = user?.raw_user_meta_data?.avatar_url || null;
+        try {
+          if (siteId) {
+            const { data: saw } = await supabase
+              .from('master_users')
+              .select('avatar_url, updated_at')
+              .eq('user_id', user.id)
+              .eq('site_id', siteId)
+              .order('updated_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (saw?.avatar_url) avatarUrl = saw.avatar_url;
+          }
+        } catch(_) {}
+        if (!avatarUrl) {
+          try {
+            const { data: p } = await supabase.from('master_users').select('avatar_url').eq('user_id', user.id).maybeSingle();
+            if (p?.avatar_url) avatarUrl = p.avatar_url;
+          } catch(_) {}
+        }
+  console.debug('[achievements] resolved avatarUrl ->', avatarUrl);
+        // Helper: create an initials SVG data URL fallback
+        function initialsDataUrl(name){
+          const n = (name || '').toString().trim();
+          const parts = n.split(/\s+/).filter(Boolean);
+          let initials = parts.length ? (parts[0][0] || '') : '';
+          if (parts.length > 1) initials += (parts[parts.length-1][0] || '');
+          initials = (initials || (user?.email||'')[0] || '?').toString().toUpperCase().slice(0,2);
+          const bg = '#6b7280'; const fg = '#ffffff';
+          const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='256' height='256'><rect width='100%' height='100%' fill='${bg}' rx='128' ry='128'/><text x='50%' y='50%' font-size='110' font-family='Inter, Arial, sans-serif' fill='${fg}' dominant-baseline='middle' text-anchor='middle'>${initials}</text></svg>`;
+          return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+        }
+
+        // Assign avatar to header image, prefer remote URL, otherwise show initials. If remote fails, fall back to initials.
+        try {
+          const headerImg = document.getElementById('ach-header-avatar');
+          if (headerImg) {
+            headerImg.onerror = function(e){
+              console.warn('[achievements] header avatar failed, falling back to initials', e, avatarUrl);
+              try { headerImg.src = initialsDataUrl(profileRow?.full_name || user?.raw_user_meta_data?.full_name || user?.email); } catch(_){ }
+            };
+            if (avatarUrl) headerImg.src = avatarUrl; else headerImg.src = initialsDataUrl(profileRow?.full_name || user?.raw_user_meta_data?.full_name || user?.email);
+          }
+        } catch(err){ console.error('Avatar assignment error', err); }
+      }catch(_){/* ignore avatar errors */}
+    })();
+
+    // Load & render
+    (async function loadAchievements(){
+      const loading = $('#ach-loading');
+      const listEl = $('#ach-list');
+      const empty = $('#ach-empty');
+      const meter = $('#ach-meter');
+      const kpiUnlocked = $('#ach-unlocked');
+      const kpiTotal = $('#ach-total');
+
+      loading.style.display='block'; listEl.style.display='none'; empty.style.display='none';
+
+      // Get complete user profile with kiosk_user_id
+      const userProfile = await getUserProfile(supabase, user);
+      const kioskUserId = userProfile.kiosk_user_id;
+      const siteId = userProfile.site_id;
+
+      try{
+        // Try to get achievements using auth_user_id first (new system)
+        let userRows = [];
+
+        // First try with auth_user_id
+        const { data: authUserAch, error: authUserError } = await supabase
+          .from('user_achievements')
+          .select('*')
+          .eq('auth_user_id', user.id);
+
+        if (!authUserError && authUserAch && authUserAch.length > 0) {
+          userRows = authUserAch;
+          console.log('Loaded achievements with auth_user_id');
+        } else if (kioskUserId) {
+          // Fallback to kiosk_user_id if no achievements with auth_user_id
+          const { data: kioskAch } = await supabase
+            .from('user_achievements')
+            .select('*')
+            .eq('kiosk_user_id', kioskUserId);
+          userRows = kioskAch || [];
+          console.log('Loaded achievements with kiosk_user_id');
+        }
+
+        // Get all available achievements
+        const { data: ach } = await supabase.from('achievements').select('*').order('key');
+        const rows = (ach||[]).map(a => ({
+          ...a,
+          user: userRows.find(u => u.achievement_key === a.key) || null
+        }));
+
+        loading.style.display='none';
+        if (!rows || !rows.length){ empty.style.display='block'; return; }
+        listEl.style.display='grid';
+
+        // KPIs
+        const total = rows.length;
+        const unlockedRows = rows.filter(r => (r.user?.status || r.status) === 'unlocked');
+        const unlocked = unlockedRows.length;
+        kpiUnlocked.textContent = unlocked;
+        kpiTotal.textContent = total;
+        const pctOverall = total ? Math.round((unlocked/total)*100) : 0;
+        meter.style.width = pctOverall + '%';
+
+        // Render (read‑only — auto‑awarded via DB triggers)
+        listEl.innerHTML = rows.map(r => {
+          const status = r.user?.status || r.status || 'locked';
+          const pct = r.user?.progress_percent ?? r.progress_percent ?? (status==='unlocked'?100:0);
+          const unlockedAt = r.user?.unlocked_at || r.unlocked_at || null;
+          const cat = (r.metadata && r.metadata.category) ? String(r.metadata.category).toLowerCase() : '';
+          const catCls = cat === 'behavior' ? 'cat-behavior' : 'cat-milestone';
+          const lockedCls = (status !== 'unlocked') ? 'locked' : 'unlocked';
+          const ico = iconMap[r.icon] || r.icon || '🏆';
+          return `<div class="ach-card ${lockedCls}" data-key="${esc(r.key)}" data-status="${status}" data-title="${esc(r.name)} ${esc(r.description||'')}">
+            <div class="ach-ico ${catCls}">${esc(ico)}</div>
+            <div class="ach-meta">
+              <div class="title">${esc(r.name)}</div>
+              <div class="desc">${esc(r.description || '')}</div>
+              <div class="meta-note">Status: <strong>${status}</strong>${unlockedAt ? ' • ' + fmtDate(unlockedAt) : ''}</div>
+            </div>
+            <div class="ach-actions">
+              <div class="pr" style="--p:${Math.max(0, Math.min(100, Math.round(pct)))}%"><div class="pr-inner"><span>${Math.round(pct)}%</span></div></div>
+            </div>
+          </div>`;
+        }).join('');
+
+
+        // Filter (search input removed) - only filter by the segment buttons
+        const filterBtns = Array.from(document.querySelectorAll('.seg button'));
+        function applyFilter(){
+          const q = ''; // no free-text search available
+          const active = (filterBtns.find(b => b.classList.contains('active'))?.dataset.filter) || 'all';
+          listEl.querySelectorAll('.ach-card').forEach(card => {
+            const matchesText = true; // always true since no search box
+            const st = card.dataset.status;
+            const matchesFilter = (active === 'all') || (active === st);
+            card.style.display = (matchesText && matchesFilter) ? '' : 'none';
+          });
+        }
+        filterBtns.forEach(btn => btn.addEventListener('click', () => {
+          filterBtns.forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected','false'); });
+          btn.classList.add('active'); btn.setAttribute('aria-selected','true');
+          applyFilter();
+        }));
+      }catch(e){
+        console.error('achievements load error', e);
+        loading.style.display='none';
+        empty.style.display='block';
+      }
+    })();
+  </script>
+
+    <!-- Debug Console - Persistent across all pages -->
+    <script src="debug-console.js"></script>
+</body>
+</html>

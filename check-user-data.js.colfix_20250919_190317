@@ -1,0 +1,100 @@
+// Check user data in live Supabase
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const supabase = createClient(
+  'https://unveoqnlqnobufhublyw.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME'
+);
+
+async function checkUserData() {
+  try {
+    console.log('🔍 Checking user data for benhowardmagic@hotmail.com');
+    
+    // First sign in to get the user's session
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email: 'benhowardmagic@hotmail.com',
+      password: 'Hello1!'
+    });
+    
+    if (authError) {
+      console.error('❌ Authentication failed:', authError);
+      return;
+    }
+    
+    const user = authData.user;
+    console.log('\n📊 AUTH USER DATA:');
+    console.log('User ID:', user.id);
+    console.log('Email:', user.email);
+    console.log('Raw User Metadata:', user.raw_user_meta_data);
+    console.log('User Metadata:', user.user_metadata);
+    
+    // Check master_users table
+    console.log('\n📊 PROFILES TABLE DATA:');
+    const { data: profiles, error: profileError } = await supabase
+      .from('master_users')
+      .select('*')
+      .eq('user_id', user.id);
+    
+    if (profileError) {
+      console.error('❌ Error fetching profiles:', profileError);
+    } else if (profiles.length === 0) {
+      console.log('❌ NO PROFILE FOUND in master_users table!');
+    } else {
+      console.log('✅ Profile found:', profiles[0]);
+      
+      // Check if site exists
+      if (profiles[0].site_id) {
+        console.log('\n📊 SITE DATA:');
+        const { data: site, error: siteError } = await supabase
+          .from('sites')
+          .select('*')
+          .eq('id', profiles[0].site_id)
+          .single();
+        
+        if (siteError) {
+          console.error('❌ Error fetching site:', siteError);
+        } else {
+          console.log('✅ Site found:', site);
+        }
+      } else {
+        console.log('❌ NO SITE_ID in profile!');
+      }
+    }
+    
+    // Check site_invites table
+    console.log('\n📊 SITE_INVITES DATA:');
+    const { data: invites, error: inviteError } = await supabase
+      .from('site_invites')
+      .select('*')
+      .eq('email', user.email);
+    
+    if (inviteError) {
+      console.error('❌ Error fetching invites:', inviteError);
+    } else if (invites.length === 0) {
+      console.log('ℹ️  No site invites found');
+    } else {
+      console.log('✅ Site invites found:', invites);
+    }
+    
+    // Summary
+    console.log('\n🔍 ANALYSIS:');
+    if (profiles.length === 0) {
+      console.log('❌ ISSUE: User has no profile in master_users table');
+      console.log('   This is why admin page shows default "User" and "Site"');
+      console.log('   Need to create a profile record');
+    } else if (!profiles[0].site_id) {
+      console.log('❌ ISSUE: User profile exists but has no site_id');
+      console.log('   Need to assign user to a site');
+    } else if (!profiles[0].full_name) {
+      console.log('⚠️  WARNING: User profile has no full_name');
+      console.log('   Will show email-derived name');
+    } else {
+      console.log('✅ Profile data looks complete');
+    }
+    
+  } catch (error) {
+    console.error('💥 Error:', error);
+  }
+}
+
+checkUserData();

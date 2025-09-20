@@ -879,7 +879,7 @@ async function saveEntitlementFromModal(staffId, isGP) {
     // Get weekly values from master_users
     const { data: currentUser } = await supabase
       .from('master_users')
-      .select('weekly_hours, weekly_sessions, auth_user_id')
+      .select('weekly_hours, weekly_sessions, auth_auth_auth_user_id')
       .eq('id', staffId)
       .single();
       

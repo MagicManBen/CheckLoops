@@ -9,6 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
   <script src="config.js"></script>
   <link rel="stylesheet" href="staff.css">
+  <script src="fix-navigation-style.js"></script>
   <style>
     .filters{ display:flex; gap:10px; flex-wrap:wrap; margin:8px 0 4px; }
     .chip{ padding:6px 10px; border-radius:999px; background:#ffffff1a; border:1px solid #ffffff2a; cursor:pointer; }
@@ -170,7 +171,7 @@
         <!-- Navigation will be rendered by staff-common.js -->
       </div>
       <div class="spacer"></div>
-      <div class="pill" id="site-pill">Site: —</div>
+      
       <div class="pill" id="email-pill">—</div>
       <div class="pill" id="role-pill">—</div>
       <button class="btn" id="logout-btn">Sign Out</button>
@@ -197,9 +198,10 @@
               const user = session.user;
               const displayName = profileRow?.full_name || user?.raw_user_meta_data?.full_name || (user?.email?.split('@')[0]);
               const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
-              const role = profileRow?.role || user?.raw_user_meta_data?.role || 'Staff';
-              const roleDetail = role.charAt(0).toUpperCase() + role.slice(1);  // Capitalize first letter
-              setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: roleDetail });
+              const accessType = profileRow?.access_type || user?.raw_user_meta_data?.access_type || null;
+              const role = (accessType || profileRow?.role || user?.raw_user_meta_data?.role || 'Staff');
+              const roleDetail = role; // setTopbar will format as needed
+              setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: roleDetail , access_type: accessType || profileRow?.role});
 
               // Create currentUser object for training functionality
               let currentUser = {
@@ -583,9 +585,9 @@
 
                       // Get user's kiosk_user_id from profile
                       const { data: profileData } = await supabase
-                        .from('profiles')
-                        .select('kiosk_user_id')
-                        .eq('user_id', globalUser.id)
+                        .from('master_users')
+                        .select('kiosk_auth_auth_user_id')
+                        .eq('auth_user_id', globalUser.id)
                         .single();
 
                       if (profileData && profileData.kiosk_user_id) {
@@ -619,7 +621,14 @@
                   
                   setTimeout(() => {
                     successDiv.remove();
-                    window.location.reload();
+                    // Refresh training data instead of reloading page to prevent debugger interference
+                    if (typeof loadTrainingData === 'function') {
+                      loadTrainingData();
+                    } else if (typeof refreshTraining === 'function') {
+                      refreshTraining();
+                    } else if (typeof initializeTraining === 'function') {
+                      initializeTraining();
+                    }
                   }, 2000);
                   
                 } catch (error) {
@@ -742,5 +751,6 @@
 
     <!-- Debug Console - Persistent across all pages -->
     <script src="debug-console.js"></script>
+    <script src="supabase-debug.js"></script>
 </body>
 </html>

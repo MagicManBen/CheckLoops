@@ -12,7 +12,7 @@
   <script src="admin-nav.js"></script>
   <script src="user-utils.js"></script>
   <link rel="stylesheet" href="staff.css">
-  
+  <script src="fix-navigation-style.js"></script>
   
   <style>
     /* Scan-specific styles */
@@ -369,7 +369,7 @@
         <!-- Navigation will be rendered by staff-common.js -->
       </div>
       <div class="spacer"></div>
-      <div class="pill" id="site-pill">Site: —</div>
+      
       <div class="pill" id="email-pill">—</div>
       <div class="pill" id="role-pill">—</div>
       <button class="btn" id="logout-btn">Sign Out</button>
@@ -556,15 +556,17 @@
 
       console.log('[staff-scans] User profile:', userProfile);
 
-      const displayName = userProfile.display_name;
-      const siteId = userProfile.site_id;
-      const role = userProfile.role;
+  const displayName = userProfile.display_name;
+  const siteId = userProfile.site_id;
+  const accessType = currentProfile?.access_type || currentUser?.raw_user_meta_data?.access_type || null;
+  const role = (accessType || userProfile.role || 'staff');
 
       // Set topbar with actual user email
       setTopbar({
         siteText: await getSiteText(supabase, siteId),
-        email: userProfile.email,  // Use actual email from userProfile
-        role: role.charAt(0).toUpperCase() + role.slice(1)
+        email: userProfile.email,
+        role: role,
+        access_type: accessType || currentProfile?.role
       });
 
       // Load scan data
@@ -1036,7 +1038,17 @@
       
       // Refresh button
       document.getElementById('refresh-btn').addEventListener('click', () => {
-        location.reload();
+        // Refresh data instead of reloading page to prevent debugger interference
+        if (typeof loadData === 'function') {
+          loadData();
+        } else if (typeof refreshData === 'function') {
+          refreshData();
+        } else {
+          // Fallback: find and call main initialization function
+          if (typeof initialize === 'function') {
+            initialize();
+          }
+        }
       });
 
       // Re-render chart on resize

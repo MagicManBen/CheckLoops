@@ -56,9 +56,9 @@ async function verifyBenRole() {
         
         // Get profile data
         const { data: profileRow } = await supabase
-          .from('profiles')
-          .select('role, full_name, site_id, user_id')
-          .eq('user_id', session.user.id)
+          .from('master_users')
+          .select('role, full_name, site_id, auth_auth_user_id')
+          .eq('auth_user_id', session.user.id)
           .maybeSingle();
         
         return {

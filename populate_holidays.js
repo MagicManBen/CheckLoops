@@ -110,7 +110,7 @@ async function populateHolidayData() {
     console.log(`Processing ${name} (${staffData.role})...`);
     
     // Skip kiosk_users for now - we'll use placeholder user IDs
-    // The kiosk_users table structure is different
+    // The master_users table structure is different
     
     // Create a placeholder user_id for non-registered users
     // We'll use a deterministic UUID based on the name
@@ -132,7 +132,7 @@ async function populateHolidayData() {
     };
     
     const { error: entitlementError } = await supabase
-      .from('holiday_entitlements')
+      .from('master_users')
       .upsert(entitlementData, { onConflict: 'user_id,site_id,year' });
     
     if (entitlementError) {
@@ -154,7 +154,7 @@ async function populateHolidayData() {
     };
     
     const { error: patternError } = await supabase
-      .from('working_patterns')
+      .from('master_users')
       .upsert(workingPatternData, { onConflict: 'user_id,site_id' });
     
     if (patternError) {
@@ -175,7 +175,7 @@ async function populateHolidayData() {
     };
     
     const { error: welcomeError } = await supabase
-      .from('staff_app_welcome')
+      .from('master_users')
       .upsert(welcomeData, { onConflict: 'user_id,site_id' });
     
     if (welcomeError) {
@@ -260,9 +260,9 @@ async function populateHolidayData() {
       
       // Get working pattern to calculate actual hours
       const { data: workingPattern } = await supabase
-        .from('working_patterns')
+        .from('master_users')
         .select('*')
-        .eq('user_id', userId)
+        .eq('auth_user_id', userId)
         .eq('site_id', siteId)
         .single();
       

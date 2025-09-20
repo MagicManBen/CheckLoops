@@ -29,9 +29,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       try {
         // Check profile table
         const { data: profile, error: profileError } = await window.supabase
-          .from('profiles')
+          .from('master_users')
           .select('role')
-          .eq('user_id', session.user.id)
+          .eq('auth_user_id', session.user.id)
           .maybeSingle();
           
         if (profile && ['admin', 'owner'].includes(profile.role?.toLowerCase())) {

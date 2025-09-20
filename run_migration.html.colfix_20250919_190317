@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Run User ID Migration</title>
+  <script src="config.js"></script>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 1200px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      border-radius: 8px;
+      padding: 30px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 30px;
+    }
+    button {
+      background: #6366f1;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+      margin-right: 10px;
+    }
+    button:hover {
+      background: #4f46e5;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .output {
+      background: #f8f9fa;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 20px;
+      margin-top: 20px;
+      white-space: pre-wrap;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 13px;
+      max-height: 600px;
+      overflow-y: auto;
+    }
+    .success {
+      color: #22c55e;
+      font-weight: bold;
+    }
+    .error {
+      color: #ef4444;
+      font-weight: bold;
+    }
+    .warning {
+      color: #f59e0b;
+      font-weight: bold;
+    }
+    .info {
+      color: #3b82f6;
+      font-weight: bold;
+    }
+    .section {
+      margin-top: 30px;
+      padding-top: 20px;
+      border-top: 1px solid #e5e7eb;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🚀 User ID Standardization Migration</h1>
+    
+    <div>
+      <p><strong>This tool will apply the database migration to standardize user identification across CheckLoop.</strong></p>
+      <p>The migration will:</p>
+      <ul>
+        <li>Add user_id column to submissions table</li>
+        <li>Add avatar_url column to profiles table</li>
+        <li>Create unified user profile view</li>
+        <li>Migrate existing data to use user_id</li>
+        <li>Add proper indexes and constraints</li>
+      </ul>
+    </div>
+    
+    <div class="section">
+      <button id="checkBtn" onclick="checkDatabase()">1. Check Database Status</button>
+      <button id="runBtn" onclick="runMigration()" disabled>2. Run Migration</button>
+      <button id="verifyBtn" onclick="verifyMigration()" disabled>3. Verify Results</button>
+    </div>
+    
+    <div class="output" id="output">Ready to begin migration...</div>
+  </div>
+
+  <script>
+    const output = document.getElementById('output');
+    
+    function log(message, type = 'info') {
+      const timestamp = new Date().toLocaleTimeString();
+      const className = type;
+      output.innerHTML += `<span class="${className}">[${timestamp}] ${message}</span>\n`;
+      output.scrollTop = output.scrollHeight;
+    }
+    
+    async function checkDatabase() {
+      document.getElementById('checkBtn').disabled = true;
+      log('Checking database connection and status...', 'info');
+      
+      try {
+        // Check if we can connect
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        if (authError) {
+          log('Not authenticated. Please log in first.', 'error');
+          window.location.href = 'home.html';
+          return;
+        }
+        
+        log(`Connected as: ${user.email}`, 'success');
+        
+        // Check if user_id column exists
+        const { data: subCheck, error: subError } = await supabase
+          .from('submissions')
+          .select('id, user_id')
+          .limit(1);
+        
+        if (subError && subError.message.includes('user_id')) {
+          log('user_id column does not exist in submissions table - migration needed', 'warning');
+        } else {
+          log('user_id column already exists in submissions table', 'info');
+        }
+        
+        // Check if avatar_url exists in profiles
+        const { data: profCheck, error: profError } = await supabase
+          .from('master_users')
+          .select('user_id, avatar_url')
+          .limit(1);
+        
+        if (profError && profError.message.includes('avatar_url')) {
+          log('avatar_url column does not exist in profiles table - will be added', 'warning');
+        } else {
+          log('avatar_url column already exists in profiles table', 'info');
+        }
+        
+        // Check if view exists
+        const { data: viewCheck, error: viewError } = await supabase
+          .from('master_users')
+          .select('user_id')
+          .limit(1);
+        
+        if (viewError) {
+          log('user_profiles_complete view does not exist - will be created', 'warning');
+        } else {
+          log('user_profiles_complete view already exists', 'info');
+        }
+        
+        log('\nDatabase check complete. Ready to run migration.', 'success');
+        document.getElementById('runBtn').disabled = false;
+        
+      } catch (error) {
+        log(`Error: ${error.message}`, 'error');
+        document.getElementById('checkBtn').disabled = false;
+      }
+    }
+    
+    async function runMigration() {
+      document.getElementById('runBtn').disabled = true;
+      log('\n=== STARTING MIGRATION ===', 'info');
+      
+      try {
+        // Migration steps broken down into smaller chunks
+        const migrationSteps = [
+          {
+            name: 'Add user_id to submissions',
+            sql: `ALTER TABLE public.submissions 
+                  ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL;`
+          },
+          {
+            name: 'Add submitted_by_user_id to submissions',
+            sql: `ALTER TABLE public.submissions
+                  ADD COLUMN IF NOT EXISTS submitted_by_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL;`
+          },
+          {
+            name: 'Create indexes on submissions',
+            sql: `CREATE INDEX IF NOT EXISTS submissions_user_id_idx ON public.submissions(user_id);
+                  CREATE INDEX IF NOT EXISTS submissions_submitted_by_user_id_idx ON public.submissions(submitted_by_user_id);`
+          },
+          {
+            name: 'Make staff_name nullable',
+            sql: `ALTER TABLE public.submissions ALTER COLUMN staff_name DROP NOT NULL;`
+          },
+          {
+            name: 'Add avatar_url to profiles',
+            sql: `ALTER TABLE public.profiles 
+                  ADD COLUMN IF NOT EXISTS avatar_url TEXT;`
+          },
+          {
+            name: 'Migrate existing submission data',
+            sql: `UPDATE public.submissions s
+                  SET user_id = p.user_id
+                  FROM public.master_users p
+                  WHERE s.site_id = p.site_id 
+                  AND s.staff_name = p.full_name
+                  AND s.user_id IS NULL;`
+          },
+          {
+            name: 'Add user_id to user_achievements',
+            sql: `ALTER TABLE public.user_achievements
+                  ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;`
+          },
+          {
+            name: 'Create user_profiles_complete view',
+            sql: `CREATE OR REPLACE VIEW public.user_profiles_complete AS
+                  SELECT 
+                      u.id as user_id,
+                      u.email,
+                      COALESCE(p.site_id, saw.site_id, (u.raw_user_meta_data->>'site_id')::bigint) as site_id,
+                      COALESCE(p.full_name, saw.full_name, u.raw_user_meta_data->>'full_name') as full_name,
+                      COALESCE(p.nickname, saw.nickname) as nickname,
+                      COALESCE(p.role, u.raw_user_meta_data->>'role', 'member') as role,
+                      COALESCE(p.onboarding_complete, false) as onboarding_complete,
+                      saw.role_detail,
+                      saw.team_id,
+                      saw.team_name,
+                      ku.id as kiosk_user_id,
+                      COALESCE(p.nickname, saw.nickname, p.full_name, saw.full_name, u.raw_user_meta_data->>'full_name', u.email) as display_name,
+                      COALESCE(p.avatar_url, saw.avatar_url) as avatar_url
+                  FROM auth.users u
+                  LEFT JOIN public.profiles p ON u.id = p.user_id
+                  LEFT JOIN public.staff_app_welcome saw ON u.id = saw.user_id
+                  LEFT JOIN public.kiosk_users ku ON COALESCE(p.site_id, saw.site_id) = ku.site_id 
+                      AND COALESCE(p.full_name, saw.full_name) = ku.full_name;`
+          },
+          {
+            name: 'Grant permissions on view',
+            sql: `GRANT SELECT ON public.user_profiles_complete TO authenticated;
+                  GRANT SELECT ON public.user_profiles_complete TO anon;`
+          }
+        ];
+        
+        // Run each step
+        for (const step of migrationSteps) {
+          log(`Running: ${step.name}...`, 'info');
+          
+          try {
+            // Use RPC to execute raw SQL
+            const { data, error } = await supabase.rpc('exec_sql', {
+              query: step.sql
+            });
+            
+            if (error) {
+              // If RPC doesn't exist, report but continue
+              if (error.message.includes('exec_sql')) {
+                log(`⚠️ Cannot run ${step.name} via RPC - manual execution required`, 'warning');
+              } else {
+                log(`⚠️ ${step.name}: ${error.message}`, 'warning');
+              }
+            } else {
+              log(`✅ ${step.name} completed`, 'success');
+            }
+          } catch (e) {
+            log(`⚠️ ${step.name}: ${e.message}`, 'warning');
+          }
+        }
+        
+        log('\n=== MIGRATION ATTEMPT COMPLETE ===', 'info');
+        log('\nNOTE: Some steps may require manual execution in Supabase SQL Editor', 'warning');
+        log('Copy the migration from apply_user_id_migration.sql and run it there', 'info');
+        
+        document.getElementById('verifyBtn').disabled = false;
+        
+      } catch (error) {
+        log(`Error: ${error.message}`, 'error');
+        document.getElementById('runBtn').disabled = false;
+      }
+    }
+    
+    async function verifyMigration() {
+      document.getElementById('verifyBtn').disabled = true;
+      log('\n=== VERIFYING MIGRATION ===', 'info');
+      
+      try {
+        // Check submissions table
+        const { data: submissions, error: subError } = await supabase
+          .from('submissions')
+          .select('id, user_id, staff_name')
+          .limit(10);
+        
+        if (subError) {
+          log(`❌ Submissions check failed: ${subError.message}`, 'error');
+        } else {
+          const withUserId = submissions.filter(s => s.user_id).length;
+          const withoutUserId = submissions.filter(s => !s.user_id).length;
+          log(`Submissions: ${withUserId} with user_id, ${withoutUserId} without`, 'info');
+        }
+        
+        // Check unified view
+        const { data: profiles, error: profError } = await supabase
+          .from('master_users')
+          .select('user_id, email, display_name')
+          .limit(5);
+        
+        if (profError) {
+          log(`❌ User profiles view not available: ${profError.message}`, 'error');
+        } else {
+          log(`✅ User profiles view working - found ${profiles.length} profiles`, 'success');
+        }
+        
+        // Get migration statistics
+        const { count: totalSubs } = await supabase
+          .from('submissions')
+          .select('*', { count: 'exact', head: true });
+        
+        const { count: subsWithUser } = await supabase
+          .from('submissions')
+          .select('*', { count: 'exact', head: true })
+          .not('user_id', 'is', null);
+        
+        log('\n=== MIGRATION STATISTICS ===', 'info');
+        log(`Total submissions: ${totalSubs || 0}`, 'info');
+        log(`Submissions with user_id: ${subsWithUser || 0}`, 'info');
+        log(`Submissions without user_id: ${(totalSubs || 0) - (subsWithUser || 0)}`, 'info');
+        
+        if (subsWithUser && subsWithUser > 0) {
+          const percentage = Math.round((subsWithUser / totalSubs) * 100);
+          log(`\n✅ Migration ${percentage}% complete`, 'success');
+        }
+        
+      } catch (error) {
+        log(`Error: ${error.message}`, 'error');
+      }
+      
+      document.getElementById('verifyBtn').disabled = false;
+    }
+  </script>
+
+    <!-- Debug Console - Persistent across all pages -->
+    <script src="debug-console.js"></script>
+</body>
+</html>

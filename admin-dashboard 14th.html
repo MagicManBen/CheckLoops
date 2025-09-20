@@ -6256,17 +6256,17 @@ window.PIR_DEFINITIONS_DATA = [
       const checkAdminRole = async () => {
         console.log('🔥 checkAdminRole() STARTED - session:', session);
         try {
-          console.log('🔥 About to query profiles table for user:', session.user.id);
+          console.log('🔥 About to query master_users table for user:', session.user.id);
           // First check if user has a profile with admin role
           const { data: profile, error: profileError } = await supabase
-            .from('profiles')
+            .from('master_users')
             .select('role, full_name')
-            .eq('user_id', session.user.id)
+            .eq('auth_user_id', session.user.id)
             .maybeSingle();
           
           console.log('🔥 Profiles query result - profile:', profile, 'error:', profileError);
             
-          if (profile && ['admin', 'owner'].includes(profile.role?.toLowerCase())) {
+          if (profile && ['admin', 'owner'].includes(profile.access_type || profile.role?.toLowerCase())) {
             console.log('✅ Admin role confirmed from profile');
             console.log('🔥 ABOUT TO CALL BOOTSTRAP - Profile data:', profile);
             
@@ -7204,14 +7204,14 @@ window.PIR_DEFINITIONS_DATA = [
         console.log('site_invites table accessible');
       }
       
-      // Get users from profiles table
+      // Get users from master_users table
       const { data: users, error: usersError } = await supabase
-        .from('profiles')
+        .from('master_users')
         .select('*')
         .eq('site_id', ctx.site_id);
 
       if (usersError) {
-        console.error('Error loading profiles:', usersError);
+        console.error('Error loading master_users:', usersError);
         throw usersError;
       }
 
@@ -7250,7 +7250,7 @@ window.PIR_DEFINITIONS_DATA = [
       ) : [];
 
       const allRows = [
-        // Users from profiles (both active and inactive, with emails from accepted invites)
+        // Users from master_users (both active and inactive, with emails from accepted invites)
         ...(users || []).map(u => {
           const isActive = u.active !== false; // Default to true if undefined (for backward compatibility)
           return {
@@ -7303,11 +7303,11 @@ window.PIR_DEFINITIONS_DATA = [
     if (!confirm('Are you sure you want to deactivate this user? This will prevent them from logging in but preserve all their data.')) return;
 
     try {
-      // Update the profiles table to set active = false
+      // Update the master_users table to set active = false
       const { data, error } = await supabase
-        .from('profiles')
+        .from('master_users')
         .update({ active: false })
-        .eq('user_id', userId)
+        .eq('auth_user_id', userId)
         .eq('site_id', ctx.site_id)
         .select('full_name')
         .single();
@@ -7341,11 +7341,11 @@ window.PIR_DEFINITIONS_DATA = [
     if (!confirm('Are you sure you want to reactivate this user? This will allow them to log in again.')) return;
 
     try {
-      // Update the profiles table to set active = true
+      // Update the master_users table to set active = true
       const { data, error } = await supabase
-        .from('profiles')
+        .from('master_users')
         .update({ active: true })
-        .eq('user_id', userId)
+        .eq('auth_user_id', userId)
         .eq('site_id', ctx.site_id)
         .select('full_name')
         .single();
@@ -7910,19 +7910,19 @@ window.PIR_DEFINITIONS_DATA = [
           return;
         }
 
-        // Then check profiles table
+        // Then check master_users table
         const { data: profile, error: profileError } = await supabase
-          .from('profiles')
+          .from('master_users')
           .select('role, full_name')
-          .eq('user_id', user.id)
+          .eq('auth_user_id', user.id)
           .maybeSingle();
         
         if (profileError) {
           console.error('Error fetching profile:', profileError);
         }
         
-        if (profile?.role && ['admin', 'owner'].includes(profile.role.toLowerCase())) {
-          console.log(`✅ User allowed on admin site - role from profile: ${profile.role}`);
+        if (profile?.role && ['admin', 'owner'].includes(profile.access_type || profile.role.toLowerCase())) {
+          console.log(`✅ User allowed on admin site - role from profile: ${profile.access_type || profile.role}`);
           
           // Store that this user is verified as admin for future reference
           try {
@@ -8174,9 +8174,9 @@ window.PIR_DEFINITIONS_DATA = [
       // Load user profile to get site_id and role
       console.log('🔍 Loading user profile...');
       let { data: profile, error: profileError } = await supabase
-        .from("profiles")
+        .from('master_users')
         .select("site_id, role, full_name")
-        .eq("user_id", user.id)
+        .eq('auth_user_id', user.id)
         .maybeSingle();
 
       if(profileError) {
@@ -8196,9 +8196,9 @@ window.PIR_DEFINITIONS_DATA = [
         
         console.log('Updating profile with inferred name:', inferredName);
         const { data: updatedProfile, error: updateError } = await supabase
-          .from("profiles")
+          .from('master_users')
           .update({ full_name: inferredName })
-          .eq("user_id", user.id)
+          .eq('auth_user_id', user.id)
           .select("site_id, role, full_name")
           .single();
         
@@ -8228,7 +8228,7 @@ window.PIR_DEFINITIONS_DATA = [
           
           // Create profile from invitation data
           const { data: newProfile, error: createError } = await supabase
-            .from("profiles")
+            .from('master_users')
             .insert({
               user_id: user.id,
               site_id: invitation.site_id,
@@ -8247,7 +8247,7 @@ window.PIR_DEFINITIONS_DATA = [
           if (invitation.role_detail && invitation.role_detail.trim() !== '') {
             console.log('Creating kiosk_users entry...', invitation.role_detail);
             const { error: kioskError } = await supabase
-              .from("kiosk_users")
+              .from('master_users')
               .insert({
                 site_id: invitation.site_id,
                 full_name: invitation.full_name,
@@ -8282,7 +8282,7 @@ window.PIR_DEFINITIONS_DATA = [
       }
 
       ctx.site_id = profile.site_id;
-      ctx.role = profile.role;
+      ctx.role = profile.access_type || profile.role;
       // Try to get full name from profile, user metadata, or construct from email
       ctx.full_name = profile.full_name || 
                       user?.user_metadata?.full_name || 
@@ -8347,9 +8347,9 @@ window.PIR_DEFINITIONS_DATA = [
         let avatarUrl = null;
         try {
           const { data: saw } = await supabase
-            .from('staff_app_welcome')
+            .from('master_users')
             .select('avatar_url, updated_at')
-            .eq('user_id', user.id)
+            .eq('auth_user_id', user.id)
             .order('updated_at', { ascending: false })
             .limit(1)
             .maybeSingle();
@@ -8407,7 +8407,7 @@ window.PIR_DEFINITIONS_DATA = [
       } else {
         // fallback to detected role
         if (roleDisplay) {
-          const role = ctx.role || ctx.user?.user_metadata?.role || 'Staff';
+          const role = (ctx.role || ctx.user?.user_metadata?.role || 'Staff'?.access_type || ctx.role || ctx.user?.user_metadata?.role || 'Staff');
           roleDisplay.textContent = role.charAt(0).toUpperCase() + role.slice(1);
         }
       }
@@ -8451,7 +8451,7 @@ window.PIR_DEFINITIONS_DATA = [
       supabase.from("rooms").select("id", { count:"exact", head:true }).eq("site_id", ctx.site_id),
       supabase.from("complaints").select("id", { count:"exact", head:true }).eq("site_id", ctx.site_id),
       supabase.from("check_types").select("id", { count:"exact", head:true }).eq("site_id", ctx.site_id),
-      supabase.from("kiosk_users").select("id", { count:"exact", head:true }).eq("site_id", ctx.site_id),
+      supabase.from('master_users').select("id", { count:"exact", head:true }).eq("site_id", ctx.site_id),
     ]);
     if(typeof setDueTab === 'function') setDueTab('due');
 
@@ -9078,20 +9078,20 @@ async function loadRooms(){
     if (ownerIds.length === 1) {
       const single = ownerIds[0];
       if (looksLikeUUID(single)) {
-        const res = await supabase.from('kiosk_users').select('id,full_name,user_id').eq('user_id', single);
+        const res = await supabase.from('master_users').select('id,full_name,auth_auth_user_id').eq('auth_user_id', single);
         staff = (res && res.data) || [];
       } else {
-        const res = await supabase.from('kiosk_users').select('id,full_name').eq('id', single);
+        const res = await supabase.from('master_users').select('id,full_name').eq('id', single);
         staff = (res && res.data) || [];
       }
     } else {
       const uuids = ownerIds.filter(looksLikeUUID);
       const nums = ownerIds.filter(i => !looksLikeUUID(i));
       if (uuids.length) {
-        try{ const r = await supabase.from('kiosk_users').select('id,full_name,user_id').in('user_id', uuids); if(r && r.data) staff.push(...r.data); }catch(_e){}
+        try{ const r = await supabase.from('master_users').select('id,full_name,auth_auth_user_id').in('user_id', uuids); if(r && r.data) staff.push(...r.data); }catch(_e){}
       }
       if (nums.length) {
-        try{ const r = await supabase.from('kiosk_users').select('id,full_name').in('id', nums); if(r && r.data) staff.push(...r.data); }catch(_e){}
+        try{ const r = await supabase.from('master_users').select('id,full_name').in('id', nums); if(r && r.data) staff.push(...r.data); }catch(_e){}
       }
     }
     (staff||[]).forEach(s => { owners[s.id] = s.full_name; });
@@ -9190,16 +9190,16 @@ function renderComplaintsTable(tb, data){
           const single = creatorIds[0];
           if (looksLikeUUID(single)) {
             try {
-              const r = await supabase.from('kiosk_users').select('id,full_name,user_id').eq('user_id', single);
+              const r = await supabase.from('master_users').select('id,full_name,auth_auth_user_id').eq('auth_user_id', single);
               staff = (r && r.data) || [];
             } catch (e) {
               // Fallback: user_id column might not exist, try querying by id instead
               debugLog('kiosk_users user_id query failed, trying id fallback:', e.message);
-              const r = await supabase.from('kiosk_users').select('id,full_name').eq('id', single);
+              const r = await supabase.from('master_users').select('id,full_name').eq('id', single);
               staff = (r && r.data) || [];
             }
           } else {
-            const r = await supabase.from('kiosk_users').select('id,full_name').eq('id', single);
+            const r = await supabase.from('master_users').select('id,full_name').eq('id', single);
             staff = (r && r.data) || [];
           }
         } else {
@@ -9207,7 +9207,7 @@ function renderComplaintsTable(tb, data){
           const nums = creatorIds.filter(i => !looksLikeUUID(i));
           if (uuids.length) {
             try{ 
-              const r = await supabase.from('kiosk_users').select('id,full_name,user_id').in('user_id', uuids); 
+              const r = await supabase.from('master_users').select('id,full_name,auth_auth_user_id').in('user_id', uuids); 
               if(r && r.data) staff.push(...r.data); 
             } catch(e) {
               // Fallback: user_id column might not exist, skip UUID lookups
@@ -9215,7 +9215,7 @@ function renderComplaintsTable(tb, data){
             }
           }
           if (nums.length) {
-            try{ const r = await supabase.from('kiosk_users').select('id,full_name').in('id', nums); if(r && r.data) staff.push(...r.data); }catch(_e){}
+            try{ const r = await supabase.from('master_users').select('id,full_name').in('id', nums); if(r && r.data) staff.push(...r.data); }catch(_e){}
           }
         }
         (staff||[]).forEach(s=>{ creators[s.id] = s.full_name; });
@@ -9575,11 +9575,11 @@ function applySchedulesFilters() {
     const tb = document.getElementById("staff-tbody");
     
     try {
-      // Get staff from staff_app_welcome table
+      // Get staff from master_users table
       const { data: staffData, error: staffError } = await supabase
-        .from("staff_app_welcome")
+        .from('master_users')
         .select(`
-          user_id,
+          auth_user_id,
           full_name, 
           role_detail,
           team_name,
@@ -9605,7 +9605,7 @@ function applySchedulesFilters() {
       if (userIds.length > 0) {
         try {
           const { data: patterns, error: patternsError } = await supabase
-            .from("3_staff_working_patterns")
+            .from('master_users')
             .select("*")
             .in("user_id", userIds);
           
@@ -10118,7 +10118,7 @@ function applySchedulesFilters() {
     // Fetch any submission rows on that exact date, including item and check names when available
     const { data: rows, error: rowsErr } = await supabase
       .from('submission_rows')
-      .select('item_pk, check_type_id, items(id,item_name), check_types(id,name), submissions!inner(submitted_at, staff_name, user_id)')
+      .select('item_pk, check_type_id, items(id,item_name), check_types(id,name), submissions!inner(submitted_at, staff_name, auth_user_id)')
       .gte('submissions.submitted_at', start.toISOString())
       .lte('submissions.submitted_at', end.toISOString())
       .eq('site_id', ctx.site_id);
@@ -11109,7 +11109,7 @@ function applySchedulesFilters() {
                 if (pathParts.length >= 2) {
                     // Query for the user who uploaded this file
                     const { data: profile } = await supabase
-                        .from('profiles')
+                        .from('master_users')
                         .select('full_name')
                         .eq('site_id', doc.site_id)
                         .single();
@@ -12684,7 +12684,7 @@ for (const f of (crudState.entity.fields || [])) {
       
       if (staffMultiSelect && staffChips && hiddenInput) {
         // Load staff members into the selector
-        supabase.from('kiosk_users').select('id, full_name').eq('site_id', ctx.site_id).then(({data, error}) => {
+        supabase.from('master_users').select('id, full_name').eq('site_id', ctx.site_id).then(({data, error}) => {
           if (data && !error) {
             staffMultiSelect.innerHTML = '<option value="">Add staff member...</option>' + 
               data.map(s => `<option value="${s.id}">${s.full_name}</option>`).join('');
@@ -13052,7 +13052,7 @@ for (const f of (crudState.entity.fields || [])) {
 
     // Basic validation: ensure UUID fields expected by the DB contain valid UUIDs
     // Use the already-coerced value in `body` (post processing). Accept numeric kiosk_user ids
-    // (the kiosk_users table uses integer PKs) as valid choices.
+    // (the master_users table uses integer PKs) as valid choices.
     const uuidChecks = [];
     (crudState.entity.fields || []).forEach(f => {
       if (f.name === 'created_by') {
@@ -13446,7 +13446,7 @@ for (const f of (crudState.entity.fields || [])) {
   async function loadTrainingMatrix() {
     try {
       const [staffRes, typesRes, recordsRes] = await Promise.all([
-        supabase.from('kiosk_users').select('*').eq('site_id', ctx.site_id),
+        supabase.from('master_users').select('*').eq('site_id', ctx.site_id),
         supabase.from('training_types').select('*').eq('site_id', ctx.site_id).eq('active', true),
         // no relational select here (avoids RLS join issues on live)
         supabase.from('training_records').select('*').eq('site_id', ctx.site_id)
@@ -14738,7 +14738,7 @@ for (const f of (crudState.entity.fields || [])) {
           if (elPeopleInvolved && d.people_involved && Array.isArray(d.people_involved)) {
             // For multi-select, we'd need to match names to IDs from the staff list
             debugLog('People involved names extracted', d.people_involved);
-            // Note: Actual ID mapping would require matching against kiosk_users table
+            // Note: Actual ID mapping would require matching against master_users table
           }
           
           setStatus(statusEl, '✓ Filled by AI — please review.');
@@ -14771,7 +14771,8 @@ for (const f of (crudState.entity.fields || [])) {
     </div>
   </div>
   
- </body>
+     <script src="supabase-debug.js"></script>
+</body>
  </html>
   <script>
     // === Quiz: Raw Supabase Table Renderer ===
@@ -16849,9 +16850,9 @@ async function loadWorkingPattern(userId) {
   try {
     console.log('Loading working pattern for user:', userId);
     const { data, error } = await supabase
-      .from('3_staff_working_patterns')
+      .from('master_users')
       .select('*')
-      .eq('user_id', userId)
+      .eq('auth_user_id', userId)
       .maybeSingle(); // Use maybeSingle instead of single to avoid error when no record exists
     
     if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows returned"
@@ -16985,7 +16986,7 @@ async function saveWorkingPattern(event) {
     
     // Use upsert to insert or update
     const { data, error } = await supabase
-      .from('3_staff_working_patterns')
+      .from('master_users')
       .upsert(patternData, { 
         onConflict: 'user_id',
         ignoreDuplicates: false 
@@ -17085,7 +17086,7 @@ window.refreshStaffData = refreshStaffData;
     try {
       // Get all holiday profiles with entitlements
       const { data: profiles } = await window.supabase
-        .from('1_staff_holiday_profiles')
+        .from('master_users')
         .select(`
           *,
           entitlements:2_staff_entitlements!staff_id(*)
@@ -17138,7 +17139,7 @@ window.refreshStaffData = refreshStaffData;
               return \`
                 <tr>
                   <td>\${profile.full_name || 'Unknown'}</td>
-                  <td>\${profile.role || 'N/A'}</td>
+                  <td>\${profile.access_type || profile.role || 'N/A'}</td>
                   <td>\${formatValue(weekly, isGP)} \${unit}/week</td>
                   <td>
                     <input type="number"
@@ -17190,13 +17191,13 @@ window.refreshStaffData = refreshStaffData;
 
         // Get profiles for emails
         const { data: profiles } = await window.supabase
-          .from('profiles')
-          .select('user_id, email')
+          .from('master_users')
+          .select('auth_auth_user_id, email')
           .in('user_id', userIds);
 
         // Get holiday profiles to check if GP
         const { data: holidayProfiles } = await window.supabase
-          .from('1_staff_holiday_profiles')
+          .from('master_users')
           .select('email, is_gp');
 
         // Map emails and GP status to requests
@@ -17485,9 +17486,9 @@ window.refreshStaffData = refreshStaffData;
   // Helper functions
   async function getWeeklyHours(profileId) {
     const { data } = await window.supabase
-      .from('3_staff_working_patterns')
+      .from('master_users')
       .select('monday_hours, tuesday_hours, wednesday_hours, thursday_hours, friday_hours')
-      .eq('user_id', profileId)
+      .eq('auth_user_id', profileId)
       .maybeSingle();
 
     if (!data) return 0;
@@ -17496,9 +17497,9 @@ window.refreshStaffData = refreshStaffData;
 
   async function getWeeklySessions(profileId) {
     const { data } = await window.supabase
-      .from('3_staff_working_patterns')
+      .from('master_users')
       .select('monday_sessions, tuesday_sessions, wednesday_sessions, thursday_sessions, friday_sessions')
-      .eq('user_id', profileId)
+      .eq('auth_user_id', profileId)
       .maybeSingle();
 
     if (!data) return 0;
@@ -17526,7 +17527,7 @@ window.refreshStaffData = refreshStaffData;
     try {
       // First get working patterns
       const { data: patterns, error } = await supabase
-        .from('3_staff_working_patterns')
+        .from('master_users')
         .select('*');
 
       if (error) {
@@ -17545,8 +17546,8 @@ window.refreshStaffData = refreshStaffData;
       // Get user profiles for the patterns
       const userIds = patterns.map(p => p.user_id).filter(Boolean);
       const { data: profiles } = await supabase
-        .from('profiles')
-        .select('user_id, email, full_name')
+        .from('master_users')
+        .select('auth_auth_user_id, email, full_name')
         .in('user_id', userIds);
 
       // Create a map of user_id to profile
@@ -17617,5 +17618,6 @@ window.refreshStaffData = refreshStaffData;
 
     <!-- Debug Console - Persistent across all pages -->
     <script src="debug-console.js"></script>
+    <script src="supabase-debug.js"></script>
 </body>
 </html>

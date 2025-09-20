@@ -18,8 +18,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
 async function checkUserRole() {
   const { data, error } = await supabase
-    .from('profiles')
-    .select('user_id, email, role, full_name')
+    .from('master_users')
+    .select('auth_auth_user_id, email, role, full_name')
     .eq('email', 'ben.howard@stoke.nhs.uk')
     .single();
   

@@ -91,7 +91,7 @@ async function main() {
         console.log('\nVerifying import...');
         
         const { data: profiles, error: profileError } = await supabase
-            .from('staff_holiday_profiles')
+            .from('master_users')
             .select('*')
             .limit(5);
         

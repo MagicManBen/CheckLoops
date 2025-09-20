@@ -15,9 +15,9 @@ export class MeetingsManager {
     
     // Get user profile and site
     const { data: profile, error } = await this.supabase
-      .from('profiles')
+      .from('master_users')
       .select('site_id, role, full_name')
-      .eq('user_id', session.user.id)
+      .eq('auth_user_id', session.user.id)
       .single();
     
     if (error) {

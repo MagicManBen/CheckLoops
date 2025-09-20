@@ -13,7 +13,7 @@ async function applyFix() {
     // Get all profiles with kiosk_user_id
     console.log('1. Getting profiles with kiosk_user_id...');
     const { data: profiles, error: profileError } = await supabase
-        .from('profiles')
+        .from('master_users')
         .select('*')
         .not('kiosk_user_id', 'is', null);
 
@@ -27,7 +27,7 @@ async function applyFix() {
     // Check which ones are missing from kiosk_users
     console.log('\n2. Checking which ones are missing from kiosk_users...');
     const { data: existingKiosk, error: kioskError } = await supabase
-        .from('kiosk_users')
+        .from('master_users')
         .select('id');
 
     const existingIds = new Set((existingKiosk || []).map(k => k.id));
@@ -62,7 +62,7 @@ async function applyFix() {
     let successCount = 0;
     for (const entry of kioskEntries) {
         const { data: inserted, error: insertError } = await supabase
-            .from('kiosk_users')
+            .from('master_users')
             .insert(entry)
             .select();
 
@@ -87,7 +87,7 @@ async function applyFix() {
     // Verify Ben Howard specifically
     console.log('\n4. Verifying Ben Howard...');
     const { data: benKiosk, error: benError } = await supabase
-        .from('kiosk_users')
+        .from('master_users')
         .select('*')
         .eq('id', 46)
         .single();

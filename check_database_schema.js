@@ -24,7 +24,7 @@ async function checkDatabaseSchema() {
   // Test query 3_staff_working_patterns directly
   try {
     const { data, error } = await supabase
-      .from('3_staff_working_patterns')
+      .from('master_users')
       .select('*')
       .limit(1);
 
@@ -43,7 +43,7 @@ async function checkDatabaseSchema() {
   console.log('\n2. Checking profiles table...');
   try {
     const { data, error } = await supabase
-      .from('profiles')
+      .from('master_users')
       .select('*')
       .limit(1);
 
@@ -81,7 +81,7 @@ async function checkDatabaseSchema() {
   console.log('\n4. Checking 1_staff_holiday_profiles table...');
   try {
     const { data, error } = await supabase
-      .from('1_staff_holiday_profiles')
+      .from('master_users')
       .select('*')
       .limit(1);
 
@@ -122,9 +122,9 @@ async function checkDatabaseSchema() {
   console.log('   a) Working patterns direct query:');
   try {
     const { data, error } = await supabase
-      .from('3_staff_working_patterns')
+      .from('master_users')
       .select('*')
-      .eq('user_id', user.id);
+      .eq('auth_user_id', user.id);
 
     if (error) {
       console.error('      Error:', error.message);
@@ -139,7 +139,7 @@ async function checkDatabaseSchema() {
   console.log('   b) Holiday profiles query:');
   try {
     const { data, error } = await supabase
-      .from('1_staff_holiday_profiles')
+      .from('master_users')
       .select('*')
       .eq('email', user.email);
 
@@ -155,7 +155,7 @@ async function checkDatabaseSchema() {
   console.log('\n7. Checking staff_app_welcome table...');
   try {
     const { data, error } = await supabase
-      .from('staff_app_welcome')
+      .from('master_users')
       .select('*')
       .limit(1);
 

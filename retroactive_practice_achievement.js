@@ -39,9 +39,9 @@ async function retroactiveUnlockPracticeAchievement() {
 
       // Get profile data
       const { data: profileData } = await supabase
-        .from('profiles')
+        .from('master_users')
         .select('*')
-        .eq('user_id', userId)
+        .eq('auth_user_id', userId)
         .single();
 
       if (!profileData) {
@@ -53,7 +53,7 @@ async function retroactiveUnlockPracticeAchievement() {
       let kioskUserId = null;
 
       const { data: existingKioskUser } = await supabase
-        .from('kiosk_users')
+        .from('master_users')
         .select('id')
         .eq('email', userEmail)
         .maybeSingle();
@@ -64,7 +64,7 @@ async function retroactiveUnlockPracticeAchievement() {
       } else {
         // Create kiosk user
         const { data: newKioskUser } = await supabase
-          .from('kiosk_users')
+          .from('master_users')
           .insert({
             site_id: profileData.site_id || 1,
             full_name: profileData.full_name || userEmail.split('@')[0],

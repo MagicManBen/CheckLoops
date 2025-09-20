@@ -1,18 +1,185 @@
 // Shared helpers for Staff pages
 // Requires: config.js loaded before this file
 
-export async function initSupabase() {
-  const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
-  return createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
-    auth: { 
-      persistSession: true, 
-      autoRefreshToken: true, 
-      detectSessionInUrl: true, 
-      flowType: 'pkce',
-      storage: window.localStorage,
-      storageKey: `sb-${CONFIG.SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`
+const PROFILE_CACHE_KEY_PREFIX = 'staff-profile:';
+const PROFILE_CACHE_STALE_AFTER = 60 * 1000; // 1 minute before we refresh in the background
+const PROFILE_CACHE_MAX_AGE = 5 * 60 * 1000; // fully re-fetch after 5 minutes
+const SITE_CACHE_KEY_PREFIX = 'staff-site:';
+const SITE_CACHE_STALE_AFTER = 10 * 60 * 1000;
+const SITE_CACHE_MAX_AGE = 60 * 60 * 1000;
+
+const memoryCache = new Map();
+const profileRefreshPromises = new Map();
+const siteRefreshPromises = new Map();
+let supabaseClientPromise = null;
+
+function getSessionStorageSafe() {
+  try {
+    return window.sessionStorage;
+  } catch (_) {
+    return null;
+  }
+}
+
+function readCacheEntry(key) {
+  const storage = getSessionStorageSafe();
+  if (storage) {
+    try {
+      const raw = storage.getItem(key);
+      if (raw) {
+        const entry = JSON.parse(raw);
+        if (entry.expiresAt && entry.expiresAt <= Date.now()) {
+          storage.removeItem(key);
+          memoryCache.delete(key);
+          return null;
+        }
+        memoryCache.set(key, entry);
+        return entry;
+      }
+    } catch (err) {
+      console.warn('[cache] Failed to parse entry for key', key, err);
+      try { storage.removeItem(key); } catch (_) {}
     }
-  });
+  }
+
+  const memoEntry = memoryCache.get(key);
+  if (memoEntry && memoEntry.expiresAt && memoEntry.expiresAt <= Date.now()) {
+    memoryCache.delete(key);
+    return null;
+  }
+  return memoEntry || null;
+}
+
+function writeCacheEntry(key, value, ttl) {
+  const now = Date.now();
+  const entry = { value, cachedAt: now, expiresAt: now + ttl };
+  memoryCache.set(key, entry);
+  const storage = getSessionStorageSafe();
+  if (storage) {
+    try { storage.setItem(key, JSON.stringify(entry)); } catch (_) {}
+  }
+  return entry;
+}
+
+function removeCacheEntry(key) {
+  memoryCache.delete(key);
+  const storage = getSessionStorageSafe();
+  if (storage) {
+    try { storage.removeItem(key); } catch (_) {}
+  }
+}
+
+function flushSessionCaches() {
+  memoryCache.clear();
+  profileRefreshPromises.clear();
+  siteRefreshPromises.clear();
+  try { delete window.__staffProfileCacheMeta; } catch (_) {}
+}
+
+function markGlobalProfile(userId, profileRow, source = 'cache', cachedAt = Date.now()) {
+  try {
+    window.__staffProfileCacheMeta = { userId, profileRow, cachedAt, source };
+  } catch (_) {}
+}
+
+function dispatchProfileUpdate(userId, profileRow, source) {
+  try {
+    window.dispatchEvent(new CustomEvent('staffProfileCacheUpdated', {
+      detail: { userId, profile: profileRow, source }
+    }));
+  } catch (_) {}
+}
+
+async function fetchProfileAndCache(supabase, userId, reason = 'fetch') {
+  const { data, error } = await supabase
+    .from('master_users')
+    .select('role, access_type, role_detail, full_name, nickname, site_id, onboarding_complete, avatar_url, team_id, team_name')
+    .eq('auth_user_id', userId)
+    .maybeSingle();
+
+  if (!error) {
+    writeCacheEntry(`${PROFILE_CACHE_KEY_PREFIX}${userId}`, data ?? null, PROFILE_CACHE_MAX_AGE);
+    markGlobalProfile(userId, data ?? null, reason);
+    dispatchProfileUpdate(userId, data ?? null, reason);
+  }
+
+  return { data: data ?? null, error };
+}
+
+function scheduleProfileRefresh(supabase, userId) {
+  if (profileRefreshPromises.has(userId)) {
+    return profileRefreshPromises.get(userId);
+  }
+  const promise = fetchProfileAndCache(supabase, userId, 'refresh')
+    .catch(err => {
+      console.warn('[requireStaffSession] Background profile refresh failed:', err?.message || err);
+      return null;
+    })
+    .finally(() => profileRefreshPromises.delete(userId));
+  profileRefreshPromises.set(userId, promise);
+  return promise;
+}
+
+async function fetchSiteTextAndCache(supabase, siteId, reason = 'fetch') {
+  console.log(`[getSiteText] ${reason === 'refresh' ? 'Refreshing' : 'Fetching'} site info for ID:`, siteId);
+  const { data: site, error } = await supabase
+    .from('sites')
+    .select('name, city')
+    .eq('id', siteId)
+    .maybeSingle();
+
+  if (!error) {
+    const siteText = site ? `${site.name}${site.city ? ' • ' + site.city : ''}` : `Site ${siteId}`;
+    writeCacheEntry(`${SITE_CACHE_KEY_PREFIX}${siteId}`, siteText, SITE_CACHE_MAX_AGE);
+    return { value: siteText, error: null };
+  }
+
+  return { value: null, error };
+}
+
+function scheduleSiteRefresh(supabase, siteId) {
+  if (siteRefreshPromises.has(siteId)) {
+    return siteRefreshPromises.get(siteId);
+  }
+  const promise = fetchSiteTextAndCache(supabase, siteId, 'refresh')
+    .catch(err => {
+      console.warn('[getSiteText] Background refresh failed:', err?.message || err);
+      return null;
+    })
+    .finally(() => siteRefreshPromises.delete(siteId));
+  siteRefreshPromises.set(siteId, promise);
+  return promise;
+}
+
+export async function initSupabase() {
+  if (window.__supabaseClient && typeof window.__supabaseClient.auth?.getSession === 'function') {
+    try { window.supabase = window.__supabaseClient; } catch (_) {}
+    return window.__supabaseClient;
+  }
+  if (window.supabase && typeof window.supabase.auth?.getSession === 'function') {
+    window.__supabaseClient = window.supabase;
+    return window.supabase;
+  }
+  if (supabaseClientPromise) return supabaseClientPromise;
+
+  supabaseClientPromise = (async () => {
+    const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+    const client = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        flowType: 'pkce',
+        storage: window.localStorage,
+        storageKey: `sb-${CONFIG.SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`
+      }
+    });
+    window.__supabaseClient = client;
+    try { window.supabase = client; } catch (_) {}
+    return client;
+  })();
+
+  return supabaseClientPromise;
 }
 
 // Clear auth-related localStorage keys but optionally preserve remember-me fields
@@ -28,9 +195,24 @@ export function clearAuthData(preserveRememberMe = false) {
       } catch(_) {}
     });
   } catch (_) {}
+
+  try {
+    const storage = getSessionStorageSafe();
+    if (storage) {
+      for (let i = storage.length - 1; i >= 0; i--) {
+        const key = storage.key(i);
+        if (!key) continue;
+        if (key.startsWith(PROFILE_CACHE_KEY_PREFIX) || key.startsWith(SITE_CACHE_KEY_PREFIX)) {
+          storage.removeItem(key);
+        }
+      }
+    }
+  } catch (_) {}
+
+  flushSessionCaches();
 }
 
-export async function requireStaffSession(supabase) {
+export async function requireStaffSession(supabase, options = {}) {
   console.log('[requireStaffSession] Checking session...');
   const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
@@ -46,53 +228,80 @@ export async function requireStaffSession(supabase) {
 
   console.log('[requireStaffSession] Session found for:', session.user.email);
 
-  const { data: profileRow, error: profileError } = await supabase
-    .from('profiles')
-    .select('role, full_name, site_id, onboarding_complete')
-    .eq('user_id', session.user.id)
-    .maybeSingle();
+  const userId = session.user.id;
+  const cacheKey = `${PROFILE_CACHE_KEY_PREFIX}${userId}`;
+  const forceRefresh = options?.forceRefresh === true;
+  const cacheEntry = forceRefresh ? null : readCacheEntry(cacheKey);
+  const now = Date.now();
+  const age = cacheEntry ? now - cacheEntry.cachedAt : Number.POSITIVE_INFINITY;
+  const expired = age > PROFILE_CACHE_MAX_AGE;
+  const stale = age > PROFILE_CACHE_STALE_AFTER;
+
+  let profileRow = cacheEntry?.value ?? null;
+  let profileError = null;
+
+  if (!cacheEntry || forceRefresh || expired) {
+    const fetchReason = forceRefresh ? 'force-refresh' : cacheEntry ? 'expired-refresh' : 'initial-fetch';
+    const { data, error } = await fetchProfileAndCache(supabase, userId, fetchReason);
+    profileRow = data;
+    profileError = error;
+
+    if (error && cacheEntry) {
+      profileRow = cacheEntry.value;
+      markGlobalProfile(userId, profileRow, 'cache-fallback', cacheEntry.cachedAt);
+      console.warn('[requireStaffSession] Using cached profile due to fetch error.');
+    }
+  } else {
+    markGlobalProfile(userId, profileRow, 'cache', cacheEntry.cachedAt);
+    if (stale) {
+      scheduleProfileRefresh(supabase, userId);
+    }
+  }
 
   if (profileError) {
     console.error('Error fetching profile:', profileError);
   }
 
-  // Try to get role from profile first, then from user metadata
   const meta = session.user?.user_metadata || session.user?.raw_user_meta_data || {};
-  // If user has a profile with site_id but no role, default to 'staff'
-  const role = profileRow?.role || meta?.role || (profileRow?.site_id ? 'staff' : null);
-  // Include 'member' and any role by default for staff-welcome page
+  const role = profileRow?.access_type || profileRow?.role || meta?.role || (profileRow?.site_id ? 'staff' : null);
+
+  if (window.trackMasterUserDebug) {
+    window.trackMasterUserDebug({
+      auth_user_id: session.user.id,
+      email: session.user.email,
+      access_type: profileRow?.access_type,
+      role: profileRow?.role,
+      site_id: profileRow?.site_id,
+      full_name: profileRow?.full_name
+    });
+  }
+
   const allowed = ['staff', 'admin', 'owner', 'manager', 'member', 'user'];
 
   console.log('[requireStaffSession] Debug info:', {
     userId: session.user.id,
     email: session.user.email,
-    profileRow: profileRow,
+    profileRow,
     profileRole: profileRow?.role,
     userMetadata: meta,
     metaRole: meta?.role,
     finalRole: role,
     onboarding_complete: profileRow?.onboarding_complete,
     onboarding_required: meta?.onboarding_required,
-    welcome_completed_at: meta?.welcome_completed_at
+    welcome_completed_at: meta?.welcome_completed_at,
+    cacheSource: cacheEntry ? (stale ? 'cache-stale' : 'cache-fresh') : 'fresh'
   });
 
-  // Removed forced onboarding redirect logic per updated navigation requirements
-  try { sessionStorage.removeItem('forceOnboarding'); } catch(_) {}
+  try { sessionStorage.removeItem('forceOnboarding'); } catch (_) {}
 
-  // For staff-welcome page, allow users without roles to complete setup
   const isWelcomePage = /staff-welcome\.html$/i.test(window.location.pathname);
 
-  // Allow staff-welcome page access for users with any role or no role (for onboarding)
   if (!isWelcomePage && role && !allowed.includes(String(role).toLowerCase())) {
     throw new Error('NOT_STAFF');
   }
 
-  // If no role is set but user has a valid session, allow access (they may need to complete onboarding)
   if (!isWelcomePage && !role) {
-    // If they have a profile with a site_id, they're likely staff
     const hasProfile = profileRow && profileRow.site_id;
-
-    // Check if user has onboarding data indicating they are a staff member
     const email = session.user?.email?.toLowerCase() || '';
     const hasStaffEmail = email.includes('@') &&
       (email.includes('.nhs.uk') ||
@@ -101,50 +310,150 @@ export async function requireStaffSession(supabase) {
        session.user.raw_user_meta_data?.role);
 
     console.log('[requireStaffSession] No role check:', {
-      email: email,
-      hasProfile: hasProfile,
+      email,
+      hasProfile,
       site_id: profileRow?.site_id,
-      hasStaffEmail: hasStaffEmail,
+      hasStaffEmail,
       isAllowed: hasProfile || hasStaffEmail
     });
 
-    // Allow if they have a profile with site_id OR have a staff email
     if (!hasProfile && !hasStaffEmail) {
       throw new Error('NOT_STAFF');
     }
   }
+
   return { session, profileRow };
 }
 
-export async function getSiteText(supabase, siteId){
+export async function getSiteText(supabase, siteId, options = {}){
   if (!siteId) return null;
-  const { data: site } = await supabase.from('sites').select('name, city').eq('id', siteId).maybeSingle();
-  return site ? `${site.name}${site.city ? ' • ' + site.city : ''}` : `Site ${siteId}`;
+
+  const forceRefresh = options?.forceRefresh === true;
+  const cacheKey = `${SITE_CACHE_KEY_PREFIX}${siteId}`;
+  const cacheEntry = forceRefresh ? null : readCacheEntry(cacheKey);
+  const now = Date.now();
+  const age = cacheEntry ? now - cacheEntry.cachedAt : Number.POSITIVE_INFINITY;
+  const expired = age > SITE_CACHE_MAX_AGE;
+  const stale = age > SITE_CACHE_STALE_AFTER;
+
+  if (cacheEntry && !forceRefresh && !expired) {
+    if (stale) {
+      scheduleSiteRefresh(supabase, siteId);
+    }
+    return cacheEntry.value;
+  }
+
+  const { value, error } = await fetchSiteTextAndCache(supabase, siteId, forceRefresh ? 'force-refresh' : cacheEntry ? 'expired-refresh' : 'fetch');
+  if (error) {
+    console.error('[getSiteText] Error fetching site:', error);
+    if (cacheEntry) return cacheEntry.value;
+    return `Site ${siteId}`;
+  }
+  return value;
 }
 
-export function setTopbar({siteText, email, role}){
-  const sitePill = document.getElementById('site-pill');
-  if (sitePill && siteText) sitePill.textContent = `Site: ${siteText}`;
+export function invalidateProfileCache(userId) {
+  const id = userId || window.__staffProfileCacheMeta?.userId;
+  if (!id) return;
+  removeCacheEntry(`${PROFILE_CACHE_KEY_PREFIX}${id}`);
+}
+
+export function updateProfileCache(userId, profileRow) {
+  if (!userId) return;
+  writeCacheEntry(`${PROFILE_CACHE_KEY_PREFIX}${userId}`, profileRow ?? null, PROFILE_CACHE_MAX_AGE);
+  markGlobalProfile(userId, profileRow ?? null, 'manual-set');
+  dispatchProfileUpdate(userId, profileRow ?? null, 'manual-set');
+}
+
+export function invalidateSiteCache(siteId) {
+  if (!siteId) return;
+  removeCacheEntry(`${SITE_CACHE_KEY_PREFIX}${siteId}`);
+}
+
+// Simple, explicit: session -> master_users.site_id -> sites.name
+export async function getCurrentUserSiteText(supabase) {
+  const { data: { session }, error: sessErr } = await supabase.auth.getSession();
+  if (sessErr) throw sessErr;
+  const userId = session?.user?.id;
+  if (!userId) throw new Error('NO_SESSION');
+
+  const { data: profile, error: profErr } = await supabase
+    .from('master_users')
+    .select('site_id')
+    .eq('auth_user_id', userId)
+    .maybeSingle();
+  if (profErr) throw profErr;
+  const siteId = profile?.site_id;
+  if (!siteId) return null;
+  
+  // Try a direct SQL query to bypass any dependencies on other tables
+  try {
+    // This uses the REST API to make a direct request to sites table
+    // without going through any other tables
+    const { data, error } = await supabase
+      .from('sites')
+      .select('name, city')
+      .eq('id', siteId)
+      .maybeSingle();
+    
+    console.log('[getCurrentUserSiteText] Direct sites query result:', { data, error });
+    
+    if (!error && data && data.name) {
+      return `${data.name}${data.city ? ' • ' + data.city : ''}`;
+    }
+  } catch (e) {
+    console.warn('[getCurrentUserSiteText] Direct sites query failed:', e);
+  }
+  
+  // Add debugging message to see what's happening at runtime
+  console.log('[getCurrentUserSiteText] All site resolution methods failed for siteId:', siteId);
+  
+  // Return a debug message that makes it clear this is a fallback
+  return `Site ${siteId} (DB Query Failed)`;
+}
+
+// Convenience: handles setting up the topbar elements in one call
+// Site pill has been removed per request
+export async function setTopbarSiteForCurrentUser(supabase){
+  try {
+    // Skip site text resolution since we no longer display it
+    setTopbar({ siteText: null }); 
+    return null;
+  } catch (e) {
+    console.warn('[setTopbarSiteForCurrentUser] Failed to set up topbar:', e?.message || e);
+    return null;
+  }
+}
+
+export function setTopbar({siteText, email, role, access_type}){
+  // Site pill removed per request
   const emailPill = document.getElementById('email-pill');
   if (emailPill && email) emailPill.textContent = email;
   const rolePill = document.getElementById('role-pill');
-  if (rolePill && role) rolePill.textContent = role;
-  
+  // Always prefer access_type from master_users for display
+  const rawEffective = (access_type || role || '').toString();
+  const displayRole = rawEffective
+    ? rawEffective.charAt(0).toUpperCase() + rawEffective.slice(1).toLowerCase()
+    : 'Staff';
+  if (rolePill) rolePill.textContent = displayRole;
+
   // Update navigation to include Admin Portal for admin users
   const navContainer = document.querySelector('.nav.seg-nav');
   if (navContainer) {
-    const isAdmin = role && ['admin', 'owner'].includes(role.toLowerCase());
-    
+    // Check both role and access_type for admin privileges
+    const effectiveRole = access_type || role || '';
+    const isAdmin = effectiveRole && ['admin', 'owner'].includes(effectiveRole.toLowerCase());
+
     // Check if Admin Portal button already exists in navigation
     const existingAdminBtn = navContainer.querySelector('button[data-section="admin-portal"]');
-    
+
     if (isAdmin && !existingAdminBtn) {
       // Add Admin Portal button to navigation
       const adminButton = document.createElement('button');
       adminButton.type = 'button';
       adminButton.dataset.section = 'admin-portal';
-      adminButton.dataset.href = 'admin-dashboard.html';
-      adminButton.textContent = 'Admin Portal';
+  adminButton.dataset.href = 'admin-dashboard.html';
+  adminButton.textContent = 'Admin Portal';
       navContainer.appendChild(adminButton);
     } else if (!isAdmin && existingAdminBtn) {
       // Remove Admin Portal button from navigation
@@ -204,8 +513,7 @@ export function renderStaffNavigation(activePage = 'home') {
   if (navContainer.dataset.rendering === 'true') return;
   navContainer.dataset.rendering = 'true';
   
-  // Always render navigation; forced onboarding suppression removed
-
+  // Standardized navigation items across all pages
   const navItems = [
     { page: 'home', href: 'staff.html', label: 'Home' },
     { page: 'calendar', href: 'staff-calendar.html', label: 'Staffing Calendar' },
@@ -218,50 +526,44 @@ export function renderStaffNavigation(activePage = 'home') {
     { page: 'quiz', href: 'staff-quiz.html', label: 'Quiz' }
   ];
 
-  // Clear existing content and event listeners
+  // Clear existing content and event listeners to avoid duplication
   navContainer.innerHTML = '';
   
   // Create navigation elements using working pattern (buttons with data-section)
   navItems.forEach(item => {
     const button = document.createElement('button');
     button.type = 'button';
-    button.dataset.section = item.page; // Use data-section like working version
-    button.dataset.href = item.href; // Store href for navigation
+    button.dataset.section = item.page; 
+    button.dataset.href = item.href;
     button.textContent = item.label;
     
-    // Add tooltip if specified - use data attribute for better tooltip control
+    // Add tooltip if specified
     if (item.tooltip) {
       button.title = item.tooltip;
       button.setAttribute('data-tooltip', item.tooltip);
     }
     
-    // Set classes and visibility
-    if (item.disabled && item.page === activePage) {
-      button.className = 'disabled-nav-item active';
-      button.style.color = '#9ca3af'; // Grey color
-      button.style.cursor = 'pointer'; // Allow clicking for PIN prompt
-      button.style.opacity = '0.6';
-    } else if (item.disabled) {
-      button.className = 'disabled-nav-item';
-      // Don't actually disable the button so tooltip works and we can handle clicks
-      // button.disabled = true;
-      button.style.color = '#9ca3af'; // Grey color
-      button.style.cursor = 'pointer'; // Allow clicking for PIN prompt
-      button.style.opacity = '0.6';
-    } else if (item.page === activePage && item.adminOnly) {
-      button.className = 'admin-only active';
-      button.style.display = 'none';
-    } else if (item.page === activePage) {
-      button.className = 'active';
-    } else if (item.adminOnly) {
-      button.className = 'admin-only';
-      button.style.display = 'none';
+    // Set classes and visibility - simplified class assignment
+    let className = '';
+    
+    if (item.page === activePage) {
+      className += ' active';
     }
+    
+    if (item.disabled) {
+      className += ' disabled-nav-item';
+    }
+    
+    if (item.adminOnly) {
+      className += ' admin-only';
+    }
+    
+    button.className = className.trim();
     
     navContainer.appendChild(button);
   });
   
-  // Add single click handler using event delegation (like working version)
+  // Add single click handler using event delegation
   if (!navContainer.dataset.hasClickHandler) {
     navContainer.addEventListener('click', async (e) => {
       const btn = e.target.closest('button[data-section]');
@@ -274,19 +576,15 @@ export function renderStaffNavigation(activePage = 'home') {
       if (btn.classList.contains('disabled-nav-item')) {
         const section = btn.getAttribute('data-section');
         if (section === 'meetings') {
-          // Show PIN prompt for meetings
           const pin = prompt('This feature is coming soon! Enter PIN to access:');
           if (pin === '9021') {
-            // Correct PIN, allow access
             const href = btn.getAttribute('data-href');
             if (href) {
               window.location.href = href;
             }
           } else if (pin !== null) {
-            // Wrong PIN (but not cancelled)
             alert('Incorrect PIN');
           }
-          // If pin is null (cancelled), do nothing
         }
         return;
       }
@@ -298,37 +596,25 @@ export function renderStaffNavigation(activePage = 'home') {
       const section = btn.getAttribute('data-section');
       const href = btn.getAttribute('data-href');
       
-      console.log('Staff navigation clicked:', section, href);
-      
       // Update active states
       navContainer.querySelectorAll('button').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       
       // Handle Admin Portal navigation with special logic
       if (section === 'admin-portal') {
-        console.log('Admin Portal button clicked - checking authentication state...');
-        
         try {
           // Check if we have an active Supabase session
           if (window.supabase && typeof window.supabase.auth.getSession === 'function') {
             const { data: { session }, error } = await window.supabase.auth.getSession();
             
-            if (error) {
-              console.warn('Error getting session:', error);
-            }
-            
             if (session && session.user) {
-              console.log('Active session found for user:', session.user.email);
               // Session is active, navigate directly to admin-dashboard.html
               window.location.href = href;
               return;
-            } else {
-              console.log('No active session found');
             }
           }
           
           // If no session, still navigate but let admin-dashboard handle authentication
-          console.log('Navigating to admin-dashboard.html - authentication will be handled there');
           window.location.href = href;
           
         } catch (error) {
@@ -353,6 +639,11 @@ export function renderStaffNavigation(activePage = 'home') {
   }
   
   navContainer.dataset.rendering = 'false';
+  
+  // Trigger navigation styling
+  if (typeof window.fixNavigationStyling === 'function') {
+    setTimeout(window.fixNavigationStyling, 0);
+  }
 }
 
 export function navActivate(page){

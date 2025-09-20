@@ -43,21 +43,21 @@ async function checkInvitation() {
         
         // 3. Check profiles
         const { data: profiles, error: profError } = await supabase
-          .from('profiles')
+          .from('master_users')
           .select('*')
           .or(`email.eq.${email},full_name.ilike.%John Smith%`);
         results.profiles = { data: profiles, error: profError };
         
         // 4. Check kiosk_users
         const { data: kiosk, error: kioskError } = await supabase
-          .from('kiosk_users')
+          .from('master_users')
           .select('*')
           .or('full_name.eq.John Smith,full_name.ilike.%John%');
         results.kiosk_users = { data: kiosk, error: kioskError };
         
         // 5. Check staff_app_welcome
         const { data: saw, error: sawError } = await supabase
-          .from('staff_app_welcome')
+          .from('master_users')
           .select('*')
           .or('full_name.eq.John Smith,full_name.ilike.%John%');
         results.staff_app_welcome = { data: saw, error: sawError };

@@ -65,9 +65,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         const { data: profile } = await supabase
-          .from('profiles')
-          .select('full_name, role')
-          .eq('user_id', session.user.id)
+          .from('master_users')
+          .select('full_name, role, access_type')
+          .eq('auth_user_id', session.user.id)
           .maybeSingle();
         
         const userName = document.getElementById('user-name');

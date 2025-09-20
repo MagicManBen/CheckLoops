@@ -19,11 +19,11 @@ if (authError) {
 console.log('Logged in as:', authData.user.email);
 console.log('User metadata:', authData.user.user_metadata);
 
-// Check profiles table
+// Check master_users table
 const { data: profiles, error: profileError } = await supabase
-  .from('profiles')
+  .from('master_users')
   .select('*')
-  .eq('user_id', authData.user.id);
+  .eq('auth_user_id', authData.user.id);
 
 console.log('Profile data:', profiles);
 

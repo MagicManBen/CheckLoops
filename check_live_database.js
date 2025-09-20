@@ -22,7 +22,7 @@ async function checkDatabase() {
   // Check 1_staff_holiday_profiles
   console.log('\n2. Checking 1_staff_holiday_profiles:');
   const { data: profiles, error: profilesError } = await supabase
-    .from('1_staff_holiday_profiles')
+    .from('master_users')
     .select('*')
     .limit(2);
 
@@ -48,7 +48,7 @@ async function checkDatabase() {
   // Check 3_staff_working_patterns
   console.log('\n4. Checking 3_staff_working_patterns:');
   const { data: patterns, error: patternError } = await supabase
-    .from('3_staff_working_patterns')
+    .from('master_users')
     .select('*')
     .limit(2);
 
@@ -78,7 +78,7 @@ async function checkDatabase() {
     const { data: userSummary } = await supabase
       .from('holiday_summary')
       .select('*')
-      .eq('user_id', userData.user.id)
+      .eq('auth_user_id', userData.user.id)
       .eq('year', new Date().getFullYear())
       .maybeSingle();
 

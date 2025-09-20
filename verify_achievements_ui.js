@@ -22,9 +22,9 @@ async function verifyAchievementsUI() {
 
     // Get user profile with kiosk_user_id
     const { data: profile } = await supabase
-        .from('profiles')
+        .from('master_users')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('auth_user_id', user.id)
         .single();
 
     if (!profile) {

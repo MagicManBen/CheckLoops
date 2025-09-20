@@ -1,0 +1,58 @@
+// Script to add holiday_approved column to master_users table if it doesn't exist
+
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
+const SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTAxNzI3NiwiZXhwIjoyMDcwNTkzMjc2fQ.CJxV14F0T2TWkAjeR4bpYiBIOwLwyfzF9WzAWwS99Xc';
+
+async function setupHolidayApproval() {
+  try {
+    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+
+    console.log('Setting up holiday approval system...');
+
+    // First, let's check if the column exists
+    const { data: testData, error: testError } = await supabase
+      .from('master_users')
+      .select('auth_user_id, holiday_approved')
+      .limit(1);
+
+    if (testError && testError.message.includes('column')) {
+      console.log('Column "holiday_approved" does not exist. Please run this SQL in Supabase:');
+      console.log(`
+ALTER TABLE kiosk_users
+ADD COLUMN IF NOT EXISTS holiday_approved BOOLEAN DEFAULT false;
+
+-- Set all existing users to not approved by default
+UPDATE kiosk_users
+SET holiday_approved = false
+WHERE holiday_approved IS NULL;
+      `);
+      return;
+    }
+
+    // Get all users and their current approval status
+    const { data: users, error: usersError } = await supabase
+      .from('master_users')
+      .select('auth_user_id, name, holiday_approved');
+
+    if (usersError) {
+      console.error('Error fetching users:', usersError);
+      return;
+    }
+
+    console.log('\nCurrent Holiday Approval Status:');
+    console.log('================================');
+    users.forEach(user => {
+      console.log(`${user.name}: ${user.holiday_approved ? '✓ Approved' : '✗ Not Approved'}`);
+    });
+
+    console.log('\nHoliday approval system is ready!');
+    console.log('Admins can now approve holidays from the admin dashboard.');
+
+  } catch (error) {
+    console.error('Error setting up holiday approval:', error);
+  }
+}
+
+setupHolidayApproval();

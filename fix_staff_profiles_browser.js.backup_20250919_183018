@@ -1,0 +1,151 @@
+// Run this in the browser console while logged in as admin (ben.howard@stoke.nhs.uk)
+// This will fix the profile saving issues for staff users
+
+async function fixStaffProfiles() {
+  console.log('Starting profile fix for staff users...');
+
+  try {
+    // Import Supabase if not already available
+    if (typeof supabase === 'undefined') {
+      const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+      window.supabase = createClient(
+        'https://unveoqnlqnobufhublyw.supabase.co',
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME'
+      );
+    }
+
+    // Get current session to ensure we're logged in
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      console.error('Not logged in! Please log in first.');
+      return;
+    }
+
+    console.log('Logged in as:', session.user.email);
+
+    // Define the staff users to fix
+    const staffUsers = [
+      { email: 'benhowardmagic@hotmail.com', name: 'Ben Howard', role: 'staff' },
+      { email: 'ben.howard@stoke.nhs.uk', name: 'Ben Howard', role: 'admin' }
+    ];
+
+    for (const staffUser of staffUsers) {
+      console.log(`\nProcessing ${staffUser.email}...`);
+
+      // First, get the user ID from auth.users (if we can)
+      let userId = null;
+
+      // If we're processing our own account, use our ID
+      if (session.user.email === staffUser.email) {
+        userId = session.user.id;
+      } else {
+        // Try to find via profiles or staff_app_welcome
+        const { data: profileCheck } = await supabase
+          .from('profiles')
+          .select('user_id')
+          .eq('full_name', staffUser.name)
+          .limit(1)
+          .maybeSingle();
+
+        if (profileCheck) {
+          userId = profileCheck.user_id;
+        } else {
+          // Check staff_app_welcome
+          const { data: welcomeCheck } = await supabase
+            .from('staff_app_welcome')
+            .select('user_id')
+            .eq('full_name', staffUser.name)
+            .limit(1)
+            .maybeSingle();
+
+          if (welcomeCheck) {
+            userId = welcomeCheck.user_id;
+          }
+        }
+      }
+
+      if (!userId && session.user.email === 'ben.howard@stoke.nhs.uk') {
+        // Admin can create profile for other user
+        // First need to get their user ID - this is tricky without service role
+        console.log(`  ⚠️ Cannot find user ID for ${staffUser.email} - may need manual creation`);
+        continue;
+      }
+
+      if (userId) {
+        // Create/update profiles record
+        const profileData = {
+          user_id: userId,
+          site_id: 1,
+          full_name: staffUser.name,
+          nickname: staffUser.name.split(' ')[0],
+          role: staffUser.role,
+          avatar_url: '',
+          onboarding_complete: true
+        };
+
+        console.log('  Creating/updating profiles record...');
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .upsert(profileData, { onConflict: 'user_id' });
+
+        if (profileError) {
+          console.error('  ❌ Profile error:', profileError);
+        } else {
+          console.log('  ✅ Profile saved');
+        }
+
+        // Create/update staff_app_welcome record
+        const welcomeData = {
+          user_id: userId,
+          site_id: 1,
+          full_name: staffUser.name,
+          nickname: staffUser.name.split(' ')[0],
+          role_detail: staffUser.role,
+          team_id: 1,
+          team_name: 'General',
+          avatar_url: ''
+        };
+
+        console.log('  Creating/updating staff_app_welcome record...');
+        const { error: welcomeError } = await supabase
+          .from('staff_app_welcome')
+          .upsert(welcomeData, { onConflict: 'user_id' });
+
+        if (welcomeError) {
+          console.error('  ❌ Welcome error:', welcomeError);
+        } else {
+          console.log('  ✅ Welcome record saved');
+        }
+      }
+    }
+
+    // If we're the staff user, update our own auth metadata
+    if (session.user.email === 'benhowardmagic@hotmail.com') {
+      console.log('\nUpdating your auth metadata...');
+      const { error: authError } = await supabase.auth.updateUser({
+        data: {
+          full_name: 'Ben Howard',
+          nickname: 'Ben',
+          role: 'staff',
+          site_id: 1,
+          onboarding_complete: true
+        }
+      });
+
+      if (authError) {
+        console.error('❌ Auth metadata error:', authError);
+      } else {
+        console.log('✅ Auth metadata updated');
+      }
+    }
+
+    console.log('\n✅ Profile fix complete!');
+    console.log('The staff user should now be able to proceed through the Welcome flow without errors.');
+
+  } catch (error) {
+    console.error('Error during fix:', error);
+  }
+}
+
+// Run the function
+fixStaffProfiles();

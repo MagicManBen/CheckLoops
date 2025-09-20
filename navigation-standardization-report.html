@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Navigation Standardization Report</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1, h2, h3 {
+            color: #2a52be;
+        }
+        code {
+            background-color: #f5f5f5;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        .file-path {
+            font-weight: bold;
+            color: #6b46c1;
+        }
+        .highlight {
+            background-color: #fffbdd;
+            padding: 2px 0;
+        }
+        .steps {
+            background-color: #f8f9fa;
+            padding: 15px 20px;
+            border-left: 4px solid #2a52be;
+            margin: 20px 0;
+        }
+        .steps ol {
+            margin: 0;
+            padding-left: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .file-changes {
+            margin-bottom: 30px;
+        }
+        .screenshot {
+            max-width: 100%;
+            border: 1px solid #ddd;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Navigation Standardization Report</h1>
+    
+    <p>This document outlines the changes made to standardize the navigation bar across all staff pages in the CheckLoop application.</p>
+    
+    <h2>Problem Statement</h2>
+    <p>The navigation bar was inconsistent between different pages in the staff section. Specifically:</p>
+    <ul>
+        <li>Visual differences in styling between pages</li>
+        <li>Missing script references on some pages</li>
+        <li>Potential duplication of navigation definition in both HTML and JavaScript</li>
+    </ul>
+
+    <h2>Solution Overview</h2>
+    <p>To standardize the navigation bar, the following changes were made:</p>
+    <ol>
+        <li>Enhanced the <code>renderStaffNavigation</code> function in <span class="file-path">staff-common.js</span> to ensure consistent navigation structure</li>
+        <li>Improved the <code>fixNavigationStyling</code> function in <span class="file-path">fix-navigation-style.js</span> to apply consistent styling</li>
+        <li>Made <code>fixNavigationStyling</code> available globally to ensure it can be called from different contexts</li>
+        <li>Added missing script reference to <span class="file-path">staff-calendar.html</span></li>
+    </ol>
+
+    <h2>Changes Made</h2>
+
+    <div class="file-changes">
+        <h3>1. staff-common.js</h3>
+        <p>Enhanced the <code>renderStaffNavigation</code> function to ensure consistent navigation generation:</p>
+        <pre><code>function renderStaffNavigation() {
+    // Get or create the navigation container
+    let navContainer = document.querySelector('.topbar.panel .nav.seg-nav');
+    if (!navContainer) {
+        const topbar = document.querySelector('.topbar.panel');
+        if (!topbar) return; // No topbar found
+        
+        navContainer = document.createElement('div');
+        navContainer.className = 'nav seg-nav';
+        topbar.appendChild(navContainer);
+    }
+
+    // Clear existing navigation
+    navContainer.innerHTML = '';
+    
+    // Create consistent navigation buttons
+    const sections = [
+        { id: 'home', text: 'Home' },
+        { id: 'calendar', text: 'Calendar' },
+        { id: 'welcome', text: 'Welcome' },
+        { id: 'holidays', text: 'Holidays' },
+        { id: 'meetings', text: 'Meetings' },
+        { id: 'scans', text: 'Scans' },
+        { id: 'training', text: 'Training' },
+        { id: 'achievements', text: 'Achievements' },
+        { id: 'quiz', text: 'Quiz' }
+    ];
+    
+    sections.forEach(section => {
+        const button = document.createElement('button');
+        button.textContent = section.text;
+        button.dataset.section = section.id;
+        navContainer.appendChild(button);
+    });
+    
+    // Check for admin role and add admin portal button if needed
+    if (window.staffRole === 'admin') {
+        const adminButton = document.createElement('button');
+        adminButton.textContent = 'Admin Portal';
+        adminButton.dataset.section = 'admin-portal';
+        navContainer.appendChild(adminButton);
+    }
+    
+    // Apply styling if available
+    if (typeof window.fixNavigationStyling === 'function') {
+        window.fixNavigationStyling();
+    }
+}</code></pre>
+    </div>
+
+    <div class="file-changes">
+        <h3>2. fix-navigation-style.js</h3>
+        <p>Enhanced the styling function and made it globally available:</p>
+        <pre><code>// Make the function globally available
+window.fixNavigationStyling = function() {
+    const navContainer = document.querySelector('.topbar.panel .nav.seg-nav');
+    if (!navContainer) return;
+    
+    // Apply consistent styling to navigation container
+    navContainer.style.display = 'flex';
+    navContainer.style.flexWrap = 'wrap';
+    navContainer.style.gap = '5px';
+    
+    // Style all navigation buttons consistently
+    const buttons = navContainer.querySelectorAll('button');
+    buttons.forEach(button => {
+        button.style.padding = '8px 12px';
+        button.style.borderRadius = '4px';
+        button.style.border = 'none';
+        button.style.background = '#f0f0f0';
+        button.style.cursor = 'pointer';
+        button.style.transition = 'all 0.2s ease';
+        
+        // Add hover effect
+        button.onmouseenter = function() {
+            this.style.background = '#e0e0e0';
+        };
+        button.onmouseleave = function() {
+            if (!this.classList.contains('active')) {
+                this.style.background = '#f0f0f0';
+            }
+        };
+    });
+    
+    // Highlight the active button based on the current page
+    const currentPath = window.location.pathname;
+    const currentPage = currentPath.split('/').pop().split('.')[0];
+    
+    buttons.forEach(button => {
+        const section = button.dataset.section;
+        
+        // Match the current page with the corresponding button
+        if ((currentPage === 'staff' && section === 'home') ||
+            (currentPage.includes(section) && section !== 'home')) {
+            button.classList.add('active');
+            button.style.background = '#4338ca';
+            button.style.color = 'white';
+        }
+    });
+};
+
+// Execute when the DOM is fully loaded
+document.addEventListener('DOMContentLoaded', function() {
+    window.fixNavigationStyling();
+});</code></pre>
+    </div>
+
+    <div class="file-changes">
+        <h3>3. staff-calendar.html</h3>
+        <p>Added the missing script reference:</p>
+        <pre><code>&lt;script src="fix-navigation-style.js"&gt;&lt;/script&gt;</code></pre>
+    </div>
+
+    <h2>How to Test the Navigation</h2>
+    
+    <div class="steps">
+        <p>I've created a test script that can verify navigation consistency across pages:</p>
+        <ol>
+            <li>Open any staff page in your browser</li>
+            <li>Press F12 or Cmd+Option+I to open the browser console</li>
+            <li>Copy the contents of <span class="file-path">test-navigation-consistency.js</span> and paste it into the console</li>
+            <li>Press Enter to run the test</li>
+            <li>Review the test results in the console</li>
+            <li>Repeat on other staff pages to compare results</li>
+        </ol>
+    </div>
+
+    <h2>Manual Testing Checklist</h2>
+    
+    <table>
+        <tr>
+            <th>Page</th>
+            <th>Navigation Renders</th>
+            <th>Styling Consistent</th>
+            <th>Active Button Highlighted</th>
+        </tr>
+        <tr>
+            <td>staff.html</td>
+            <td>☐</td>
+            <td>☐</td>
+            <td>☐</td>
+        </tr>
+        <tr>
+            <td>staff-calendar.html</td>
+            <td>☐</td>
+            <td>☐</td>
+            <td>☐</td>
+        </tr>
+        <tr>
+            <td>achievements.html</td>
+            <td>☐</td>
+            <td>☐</td>
+            <td>☐</td>
+        </tr>
+        <tr>
+            <td>staff-quiz.html</td>
+            <td>☐</td>
+            <td>☐</td>
+            <td>☐</td>
+        </tr>
+        <tr>
+            <td>staff-training.html</td>
+            <td>☐</td>
+            <td>☐</td>
+            <td>☐</td>
+        </tr>
+    </table>
+
+    <h2>Conclusion</h2>
+    <p>These changes ensure that the navigation bar is rendered consistently across all staff pages. The key improvements are:</p>
+    <ul>
+        <li>Centralized navigation generation in <code>renderStaffNavigation</code></li>
+        <li>Consistent styling through <code>fixNavigationStyling</code></li>
+        <li>Elimination of duplicate navigation definitions</li>
+        <li>All pages now include the necessary scripts</li>
+    </ul>
+    
+    <p>This implementation follows the DRY principle (Don't Repeat Yourself) by having a single source of truth for both navigation structure and styling.</p>
+</body>
+</html>

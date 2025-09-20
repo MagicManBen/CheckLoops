@@ -64,8 +64,8 @@ async function investigate() {
     console.log('   📝 master_users exists but empty');
   }
   
-  // 2. Check kiosk_users table
-  console.log('\n📋 2. Checking kiosk_users table...');
+  // 2. Check master_users table
+  console.log('\n📋 2. Checking master_users table...');
   const kioskResult = await curlQuery('kiosk_users');
   
   if (kioskResult.error) {
@@ -84,8 +84,8 @@ async function investigate() {
     console.log('   📝 kiosk_users exists but empty');
   }
   
-  // 3. Check profiles table
-  console.log('\n📋 3. Checking profiles table...');
+  // 3. Check master_users table
+  console.log('\n📋 3. Checking master_users table...');
   const profilesResult = await curlQuery('profiles');
   
   if (profilesResult.error) {
