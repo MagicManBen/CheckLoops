@@ -176,7 +176,7 @@
       <div class="pill" id="role-pill">—</div>
       <button class="btn" id="logout-btn">Sign Out</button>
       <script type="module">
-      import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, daysBetween, attachLogout } from './staff-common.js';
+      import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, daysBetween, attachLogout, createAchievementClient } from './staff-common.js';
         (async function(){
           try{
             console.debug('[staff-training] start');
@@ -190,6 +190,26 @@
             navActivate('training');
             attachLogout(supabase);
 
+            let achievementClient = null;
+
+            async function refreshTrainingAchievements(metadata = {}) {
+              if (!achievementClient) return;
+              try {
+                const { count } = await supabase
+                  .from('training_records')
+                  .select('id', { count: 'exact', head: true })
+                  .eq('user_id', currentUser.id);
+
+                const totalRecords = count ?? 0;
+                await achievementClient.ensureUnlocked('training_triple', {
+                  condition: totalRecords >= 3,
+                  metadata: { totalRecords, ...metadata }
+                });
+              } catch (err) {
+                console.warn('[staff-training] refreshTrainingAchievements failed', err);
+              }
+            }
+
             // Admin nav removed - separate staff portal
 
             try{
@@ -202,6 +222,16 @@
               const role = (accessType || profileRow?.role || user?.raw_user_meta_data?.role || 'Staff');
               const roleDetail = role; // setTopbar will format as needed
               setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: roleDetail , access_type: accessType || profileRow?.role});
+
+              try {
+                achievementClient = await createAchievementClient({
+                  supabase,
+                  session,
+                  profile: profileRow
+                });
+              } catch (err) {
+                console.warn('[staff-training] achievement client init failed', err);
+              }
 
               // Create currentUser object for training functionality
               let currentUser = {
@@ -303,6 +333,9 @@
                 // Make rows clickable after rendering
                 attachRowClickHandlers();
               }
+
+              // Update progress bar with training data
+              updateTrainingProgressBar(required, myRecords);
 
               // Simple client-side filter
               document.querySelectorAll('.chip').forEach(ch => ch.onclick = () => {
@@ -570,47 +603,23 @@
                   // Success - close modal and reload page
                   closeTrainingModal();
 
-                  // Check if this is the user's first training upload and unlock achievement
-                  try {
-                    // Check if user has any previous training records
-                    const { data: previousRecords, error: checkError } = await supabase
-                      .from('training_records')
-                      .select('id')
-                      .eq('user_id', globalUser.id)
-                      .limit(2); // We need more than 1 to know if this is NOT the first
-
-                    if (!checkError && previousRecords && previousRecords.length === 1) {
-                      // This is their first training upload! Unlock the achievement
-                      console.log('🏆 First training upload detected! Unlocking achievement...');
-
-                      // Get user's kiosk_user_id from profile
-                      const { data: profileData } = await supabase
-                        .from('master_users')
-                        .select('kiosk_auth_auth_user_id')
-                        .eq('auth_user_id', globalUser.id)
-                        .single();
-
-                      if (profileData && profileData.kiosk_user_id) {
-                        const kioskUserId = profileData.kiosk_user_id;
-
-                        // Unlock the achievement
-                        await supabase
-                          .from('user_achievements')
-                          .upsert({
-                            kiosk_user_id: kioskUserId,
-                            achievement_key: 'first_training_upload',
-                            status: 'unlocked',
-                            progress_percent: 100,
-                            unlocked_at: new Date().toISOString()
-                          }, {
-                            onConflict: 'kiosk_user_id,achievement_key'
-                          });
-                        console.log('✅ First Training Upload achievement unlocked!');
-                      }
+                  if (achievementClient) {
+                    try {
+                      await achievementClient.ensureUnlocked('first_training_upload', {
+                        metadata: {
+                          training_type_id: parseInt(typeId),
+                          completion_date: completionDate,
+                          has_certificate: Boolean(certificateUrl)
+                        }
+                      });
+                      await refreshTrainingAchievements({
+                        training_type_id: parseInt(typeId),
+                        completion_date: completionDate,
+                        has_certificate: Boolean(certificateUrl)
+                      });
+                    } catch (achievementError) {
+                      console.warn('Failed to unlock training achievements:', achievementError);
                     }
-                  } catch (achievementError) {
-                    console.warn('Failed to check/unlock training achievement:', achievementError);
-                    // Don't block the success flow if achievement fails
                   }
 
                   // Show success message
@@ -637,6 +646,188 @@
                   errorDiv.style.display = 'block';
                 }
               }
+
+              } catch(e){
+                console.error('Upload error:', e);
+              }
+
+              // Progress bar functions
+              function updateProgressBar(requiredTypes, myRecords) {
+                const now = new Date();
+                let valid = 0, dueSoon = 0, overdue = 0, total = requiredTypes.length;
+                let nextExpiringDate = null;
+                let nextExpiringName = '';
+                let recentActivity = [];
+
+                requiredTypes.forEach(type => {
+                  const records = myRecords.filter(r => r.training_type_id === type.id);
+                  const latest = records.sort((a,b)=> new Date(b.expiry_date||b.completion_date||0) - new Date(a.expiry_date||a.completion_date||0))[0];
+                  
+                  if (!latest) {
+                    overdue++;
+                    return;
+                  }
+
+                  const expiry = latest.expiry_date ? new Date(latest.expiry_date) : 
+                    (type.validity_months ? new Date(new Date(latest.completion_date).setMonth(new Date(latest.completion_date).getMonth() + Number(type.validity_months))) : null);
+                  
+                  if (!expiry) {
+                    valid++;
+                    return;
+                  }
+
+                  const days = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+                  
+                  if (days < 0) {
+                    overdue++;
+                  } else if (days <= 30) {
+                    dueSoon++;
+                    
+                    // Track next expiring
+                    if (!nextExpiringDate || expiry < nextExpiringDate) {
+                      nextExpiringDate = expiry;
+                      nextExpiringName = type.name;
+                    }
+                  } else {
+                    valid++;
+                  }
+
+                  // Track recent activity (completed in last 30 days)
+                  if (latest.completion_date) {
+                    const completionDate = new Date(latest.completion_date);
+                    const daysSinceCompletion = Math.ceil((now - completionDate) / (1000 * 60 * 60 * 24));
+                    if (daysSinceCompletion <= 30) {
+                      recentActivity.push({
+                        name: type.name,
+                        date: completionDate,
+                        days: daysSinceCompletion
+                      });
+                    }
+                  }
+                });
+
+                const percentage = total > 0 ? Math.round((valid / total) * 100) : 0;
+
+                // Update progress ring
+                const circumference = 283; // 2 * π * 45
+                const offset = circumference - (percentage / 100) * circumference;
+                document.getElementById('training-progress-ring').style.strokeDashoffset = offset;
+
+                // Update numbers with animation
+                animateNumber(document.getElementById('training-percentage'), percentage, '%', 1000);
+                animateNumber(document.getElementById('valid-count'), valid, '', 600);
+                animateNumber(document.getElementById('due-soon-count'), dueSoon, '', 800);
+                animateNumber(document.getElementById('overdue-count'), overdue, '', 1000);
+
+                // Update next expiring
+                const nextExpiringEl = document.getElementById('next-expiring');
+                if (nextExpiringDate && nextExpiringName) {
+                  const days = Math.ceil((nextExpiringDate - now) / (1000 * 60 * 60 * 24));
+                  nextExpiringEl.innerHTML = `
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                      <div style="font-weight: 600; color: #f8fbff; font-size: 13px;">${nextExpiringName}</div>
+                      <div style="color: ${days <= 7 ? '#ef4444' : days <= 14 ? '#fbbf24' : '#94a3b8'}; font-size: 12px;">
+                        ${days > 0 ? `Expires in ${days} day${days !== 1 ? 's' : ''}` : 'Expired'}
+                      </div>
+                    </div>
+                  `;
+                } else {
+                  nextExpiringEl.innerHTML = '<div style="color: #94a3b8;">All training up to date! 🎉</div>';
+                }
+
+                // Update recent activity
+                const recentEl = document.getElementById('recent-training');
+                if (recentActivity.length > 0) {
+                  const latest = recentActivity.sort((a,b) => b.date - a.date)[0];
+                  recentEl.innerHTML = `
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                      <div style="font-weight: 600; color: #f8fbff; font-size: 13px;">${latest.name}</div>
+                      <div style="color: #22c55e; font-size: 12px;">
+                        Completed ${latest.days} day${latest.days !== 1 ? 's' : ''} ago
+                      </div>
+                    </div>
+                  `;
+                } else {
+                  recentEl.innerHTML = '<div style="color: #94a3b8;">No recent activity</div>';
+                }
+              }
+
+              // Function to update the training progress bar
+              function updateTrainingProgressBar(requiredTypes, userRecords) {
+                const now = new Date();
+                let validCount = 0;
+                const totalCount = requiredTypes.length;
+
+                // Calculate valid training items
+                requiredTypes.forEach(type => {
+                  const records = userRecords.filter(r => r.training_type_id === type.id);
+                  const latest = records.sort((a,b)=> new Date(b.expiry_date||b.completion_date||0) - new Date(a.expiry_date||a.completion_date||0))[0];
+                  
+                  if (latest) {
+                    const expiry = latest.expiry_date ? new Date(latest.expiry_date) : (type.validity_months ? new Date(new Date(latest.completion_date).setMonth(new Date(latest.completion_date).getMonth()+Number(type.validity_months))) : null);
+                    
+                    if (!expiry || expiry > now) {
+                      validCount++;
+                    }
+                  }
+                });
+
+                // Calculate percentage
+                const percentage = totalCount > 0 ? Math.round((validCount / totalCount) * 100) : 0;
+                
+                // Update progress bar
+                const progressBar = document.getElementById('training-progress-bar');
+                const progressLabel = document.getElementById('training-progress-label');
+                
+                if (progressBar) {
+                  // Animate the progress bar
+                  setTimeout(() => {
+                    progressBar.style.width = `${percentage}%`;
+                  }, 100);
+                }
+                
+                if (progressLabel) {
+                  progressLabel.textContent = `${percentage}% Training Complete (${validCount}/${totalCount})`;
+                }
+
+                console.log(`Training progress: ${validCount}/${totalCount} = ${percentage}%`);
+              }
+
+              function animateNumber(element, targetValue, suffix = '', duration = 1000) {
+                const startValue = 0;
+                const startTime = performance.now();
+                
+                function updateNumber(currentTime) {
+                  const elapsed = currentTime - startTime;
+                  const progress = Math.min(elapsed / duration, 1);
+                  const easeOutQuart = 1 - Math.pow(1 - progress, 4);
+                  const currentValue = Math.round(startValue + (targetValue - startValue) * easeOutQuart);
+                  
+                  element.textContent = currentValue + suffix;
+                  
+                  if (progress < 1) {
+                    requestAnimationFrame(updateNumber);
+                  }
+                }
+                
+                requestAnimationFrame(updateNumber);
+              }
+
+              // Toggle details functionality
+              document.getElementById('training-toggle').addEventListener('click', function() {
+                const details = document.getElementById('training-details');
+                const icon = this.querySelector('svg');
+                const isExpanded = details.style.display !== 'none';
+                
+                if (isExpanded) {
+                  details.style.display = 'none';
+                  icon.style.transform = 'rotate(0deg)';
+                } else {
+                  details.style.display = 'block';
+                  icon.style.transform = 'rotate(180deg)';
+                }
+              });
+
             } catch(e){
               // requireStaffSession or inner errors
               if (String(e.message).includes('NO_SESSION')) { window.location.replace('home.html'); return; }
@@ -645,11 +836,6 @@
               document.getElementById('training-loading').style.display='none';
               document.getElementById('training-empty').style.display='block';
             }
-          } catch(e){
-            console.error('[staff-training] startup error', e);
-            document.getElementById('training-loading').style.display='none';
-            document.getElementById('training-empty').style.display='block';
-          }
         })();
       </script>
     </div>
@@ -667,6 +853,17 @@
           </svg>
           Upload Training
         </button>
+      </div>
+
+      <!-- Training Progress Bar -->
+      <div class="progress-wrap" style="margin-top:20px; padding:0 8px;">
+        <div class="progress" style="height:12px; background:#e5e7eb; border-radius:999px; overflow:hidden; border:1px solid rgba(255, 255, 255, 0.1);">
+          <div id="training-progress-bar" class="bar" style="height:100%; width:0%; background:linear-gradient(90deg,#60a5fa,#a78bfa); transition: width 0.8s ease;"></div>
+        </div>
+        <div id="training-progress-label" class="meta-note" style="text-align:right; margin-top:8px; color: #f8fbff; font-size: 14px; font-weight: 500;">0% Training Complete</div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:12px; margin-top: 20px;">
         <div class="filters">
           <div class="chip active" data-filter="all">All</div>
           <div class="chip" data-filter="ok">Valid</div>

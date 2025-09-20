@@ -9,11 +9,11 @@
     const DEBUG_ENABLED_KEY = 'checkloop_debug_enabled';
 
     let debugLogs = JSON.parse(localStorage.getItem(DEBUG_STORAGE_KEY) || '[]');
-    // Default: disabled/off unless user starts recording
+    // Default: disabled/off and hidden unless user manually enables
     let isEnabled = false;
     let recording = false;
 
-    // Create debug console HTML
+    // Create debug console HTML (HIDDEN BY DEFAULT)
     const consoleHTML = `
         <div id="debug-console-container" style="
             position: fixed;
@@ -24,6 +24,7 @@
             font-size: 12px;
             max-width: 500px;
             transition: all 0.3s ease;
+            display: none;
         ">
             <!-- Toggle Button -->
             <button id="debug-toggle" style="
@@ -618,20 +619,13 @@ ${JSON.stringify(reportData, null, 2)}
     }
 
     function init() {
-        // Always inject UI but do not start recording automatically
+        // Always inject UI but keep it hidden and do not start recording automatically
         injectConsole();
         updateLogDisplay();
 
-        // If user previously enabled recording, auto-start
-        try {
-            const was = localStorage.getItem(DEBUG_ENABLED_KEY);
-            if (was === 'true') {
-                const startBtn = document.getElementById('debug-start');
-                if (startBtn) startBtn.click();
-            }
-        } catch (e) {
-            // ignore storage errors
-        }
+        // Disable auto-start functionality - debug console remains hidden unless manually enabled
+        // Clear any previous recording state
+        localStorage.removeItem(DEBUG_ENABLED_KEY);
     }
 
     // Expose debug functions globally
@@ -650,6 +644,18 @@ ${JSON.stringify(reportData, null, 2)}
         disable: () => {
             isEnabled = false;
             localStorage.setItem(DEBUG_ENABLED_KEY, 'false');
+        },
+        show: () => {
+            const container = document.getElementById('debug-console-container');
+            if (container) {
+                container.style.display = 'block';
+            }
+        },
+        hide: () => {
+            const container = document.getElementById('debug-console-container');
+            if (container) {
+                container.style.display = 'none';
+            }
         }
     };
 })();

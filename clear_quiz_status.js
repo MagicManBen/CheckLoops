@@ -1,7 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = 'https://unveoqnlqnobufhublyw.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME';
+const supabaseKey = (typeof process !== 'undefined' && process.env?.SUPABASE_SERVICE_ROLE_KEY) || '';
+if (!supabaseKey) {
+  throw new Error('SUPABASE_SERVICE_ROLE_KEY not set in environment');
+}
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 

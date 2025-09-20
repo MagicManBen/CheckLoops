@@ -678,7 +678,7 @@
   </main>
 
   <script type="module">
-    import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, clearAuthData } from './staff-common.js';
+    import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, clearAuthData, createAchievementClient } from './staff-common.js';
     
     // Initialize Supabase
     const supabase = await initSupabase();
@@ -691,12 +691,60 @@
     
 let currentUser = null;
 let currentProfile = null;
+let achievementClient = null;
 let currentQuestions = [];
 let currentMode = null;
 let userAnswers = {};
 let quizStartTime = null;
 let reviewIndex = 0;
 let reviewResults = [];
+
+async function refreshPracticeAchievements({ scorePercent, totalQuestions }) {
+  if (!achievementClient) return;
+  try {
+    const { count } = await supabase
+      .from('quiz_practices')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', currentUser.id);
+
+    const totalPractices = count ?? 0;
+    await achievementClient.ensureUnlocked('practice_pro', {
+      condition: totalPractices >= 5,
+      metadata: {
+        totalPractices,
+        scorePercent,
+        totalQuestions,
+        mode: 'practice'
+      }
+    });
+  } catch (err) {
+    console.warn('Failed to refresh practice achievements:', err);
+  }
+}
+
+async function refreshRequiredAchievements({ scorePercent, totalQuestions }) {
+  if (!achievementClient) return;
+  try {
+    const { count } = await supabase
+      .from('quiz_attempts')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', currentUser.id)
+      .eq('is_practice', false);
+
+    const totalRequired = count ?? 0;
+    await achievementClient.ensureUnlocked('quiz_hat_trick', {
+      condition: totalRequired >= 3,
+      metadata: {
+        totalRequired,
+        scorePercent,
+        totalQuestions,
+        mode: 'required'
+      }
+    });
+  } catch (err) {
+    console.warn('Failed to refresh required-quiz achievements:', err);
+  }
+}
     
     // Get start of current week (Sunday at 00:00:00)
     function getWeekStart(date = new Date()) {
@@ -1092,6 +1140,7 @@ let reviewResults = [];
           } else {
             console.log('💾 submitQuiz: master_users updated successfully (next_quiz_due, last_required_quiz_at)');
             showToast('✅ Required quiz recorded.');
+            await refreshRequiredAchievements({ scorePercent, totalQuestions: currentQuestions.length });
           }
         } else {
           // Save to quiz_practices if table exists
@@ -1108,37 +1157,6 @@ let reviewResults = [];
             };
             console.log('💾 submitQuiz: Practice insert data:', insertData);
 
-              // Check if this will be the user's first practice quiz BEFORE inserting
-              let isFirstPracticeQuiz = false;
-              try {
-                const { data: existingPractices, error: checkError } = await supabase
-                  .from('quiz_practices')
-                  .select('id')
-                  .eq('user_id', currentUser.id)
-                  .limit(1);
-
-                isFirstPracticeQuiz = !checkError && (!existingPractices || existingPractices.length === 0);
-                
-                // Double-check in user_achievements table as well
-                if (isFirstPracticeQuiz) {
-                  const { data: existingAchievement } = await supabase
-                    .from('user_achievements')
-                    .select('id')
-                    .eq('user_id', currentUser.id)
-                    .eq('achievement_key', 'first_practice_quiz')
-                    .limit(1);
-                    
-                  // If they already have the achievement, don't give it again
-                  if (existingAchievement && existingAchievement.length > 0) {
-                    isFirstPracticeQuiz = false;
-                  }
-                }
-                
-                console.log('💾 Is first practice quiz?', isFirstPracticeQuiz);
-              } catch (err) {
-                console.warn('Could not check for existing practice quizzes:', err);
-              }
-              
               const { data, error } = await supabase.from('quiz_practices').insert(insertData);
 
             if (error) {
@@ -1188,39 +1206,18 @@ let reviewResults = [];
               console.log('💾 submitQuiz: Practice quiz saved successfully:', data);
               showToast('✅ Practice quiz saved.');
 
-              // If this was their first practice quiz, unlock the achievement
-              if (isFirstPracticeQuiz) {
+              if (achievementClient) {
                 try {
-                  console.log('🏆 First practice quiz detected! Unlocking achievement...');
-
-                  // Use user_id directly without relying on kiosk_users
-                  // The achievement is stored directly in user_achievements table
-                  try {
-                    const { error: achievementError } = await supabase
-                      .from('user_achievements')
-                      .upsert({
-                        user_id: currentUser.id,
-                        achievement_key: 'first_practice_quiz',
-                        status: 'unlocked',
-                        progress_percent: 100,
-                        unlocked_at: new Date().toISOString()
-                      }, {
-                        onConflict: 'user_id,achievement_key'
-                      });
-
-                    if (!achievementError) {
-                      console.log('✅ First Practice Quiz achievement unlocked!');
-                      // Show a toast notification
-                      showToast('🏆 Achievement Unlocked: Practice Makes Perfect!');
-                    } else {
-                      console.error('Failed to unlock achievement:', achievementError);
+                  await achievementClient.ensureUnlocked('first_practice_quiz', {
+                    metadata: {
+                      mode: 'practice',
+                      scorePercent,
+                      totalQuestions: currentQuestions.length
                     }
-                  } catch (achievementUnlockError) {
-                    console.error('Error in achievement unlock:', achievementUnlockError);
-                  }
+                  });
+                  await refreshPracticeAchievements({ scorePercent, totalQuestions: currentQuestions.length });
                 } catch (achievementError) {
-                  console.warn('Failed to check/unlock practice quiz achievement:', achievementError);
-                  // Don't block the quiz submission if achievement fails
+                  console.warn('Failed to unlock first_practice_quiz achievement:', achievementError);
                 }
               }
             }
@@ -1233,6 +1230,28 @@ let reviewResults = [];
       }
       
       // Build review payload and enter Review Mode first
+      if (achievementClient) {
+        try {
+          await achievementClient.ensureUnlocked('quiz_complete', {
+            condition: currentMode === 'required',
+            metadata: {
+              mode: currentMode,
+              scorePercent,
+              totalQuestions: currentQuestions.length
+            }
+          });
+          await achievementClient.ensureUnlocked('quiz_perfect', {
+            condition: scorePercent === 100,
+            metadata: {
+              mode: currentMode,
+              totalQuestions: currentQuestions.length
+            }
+          });
+        } catch (achievementErr) {
+          console.warn('Quiz achievement unlock failed:', achievementErr);
+        }
+      }
+
       reviewResults = currentQuestions.map((q, index) => ({
         question: q.question,
         choices: q.choices,
@@ -1423,6 +1442,16 @@ let reviewResults = [];
     requireStaffSession(supabase).then(async ({ session, profileRow }) => {
       currentUser = session.user;
       currentProfile = profileRow;
+
+      try {
+        achievementClient = await createAchievementClient({
+          supabase,
+          session,
+          profile: profileRow
+        });
+      } catch (err) {
+        console.warn('Quiz achievement client failed to initialise', err);
+      }
 
       // Set topbar info
       const siteId = profileRow?.site_id;
