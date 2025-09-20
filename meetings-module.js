@@ -445,7 +445,11 @@ export class MeetingsManager {
       console.log('File converted to base64, length:', fileBase64.length);
 
       // Use service key for transcription
-      const serviceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTAxNzI3NiwiZXhwIjoyMDcwNTkzMjc2fQ.CJxV14F0T2TWkAjeR4bpYiBIOwLwyfzF9WzAWwS99Xc';
+      const serviceKey = (typeof process !== 'undefined' && process.env?.SUPABASE_SERVICE_ROLE_KEY) || '';
+      if (!serviceKey) {
+        console.warn('SUPABASE_SERVICE_ROLE_KEY not set; transcription edge function call skipped.');
+        throw new Error('SUPABASE_SERVICE_ROLE_KEY not set in environment');
+      }
 
       // Call Edge function for transcription
       console.log('Calling transcribe-meeting edge function...');

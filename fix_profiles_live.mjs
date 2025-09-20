@@ -4,7 +4,10 @@
 import https from 'https';
 
 const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
-const SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTAxNzI3NiwiZXhwIjoyMDcwNTkzMjc2fQ.hI0b4vEcJQfRLqhLiCnD1pP1dP1L8OZI8I2eKGWCUB4';
+const SERVICE_KEY = (typeof process !== 'undefined' && process.env?.SUPABASE_SERVICE_ROLE_KEY) || '';
+if (!SERVICE_KEY) {
+  throw new Error('SUPABASE_SERVICE_ROLE_KEY not set in environment');
+}
 
 async function makeRequest(path, method, data = null) {
   const url = new URL(path, SUPABASE_URL);

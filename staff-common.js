@@ -93,7 +93,7 @@ function dispatchProfileUpdate(userId, profileRow, source) {
 async function fetchProfileAndCache(supabase, userId, reason = 'fetch') {
   const { data, error } = await supabase
     .from('master_users')
-    .select('role, access_type, role_detail, full_name, nickname, site_id, onboarding_complete, avatar_url, team_id, team_name')
+    .select('id, kiosk_user_id, role, access_type, role_detail, full_name, nickname, site_id, onboarding_complete, avatar_url, team_id, team_name')
     .eq('auth_user_id', userId)
     .maybeSingle();
 
@@ -520,7 +520,6 @@ export function renderStaffNavigation(activePage = 'home') {
     { page: 'welcome', href: 'staff-welcome.html', label: 'Welcome' },
     { page: 'holidays', href: 'my-holidays.html', label: 'My Holidays' },
     { page: 'meetings', href: 'staff-meetings.html', label: 'Meetings', disabled: true, tooltip: 'Coming Soon!' },
-    { page: 'scans', href: 'staff-scans.html', label: 'My Scans' },
     { page: 'training', href: 'staff-training.html', label: 'My Training' },
     { page: 'achievements', href: 'achievements.html', label: 'Achievements' },
     { page: 'quiz', href: 'staff-quiz.html', label: 'Quiz' }
@@ -692,7 +691,7 @@ export function computeCompliance(requiredTypes = [], records = [], now = new Da
     const latest = recs.sort((a,b)=> new Date(b.expiry_date||b.completion_date||0) - new Date(a.expiry_date||a.completion_date||0))[0];
     if (!latest) { due++; return; }
     const completion = latest.completion_date ? new Date(latest.completion_date) : null;
-    const expiry = latest.expiry_date || (t.validity_months && completion ? new Date(new Date(completion).setMonth(completion.getMonth()+Number(t.validity_months))) : null);
+    const expiry = latest.expiry_date ? new Date(latest.expiry_date) : (t.validity_months && completion ? new Date(new Date(completion).setMonth(completion.getMonth()+Number(t.validity_months))) : null);
     if (!expiry) { ok++; return; }
     const days = daysBetween(expiry, now);
     if (days < 0) due++; else ok++;
@@ -701,17 +700,39 @@ export function computeCompliance(requiredTypes = [], records = [], now = new Da
   return { ok, due, total, percent };
 }
 
-export async function getUserAchievements(supabase, kioskUserId) {
-  const { data, error } = await supabase
-    .from('user_achievements')
-    .select('achievement_key, status, progress_percent, unlocked_at')
-    .eq('kiosk_user_id', kioskUserId);
+export async function getUserAchievements(supabase, identifiers) {
+  if (!supabase) return [];
 
-  if (error) {
+  const kioskUserId = typeof identifiers === 'object'
+    ? identifiers?.kioskUserId ?? identifiers?.kiosk_user_id ?? null
+    : identifiers;
+  const userId = typeof identifiers === 'object'
+    ? identifiers?.userId ?? identifiers?.user_id ?? null
+    : null;
+
+  if (kioskUserId == null && !userId) return [];
+
+  try {
+    let query = supabase
+      .from('user_achievements')
+      .select('achievement_key, status, progress_percent, unlocked_at, metadata, kiosk_user_id, user_id')
+      .order('unlocked_at', { ascending: true, nullsFirst: true });
+
+    if (kioskUserId != null && userId) {
+      query = query.or(`user_id.eq.${userId},kiosk_user_id.eq.${kioskUserId}`);
+    } else if (kioskUserId != null) {
+      query = query.eq('kiosk_user_id', kioskUserId);
+    } else {
+      query = query.eq('user_id', userId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
     console.error('Error loading achievements:', error);
     return [];
   }
-  return data || [];
 }
 
 export async function upsertAchievement(supabase, kioskUserId, key, status, progress = 100) {
@@ -733,3 +754,5 @@ export async function upsertAchievement(supabase, kioskUserId, key, status, prog
     throw error;
   }
 }
+
+export { createAchievementClient } from './achievement-system.js';

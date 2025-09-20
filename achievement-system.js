@@ -1,471 +1,480 @@
-// Global Achievement System with Animations and Effects
-// This file handles all achievement unlocking, notifications, and display
+// Achievement client for CheckLoop staff portal
+// Provides a consistent way to load, unlock, and display achievements
 
-(function() {
-  'use strict';
+const DEFAULT_ACHIEVEMENTS = [
+  {
+    key: 'onboarding_completion',
+    name: 'Onboarding Complete',
+    description: 'Wrap up your onboarding tasks and join the team.',
+    icon: 'trophy',
+    points: 50,
+    metadata: { category: 'milestone' }
+  },
+  {
+    key: 'first_practice_quiz',
+    name: 'Practice Makes Perfect',
+    description: 'Finish your first practice quiz session.',
+    icon: 'star',
+    points: 25,
+    metadata: { category: 'learning' }
+  },
+  {
+    key: 'first_training_upload',
+    name: 'Training Champion',
+    description: 'Log the first record in your training tracker.',
+    icon: 'certificate',
+    points: 25,
+    metadata: { category: 'learning' }
+  },
+  {
+    key: 'quiz_complete',
+    name: 'Quiz Master',
+    description: 'Submit a mandatory quiz on time.',
+    icon: 'medal',
+    points: 40,
+    metadata: { category: 'compliance' }
+  },
+  {
+    key: 'quiz_perfect',
+    name: 'Perfect Score',
+    description: 'Score 100% on any quiz attempt.',
+    icon: 'sparkles',
+    points: 60,
+    metadata: { category: 'excellence' }
+  },
+  {
+    key: 'practice_pro',
+    name: 'Practice Pro',
+    description: 'Complete five practice quizzes to sharpen your skills.',
+    icon: 'target',
+    points: 40,
+    metadata: { category: 'learning' }
+  },
+  {
+    key: 'quiz_hat_trick',
+    name: 'Quiz Hat Trick',
+    description: 'Submit three required weekly quizzes.',
+    icon: 'medal',
+    points: 80,
+    metadata: { category: 'compliance' }
+  },
+  {
+    key: 'training_triple',
+    name: 'Learning Legend',
+    description: 'Log three separate training records.',
+    icon: 'books',
+    points: 60,
+    metadata: { category: 'learning' }
+  },
+  {
+    key: 'compliance_star',
+    name: 'Compliance Star',
+    description: 'Reach 90% training compliance or higher.',
+    icon: 'star',
+    points: 100,
+    metadata: { category: 'compliance' }
+  },
+  {
+    key: 'scan_sprinter',
+    name: 'Scan Sprinter',
+    description: 'Complete ten equipment scans in a single week.',
+    icon: 'scanner',
+    points: 50,
+    metadata: { category: 'operations' }
+  }
+];
 
-  const SPARKLE_DURATION = 10 * 60 * 1000; // 10 minutes in milliseconds
+function ensureObject(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+  return {};
+}
 
-  // Achievement System Class
-  class AchievementSystem {
-    constructor() {
-      this.supabase = null;
-      this.user = null;
-      this.kioskUserId = null;
-      this.unlockedAchievements = new Set();
-      this.recentUnlocks = new Map(); // Track recent unlocks for sparkle effect
-      this.initialized = false;
+let toastStylesInjected = false;
+function ensureToastStyles() {
+  if (toastStylesInjected) return;
+  toastStylesInjected = true;
+  const style = document.createElement('style');
+  style.id = 'achievement-toast-styles';
+  style.textContent = `
+    .achievement-toast-container {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 10000;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      pointer-events: none;
     }
-
-    async init(supabase, user) {
-      if (this.initialized) return;
-      
-      this.supabase = supabase;
-      this.user = user;
-      
-      // Get kiosk_user_id from profile
-      await this.loadKioskUserId();
-      
-      // Load existing achievements
-      await this.loadAchievements();
-      
-      // Add notification container to page if not exists
-      this.setupNotificationContainer();
-      
-      // Add styles for animations
-      this.injectStyles();
-      
-      this.initialized = true;
+    .achievement-toast {
+      min-width: 260px;
+      max-width: 320px;
+      background: linear-gradient(135deg, #6366f1, #22d3ee);
+      color: #fff;
+      border-radius: 14px;
+      padding: 16px 18px 16px 60px;
+      box-shadow: 0 18px 45px rgba(79, 70, 229, 0.25);
+      position: relative;
+      opacity: 0;
+      transform: translateX(40px);
+      transition: opacity 0.35s ease, transform 0.35s ease;
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      pointer-events: auto;
+      overflow: hidden;
     }
+    .achievement-toast.show {
+      opacity: 1;
+      transform: translateX(0);
+    }
+    .achievement-toast::before {
+      content: '🏆';
+      position: absolute;
+      left: 18px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 28px;
+    }
+    .achievement-toast-title {
+      text-transform: uppercase;
+      font-size: 13px;
+      letter-spacing: 1.1px;
+      font-weight: 700;
+      opacity: 0.9;
+    }
+    .achievement-toast-name {
+      font-size: 18px;
+      font-weight: 700;
+      margin-top: 2px;
+    }
+    .achievement-toast-desc {
+      font-size: 13px;
+      margin-top: 4px;
+      opacity: 0.85;
+    }
+  `;
+  document.head.appendChild(style);
+}
 
-    async loadKioskUserId() {
-      if (!this.user?.id) return;
-      
-      const { data: profile } = await this.supabase
+function ensureToastContainer() {
+  let container = document.getElementById('achievement-toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'achievement-toast-container';
+    container.className = 'achievement-toast-container';
+    document.body.appendChild(container);
+  }
+  return container;
+}
+
+function normalizeDefinition(row) {
+  if (!row) return null;
+  return {
+    key: row.key,
+    name: row.name || row.key,
+    description: row.description || '',
+    icon: row.icon || 'trophy',
+    points: Number.isFinite(row.points) ? row.points : 0,
+    metadata: ensureObject(row.metadata || row.meta)
+  };
+}
+
+class AchievementClient {
+  constructor({ supabase, session, profile, userId, kioskUserId, showToasts = true }) {
+    this.supabase = supabase;
+    this.session = session || null;
+    this.profile = profile || null;
+    this.userId = userId || session?.user?.id || null;
+    this.kioskUserId = kioskUserId || profile?.kiosk_user_id || null;
+    this.siteId = profile?.site_id || session?.user?.raw_user_meta_data?.site_id || null;
+    this.showToasts = showToasts;
+
+    this.definitionList = [];
+    this.definitionMap = new Map();
+    this.statusList = [];
+    this.statusMap = new Map();
+    this.unlockListeners = [];
+
+    this.definitionsPromise = null;
+    this.statusPromise = null;
+  }
+
+  async init() {
+    await Promise.all([
+      this.loadDefinitions(),
+      this.loadIdentifiers(),
+    ]);
+    await this.loadStatuses();
+    return this;
+  }
+
+  async loadIdentifiers() {
+    if (this.kioskUserId || !this.userId || !this.supabase) return;
+    try {
+      const { data, error } = await this.supabase
         .from('master_users')
-        .select('kiosk_auth_auth_user_id')
-        .eq('auth_user_id', this.user.id)
+        .select('kiosk_user_id, site_id')
+        .eq('auth_user_id', this.userId)
         .maybeSingle();
-      
-      this.kioskUserId = profile?.kiosk_user_id;
-      console.log('[AchievementSystem] Loaded kiosk_user_id:', this.kioskUserId);
-    }
-
-    async loadAchievements() {
-      if (!this.kioskUserId) return;
-      
-      const { data: achievements } = await this.supabase
-        .from('user_achievements')
-        .select('*')
-        .eq('kiosk_user_id', this.kioskUserId);
-      
-      if (achievements) {
-        achievements.forEach(a => {
-          if (a.status === 'unlocked') {
-            this.unlockedAchievements.add(a.achievement_key);
-            
-            // Check if recently unlocked (within 10 minutes)
-            const unlockTime = new Date(a.unlocked_at).getTime();
-            const now = Date.now();
-            if (now - unlockTime < SPARKLE_DURATION) {
-              this.recentUnlocks.set(a.achievement_key, unlockTime);
-            }
-          }
-        });
+      if (!error && data) {
+        if (!this.kioskUserId && data.kiosk_user_id != null) {
+          this.kioskUserId = data.kiosk_user_id;
+        }
+        if (!this.siteId && data.site_id != null) {
+          this.siteId = data.site_id;
+        }
       }
-      
-      console.log('[AchievementSystem] Loaded achievements:', this.unlockedAchievements.size);
-    }
-
-    async checkAndUnlock(achievementKey, metadata = {}) {
-      if (!this.kioskUserId) {
-        console.warn('[AchievementSystem] No kiosk_user_id, cannot unlock achievement');
-        return false;
-      }
-      
-      // Check if already unlocked
-      if (this.unlockedAchievements.has(achievementKey)) {
-        console.log('[AchievementSystem] Achievement already unlocked:', achievementKey);
-        return false;
-      }
-      
-      try {
-        // Unlock the achievement
-        const { data, error } = await this.supabase
-          .from('user_achievements')
-          .upsert({
-            kiosk_user_id: this.kioskUserId,
-            achievement_key: achievementKey,
-            status: 'unlocked',
-            progress_percent: 100,
-            unlocked_at: new Date().toISOString(),
-            metadata: metadata
-          }, {
-            onConflict: 'kiosk_user_id,achievement_key'
-          })
-          .select();
-        
-        if (error) {
-          console.error('[AchievementSystem] Failed to unlock:', error);
-          return false;
-        }
-        
-        // Get achievement details
-        const { data: achievementData } = await this.supabase
-          .from('achievements')
-          .select('*')
-          .eq('key', achievementKey)
-          .single();
-        
-        // Mark as unlocked
-        this.unlockedAchievements.add(achievementKey);
-        this.recentUnlocks.set(achievementKey, Date.now());
-        
-        // Show unlock notification
-        this.showUnlockNotification(achievementData);
-        
-        // Update any achievement displays on the page
-        this.updateAchievementDisplays();
-        
-        console.log('[AchievementSystem] Achievement unlocked:', achievementKey);
-        return true;
-        
-      } catch (err) {
-        console.error('[AchievementSystem] Error unlocking achievement:', err);
-        return false;
-      }
-    }
-
-    showUnlockNotification(achievement) {
-      const container = document.getElementById('achievement-notifications');
-      if (!container) return;
-      
-      // Create notification element
-      const notification = document.createElement('div');
-      notification.className = 'achievement-notification';
-      notification.innerHTML = `
-        <div class="achievement-icon">🏆</div>
-        <div class="achievement-content">
-          <div class="achievement-title">Achievement Unlocked!</div>
-          <div class="achievement-name">${achievement?.name || 'New Achievement'}</div>
-          <div class="achievement-desc">${achievement?.description || ''}</div>
-        </div>
-        <div class="achievement-sparkles"></div>
-      `;
-      
-      // Add sparkles
-      this.addSparkles(notification.querySelector('.achievement-sparkles'));
-      
-      // Add to container
-      container.appendChild(notification);
-      
-      // Trigger animation
-      setTimeout(() => notification.classList.add('show'), 10);
-      
-      // Play sound effect (optional)
-      this.playUnlockSound();
-      
-      // Remove after animation
-      setTimeout(() => {
-        notification.classList.remove('show');
-        setTimeout(() => notification.remove(), 500);
-      }, 5000);
-    }
-
-    addSparkles(container) {
-      for (let i = 0; i < 20; i++) {
-        const sparkle = document.createElement('div');
-        sparkle.className = 'sparkle';
-        sparkle.style.left = Math.random() * 100 + '%';
-        sparkle.style.animationDelay = Math.random() * 2 + 's';
-        sparkle.style.animationDuration = (2 + Math.random() * 2) + 's';
-        container.appendChild(sparkle);
-      }
-    }
-
-    playUnlockSound() {
-      try {
-        // Create a simple beep sound using Web Audio API
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime); // C5
-        oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime + 0.1); // E5
-        oscillator.frequency.setValueAtTime(783.99, audioContext.currentTime + 0.2); // G5
-        
-        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
-        
-        oscillator.start(audioContext.currentTime);
-        oscillator.stop(audioContext.currentTime + 0.3);
-      } catch (e) {
-        // Audio not supported or blocked
-      }
-    }
-
-    updateAchievementDisplays() {
-      // Update any achievement badges on the page
-      const badges = document.querySelectorAll('.achievement-badge');
-      badges.forEach(badge => {
-        const key = badge.dataset.achievementKey;
-        if (this.unlockedAchievements.has(key)) {
-          badge.classList.add('unlocked');
-          
-          // Add sparkle if recently unlocked
-          if (this.recentUnlocks.has(key)) {
-            badge.classList.add('sparkle-effect');
-          }
-        }
-      });
-      
-      // Update achievement count displays
-      const countElements = document.querySelectorAll('.achievement-count');
-      countElements.forEach(el => {
-        el.textContent = this.unlockedAchievements.size;
-      });
-    }
-
-    setupNotificationContainer() {
-      if (!document.getElementById('achievement-notifications')) {
-        const container = document.createElement('div');
-        container.id = 'achievement-notifications';
-        container.className = 'achievement-notifications-container';
-        document.body.appendChild(container);
-      }
-    }
-
-    injectStyles() {
-      if (document.getElementById('achievement-system-styles')) return;
-      
-      const styles = document.createElement('style');
-      styles.id = 'achievement-system-styles';
-      styles.textContent = `
-        /* Achievement Notification Container */
-        .achievement-notifications-container {
-          position: fixed;
-          top: 20px;
-          right: 20px;
-          z-index: 10000;
-          pointer-events: none;
-        }
-        
-        /* Achievement Notification */
-        .achievement-notification {
-          position: relative;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          color: white;
-          padding: 20px;
-          border-radius: 12px;
-          box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-          margin-bottom: 10px;
-          min-width: 320px;
-          transform: translateX(400px);
-          opacity: 0;
-          transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-          pointer-events: auto;
-          overflow: hidden;
-        }
-        
-        .achievement-notification.show {
-          transform: translateX(0);
-          opacity: 1;
-        }
-        
-        .achievement-notification::before {
-          content: '';
-          position: absolute;
-          top: -50%;
-          left: -50%;
-          width: 200%;
-          height: 200%;
-          background: linear-gradient(
-            45deg,
-            transparent,
-            rgba(255,255,255,0.1),
-            transparent
-          );
-          animation: shimmer 2s infinite;
-        }
-        
-        @keyframes shimmer {
-          0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
-          100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
-        }
-        
-        .achievement-icon {
-          position: absolute;
-          left: 20px;
-          top: 50%;
-          transform: translateY(-50%);
-          font-size: 48px;
-          animation: bounce 1s ease-in-out;
-        }
-        
-        @keyframes bounce {
-          0%, 100% { transform: translateY(-50%) scale(1); }
-          50% { transform: translateY(-50%) scale(1.2); }
-        }
-        
-        .achievement-content {
-          margin-left: 80px;
-        }
-        
-        .achievement-title {
-          font-size: 12px;
-          text-transform: uppercase;
-          opacity: 0.9;
-          letter-spacing: 1px;
-          margin-bottom: 4px;
-        }
-        
-        .achievement-name {
-          font-size: 18px;
-          font-weight: bold;
-          margin-bottom: 4px;
-        }
-        
-        .achievement-desc {
-          font-size: 14px;
-          opacity: 0.9;
-        }
-        
-        /* Sparkles */
-        .achievement-sparkles {
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          pointer-events: none;
-        }
-        
-        .sparkle {
-          position: absolute;
-          width: 4px;
-          height: 4px;
-          background: white;
-          border-radius: 50%;
-          animation: sparkle-fall linear infinite;
-        }
-        
-        @keyframes sparkle-fall {
-          0% {
-            transform: translateY(-100vh) scale(0);
-            opacity: 0;
-          }
-          10% {
-            opacity: 1;
-          }
-          90% {
-            opacity: 1;
-          }
-          100% {
-            transform: translateY(100vh) scale(1);
-            opacity: 0;
-          }
-        }
-        
-        /* Sparkle effect for achievement badges */
-        .achievement-badge.sparkle-effect {
-          position: relative;
-          animation: pulse 2s ease-in-out infinite;
-        }
-        
-        @keyframes pulse {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.05); }
-        }
-        
-        .achievement-badge.sparkle-effect::after {
-          content: '✨';
-          position: absolute;
-          top: -5px;
-          right: -5px;
-          font-size: 16px;
-          animation: sparkle-rotate 3s linear infinite;
-        }
-        
-        @keyframes sparkle-rotate {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        
-        /* Achievement mini badge for home page */
-        .achievement-mini-badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 6px 12px;
-          background: linear-gradient(135deg, #667eea, #764ba2);
-          color: white;
-          border-radius: 20px;
-          font-size: 13px;
-          font-weight: 600;
-          box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
-          transition: transform 0.2s;
-        }
-        
-        .achievement-mini-badge:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 4px 12px rgba(102, 126, 234, 0.6);
-        }
-        
-        .achievement-mini-badge .icon {
-          font-size: 16px;
-        }
-      `;
-      document.head.appendChild(styles);
-    }
-
-    // Get achievement summary for display
-    async getAchievementSummary() {
-      const { data: allAchievements } = await this.supabase
-        .from('achievements')
-        .select('*');
-      
-      const total = allAchievements?.length || 0;
-      const unlocked = this.unlockedAchievements.size;
-      
-      return {
-        total,
-        unlocked,
-        percentage: total > 0 ? Math.round((unlocked / total) * 100) : 0,
-        recent: Array.from(this.recentUnlocks.keys()).slice(0, 3)
-      };
+    } catch (err) {
+      console.warn('[AchievementClient] Failed to resolve kiosk_user_id', err);
     }
   }
 
-  // Create global instance
-  window.AchievementSystem = new AchievementSystem();
-  
-  // Auto-check achievements on certain events
-  document.addEventListener('quiz-completed', async (e) => {
-    if (window.AchievementSystem.initialized) {
-      await window.AchievementSystem.checkAndUnlock('first_practice_quiz', {
-        quiz_id: e.detail?.quiz_id,
-        score: e.detail?.score
-      });
+  async loadDefinitions(force = false) {
+    if (!force && this.definitionList.length) return this.definitionList;
+    if (this.definitionsPromise && !force) return this.definitionsPromise;
+
+    this.definitionsPromise = (async () => {
+      if (!this.supabase) {
+        return DEFAULT_ACHIEVEMENTS.map(normalizeDefinition);
+      }
+      try {
+        const { data, error } = await this.supabase
+          .from('achievements')
+          .select('*')
+          .order('created_at', { ascending: true });
+
+        if (error) throw error;
+
+        const defaults = DEFAULT_ACHIEVEMENTS.map(normalizeDefinition);
+        const supabaseRows = Array.isArray(data) ? data.map(normalizeDefinition) : [];
+
+        const merged = new Map();
+        defaults.forEach(def => merged.set(def.key, def));
+        supabaseRows.forEach(def => { if (def?.key) merged.set(def.key, def); });
+
+        const rows = Array.from(merged.values());
+        this.definitionList = rows;
+        this.definitionMap = merged;
+        return rows;
+      } catch (err) {
+        console.warn('[AchievementClient] Falling back to defaults:', err?.message || err);
+        const rows = DEFAULT_ACHIEVEMENTS.map(normalizeDefinition);
+        this.definitionList = rows;
+        this.definitionMap = new Map(rows.map(row => [row.key, row]));
+        return rows;
+      }
+    })();
+
+    return this.definitionsPromise;
+  }
+
+  async loadStatuses(force = false) {
+    if (!force && this.statusList.length) return this.statusList;
+    if (this.statusPromise && !force) return this.statusPromise;
+
+    this.statusPromise = (async () => {
+      if (!this.supabase || (!this.userId && this.kioskUserId == null)) {
+        this.statusList = [];
+        this.statusMap = new Map();
+        return [];
+      }
+
+      try {
+        let query = this.supabase
+          .from('user_achievements')
+          .select('id, achievement_key, status, progress_percent, unlocked_at, metadata, kiosk_user_id, user_id')
+          .order('unlocked_at', { ascending: true, nullsFirst: true });
+
+        if (this.userId && this.kioskUserId != null) {
+          query = query.or(`user_id.eq.${this.userId},kiosk_user_id.eq.${this.kioskUserId}`);
+        } else if (this.userId) {
+          query = query.eq('user_id', this.userId);
+        } else {
+          query = query.eq('kiosk_user_id', this.kioskUserId);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        const rows = Array.isArray(data) ? data : [];
+        this.statusList = rows;
+        this.statusMap = new Map(rows.map(row => [row.achievement_key, row]));
+        return rows;
+      } catch (err) {
+        console.warn('[AchievementClient] Failed to load user achievements:', err?.message || err);
+        this.statusList = [];
+        this.statusMap = new Map();
+        return [];
+      }
+    })();
+
+    return this.statusPromise;
+  }
+
+  getAll() {
+    if (!this.definitionList.length) {
+      this.definitionList = DEFAULT_ACHIEVEMENTS.map(normalizeDefinition);
+      this.definitionMap = new Map(this.definitionList.map(row => [row.key, row]));
     }
-  });
-  
-  document.addEventListener('training-uploaded', async (e) => {
-    if (window.AchievementSystem.initialized) {
-      await window.AchievementSystem.checkAndUnlock('first_training_upload', {
-        training_id: e.detail?.training_id,
-        type: e.detail?.type
-      });
+
+    return this.definitionList.map(def => {
+      const status = this.statusMap.get(def.key) || null;
+      return {
+        ...def,
+        status: status?.status || 'locked',
+        progress_percent: status?.progress_percent ?? (status?.status === 'unlocked' ? 100 : 0),
+        unlocked_at: status?.unlocked_at || null,
+        userAchievement: status || null
+      };
+    });
+  }
+
+  getUnlocked() {
+    return this.getAll().filter(item => item.status === 'unlocked');
+  }
+
+  getSummary() {
+    const list = this.getAll();
+    const total = list.length;
+    const unlocked = list.filter(item => item.status === 'unlocked').length;
+    return {
+      total,
+      unlocked,
+      percentage: total ? Math.round((unlocked / total) * 100) : 0
+    };
+  }
+
+  isUnlocked(key) {
+    return (this.statusMap.get(key)?.status || 'locked') === 'unlocked';
+  }
+
+  async refresh({ forceDefinitions = false } = {}) {
+    if (forceDefinitions) {
+      this.definitionList = [];
+      this.definitionMap.clear();
+      this.definitionsPromise = null;
+      await this.loadDefinitions(true);
     }
-  });
-  
-  document.addEventListener('onboarding-completed', async (e) => {
-    if (window.AchievementSystem.initialized) {
-      await window.AchievementSystem.checkAndUnlock('onboarding_completion', {
-        completed_at: new Date().toISOString()
-      });
+    this.statusList = [];
+    this.statusMap.clear();
+    this.statusPromise = null;
+    await this.loadStatuses(true);
+    return this.getAll();
+  }
+
+  onUnlock(listener) {
+    if (typeof listener === 'function') {
+      this.unlockListeners.push(listener);
     }
-  });
-})();
+  }
+
+  async ensureUnlocked(key, {
+    condition = true,
+    metadata = {},
+    progress = 100,
+    notify = this.showToasts,
+    refresh = true
+  } = {}) {
+    if (!condition) return false;
+    if (this.isUnlocked(key)) return false;
+    if (!this.supabase) return false;
+
+    const payload = {
+      achievement_key: key,
+      status: 'unlocked',
+      progress_percent: progress,
+      unlocked_at: new Date().toISOString(),
+      metadata: ensureObject(metadata)
+    };
+    if (this.kioskUserId != null) payload.kiosk_user_id = this.kioskUserId;
+    if (this.userId) payload.user_id = this.userId;
+
+    const conflictTargets = [];
+    if (this.kioskUserId != null) conflictTargets.push('kiosk_user_id,achievement_key');
+    if (this.userId) conflictTargets.push('user_id,achievement_key');
+    if (!conflictTargets.length) conflictTargets.push('achievement_key');
+
+    let finalRow = null;
+    let lastError = null;
+
+    for (const target of conflictTargets) {
+      try {
+        const { data, error } = await this.supabase
+          .from('user_achievements')
+          .upsert(payload, { onConflict: target })
+          .select();
+
+        if (error) throw error;
+        const row = Array.isArray(data) ? data[0] : data;
+        finalRow = row || payload;
+        break;
+      } catch (err) {
+        lastError = err;
+        const message = err?.message || '';
+        const conflictMissing = message.includes('there is no unique or exclusion constraint');
+        const nullConstraint = message.includes('null value');
+        if (!conflictMissing && !nullConstraint) {
+          break;
+        }
+      }
+    }
+
+    if (!finalRow && lastError) {
+      console.error('[AchievementClient] Failed to unlock achievement', key, lastError);
+      return false;
+    }
+
+    if (refresh) {
+      await this.refresh();
+    } else {
+      this.statusMap.set(key, finalRow);
+      this.statusList.push(finalRow);
+    }
+
+    const definition = this.definitionMap.get(key) || normalizeDefinition(DEFAULT_ACHIEVEMENTS.find(a => a.key === key));
+    this.notifyUnlock({ row: finalRow, definition, notify });
+    return true;
+  }
+
+  notifyUnlock({ row, definition, notify }) {
+    if (notify) {
+      this.renderToast(definition);
+    }
+    this.unlockListeners.forEach(listener => {
+      try {
+        listener({ definition, row });
+      } catch (err) {
+        console.warn('[AchievementClient] unlock listener failed', err);
+      }
+    });
+  }
+
+  renderToast(definition) {
+    if (!this.showToasts) return;
+    ensureToastStyles();
+    const container = ensureToastContainer();
+
+    const toast = document.createElement('div');
+    toast.className = 'achievement-toast';
+    toast.innerHTML = `
+      <div class="achievement-toast-title">Achievement unlocked</div>
+      <div class="achievement-toast-name">${definition?.name || 'New achievement'}</div>
+      <div class="achievement-toast-desc">${definition?.description || ''}</div>
+    `;
+
+    container.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('show'));
+
+    setTimeout(() => {
+      toast.classList.remove('show');
+      setTimeout(() => toast.remove(), 400);
+    }, 4500);
+  }
+}
+
+export async function createAchievementClient(options) {
+  const client = new AchievementClient(options || {});
+  await client.init();
+  return client;
+}
+
+export { DEFAULT_ACHIEVEMENTS };

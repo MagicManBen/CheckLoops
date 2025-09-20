@@ -1006,7 +1006,12 @@ async function approveHolidaysFromModal(userId, staffName) {
 
     // Use service role key for this update
     const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
-    const SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTAxNzI3NiwiZXhwIjoyMDcwNTkzMjc2fQ.CJxV14F0T2TWkAjeR4bpYiBIOwLwyfzF9WzAWwS99Xc';
+    const SERVICE_ROLE_KEY = (typeof process !== 'undefined' && process.env?.SUPABASE_SERVICE_ROLE_KEY) || '';
+    if (!SERVICE_ROLE_KEY) {
+      console.warn('SUPABASE_SERVICE_ROLE_KEY not set; skipping entitlement approval update.');
+      alert('Service role key not configured. Approve/deny actions require running this tool locally with SUPABASE_SERVICE_ROLE_KEY set via environment.');
+      return;
+    }
 
     const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
     const serviceSupabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
@@ -1098,7 +1103,12 @@ async function approveHolidays(userId, staffName) {
   try {
     // Use service role key for this update
     const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
-    const SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTAxNzI3NiwiZXhwIjoyMDcwNTkzMjc2fQ.CJxV14F0T2TWkAjeR4bpYiBIOwLwyfzF9WzAWwS99Xc';
+    const SERVICE_ROLE_KEY = (typeof process !== 'undefined' && process.env?.SUPABASE_SERVICE_ROLE_KEY) || '';
+    if (!SERVICE_ROLE_KEY) {
+      console.warn('SUPABASE_SERVICE_ROLE_KEY not set; skipping entitlement sync.');
+      alert('Service role key not configured. Refresh requires SUPABASE_SERVICE_ROLE_KEY set in the environment.');
+      return;
+    }
 
     const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
     const serviceSupabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);

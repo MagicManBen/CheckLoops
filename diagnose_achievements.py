@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
+import os
 import requests
 import json
 
 # Configuration
 SUPABASE_URL = "https://unveoqnlqnobufhublyw.supabase.co"
-SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTAxNzI3NiwiZXhwIjoyMDcwNTkzMjc2fQ.CJxV14F0T2TWkAjeR4bpYiBIOwLwyfzF9WzAWwS99Xc"
+SERVICE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
+if not SERVICE_KEY:
+    raise RuntimeError('SUPABASE_SERVICE_ROLE_KEY not set in environment')
 EMAIL = "benhowardmagic@hotmail.com"
 
 headers = {

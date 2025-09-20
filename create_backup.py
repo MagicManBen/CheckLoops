@@ -2,13 +2,16 @@
 """
 Create a comprehensive backup of all Supabase tables
 """
+import os
 import requests
 import json
 from datetime import datetime
 
 # Supabase credentials
 SUPABASE_URL = "https://unveoqnlqnobufhublyw.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTAxNzI3NiwiZXhwIjoyMDcwNTkzMjc2fQ.CJxV14F0T2TWkAjeR4bpYiBIOwLwyfzF9WzAWwS99Xc"
+SUPABASE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
+if not SUPABASE_KEY:
+    raise RuntimeError('SUPABASE_SERVICE_ROLE_KEY not set in environment')
 
 # Tables to backup (excluding views)
 TABLES_TO_BACKUP = [
