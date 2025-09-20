@@ -69,12 +69,13 @@ async function fetchUserRole() {
   // Check master_users table first (source of truth)
   const { data: profile } = await supabase
     .from('master_users')
-    .select('role')
+    .select('role, access_type')
     .eq('auth_user_id', currentSession.user.id)
     .maybeSingle();
-  
-  if (profile?.role) {
-    userRole = profile.access_type || profile.role.toLowerCase();
+
+  if (profile) {
+    // Prioritize access_type over role as per design
+    userRole = (profile.access_type || profile.role || 'staff').toLowerCase();
     return userRole;
   }
   
@@ -114,7 +115,7 @@ export async function getUserRole() {
 
 // Check if user is admin
 export async function isAdmin() {
-  const role = (await getUserRole()?.access_type || await getUserRole());
+  const role = await getUserRole();
   return role === 'admin' || role === 'owner';
 }
 
@@ -176,9 +177,9 @@ export async function requireAuth(options = {}) {
     window.location.href = redirectTo;
     return null;
   }
-  
-  const role = (await getUserRole()?.access_type || await getUserRole());
-  
+
+  const role = await getUserRole();
+
   // Check admin requirement
   if (adminOnly && role !== 'admin' && role !== 'owner') {
     console.log('Admin access required, redirecting to staff page');
@@ -187,7 +188,7 @@ export async function requireAuth(options = {}) {
   }
   
   // Check staff requirement
-  if (staffOnly && role === 'admin' || role === 'owner') {
+  if (staffOnly && (role === 'admin' || role === 'owner')) {
     console.log('Staff-only page, admins redirected to admin panel');
     window.location.href = 'index.html';
     return null;
