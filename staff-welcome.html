@@ -3325,6 +3325,14 @@ staff-weldvdvfvf<!DOCTYPE html>
 
           // Initial render
           updateAvatarPreview();
+          
+          // Call prefill function to load existing avatar if available
+          setTimeout(async () => {
+            if (typeof window.prefillAvatarFromExisting === 'function') {
+              console.log('Calling prefillAvatarFromExisting from initAvatarBuilder end');
+              await window.prefillAvatarFromExisting();
+            }
+          }, 300); // Allow time for all controls to be rendered
         }
 
         // Advanced Particle Explosion System
@@ -4043,16 +4051,99 @@ staff-weldvdvfvf<!DOCTYPE html>
       }
     })();
 
+    // Global function to prefill avatar from existing data
+    window.prefillAvatarFromExisting = async function prefillAvatarFromExisting() {
+      if (window.avatarPrefilled) return; // Prevent duplicate calls
+      window.avatarPrefilled = true;
+
+      try {
+        console.log('Attempting to prefill avatar from existing data:', window.existingAvatarUrl);
+        if (window.existingAvatarUrl) {
+          const url = String(window.existingAvatarUrl);
+          window.currentAvatarUrl = url;
+          window.currentSavedAvatarUrl = url;
+          const img = document.getElementById('avatarPreview');
+          if (img) img.src = url;
+          console.log('Avatar URL found and preview updated:', url);
+
+          // Parse parameters from DiceBear URL and apply to controls
+          const u = new URL(url);
+          const p = u.searchParams;
+          const map = new Map([
+            ['backgroundType','opt-backgroundType'],
+            ['backgroundColor','opt-backgroundColor'],
+            ['backgroundRotation','opt-backgroundRotation'],
+            ['radius','opt-radius'],
+            ['rotate','opt-rotate'],
+            ['scale','opt-scale'],
+            ['flip','opt-flip'],
+            ['clip','opt-clip'],
+            ['translateX','opt-translateX'],
+            ['translateY','opt-translateY'],
+            ['eyes','opt-eyes'],
+            ['mouth','opt-mouth'],
+            ['eyebrows','opt-eyebrows'],
+            ['glasses','opt-glasses'],
+            ['glassesProbability','opt-glassesProbability'],
+            ['earrings','opt-earrings'],
+            ['earringsProbability','opt-earringsProbability'],
+            ['featuresProbability','opt-featuresProbability'],
+            ['hair','opt-hair'],
+            ['hairColor','opt-hairColor'],
+            ['hairProbability','opt-hairProbability'],
+            ['skinColor','opt-skinColor'],
+          ]);
+          
+          for (const [k,id] of map.entries()){
+            const v = p.get(k);
+            if (v != null && v !== ''){
+              const el = document.getElementById(id);
+              if (el) {
+                el.value = v;
+                // Trigger change event for select elements
+                if (el.tagName === 'SELECT') {
+                  el.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                console.log(`Set ${id} to ${v}`);
+              }
+            }
+          }
+          
+          // Handle features (multi)
+          const feats = p.getAll('features');
+          if (feats && feats.length){
+            const fEl = document.getElementById('opt-features');
+            if (fEl){
+              for (const o of Array.from(fEl.options)) o.selected = feats.includes(o.value);
+            }
+          }
+          
+          // Seed
+          const seed = p.get('seed');
+          if (seed) { window.aiSeed = seed; }
+
+          // Update the preview
+          updateAvatarPreview();
+          
+          console.log('Avatar parameters successfully applied to form controls');
+        } else {
+          console.log('No existing avatar URL found');
+        }
+      } catch (e) {
+        console.error('Error in prefillAvatarFromExisting:', e);
+      }
+    };
+
     // Ensure avatar prefill runs when avatar step is visible on page load
     (function ensureAvatarPrefillOnLoad(){
       const avatarStep = document.getElementById('welcome-step3');
       if (avatarStep && avatarStep.style.display !== 'none') {
         // Avatar step is already visible, prefill immediately
-        setTimeout(() => {
-          if (typeof prefillAvatarFromExisting === 'function') {
-            prefillAvatarFromExisting();
+        setTimeout(async () => {
+          if (typeof window.prefillAvatarFromExisting === 'function') {
+            await window.prefillAvatarFromExisting();
           }
-        }, 100); // Small delay to ensure DOM is ready
+        }, 500); // Increase delay to ensure all controls are loaded
       }
     })();
 
