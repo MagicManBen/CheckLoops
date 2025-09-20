@@ -1416,7 +1416,7 @@ function stopScanTrollyCycle(){
         S.staff = {
           name: data.full_name,
           role: data.access_type || 'staff',
-          master_user_id: data.id,  // Store the master_users ID
+          master_user_id: data.id,  // Store the master_users UUID ID for reference
           user_id: data.auth_user_id  // The actual auth user ID
         };
 
@@ -1730,20 +1730,22 @@ function stopScanTrollyCycle(){
       debugLog('Initial submission data', submissionData);
 
       // Handle staff_id and user_id based on PIN authentication
+      // Since kiosk_users table no longer exists, we'll rely on staff_name and submitted_by_user_id
+      // for tracking instead of the numeric staff_id field
       if (S.staff && S.staff.master_user_id) {
         debugLog('Staff object found with master_user_id', S.staff);
 
-        // Since we're using master_users as single source of truth, we can trust the ID
-        // The master_user_id can be used directly as staff_id in submissions
-        submissionData.staff_id = S.staff.master_user_id;
-        debugLog(`Staff ID set from master_users: ${S.staff.master_user_id}`);
+        // Don't set staff_id - leave it as null since kiosk_users table is gone
+        // The staff_name and submitted_by_user_id will track who did the audit
+        debugLog(`Staff identified via master_users UUID: ${S.staff.master_user_id}`);
+        debugLog(`Staff will be tracked by name: ${S.staff.name}`);
 
         if (S.staff.user_id) {
           submissionData.user_id = S.staff.user_id;
           debugLog(`User ID from staff set: ${S.staff.user_id}`);
         }
       } else {
-        debugLog('No staff authenticated via PIN, staff_id will be NULL');
+        debugLog('No staff authenticated via PIN');
         // Don't set staff_id - it will be NULL in database
       }
 

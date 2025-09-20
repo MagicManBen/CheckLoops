@@ -31,22 +31,92 @@ DROP FUNCTION IF EXISTS public.transfer_fuzzy_match_to_request(INTEGER, UUID) CA
 CREATE OR REPLACE FUNCTION public.transfer_fuzzy_match_to_request(
     p_fuzzy_match_id INTEGER,
     p_user_id UUID
-) RETURNS VOID AS $$
+) RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_record     fuzzy_match_holidays%ROWTYPE;
+    v_total_days NUMERIC;
+    v_request_id INTEGER;
 BEGIN
+    SELECT * INTO v_record
+    FROM fuzzy_match_holidays
+    WHERE id = p_fuzzy_match_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Fuzzy match % not found', p_fuzzy_match_id;
+    END IF;
+
+    IF v_record.total_sessions IS NOT NULL THEN
+        v_total_days := v_record.total_sessions::NUMERIC;
+    ELSIF v_record.total_hours IS NOT NULL THEN
+        v_total_days := v_record.total_hours::NUMERIC / 7.5;
+    ELSE
+        v_total_days := (COALESCE(v_record.end_date, v_record.start_date) - v_record.start_date) + 1;
+    END IF;
+
+    IF v_total_days IS NULL OR v_total_days <= 0 THEN
+        v_total_days := 1;
+    END IF;
+
+    v_total_days := ROUND(v_total_days::NUMERIC, 2);
+
     INSERT INTO "4_holiday_requests" (
-        user_id, site_id, start_date, end_date, notes, status, created_at
-    )
-    SELECT
-        p_user_id, fm.site_id, fm.start_date, fm.end_date,
-        COALESCE(fm.notes, ''), 'pending', NOW()
-    FROM fuzzy_match_holidays fm
-    WHERE fm.id = p_fuzzy_match_id;
+        user_id,
+        site_id,
+        start_date,
+        end_date,
+        total_days,
+        reason,
+        notes,
+        status,
+        request_type,
+        requested_at,
+        created_at,
+        updated_at
+    ) VALUES (
+        p_user_id,
+        v_record.site_id,
+        v_record.start_date,
+        v_record.end_date,
+        v_total_days,
+        NULLIF(v_record.reason, ''),
+        COALESCE(v_record.notes, ''),
+        'pending',
+        'annual',
+        NOW(),
+        NOW(),
+        NOW()
+    ) RETURNING id INTO v_request_id;
 
     UPDATE fuzzy_match_holidays
-    SET match_status = 'transferred', matched_auth_user_id = p_user_id, matched_at = NOW()
+    SET match_status = 'transferred',
+        matched_at = NOW(),
+        transferred_to_request_id = v_request_id,
+        updated_at = NOW()
     WHERE id = p_fuzzy_match_id;
+
+    BEGIN
+        UPDATE fuzzy_match_holidays
+        SET matched_auth_user_id = p_user_id
+        WHERE id = p_fuzzy_match_id;
+    EXCEPTION
+        WHEN undefined_column THEN
+            NULL;
+    END;
+
+    BEGIN
+        UPDATE fuzzy_match_holidays
+        SET matched_user_id = p_user_id
+        WHERE id = p_fuzzy_match_id;
+    EXCEPTION
+        WHEN undefined_column THEN
+            NULL;
+    END;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 ```
 
 #### Fix 3: Fix the training transfer function
