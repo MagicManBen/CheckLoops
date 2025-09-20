@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Admin Bypass Test</title>
+  <script src="config.js"></script>
+</head>
+<body>
+  <h1>Testing Admin Bypass</h1>
+  <div id="status">Loading...</div>
+  <button id="test-admin">Test Admin Access</button>
+  <button id="go-to-staff">Go to Staff Page</button>
+  <button id="go-to-admin">Go to Admin Dashboard</button>
+
+  <script type="module">
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+    const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+
+    // Check session
+    async function checkSession() {
+      const { data: { session } } = await supabase.auth.getSession();
+      const status = document.getElementById('status');
+
+      if (session) {
+        const email = session.user.email;
+        status.innerHTML = `
+          <p>Logged in as: ${email}</p>
+          <p>User ID: ${session.user.id}</p>
+        `;
+
+        // Try to get profile
+        const { data: profile, error } = await supabase
+          .from('master_users')
+          .select('access_type, role')
+          .eq('auth_user_id', session.user.id)
+          .single();
+
+        if (error) {
+          status.innerHTML += `<p style="color:red">Profile Error: ${error.message}</p>`;
+
+          // Apply bypass
+          if (email === 'benhowardmagic@hotmail.com') {
+            status.innerHTML += `<p style="color:green">BYPASS ACTIVE: User is ADMIN</p>`;
+
+            // Set admin role in session storage
+            sessionStorage.setItem('user_role_bypass', 'admin');
+          }
+        } else {
+          status.innerHTML += `<p>Profile: access_type=${profile.access_type}, role=${profile.role}</p>`;
+        }
+      } else {
+        status.innerHTML = '<p>Not logged in</p>';
+        // Redirect to login
+        window.location.href = 'home.html';
+      }
+    }
+
+    document.getElementById('test-admin').onclick = async () => {
+      const role = sessionStorage.getItem('user_role_bypass') || 'staff';
+      alert('Role: ' + role + (role === 'admin' ? ' - Admin access granted!' : ' - No admin access'));
+    };
+
+    document.getElementById('go-to-staff').onclick = () => {
+      // Set bypass before navigating
+      const { data: { session } } = supabase.auth.getSession().then(({data}) => {
+        if (data.session?.user.email === 'benhowardmagic@hotmail.com') {
+          sessionStorage.setItem('user_role_bypass', 'admin');
+        }
+        window.location.href = 'staff.html';
+      });
+    };
+
+    document.getElementById('go-to-admin').onclick = () => {
+      // Set bypass before navigating
+      const { data: { session } } = supabase.auth.getSession().then(({data}) => {
+        if (data.session?.user.email === 'benhowardmagic@hotmail.com') {
+          sessionStorage.setItem('user_role_bypass', 'admin');
+        }
+        window.location.href = 'admin-dashboard.html';
+      });
+    };
+
+    checkSession();
+  </script>
+</body>
+</html>
