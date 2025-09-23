@@ -10194,36 +10194,6 @@ window.PIR_DEFINITIONS_DATA = [
     }
   }
 
-  // Create service role client for database operations (bypasses RLS)
-  function getServiceClient() {
-    // Use service role key for database operations to bypass RLS
-    const SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTAxNzI3NiwiZXhwIjoyMDcwNTkzMjc2fQ.CJxV14F0T2TWkAjeR4bpYiBIOwLwyfzF9WzAWwS99Xc';
-
-    // Create a new client instance with service role key
-    // Important: Do NOT use the existing createClient from supabase object
-    // We need to ensure this client has no session persistence
-    const serviceClient = window.supabase.createClient(CONFIG.SUPABASE_URL, SERVICE_KEY, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-        detectSessionInUrl: false,
-        storage: {
-          getItem: () => null,
-          setItem: () => null,
-          removeItem: () => null
-        }
-      },
-      global: {
-        headers: {
-          'apikey': SERVICE_KEY,
-          'Authorization': `Bearer ${SERVICE_KEY}`
-        }
-      }
-    });
-
-    return serviceClient;
-  }
-
   // INVITATION SYSTEM WITH COMPREHENSIVE DEBUGGING
   async function handleInviteUserFormSubmit(e) {
     e.preventDefault();
@@ -10254,11 +10224,8 @@ window.PIR_DEFINITIONS_DATA = [
     submitBtn.disabled = true;
     submitBtn.textContent = 'Processing...';
 
-    // Get service client for database operations
-    const serviceClient = getServiceClient();
-
     try {
-      // STEP 1: Check Session (use regular client for auth)
+      // STEP 1: Check Session
       updateDebugStep('session', 'running', 'Checking user session...');
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
@@ -10320,75 +10287,137 @@ window.PIR_DEFINITIONS_DATA = [
         { url: supabaseUrl }
       );
 
-      // STEP 4 & 5: Skip database operations - they're not critical
-      // The ONLY thing that matters is sending the email
-      updateDebugStep('site_invites', 'success',
-        `Database operations skipped<br>` +
-        `Going directly to email sending`,
-        { note: 'Database ops not required for invitation' }
-      );
+      // STEP 4: Insert into site_invites
+      updateDebugStep('site_invites', 'running', 'Inserting into site_invites table...');
 
-      updateDebugStep('master_users', 'success',
-        `User record skipped<br>` +
-        `Going directly to email sending`,
-        { note: 'User will be created on first login' }
-      );
+      const inviteExpiry = new Date();
+      inviteExpiry.setDate(inviteExpiry.getDate() + 7);
 
-      // STEP 6: Send magic link email - THIS IS THE ONLY CRITICAL STEP
-      updateDebugStep('email', 'running', 'Sending magic link email (the only step that really matters)...');
+      const inviteData = {
+        site_id: ctx.site_id,
+        email: email,
+        full_name: fullName,
+        role: accessType,
+        role_detail: roleDetail,
+        reports_to_id: teamId ? parseInt(teamId) : null,
+        status: 'pending',
+        expires_at: inviteExpiry.toISOString(),
+        invited_by: session.user.id
+      };
 
-      // Build redirect URL with all the data we need
-      const redirectUrl = `https://checkloops.co.uk/simple-set-password.html?` +
-        `email=${encodeURIComponent(email)}&` +
-        `site_id=${ctx.site_id}&` +
-        `full_name=${encodeURIComponent(fullName)}&` +
-        `access_type=${encodeURIComponent(accessType)}&` +
-        `role_detail=${encodeURIComponent(roleDetail || '')}&` +
-        `team_id=${teamId || ''}`;
+      const { data: inviteResult, error: inviteError } = await supabase
+        .from('site_invites')
+        .insert(inviteData)
+        .select();
 
-      // Use a fresh auth client to avoid any session conflicts
-      const authClient = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-          detectSessionInUrl: false,
-          storage: {
-            getItem: () => null,
-            setItem: () => null,
-            removeItem: () => null
+      if (inviteError) {
+        updateDebugStep('site_invites', 'warning',
+          `Initial insert failed: ${inviteError.message}<br>` +
+          `Code: ${inviteError.code || 'unknown'}`,
+          inviteError
+        );
+
+        // If duplicate, delete old one and retry
+        if (inviteError.message.includes('duplicate') || inviteError.message.includes('already')) {
+          updateDebugStep('site_invites', 'running', 'Removing old invitation and retrying...');
+
+          const { error: deleteError } = await supabase
+            .from('site_invites')
+            .delete()
+            .eq('email', email)
+            .eq('status', 'pending');
+
+          if (deleteError) {
+            updateDebugStep('site_invites', 'error', `Failed to delete old invitation: ${deleteError.message}`, deleteError);
           }
+
+          // Retry insert
+          const { data: retryResult, error: retryError } = await supabase
+            .from('site_invites')
+            .insert(inviteData)
+            .select();
+
+          if (retryError) {
+            updateDebugStep('site_invites', 'error', `Retry failed: ${retryError.message}`, retryError);
+            throw new Error(`Failed to create invitation: ${retryError.message}`);
+          }
+
+          updateDebugStep('site_invites', 'success',
+            `Invitation created after removing duplicate<br>` +
+            `Result: ${retryResult ? JSON.stringify(retryResult[0] || {}).substring(0, 100) : 'No data returned'}`,
+            retryResult
+          );
+        } else {
+          updateDebugStep('site_invites', 'error', `Failed: ${inviteError.message}`, inviteError);
+          throw new Error(`Failed to create invitation: ${inviteError.message}`);
         }
-      });
+      } else {
+        updateDebugStep('site_invites', 'success',
+          `Invitation created successfully<br>` +
+          `Columns inserted: ${Object.keys(inviteData).join(', ')}<br>` +
+          `Result: ${inviteResult ? JSON.stringify(inviteResult[0] || {}).substring(0, 100) : 'No data returned'}`,
+          inviteResult
+        );
+      }
 
-      const { data: emailResult, error: emailError } = await authClient.auth.signInWithOtp({
-        email: email.toLowerCase().trim(),
+      // STEP 5: Insert into master_users
+      updateDebugStep('master_users', 'running', 'Inserting into master_users table...');
+
+      const userData = {
+        site_id: ctx.site_id,
+        email: email,
+        full_name: fullName,
+        access_type: accessType,
+        role_detail: roleDetail,
+        team_id: teamId ? parseInt(teamId) : null,
+        reports_to_id: teamId ? parseInt(teamId) : null,
+        active: false,
+        invite_status: 'pending',
+        invited_by: session.user.id,
+        invite_sent_at: new Date().toISOString(),
+        invite_expires_at: inviteExpiry.toISOString()
+      };
+
+      const { data: userResult, error: userError } = await supabase
+        .from('master_users')
+        .insert(userData)
+        .select();
+
+      if (userError) {
+        updateDebugStep('master_users', 'warning',
+          `Insert result: ${userError.message}<br>` +
+          `Code: ${userError.code || 'unknown'}<br>` +
+          `(User might already exist - this is OK)`,
+          userError
+        );
+      } else {
+        updateDebugStep('master_users', 'success',
+          `User record created<br>` +
+          `Columns inserted: ${Object.keys(userData).join(', ')}<br>` +
+          `Result: ${userResult ? JSON.stringify(userResult[0] || {}).substring(0, 100) : 'No data returned'}`,
+          userResult
+        );
+      }
+
+      // STEP 6: Send magic link email
+      updateDebugStep('email', 'running', 'Sending magic link email...');
+
+      const redirectUrl = `https://checkloops.co.uk/simple-set-password.html?email=${encodeURIComponent(email)}&site_id=${ctx.site_id}`;
+
+      const { data: emailResult, error: emailError } = await supabase.auth.signInWithOtp({
+        email: email,
         options: {
-          emailRedirectTo: redirectUrl,
-          shouldCreateUser: true,
-          data: {
-            full_name: fullName,
-            site_id: ctx.site_id,
-            access_type: accessType
-          }
+          emailRedirectTo: redirectUrl
         }
       });
 
       if (emailError) {
-        // Try one more time with minimal options
-        const { data: retryResult, error: retryError } = await authClient.auth.signInWithOtp({
-          email: email.toLowerCase().trim()
-        });
-
-        if (retryError) {
-          updateDebugStep('email', 'error',
-            `Failed to send email after retry: ${retryError.message}<br>` +
-            `Code: ${retryError.code || 'unknown'}`,
-            retryError
-          );
-          throw new Error(`Failed to send email: ${retryError.message}`);
-        } else {
-          emailResult = retryResult;
-        }
+        updateDebugStep('email', 'error',
+          `Failed to send: ${emailError.message}<br>` +
+          `Code: ${emailError.code || 'unknown'}`,
+          emailError
+        );
+        throw new Error(`Failed to send email: ${emailError.message}`);
       }
 
       updateDebugStep('email', 'success',
@@ -10526,17 +10555,14 @@ ${JSON.stringify(fullLog, null, 2)}
     debugLog('info', 'Loading practice users');
 
     try {
-      // Use service client to bypass RLS restrictions
-      const serviceClient = getServiceClient();
-
       // Get all data needed
       const [profiles, invites, welcomeData] = await Promise.all([
         // Get profiles
-        serviceClient.from('master_users').select('*').eq('site_id', ctx.site_id),
+        supabase.from('master_users').select('*').eq('site_id', ctx.site_id),
         // Get invites
-        serviceClient.from('site_invites').select('*').eq('site_id', ctx.site_id),
+        supabase.from('site_invites').select('*').eq('site_id', ctx.site_id),
         // Get welcome data for job roles and teams
-        serviceClient.from('master_users').select('*').eq('site_id', ctx.site_id)
+        supabase.from('master_users').select('*').eq('site_id', ctx.site_id)
       ]);
 
       const users = profiles.data || [];
