@@ -2,11 +2,11 @@ const { createClient } = require('@supabase/supabase-js');
 
 // Test the complete invitation flow
 const supabaseUrl = 'https://unveoqnlqnobufhublyw.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.cOj-r15UfnJ6O-Ty8wkFsvPRJX3VpOdI5sJJqqMdvQo';
-const supabaseServiceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTAxNzI3NiwiZXhwIjoyMDcwNTkzMjc2fQ.CJxV14F0T2TWkAjeR4bpYiBIOwLwyfzF9WzAWwS99Xc';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME';
+// Service key removed - using anon key only as requested
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+// Note: This test script now uses anon key only - service key removed
 
 async function testInvitationFlow() {
   console.log('🧪 Testing invitation flow...\n');
@@ -14,7 +14,7 @@ async function testInvitationFlow() {
   try {
     // Step 1: First, sign in as admin
     console.log('1️⃣ Authenticating as admin...');
-    const { data: authData, error: authError } = await supabaseAdmin.auth.signInWithPassword({
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
       email: 'ben.howard@stoke.nhs.uk',
       password: 'admin123' // You'll need to use the actual admin password
     });
@@ -69,7 +69,7 @@ async function testInvitationFlow() {
 
     // Step 4: Check if site_invites record was created
     console.log('3️⃣ Verifying site_invites record...');
-    const { data: inviteRecord, error: inviteError } = await supabaseAdmin
+    const { data: inviteRecord, error: inviteError } = await supabase
       .from('site_invites')
       .select('*')
       .eq('email', testEmail)
