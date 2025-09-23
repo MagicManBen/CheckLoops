@@ -4756,10 +4756,9 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
       </div>
       <nav class="nav" id="nav">
-        <button class="active" data-section="dashboard" style="display: none;"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg><span class="menu-item-label">Dashboard</span></button>
+        <button onclick="window.location.href='admin-dashboard.html'" style="background: linear-gradient(135deg, #4f89ff, #3f78ff);"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg><span class="menu-item-label">Dashboard</span></button>
 
-        
-  <button class="nav-group-toggle" id="toggle-pre-inspection" type="button" aria-expanded="false" aria-controls="group-pre-inspection">Inspection Notice <span class="caret" aria-hidden="true"></span></button>
+        <button class="nav-group-toggle" id="toggle-pre-inspection" type="button" aria-expanded="false" aria-controls="group-pre-inspection">Inspection Notice <span class="caret" aria-hidden="true"></span></button>
   <div class="nav-group collapsed" id="group-pre-inspection">
           <button data-section="pre-inspection"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg><span class="menu-item-label">Two Week Email</span></button>
         </div>
@@ -10150,23 +10149,25 @@ window.PIR_DEFINITIONS_DATA = [
           expires_at: expiresAt.toISOString(),
           invited_by: session.user.id
         })
-        .select()
-        .single();
+        .select();  // Remove .single() to avoid error when RLS returns empty
 
       if (inviteError) {
         console.error('Failed to create invitation record:', inviteError);
         throw new Error('Failed to create invitation: ' + inviteError.message);
       }
 
-      console.log('Invitation record created:', inviteData);
+      // Handle case where RLS policies prevent seeing the inserted row
+      const inviteRecord = inviteData && inviteData.length > 0 ? inviteData[0] : null;
+      console.log('Invitation record created:', inviteRecord || 'Created but not returned due to RLS');
 
       // Send magic link email with invitation details in the redirect URL
+      // invite_id is optional - the other parameters are sufficient
       const redirectUrl = `https://checkloops.co.uk/simple-set-password.html?` +
         `invite_email=${encodeURIComponent(formData.email)}` +
         `&site_id=${formData.siteId}` +
         `&full_name=${encodeURIComponent(formData.fullName)}` +
         `&role=${encodeURIComponent(formData.siteRole)}` +
-        `&invite_id=${inviteData.id}`;
+        (inviteRecord ? `&invite_id=${inviteRecord.id}` : '');
 
       const { error: magicLinkError } = await supabase.auth.signInWithOtp({
         email: formData.email,
@@ -10183,8 +10184,10 @@ window.PIR_DEFINITIONS_DATA = [
 
       if (magicLinkError) {
         console.error('Failed to send magic link:', magicLinkError);
-        // Try to clean up the invitation record
-        await supabase.from('site_invites').delete().eq('id', inviteData.id);
+        // Try to clean up the invitation record if we have the ID
+        if (inviteRecord && inviteRecord.id) {
+          await supabase.from('site_invites').delete().eq('id', inviteRecord.id);
+        }
         throw new Error('Failed to send invitation email: ' + magicLinkError.message);
       }
 
@@ -10202,7 +10205,7 @@ window.PIR_DEFINITIONS_DATA = [
 
       console.log('User invitation completed successfully!', {
         email: formData.email,
-        inviteId: inviteData?.id || null
+        inviteId: inviteRecord?.id || null
       });
 
       // Reset form fields
