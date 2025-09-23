@@ -13,6 +13,18 @@ const profileRefreshPromises = new Map();
 const siteRefreshPromises = new Map();
 let supabaseClientPromise = null;
 
+function manualCleanupRedirectHome() {
+  try { clearAuthData(true); } catch(_) {}
+  try { const s = getSessionStorageSafe(); s && s.clear && s.clear(); } catch(_) {}
+  try {
+    document.cookie.split(';').forEach(c => {
+      document.cookie = c.replace(/^ +/, '').replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`);
+    });
+  } catch(_) {}
+  try { window.location.replace('home.html?_=' + Date.now()); }
+  catch(_) { try { window.location.href = 'home.html'; } catch(__) {} }
+}
+
 function getSessionStorageSafe() {
   try {
     return window.sessionStorage;
@@ -506,14 +518,7 @@ export function setTopbar({siteText, email, role, access_type}){
 export function handleAuthState(supabase){
   supabase.auth.onAuthStateChange((event, session) => {
     if (event === 'SIGNED_OUT' || !session) {
-      try { clearAuthData(true); } catch(_) {}
-      try { sessionStorage.clear(); } catch(_) {}
-      try {
-        document.cookie.split(';').forEach(c => {
-          document.cookie = c.replace(/^ +/, '').replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`);
-        });
-      } catch(_) {}
-      window.location.replace('home.html?_=' + Date.now());
+      manualCleanupRedirectHome();
       return;
     }
 
@@ -526,12 +531,6 @@ export function attachLogout(supabase){
   const btn = document.getElementById('logout-btn');
   if (!btn) return;
   let loggingOut = false;
-  const manualCleanupRedirect = () => {
-    try { clearAuthData(true); } catch(_) {}
-    try { sessionStorage.clear(); } catch(_) {}
-    try { document.cookie.split(';').forEach(c => document.cookie = c.replace(/^ +/, '').replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`)); } catch(_) {}
-    try { window.location.replace('home.html?_=' + Date.now()); } catch(_) { window.location.href = 'home.html'; }
-  };
   btn.addEventListener('click', async (e) => {
     e?.preventDefault?.();
     e?.stopPropagation?.();
@@ -539,8 +538,24 @@ export function attachLogout(supabase){
     loggingOut = true;
     try { await supabase.auth.signOut(); }
     catch(err){ console.error('Sign out failed:', err); }
-    finally { setTimeout(manualCleanupRedirect, 600); }
+    finally { setTimeout(manualCleanupRedirectHome, 600); }
   });
+}
+
+// Global sign out for any page (used by staff-nav and others)
+if (typeof window !== 'undefined') {
+  try {
+    window.signOut = async function() {
+      try {
+        const sb = window.__supabaseClient || window.supabase;
+        if (sb && sb.auth && typeof sb.auth.signOut === 'function') {
+          try { await sb.auth.signOut(); } catch (e) { console.error('Sign out failed:', e); }
+        }
+      } finally {
+        manualCleanupRedirectHome();
+      }
+    };
+  } catch(_) {}
 }
 
 // Create and render consistent staff navigation using the working pattern

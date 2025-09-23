@@ -29,9 +29,17 @@ CREATE POLICY "Admins can manage site settings" ON site_settings
   USING (
     EXISTS (
       SELECT 1 FROM master_users
-      WHERE master_users.user_id = auth.uid()
+      WHERE master_users.auth_user_id = auth.uid()
       AND master_users.site_id = site_settings.site_id
-      AND master_users.role IN ('admin', 'owner')
+      AND lower(coalesce(master_users.access_type, master_users.role)) IN ('admin', 'owner')
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM master_users
+      WHERE master_users.auth_user_id = auth.uid()
+      AND master_users.site_id = site_settings.site_id
+      AND lower(coalesce(master_users.access_type, master_users.role)) IN ('admin', 'owner')
     )
   );
 
@@ -41,7 +49,7 @@ CREATE POLICY "Users can view their site settings" ON site_settings
   USING (
     EXISTS (
       SELECT 1 FROM master_users
-      WHERE master_users.user_id = auth.uid()
+      WHERE master_users.auth_user_id = auth.uid()
       AND master_users.site_id = site_settings.site_id
     )
   );

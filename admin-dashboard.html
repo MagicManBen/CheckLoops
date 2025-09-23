@@ -11071,13 +11071,24 @@ window.PIR_DEFINITIONS_DATA = [
     } catch (error) {
       console.error('Failed to save site settings:', error);
 
+      // Build a clearer message for common cases
+      let msg = '❌ Failed to save settings. Please try again.';
+      const code = error?.code || error?.hint || error?.details || '';
+      if (typeof error?.message === 'string') {
+        const em = error.message.toLowerCase();
+        if (em.includes('permission') || em.includes('rls')) {
+          msg = '❌ Permission denied by RLS/policy. Ask admin to run site_settings_setup.sql and ensure your user is admin for this site.';
+        } else if (em.includes('relation') && em.includes('does not exist')) {
+          msg = '❌ Missing table site_settings. Ask admin to run sql/site_settings_setup.sql in Supabase.';
+        } else if (em.includes('unique') || em.includes('conflict')) {
+          msg = '❌ Conflict on site_id. Please refresh and try again.';
+        }
+      }
+
       if (statusDiv) {
         statusDiv.style.background = '#ef4444';
-        statusDiv.innerHTML = '❌ Failed to save settings. Please try again.';
-
-        setTimeout(() => {
-          statusDiv.style.display = 'none';
-        }, 5000);
+        statusDiv.innerHTML = `${msg}${code ? ' (' + code + ')' : ''}`;
+        setTimeout(() => { statusDiv.style.display = 'none'; }, 5000);
       }
     }
   }
