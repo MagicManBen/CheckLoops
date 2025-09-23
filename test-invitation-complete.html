@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Invitation System - CheckLoops</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 16px;
+      padding: 40px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+
+    h1 {
+      color: #2d3748;
+      margin-bottom: 30px;
+      text-align: center;
+    }
+
+    .test-section {
+      margin-bottom: 30px;
+      padding: 20px;
+      background: #f7fafc;
+      border-radius: 8px;
+    }
+
+    .test-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #4a5568;
+      margin-bottom: 15px;
+    }
+
+    .status {
+      padding: 10px;
+      border-radius: 6px;
+      margin: 10px 0;
+      font-size: 14px;
+    }
+
+    .status.pending {
+      background: #fed7e7;
+      color: #702459;
+    }
+
+    .status.success {
+      background: #c6f6d5;
+      color: #22543d;
+    }
+
+    .status.error {
+      background: #fed7d7;
+      color: #c53030;
+    }
+
+    .btn {
+      padding: 12px 24px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      margin: 10px 5px;
+    }
+
+    .btn:hover {
+      opacity: 0.9;
+    }
+
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .form-group {
+      margin: 15px 0;
+    }
+
+    label {
+      display: block;
+      font-weight: 600;
+      color: #4a5568;
+      margin-bottom: 5px;
+      font-size: 14px;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #e2e8f0;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    .log {
+      background: #2d3748;
+      color: #e2e8f0;
+      padding: 15px;
+      border-radius: 6px;
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+      margin-top: 10px;
+    }
+
+    .log-entry {
+      margin: 5px 0;
+    }
+
+    .log-entry.error {
+      color: #fc8181;
+    }
+
+    .log-entry.success {
+      color: #68d391;
+    }
+
+    .log-entry.info {
+      color: #63b3ed;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🧪 CheckLoops Invitation System Test</h1>
+
+    <!-- Authentication Section -->
+    <div class="test-section">
+      <div class="test-title">1. Admin Authentication</div>
+      <div class="form-group">
+        <label>Admin Email:</label>
+        <input type="email" id="admin-email" value="ben.howard@stoke.nhs.uk">
+      </div>
+      <div class="form-group">
+        <label>Admin Password:</label>
+        <input type="password" id="admin-password" placeholder="Enter admin password">
+      </div>
+      <button class="btn" id="auth-btn">Authenticate as Admin</button>
+      <div id="auth-status" class="status pending">Not authenticated</div>
+    </div>
+
+    <!-- Invitation Section -->
+    <div class="test-section">
+      <div class="test-title">2. Send Test Invitation</div>
+      <div class="form-group">
+        <label>Test User Email:</label>
+        <input type="email" id="test-email" placeholder="test@example.com">
+      </div>
+      <div class="form-group">
+        <label>Full Name:</label>
+        <input type="text" id="test-name" value="Test User">
+      </div>
+      <div class="form-group">
+        <label>Role:</label>
+        <select id="test-role">
+          <option value="staff">Staff</option>
+          <option value="admin">Admin</option>
+          <option value="viewer">Viewer</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Job Role (Optional):</label>
+        <input type="text" id="test-job-role" value="Nurse">
+      </div>
+      <button class="btn" id="invite-btn" disabled>Send Invitation</button>
+      <div id="invite-status" class="status pending">Waiting for authentication</div>
+    </div>
+
+    <!-- Verification Section -->
+    <div class="test-section">
+      <div class="test-title">3. Verification Results</div>
+      <button class="btn" id="verify-btn" disabled>Verify Database Records</button>
+      <div id="verify-status" class="status pending">Not verified</div>
+      <div class="log" id="verify-log" style="display:none;"></div>
+    </div>
+
+    <!-- Test Log -->
+    <div class="test-section">
+      <div class="test-title">Test Log</div>
+      <div class="log" id="test-log">
+        <div class="log-entry info">Test initialized. Ready to begin.</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+    const supabaseUrl = 'https://unveoqnlqnobufhublyw.supabase.co';
+    const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.cOj-r15UfnJ6O-Ty8wkFsvPRJX3VpOdI5sJJqqMdvQo';
+
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+    let currentSession = null;
+    let testEmail = null;
+
+    function log(message, type = 'info') {
+      const logEl = document.getElementById('test-log');
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      const timestamp = new Date().toLocaleTimeString();
+      entry.textContent = `[${timestamp}] ${message}`;
+      logEl.appendChild(entry);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    // Authentication
+    document.getElementById('auth-btn').addEventListener('click', async () => {
+      const email = document.getElementById('admin-email').value;
+      const password = document.getElementById('admin-password').value;
+      const statusEl = document.getElementById('auth-status');
+
+      if (!password) {
+        statusEl.className = 'status error';
+        statusEl.textContent = 'Please enter admin password';
+        return;
+      }
+
+      log('Authenticating as admin...', 'info');
+      statusEl.className = 'status pending';
+      statusEl.textContent = 'Authenticating...';
+
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password
+        });
+
+        if (error) throw error;
+
+        currentSession = data.session;
+        statusEl.className = 'status success';
+        statusEl.textContent = '✅ Authenticated successfully';
+        log('Authentication successful', 'success');
+
+        // Enable invitation button
+        document.getElementById('invite-btn').disabled = false;
+        document.getElementById('invite-status').textContent = 'Ready to send invitation';
+
+      } catch (error) {
+        statusEl.className = 'status error';
+        statusEl.textContent = `❌ Authentication failed: ${error.message}`;
+        log(`Authentication failed: ${error.message}`, 'error');
+      }
+    });
+
+    // Send Invitation
+    document.getElementById('invite-btn').addEventListener('click', async () => {
+      if (!currentSession) {
+        log('Not authenticated', 'error');
+        return;
+      }
+
+      const email = document.getElementById('test-email').value || `test.${Date.now()}@checkloops.test`;
+      const name = document.getElementById('test-name').value;
+      const role = document.getElementById('test-role').value;
+      const jobRole = document.getElementById('test-job-role').value;
+      const statusEl = document.getElementById('invite-status');
+
+      testEmail = email;
+      document.getElementById('test-email').value = email;
+
+      log(`Sending invitation to ${email}...`, 'info');
+      statusEl.className = 'status pending';
+      statusEl.textContent = 'Sending invitation...';
+
+      try {
+        const response = await fetch(`${supabaseUrl}/functions/v1/simple-invite`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentSession.access_token}`,
+            'x-redirect-url': 'https://checkloops.co.uk/simple-set-password.html'
+          },
+          body: JSON.stringify({
+            email: email,
+            name: name,
+            role: role,
+            role_detail: jobRole,
+            reports_to_id: null
+          })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to send invitation');
+        }
+
+        statusEl.className = 'status success';
+        statusEl.textContent = `✅ Invitation sent to ${email}`;
+        log(`Invitation sent successfully. Invite ID: ${data.invite_id}`, 'success');
+
+        // Enable verification
+        document.getElementById('verify-btn').disabled = false;
+
+      } catch (error) {
+        statusEl.className = 'status error';
+        statusEl.textContent = `❌ Failed: ${error.message}`;
+        log(`Invitation failed: ${error.message}`, 'error');
+      }
+    });
+
+    // Verify Database Records
+    document.getElementById('verify-btn').addEventListener('click', async () => {
+      if (!testEmail || !currentSession) {
+        log('No test email or session available', 'error');
+        return;
+      }
+
+      const statusEl = document.getElementById('verify-status');
+      const logEl = document.getElementById('verify-log');
+
+      log('Verifying database records...', 'info');
+      statusEl.className = 'status pending';
+      statusEl.textContent = 'Verifying...';
+      logEl.style.display = 'block';
+      logEl.innerHTML = '';
+
+      try {
+        // Check site_invites table
+        const { data: inviteData, error: inviteError } = await supabase
+          .from('site_invites')
+          .select('*')
+          .eq('email', testEmail)
+          .single();
+
+        if (inviteError) {
+          throw new Error(`Failed to fetch invite record: ${inviteError.message}`);
+        }
+
+        const verifyResults = [];
+        verifyResults.push('<div class="log-entry success">✅ site_invites record found:</div>');
+        verifyResults.push(`<div class="log-entry">  ID: ${inviteData.id}</div>`);
+        verifyResults.push(`<div class="log-entry">  Email: ${inviteData.email}</div>`);
+        verifyResults.push(`<div class="log-entry">  Name: ${inviteData.full_name}</div>`);
+        verifyResults.push(`<div class="log-entry">  Role: ${inviteData.role}</div>`);
+        verifyResults.push(`<div class="log-entry">  Status: ${inviteData.status}</div>`);
+        verifyResults.push(`<div class="log-entry">  Site ID: ${inviteData.site_id}</div>`);
+        verifyResults.push(`<div class="log-entry">  Expires: ${new Date(inviteData.expires_at).toLocaleString()}</div>`);
+
+        logEl.innerHTML = verifyResults.join('');
+
+        statusEl.className = 'status success';
+        statusEl.textContent = '✅ All verifications passed';
+        log('Database verification complete', 'success');
+
+      } catch (error) {
+        statusEl.className = 'status error';
+        statusEl.textContent = `❌ Verification failed: ${error.message}`;
+        log(`Verification failed: ${error.message}`, 'error');
+        logEl.innerHTML = `<div class="log-entry error">Error: ${error.message}</div>`;
+      }
+    });
+
+    // Auto-generate test email on load
+    window.addEventListener('load', () => {
+      const testEmailInput = document.getElementById('test-email');
+      if (!testEmailInput.value) {
+        testEmailInput.value = `test.user.${Date.now()}@checkloops.test`;
+      }
+    });
+  </script>
+</body>
+</html>
