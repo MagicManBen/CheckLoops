@@ -359,11 +359,12 @@
     </div>
   </div>
   
+  <script src="supabase-js.js"></script>
   <script type="module">
-    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+    const { createClient } = supabase;
     
     // Create Supabase client with same settings as staff-common.js
-    const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
+    const supabaseClient = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
       auth: { 
         persistSession: true, 
         autoRefreshToken: true, 
@@ -377,11 +378,11 @@
     // Check if already logged in as admin
     async function checkExistingSession() {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session } } = await supabaseClient.auth.getSession();
         if (session) {
           const user = session.user;
           // Authoritative check: master_users.access_type only
-          const { data: profile } = await supabase
+          const { data: profile } = await supabaseClient
             .from('master_users')
             .select('access_type, onboarding_complete')
             .eq('auth_user_id', user.id)
@@ -438,7 +439,7 @@
       
       try {
         // Sign in with Supabase
-        const { data, error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabaseClient.auth.signInWithPassword({
           email,
           password,
           options: {
@@ -461,7 +462,7 @@
         const isAdmin = accessType === 'admin' || accessType === 'owner';
         console.log('Admin access via access_type:', accessType, '=>', isAdmin);
         if (!isAdmin) {
-          await supabase.auth.signOut();
+          await supabaseClient.auth.signOut();
           throw new Error('Access denied. Only Owner and Admin users can access the admin portal. Please use the Staff Login instead.');
         }
         // Admins go to Admin Dashboard regardless of onboarding status

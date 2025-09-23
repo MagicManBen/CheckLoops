@@ -687,8 +687,9 @@
   </div>
 
   <!-- Scripts -->
+  <script src="supabase-js.js"></script>
   <script type="module">
-    import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+    const { createClient } = supabase;
 
     // Check if CONFIG is loaded
     if (typeof CONFIG === 'undefined') {
@@ -699,7 +700,7 @@
 
     const SUPABASE_URL = CONFIG.SUPABASE_URL;
     const SUPABASE_ANON_KEY = CONFIG.SUPABASE_ANON_KEY;
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
@@ -714,7 +715,7 @@
     });
 
     // Make the client available to non-module scripts like login-redirect.js
-    try { window.supabase = supabase; } catch(_) {}
+    try { window.supabase = supabaseClient; } catch(_) {}
 
     // Helper: Clear any stale auth data that might cause session confusion
     function clearStaleAuthData() {
@@ -788,7 +789,7 @@
         let theUser = user;
         if (!theUser) {
           console.log('No user provided, fetching from auth...');
-          const res = await supabase.auth.getUser();
+          const res = await supabaseClient.auth.getUser();
           theUser = res?.data?.user;
         }
         if (!theUser) {
@@ -937,7 +938,7 @@
     }
 
   // Initialize page
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    supabaseClient.auth.getSession().then(async ({ data: { session } }) => {
       // Clear any stale auth data first
       clearStaleAuthData();
 
@@ -962,7 +963,7 @@
 
     // As a safety net, redirect on auth state changes too
     try {
-      supabase.auth.onAuthStateChange(async (event, session) => {
+      supabaseClient.auth.onAuthStateChange(async (event, session) => {
         if (event === 'SIGNED_IN' && session?.user) {
           await redirectByRole(session.user);
         }
@@ -1033,14 +1034,14 @@
 
           // Try to sign up the user
           console.log('Creating new user account...');
-          authResponse = await supabase.auth.signUp({
+          authResponse = await supabaseClient.auth.signUp({
             email,
             password,
           });
         } else {
           // Handle normal sign in
           // Race sign-in with a timeout to surface network stalls
-          const signInPromise = supabase.auth.signInWithPassword({ email, password });
+          const signInPromise = supabaseClient.auth.signInWithPassword({ email, password });
           const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Sign-in timed out. Please check your connection and try again.')), 10000));
           authResponse = await Promise.race([signInPromise, timeoutPromise]);
         }
@@ -1057,7 +1058,7 @@
           while (!session && (Date.now() - start) < 2500) {
             await new Promise(r => setTimeout(r, 100));
             try {
-              const res = await supabase.auth.getSession();
+              const res = await supabaseClient.auth.getSession();
               session = res?.data?.session || null;
             } catch(_) { break; }
           }
@@ -1073,7 +1074,7 @@
           localStorage.setItem('rememberMe', 'true');
           localStorage.setItem('rememberedEmail', email);
           // Configure Supabase to persist the session
-          await supabase.auth.updateSession(authResponse.data.session);
+          await supabaseClient.auth.updateSession(authResponse.data.session);
         } else {
           localStorage.removeItem('rememberMe');
           localStorage.removeItem('rememberedEmail');
@@ -1112,7 +1113,7 @@
       const email = document.getElementById('reset-email').value.trim();
 
       try {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
           redirectTo: `${window.location.origin}/home.html`
         });
 
@@ -1156,7 +1157,7 @@
       }
 
       try {
-        const { error } = await supabase.auth.updateUser({
+        const { error } = await supabaseClient.auth.updateUser({
           password: newPassword
         });
 
