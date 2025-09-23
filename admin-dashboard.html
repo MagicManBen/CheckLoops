@@ -17,6 +17,47 @@
 <script src="rls-fix.js"></script>
 <link href="entitlement-card-styles.css" rel="stylesheet">
 <script src="entitlement-card-layout.js" defer></script>
+<script type="module">
+  import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+  if (!window.supabase) {
+    window.supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' }
+    });
+  }
+  const sb = window.supabase;
+  (async () => {
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) {
+        sessionStorage.setItem('redirectAfterLogin', window.location.pathname);
+        window.location.replace('home.html?redirect=admin');
+        return;
+      }
+      const { data: profile } = await sb
+        .from('master_users')
+        .select('access_type')
+        .eq('auth_user_id', session.user.id)
+        .maybeSingle();
+      const accessType = String(profile?.access_type || '').toLowerCase();
+      const isAdmin = accessType === 'admin' || accessType === 'owner';
+      if (!isAdmin) {
+        window.location.replace('staff.html');
+      }
+    } catch (e) {
+      window.location.replace('home.html?redirect=admin');
+    }
+  })();
+  window.CONFIG = CONFIG;
+  window.addEventListener('storage', (e) => {
+    if (e.key && e.key.includes('sb-') && e.newValue === null) {
+      try { window.location.replace('home.html'); } catch(_) {}
+    }
+  });
+  window.addEventListener('load', async () => {
+    try { await sb.auth.getSession(); } catch(_) {}
+  });
+  Object.defineProperty(window, 'getSupabase', { value: () => sb });
+</script>
 <script>
   // Configure PDF.js worker
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';

@@ -69,7 +69,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               
               // Handle different redirect targets
               if (pendingRedirect === 'admin') {
-                window.location.href = 'index.html';
+                window.location.href = 'admin-dashboard.html';
               } else if (pendingRedirect === 'staff') {
                 window.location.href = 'staff.html?from=login';
               }
@@ -92,7 +92,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 
                 // Handle different redirect targets
                 if (pendingRedirect === 'admin') {
-                  window.location.href = 'index.html';
+                  window.location.href = 'admin-dashboard.html';
                 } else if (pendingRedirect === 'staff') {
                   window.location.href = 'staff.html?from=login';
                 }
