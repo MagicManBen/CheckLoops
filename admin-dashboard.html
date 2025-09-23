@@ -21,20 +21,29 @@
 <script src="entitlement-card-layout.js" defer></script>
 <script type="module">
   const { createClient } = supabase;
-  if (!window.supabase) {
-    window.supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' }
-    });
-  }
-  const sb = window.supabase;
-  (async () => {
+  // Use EXACT same configuration as admin-login.html to share sessions
+  const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      flowType: 'pkce',
+      storage: window.localStorage,
+      storageKey: `sb-${CONFIG.SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`
+    }
+  });
+  window.supabase = sb;
+  // Add small delay to prevent race condition with session loading
+  setTimeout(async () => {
     try {
       const { data: { session } } = await sb.auth.getSession();
       if (!session) {
+        console.log('Admin Dashboard: No session found, redirecting to login');
         sessionStorage.setItem('redirectAfterLogin', window.location.pathname);
-  window.location.replace('admin-login.html');
+        window.location.replace('admin-login.html');
         return;
       }
+      console.log('Admin Dashboard: Session found for user:', session.user.email);
       const { data: profile } = await sb
         .from('master_users')
         .select('access_type')
@@ -42,13 +51,18 @@
         .maybeSingle();
       const accessType = String(profile?.access_type || '').toLowerCase();
       const isAdmin = accessType === 'admin' || accessType === 'owner';
+      console.log('Admin Dashboard: Access type:', accessType, '=> isAdmin:', isAdmin);
       if (!isAdmin) {
+        console.log('Admin Dashboard: Not admin, redirecting to staff portal');
         window.location.replace('staff.html');
+      } else {
+        console.log('Admin Dashboard: Admin access confirmed, staying on dashboard');
       }
     } catch (e) {
-  window.location.replace('admin-login.html');
+      console.log('Admin Dashboard: Error checking session, redirecting to login:', e);
+      window.location.replace('admin-login.html');
     }
-  })();
+  }, 1000); // Wait 1 second for session to fully load
   window.CONFIG = CONFIG;
   window.addEventListener('storage', (e) => {
     if (e.key && e.key.includes('sb-') && e.newValue === null) {
