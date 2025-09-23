@@ -128,39 +128,24 @@ serve(async (req) => {
       }
     }
 
-    // STEP 3: Send Supabase auth invitation
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+    // STEP 3: Send Supabase magic link (OTP) invitation
+    const { error: authError } = await supabaseAdmin.auth.signInWithOtp({
       email,
-      {
+      options: {
+        shouldCreateUser: true,
+        emailRedirectTo: redirectTo,
         data: {
           full_name: name,
-          role: role,
-          site_id: site_id,
-          role_detail: role_detail,
-          reports_to_id: reports_to_id
-        },
-        redirectTo: redirectTo
+          role,
+          site_id,
+          role_detail,
+          reports_to_id
+        }
       }
-    )
+    })
 
     if (authError) {
-      // Supabase auth invite failed
-      // If auth invite fails, clean up the site invite
-      await supabaseAdmin
-        .from('site_invites')
-        .delete()
-        .eq('id', inviteRecord.id)
-      
-      // Also try to clean up kiosk_users if it was created
-      if (role_detail && role_detail.trim() !== '') {
-        await supabaseAdmin
-          .from('kiosk_users')
-          .delete()
-          .eq('site_id', site_id)
-          .eq('full_name', name)
-      }
-      
-      throw new Error(`Failed to send invite: ${authError.message}`)
+      throw new Error(`Failed to send magic link: ${authError.message}`)
     }
 
     // Auth invite sent successfully
@@ -168,7 +153,6 @@ serve(async (req) => {
     return new Response(JSON.stringify({ 
       success: true, 
       message: 'Invitation sent successfully!',
-      user_id: authData.user.id,
       invite_id: inviteRecord.id
     }), {
       headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' },

@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       // Store current page as the redirect target
       sessionStorage.setItem('redirectAfterLogin', window.location.pathname);
       // Redirect to login page
-      window.location.href = 'Home.html?redirect=admin&_=' + Date.now();
+  window.location.href = 'admin-login.html?_=' + Date.now();
       return;
     }
     

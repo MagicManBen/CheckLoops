@@ -528,19 +528,84 @@ export function handleAuthState(supabase){
 
 // Attach a click handler to a #logout-btn that signs the user out
 export function attachLogout(supabase){
-  const btn = document.getElementById('logout-btn');
-  if (!btn) return;
+  let btn = document.getElementById('logout-btn');
+
+  if (!btn) {
+    const topbar = document.querySelector('.topbar') || document.querySelector('header.topbar') || document.querySelector('.topbar.panel');
+    btn = document.createElement('button');
+    btn.id = 'logout-btn';
+    btn.textContent = 'Sign Out';
+    btn.className = 'btn-signout';
+    if (topbar) {
+      try { topbar.appendChild(btn); } catch(_) { document.body.appendChild(btn); }
+    } else {
+      // Floating fallback for pages without a topbar
+      Object.assign(btn.style, {
+        position: 'fixed',
+        bottom: '16px',
+        right: '16px',
+        zIndex: '2147483647'
+      });
+      btn.className = (btn.className ? btn.className + ' ' : '') + 'btn';
+      try { document.body.appendChild(btn); } catch(_) {}
+    }
+  }
+
+  if (btn.dataset.wired === 'true') return;
+  btn.dataset.wired = 'true';
+
   let loggingOut = false;
   btn.addEventListener('click', async (e) => {
     e?.preventDefault?.();
     e?.stopPropagation?.();
     if (loggingOut) return;
     loggingOut = true;
-    try { await supabase.auth.signOut(); }
-    catch(err){ console.error('Sign out failed:', err); }
-    finally { setTimeout(manualCleanupRedirectHome, 600); }
+    try {
+      if (supabase?.auth?.signOut) {
+        await supabase.auth.signOut();
+      } else if (typeof window.signOut === 'function') {
+        return window.signOut();
+      }
+    } catch(err){
+      console.error('Sign out failed:', err);
+    } finally {
+      setTimeout(manualCleanupRedirectHome, 300);
+    }
   });
 }
+
+// Auto-wire logout button on pages that import this module
+try {
+  if (typeof window !== 'undefined' && !window.__autoLogoutWired) {
+    window.__autoLogoutWired = true;
+    const run = async () => {
+      try {
+        const sb = (window.__supabaseClient || window.supabase) || await initSupabase();
+        attachLogout(sb);
+      } catch (e) {
+        // As a last resort, inject a button that calls global signOut
+        let btn = document.getElementById('logout-btn');
+        if (!btn) {
+          btn = document.createElement('button');
+          btn.id = 'logout-btn';
+          btn.textContent = 'Sign Out';
+          btn.className = 'btn btn-signout';
+          Object.assign(btn.style, { position: 'fixed', bottom: '16px', right: '16px', zIndex: '2147483647' });
+          try { document.body.appendChild(btn); } catch(_) {}
+        }
+        if (!btn.dataset.wired) {
+          btn.dataset.wired = 'true';
+          btn.addEventListener('click', (ev) => { ev?.preventDefault?.(); ev?.stopPropagation?.(); if (window.signOut) window.signOut(); else manualCleanupRedirectHome(); });
+        }
+      }
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', run);
+    } else {
+      run();
+    }
+  }
+} catch(_) {}
 
 // Global sign out for any page (used by staff-nav and others)
 if (typeof window !== 'undefined') {

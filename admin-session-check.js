@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const { data: { session }, error } = await supabase.auth.getSession();
     if (error || !session) {
       console.log('🔒 No authenticated session detected, redirecting to login');
-  window.location.href = 'home.html?redirect=admin';
+  window.location.href = 'admin-login.html';
       return;
     }
 
@@ -110,6 +110,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   } catch (err) {
     console.error('❌ Session check exception:', err);
     // On any critical error, redirect to login
-  window.location.href = 'home.html?redirect=admin';
+  window.location.href = 'admin-login.html';
   }
 });

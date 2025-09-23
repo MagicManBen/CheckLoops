@@ -62,50 +62,22 @@ serve(async (req) => {
       )
     }
 
-    // Find user by email
-    const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers()
+    // Build redirect URL
+    const origin = req.headers.get('origin') || 'https://checkloops.co.uk'
+    const redirectTo = `${origin.replace(/\/$/, '')}/simple-set-password.html`
 
-    if (listError) {
-      return new Response(
-        JSON.stringify({ error: 'Failed to list users' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      )
-    }
-
-    const targetUser = users.find((u) => u.email === email)
-
-    if (!targetUser) {
-      return new Response(
-        JSON.stringify({ error: 'User not found' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
-      )
-    }
-
-    // Generate temporary password
-    const tempPassword = 'Welcome' + Math.random().toString(36).substring(2, 10) + '!'
-
-    // Update user's password
-    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
-      targetUser.id,
-      { password: tempPassword }
-    )
-
-    if (updateError) {
-      return new Response(
-        JSON.stringify({ error: `Failed to reset password: ${updateError.message}` }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-      )
-    }
-
-    // Send password reset email
-    const { error: resetError } = await supabaseAdmin.auth.resetPasswordForEmail(
+    // Send magic link via OTP
+    const { error: magicError } = await supabaseAdmin.auth.signInWithOtp({
       email,
-      { redirectTo: `${req.headers.get('origin')}/simple-set-password.html` }
-    )
+      options: {
+        shouldCreateUser: true,
+        emailRedirectTo: redirectTo
+      }
+    })
 
-    if (resetError) {
+    if (magicError) {
       return new Response(
-        JSON.stringify({ error: `Failed to send reset email: ${resetError.message}` }),
+        JSON.stringify({ error: `Failed to send magic link: ${magicError.message}` }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       )
     }
@@ -124,10 +96,7 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        message: `Password reset email sent to ${email}`
-      }),
+      JSON.stringify({ success: true, message: `Magic link sent to ${email}` }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
 
