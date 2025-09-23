@@ -517,12 +517,12 @@ export function setTopbar({siteText, email, role, access_type}){
 
 export function handleAuthState(supabase){
   supabase.auth.onAuthStateChange((event, session) => {
-    if (event === 'SIGNED_OUT' || !session) {
+    // Only act on explicit sign-out events to avoid race conditions
+    if (event === 'SIGNED_OUT') {
       manualCleanupRedirectHome();
       return;
     }
-
-    // Removed onboarding_required client lock logic
+    // Ignore INITIAL_SESSION or transient null sessions — requireStaffSession handles gating
   });
 }
 

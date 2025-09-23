@@ -58,46 +58,14 @@ document.addEventListener('DOMContentLoaded', async () => {
           const { data: { session } } = await window.supabase.auth.getSession();
           
           if (session) {
-            console.log('✅ User already logged in, checking for redirect target');
-            const pendingRedirect = localStorage.getItem('pendingRedirect') || 
-                                  sessionStorage.getItem('redirectAfterLogin');
-                                  
-            if (pendingRedirect) {
-              console.log(`🔀 Redirecting already logged-in user to: ${pendingRedirect}`);
-              localStorage.removeItem('pendingRedirect');
-              sessionStorage.removeItem('redirectAfterLogin');
-              
-              // Handle different redirect targets
-              if (pendingRedirect === 'admin') {
-                window.location.href = 'admin-dashboard.html';
-              } else if (pendingRedirect === 'staff') {
-                window.location.href = 'staff.html?from=login';
-              }
-            }
+            console.log('✅ Session detected on login page; deferring redirect to page logic');
+            // Do not redirect here to avoid race with home.html logic.
           }
           
           // Set up auth state change listener for future login
           window.supabase.auth.onAuthStateChange((event, session) => {
-            if (event === 'SIGNED_IN' && session) {
-              console.log('🔑 Auth state change: SIGNED_IN');
-              
-              // Check for a pending redirect
-              const pendingRedirect = localStorage.getItem('pendingRedirect') || 
-                                    sessionStorage.getItem('redirectAfterLogin');
-                                    
-              if (pendingRedirect) {
-                console.log(`🔀 Redirecting newly logged-in user to: ${pendingRedirect}`);
-                localStorage.removeItem('pendingRedirect');
-                sessionStorage.removeItem('redirectAfterLogin');
-                
-                // Handle different redirect targets
-                if (pendingRedirect === 'admin') {
-                  window.location.href = 'admin-dashboard.html';
-                } else if (pendingRedirect === 'staff') {
-                  window.location.href = 'staff.html?from=login';
-                }
-              }
-            }
+            // Let home.html's onAuthStateChange + redirectByRole own navigation.
+            // Avoid double-redirects here.
           });
         }
       } catch (err) {
