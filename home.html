@@ -622,7 +622,7 @@
             </div>
 
             <div style="margin-top: 0.75rem;">
-              <a href="admin-dashboard.html" class="btn btn-secondary">Admin Login</a>
+              <a href="home.html?redirect=admin" class="btn btn-secondary">Admin Login</a>
             </div>
 
             <div class="security-badge">
@@ -744,7 +744,34 @@
       }
     }
 
-    // Helper: redirect the current user to the correct site based on their profile.role
+    // Determine redirect target from URL
+    const urlParamsTop = new URLSearchParams(window.location.search);
+    const redirectTarget = (urlParamsTop.get('redirect') || '').toLowerCase();
+
+    // If admin flow requested, tweak UI copy
+    if (redirectTarget === 'admin') {
+      try {
+        const t = document.getElementById('signin-title');
+        const h = document.getElementById('signin-hint');
+        if (t) t.textContent = 'Admin Sign In';
+        if (h) h.textContent = 'Admins and Owners only. Use your admin credentials to continue.';
+      } catch(_) {}
+    }
+
+    // Helper: check if user is admin/owner
+    async function isAdminUser(userId){
+      try {
+        const { data: profile } = await supabase
+          .from('master_users')
+          .select('access_type')
+          .eq('auth_user_id', userId)
+          .maybeSingle();
+        const accessType = String(profile?.access_type || '').toLowerCase();
+        return accessType === 'admin' || accessType === 'owner';
+      } catch(_) { return false; }
+    }
+
+    // Helper: redirect the current user appropriately
     async function redirectByRole(user) {
       console.log('redirectByRole called with user:', user?.email || 'no user provided');
       try {
@@ -759,23 +786,19 @@
           return;
         }
 
-        console.log('Querying profile for user:', theUser.id);
-        const { data: profile, error } = await supabase
-          .from('master_users')
-          .select('access_type, role, full_name, nickname')
-          .eq('auth_user_id', theUser.id)
-          .maybeSingle();
-
-        console.log('Profile query result:', { profile, error });
-
-        // Check if user has completed their profile setup
-        if (!profile || !profile.full_name) {
-          console.log('User has incomplete profile, redirecting to staff-welcome.html');
-          window.location.href = 'staff-welcome.html';
-          return;
+        // If admin portal requested, route accordingly
+        if (redirectTarget === 'admin') {
+          if (await isAdminUser(theUser.id)) {
+            window.location.href = 'admin-dashboard.html';
+            return;
+          } else {
+            // Not an admin user; send to staff portal
+            window.location.href = 'staff.html';
+            return;
+          }
         }
 
-        // Staff-only login - redirect all users to staff.html
+        // Default staff flow
         console.log('Redirecting to staff.html (staff portal)');
         window.location.href = 'staff.html';
       } catch (err) {
@@ -913,7 +936,7 @@
       const inviteToken = urlParams.get('invite');
 
       if (session) {
-        // Regular signed-in user, redirect based on role
+        // Signed-in user: honor redirect target if present
         await redirectByRole(session.user);
         return;
       }
@@ -932,7 +955,7 @@
       btn.setAttribute('data-original-text', btn.textContent);
     });
 
-    // Sign in form handler
+  // Sign in form handler
     signinForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -1018,9 +1041,9 @@
 
         showMessage(authSuccess, "Login successful! Redirecting...");
 
-        // Redirect after successful authentication based on role
-        setTimeout(() => {
-          redirectByRole(authResponse.data.user);
+        // Redirect after successful authentication honoring redirect target
+        setTimeout(async () => {
+          await redirectByRole(authResponse.data.user);
         }, inviteToken ? 2000 : 500);
 
       } catch (err) {

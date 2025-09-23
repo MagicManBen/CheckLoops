@@ -10,9 +10,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="config.js"></script>
-  <!-- Removed staff.css - will use inline styles matching homepage -->
-  <script src="fix-navigation-style.js"></script>
-  <link rel="stylesheet" href="nav-styles.css">
+  <!-- Standardized Staff Navigation -->
+  <link rel="stylesheet" href="staff-nav.css">
+  <script src="staff-nav.js"></script>
   <style>
     :root {
       /* Primary color palette - matching homepage */
@@ -822,19 +822,33 @@
     <nav class="navbar">
       <div class="navbar-container">
         <a href="staff.html" class="navbar-brand">
-          <img src="Logo.png" alt="CheckLoops">
+          <img src="Logo.png" alt="CheckLoops" class="brand-logo">
           <span class="brand-text">CheckLoops</span>
         </a>
 
-        <div class="navbar-nav" id="nav-links">
+        <!-- Mobile menu toggle -->
+        <button class="mobile-menu-toggle" id="mobile-menu-toggle" style="display: none;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+
+        <div class="navbar-nav nav-links" id="nav-links">
           <a href="staff.html" class="nav-link">Dashboard</a>
-          <a href="staff-welcome.html" class="nav-link">Welcome</a>
-          <a href="staff-calendar.html" class="nav-link">Calendar</a>
-          <a href="staff-meetings.html" class="nav-link">Meetings</a>
           <a href="staff-training.html" class="nav-link">Training</a>
-          <a href="achievements.html" class="nav-link">Achievements</a>
           <a href="staff-quiz.html" class="nav-link active">Quiz</a>
           <a href="my-holidays.html" class="nav-link">Holidays</a>
+          <div class="nav-dropdown">
+            <a href="#" class="nav-link dropdown-toggle">More ▼</a>
+            <div class="dropdown-menu">
+              <a href="staff-welcome.html" class="dropdown-item">Welcome</a>
+              <a href="staff-calendar.html" class="dropdown-item">Calendar</a>
+              <a href="staff-meetings.html" class="dropdown-item">Meetings</a>
+              <a href="achievements.html" class="dropdown-item">Achievements</a>
+            </div>
+          </div>
         </div>
 
         <div class="navbar-user">
@@ -1428,13 +1442,13 @@ async function refreshRequiredAchievements({ scorePercent, totalQuestions }) {
       console.log('💾 submitQuiz: Saving to database, mode:', currentMode);
       try {
         if (currentMode === 'required') {
-          console.log('💾 submitQuiz: Recording required quiz in master_users via upsert');
+          console.log('💾 submitQuiz: Recording required quiz in master_users and quiz_attempts');
 
           const completedAt = new Date();
           const nextDue = new Date(completedAt);
           nextDue.setDate(nextDue.getDate() + 7);
 
-          // Update just the quiz-related fields to avoid issues with other constraints
+          // 1) Update quiz metadata on master_users
           const { error: muErr } = await supabase
             .from('master_users')
             .update({
@@ -1451,6 +1465,31 @@ async function refreshRequiredAchievements({ scorePercent, totalQuestions }) {
             showToast('✅ Required quiz recorded.');
             await refreshRequiredAchievements({ scorePercent, totalQuestions: currentQuestions.length });
           }
+
+          // 2) Insert an official attempt row so dashboards can see the score
+          try {
+            const insertAttempt = {
+              site_id: currentProfile?.site_id || null,
+              user_id: currentUser.id,
+              started_at: quizStartTime?.toISOString?.() || completedAt.toISOString(),
+              completed_at: completedAt.toISOString(),
+              total_questions: currentQuestions.length,
+              correct_answers: correctCount,
+              score_percent: scorePercent,
+              is_practice: false
+            };
+            const { error: qaErr } = await supabase
+              .from('quiz_attempts')
+              .insert(insertAttempt);
+            if (qaErr) {
+              console.warn('💾 submitQuiz: quiz_attempts insert failed (non-blocking):', qaErr);
+            } else {
+              console.log('💾 submitQuiz: quiz_attempts row inserted');
+            }
+          } catch (qaEx) {
+            console.warn('💾 submitQuiz: quiz_attempts insert exception (non-blocking):', qaEx);
+          }
+
         } else {
           // Save to quiz_practices if table exists
           console.log('💾 submitQuiz: Saving practice quiz to quiz_practices table');
