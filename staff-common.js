@@ -528,50 +528,80 @@ export function handleAuthState(supabase){
 
 // Attach a click handler to a #logout-btn that signs the user out
 export function attachLogout(supabase){
-  let btn = document.getElementById('logout-btn');
+  // Helper to wire up a given button once
+  const wireButton = (button) => {
+    if (!button || button.dataset.wired === 'true') return button;
+    button.dataset.wired = 'true';
+    let loggingOut = false;
+    button.addEventListener('click', async (e) => {
+      e?.preventDefault?.();
+      e?.stopPropagation?.();
+      if (loggingOut) return;
+      loggingOut = true;
+      try {
+        if (supabase?.auth?.signOut) {
+          await supabase.auth.signOut();
+        } else if (typeof window.signOut === 'function') {
+          return window.signOut();
+        }
+      } catch(err){
+        console.error('Sign out failed:', err);
+      } finally {
+        setTimeout(manualCleanupRedirectHome, 300);
+      }
+    });
+    return button;
+  };
 
-  if (!btn) {
-    const topbar = document.querySelector('.topbar') || document.querySelector('header.topbar') || document.querySelector('.topbar.panel');
-    btn = document.createElement('button');
+  // If a logout button already exists (e.g., in the navbar), wire it and return
+  let existing = document.getElementById('logout-btn');
+  if (existing) { wireButton(existing); return; }
+
+  // Try to place the button in known top areas only (never bottom-right)
+  const navbarUser = document.querySelector('.navbar .navbar-user') || document.querySelector('.navbar-user');
+  const topbar = document.querySelector('.topbar') || document.querySelector('header.topbar') || document.querySelector('.topbar.panel');
+
+  if (navbarUser || topbar) {
+    const host = navbarUser || topbar;
+    const btn = document.createElement('button');
     btn.id = 'logout-btn';
     btn.textContent = 'Sign Out';
     btn.className = 'btn-signout';
-    if (topbar) {
-      try { topbar.appendChild(btn); } catch(_) { document.body.appendChild(btn); }
-    } else {
-      // Floating fallback for pages without a topbar
-      Object.assign(btn.style, {
-        position: 'fixed',
-        bottom: '16px',
-        right: '16px',
-        zIndex: '2147483647'
-      });
-      btn.className = (btn.className ? btn.className + ' ' : '') + 'btn';
-      try { document.body.appendChild(btn); } catch(_) {}
-    }
+    try { host.appendChild(btn); } catch(_) { try { document.body.appendChild(btn); } catch(__) {} }
+    wireButton(btn);
+    return;
   }
 
-  if (btn.dataset.wired === 'true') return;
-  btn.dataset.wired = 'true';
-
-  let loggingOut = false;
-  btn.addEventListener('click', async (e) => {
-    e?.preventDefault?.();
-    e?.stopPropagation?.();
-    if (loggingOut) return;
-    loggingOut = true;
-    try {
-      if (supabase?.auth?.signOut) {
-        await supabase.auth.signOut();
-      } else if (typeof window.signOut === 'function') {
-        return window.signOut();
-      }
-    } catch(err){
-      console.error('Sign out failed:', err);
-    } finally {
-      setTimeout(manualCleanupRedirectHome, 300);
+  // Otherwise, wait briefly for the navbar to render, then create a small top-right fallback only if still missing
+  const observer = new MutationObserver(() => {
+    const btnNow = document.getElementById('logout-btn');
+    const hostNow = document.querySelector('.navbar .navbar-user') || document.querySelector('.navbar-user') || document.querySelector('.topbar') || document.querySelector('header.topbar') || document.querySelector('.topbar.panel');
+    if (btnNow) {
+      wireButton(btnNow);
+      observer.disconnect();
+    } else if (hostNow) {
+      const b = document.createElement('button');
+      b.id = 'logout-btn';
+      b.textContent = 'Sign Out';
+      b.className = 'btn-signout';
+      try { hostNow.appendChild(b); } catch(_) { try { document.body.appendChild(b); } catch(__) {} }
+      wireButton(b);
+      observer.disconnect();
     }
   });
+  observer.observe(document.documentElement || document.body, { childList: true, subtree: true });
+
+  // Safety timeout: if nothing appears, create a minimal top-right button (not bottom-right)
+  setTimeout(() => {
+    if (document.getElementById('logout-btn')) return;
+    const fallback = document.createElement('button');
+    fallback.id = 'logout-btn';
+    fallback.textContent = 'Sign Out';
+    fallback.className = 'btn btn-signout';
+    Object.assign(fallback.style, { position: 'fixed', top: '8px', right: '12px', zIndex: '2147483647' });
+    try { document.body.appendChild(fallback); } catch(_) {}
+    wireButton(fallback);
+  }, 1200);
 }
 
 // Auto-wire logout button on pages that import this module
@@ -583,14 +613,14 @@ try {
         const sb = (window.__supabaseClient || window.supabase) || await initSupabase();
         attachLogout(sb);
       } catch (e) {
-        // As a last resort, inject a button that calls global signOut
+        // As a last resort, add a small top-right sign out button (avoid bottom-right duplicates)
         let btn = document.getElementById('logout-btn');
         if (!btn) {
           btn = document.createElement('button');
           btn.id = 'logout-btn';
           btn.textContent = 'Sign Out';
           btn.className = 'btn btn-signout';
-          Object.assign(btn.style, { position: 'fixed', bottom: '16px', right: '16px', zIndex: '2147483647' });
+          Object.assign(btn.style, { position: 'fixed', top: '8px', right: '12px', zIndex: '2147483647' });
           try { document.body.appendChild(btn); } catch(_) {}
         }
         if (!btn.dataset.wired) {

@@ -10114,116 +10114,29 @@ window.PIR_DEFINITIONS_DATA = [
         throw new Error(`An invitation for ${formData.email} is already pending`);
       }
 
-      // Create an entry in site_invites table
-      const inviteInsertData = {
-        site_id: formData.siteId,
-        email: formData.email,
-        full_name: formData.fullName,
-        role: formData.siteRole,
-        role_detail: formData.jobRole,
-        status: 'pending',
-        invite_data: {
-          created_at: new Date().toISOString(),
-          invited_by: session.user.email
-        }
-      };
-
-      // Add reports_to_id if it exists
-      if (formData.teamId) {
-        inviteInsertData.reports_to_id = parseInt(formData.teamId);
-      }
-
-      // Insert invite, with compatibility fallback if schema lacks invite_data
-      // Use maybeSingle() to avoid PGRST116 when 0 rows are returned (e.g., RLS blocks returning)
-      let { data: inviteRecord, error: inviteError } = await supabase
-        .from('site_invites')
-        .insert(inviteInsertData)
-        .select()
-        .maybeSingle();
-
-      // If the project doesn't yet have the invite_data column, retry without it
-      if (inviteError && (
-          (typeof inviteError.message === 'string' && inviteError.message.toLowerCase().includes('invite_data')) ||
-          (typeof inviteError.details === 'string' && inviteError.details.toLowerCase().includes('invite_data'))
-        )) {
-        console.warn('site_invites.invite_data not found — retrying insert without invite_data');
-        const { invite_data, ...fallbackInsert } = inviteInsertData;
-        const retry = await supabase
-          .from('site_invites')
-          .insert(fallbackInsert)
-          .select()
-          .maybeSingle();
-        inviteRecord = retry.data;
-        inviteError = retry.error;
-      }
-
-      if (inviteError) {
-        console.error('Failed to create invite record:', inviteError);
-        const helpful = 'Failed to create invitation: ' + inviteError.message +
-          (String(inviteError.message || '').toLowerCase().includes('invite_data') ?
-            ' — Tip: add column invite_data JSONB to public.site_invites or run the provided SQL patch.' : '');
-        throw new Error(helpful);
-      }
-
-      // If RLS prevented returning the row, inviteRecord may be null. Try to fetch the id.
-      let inviteRecordId = inviteRecord?.id || null;
-      if (!inviteRecordId) {
-        const { data: fetchedInvite, error: fetchInviteErr } = await supabase
-          .from('site_invites')
-          .select('id')
-          .eq('email', formData.email)
-          .eq('site_id', formData.siteId)
-          .eq('status', 'pending')
-          .order('created_at', { ascending: false })
-          .maybeSingle();
-        if (fetchedInvite?.id) {
-          inviteRecordId = fetchedInvite.id;
-        } else if (fetchInviteErr) {
-          console.warn('Invite inserted but unable to fetch id (likely RLS):', fetchInviteErr);
-        }
-      }
-
-      console.log('Invite record created:', inviteRecordId || '(id unavailable)');
-
-      // Send magic link email using OTP
-      // Build the redirect URL with all necessary parameters
+      // Use Supabase Edge Function to create invite and send magic link
       const baseUrl = 'https://checkloops.co.uk/simple-set-password.html';
-      const redirectParams = new URLSearchParams({
-        invite_email: formData.email,
-        site_id: formData.siteId,
-        full_name: formData.fullName,
-        role: formData.siteRole,
-        role_detail: formData.jobRole || '',
-        reports_to_id: formData.teamId || ''
-      });
-      if (inviteRecordId) redirectParams.set('invite_id', String(inviteRecordId));
-      const redirectUrl = `${baseUrl}?${redirectParams.toString()}`;
-
-      console.log('Sending magic link to:', formData.email);
-      console.log('Redirect URL:', redirectUrl);
-
-      // Try magic link first
-      const { error: magicLinkError } = await supabase.auth.signInWithOtp({
-        email: formData.email,
-        options: {
-          shouldCreateUser: true,
-          emailRedirectTo: redirectUrl,
-          data: {
-            full_name: formData.fullName,
-            site_id: formData.siteId,
-            role: formData.siteRole,
-            role_detail: formData.jobRole,
-            reports_to_id: formData.teamId,
-            invite_id: inviteRecordId || undefined
-          }
+      const { data: fnData, error: fnError } = await supabase.functions.invoke('simple-invite', {
+        body: {
+          email: formData.email,
+          name: formData.fullName,
+          role: formData.siteRole,
+          role_detail: formData.jobRole || '',
+          reports_to_id: formData.teamId || null
+        },
+        headers: {
+          'x-redirect-url': baseUrl,
+          Authorization: `Bearer ${session.access_token}`
         }
       });
 
-      if (magicLinkError) {
-        throw new Error(`Failed to send magic link: ${magicLinkError.message}`);
-      } else {
-        console.log('Magic link email sent successfully');
+      if (fnError) {
+        console.error('Invitation function error:', fnError, 'data:', fnData);
+        const fnMsg = (fnData && fnData.error) ? `: ${fnData.error}` : '';
+        throw new Error((fnError.message || 'Invitation function failed') + fnMsg);
       }
+
+      console.log('Invitation function result:', fnData);
 
       // Success!
       if (successElement) {
@@ -10237,7 +10150,7 @@ window.PIR_DEFINITIONS_DATA = [
 
       console.log('User invitation completed successfully!', {
         email: formData.email,
-        inviteId: inviteRecordId || null
+        inviteId: fnData?.invite_id || null
       });
 
       // Reset form fields
