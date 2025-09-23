@@ -1,9 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = 'https://unveoqnlqnobufhublyw.supabase.co';
-const supabaseServiceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTAxNzI3NiwiZXhwIjoyMDcwNTkzMjc2fQ.CJxV14F0T2TWkAjeR4bpYiBIOwLwyfzF9WzAWwS99Xc';
+// Service key removed - this script requires admin privileges to run
+// const supabaseServiceKey = '[SERVICE_KEY_REMOVED]';
 
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+// const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+console.log('❌ This script has been disabled - service key removed for security');
+console.log('To run database checks, use the Supabase dashboard directly');
+process.exit(1);
 
 async function checkDatabaseSetup() {
   console.log('🔍 Checking database setup for invitation system...\n');
