@@ -10133,29 +10133,62 @@ window.PIR_DEFINITIONS_DATA = [
         throw new Error(`An invitation for ${formData.email} is already pending`);
       }
 
-      // Use Supabase Edge Function to create invite and send magic link
-      const baseUrl = 'https://checkloops.co.uk/simple-set-password.html';
-      const { data: fnData, error: fnError } = await supabase.functions.invoke('simple-invite', {
-        body: {
+      // Create invitation record in database
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7); // 7 days expiry
+
+      const { data: inviteData, error: inviteError } = await supabase
+        .from('site_invites')
+        .insert({
           email: formData.email,
-          name: formData.fullName,
+          full_name: formData.fullName,
           role: formData.siteRole,
-          role_detail: formData.jobRole || '',
-          reports_to_id: formData.teamId || null
-        },
-        headers: {
-          'x-redirect-url': baseUrl,
-          Authorization: `Bearer ${session.access_token}`
+          role_detail: formData.jobRole || null,
+          team_id: formData.teamId || null,
+          site_id: formData.siteId,
+          status: 'pending',
+          expires_at: expiresAt.toISOString(),
+          invited_by: session.user.id
+        })
+        .select()
+        .single();
+
+      if (inviteError) {
+        console.error('Failed to create invitation record:', inviteError);
+        throw new Error('Failed to create invitation: ' + inviteError.message);
+      }
+
+      console.log('Invitation record created:', inviteData);
+
+      // Send magic link email with invitation details in the redirect URL
+      const redirectUrl = `https://checkloops.co.uk/simple-set-password.html?` +
+        `invite_email=${encodeURIComponent(formData.email)}` +
+        `&site_id=${formData.siteId}` +
+        `&full_name=${encodeURIComponent(formData.fullName)}` +
+        `&role=${encodeURIComponent(formData.siteRole)}` +
+        `&invite_id=${inviteData.id}`;
+
+      const { error: magicLinkError } = await supabase.auth.signInWithOtp({
+        email: formData.email,
+        options: {
+          shouldCreateUser: true,
+          emailRedirectTo: redirectUrl,
+          data: {
+            full_name: formData.fullName,
+            role: formData.siteRole,
+            site_id: formData.siteId
+          }
         }
       });
 
-      if (fnError) {
-        console.error('Invitation function error:', fnError, 'data:', fnData);
-        const fnMsg = (fnData && fnData.error) ? `: ${fnData.error}` : '';
-        throw new Error((fnError.message || 'Invitation function failed') + fnMsg);
+      if (magicLinkError) {
+        console.error('Failed to send magic link:', magicLinkError);
+        // Try to clean up the invitation record
+        await supabase.from('site_invites').delete().eq('id', inviteData.id);
+        throw new Error('Failed to send invitation email: ' + magicLinkError.message);
       }
 
-      console.log('Invitation function result:', fnData);
+      console.log('Magic link sent successfully');
 
       // Success!
       if (successElement) {
@@ -10169,7 +10202,7 @@ window.PIR_DEFINITIONS_DATA = [
 
       console.log('User invitation completed successfully!', {
         email: formData.email,
-        inviteId: fnData?.invite_id || null
+        inviteId: inviteData?.id || null
       });
 
       // Reset form fields
