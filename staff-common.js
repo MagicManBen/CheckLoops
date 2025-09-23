@@ -547,11 +547,27 @@ export function attachLogout(supabase){
 export function renderStaffNavigation(activePage = 'home') {
   const navContainer = document.querySelector('.nav.seg-nav');
   if (!navContainer) return;
-  
+
   // Prevent multiple simultaneous renders
   if (navContainer.dataset.rendering === 'true') return;
   navContainer.dataset.rendering = 'true';
-  
+
+  // Get site settings from localStorage or use defaults
+  let siteSettings = { enable_achievements: true, enable_avatars: true };
+  try {
+    // Get site_id from the current profile
+    const profileData = JSON.parse(sessionStorage.getItem('__staffProfile') || '{}');
+    const siteId = profileData?.site_id;
+    if (siteId) {
+      const storedSettings = localStorage.getItem(`site_${siteId}_settings`);
+      if (storedSettings) {
+        siteSettings = JSON.parse(storedSettings);
+      }
+    }
+  } catch (e) {
+    console.warn('Could not load site settings:', e);
+  }
+
   // Standardized navigation items across all pages
   const navItems = [
     { page: 'home', href: 'staff.html', label: 'Home' },
@@ -560,13 +576,18 @@ export function renderStaffNavigation(activePage = 'home') {
     { page: 'holidays', href: 'my-holidays.html', label: 'My Holidays' },
     { page: 'meetings', href: 'staff-meetings.html', label: 'Meetings', disabled: true, tooltip: 'Coming Soon!' },
     { page: 'training', href: 'staff-training.html', label: 'My Training' },
-    { page: 'achievements', href: 'achievements.html', label: 'Achievements' },
-    { page: 'quiz', href: 'staff-quiz.html', label: 'Quiz' }
+    { page: 'quiz', href: 'staff-quiz.html', label: 'Quiz' },
+    // Admin Site entry is appended dynamically below for admins
   ];
+
+  // Conditionally add Achievements based on site settings
+  if (siteSettings.enable_achievements !== false) {
+    navItems.push({ page: 'achievements', href: 'achievements.html', label: 'Achievements' });
+  }
 
   // Clear existing content and event listeners to avoid duplication
   navContainer.innerHTML = '';
-  
+
   // Create navigation elements using working pattern (buttons with data-section)
   navItems.forEach(item => {
     const button = document.createElement('button');
@@ -601,6 +622,20 @@ export function renderStaffNavigation(activePage = 'home') {
     navContainer.appendChild(button);
   });
   
+  // Conditionally append Admin Site for admins
+  try {
+    const roleText = document.getElementById('role-pill')?.textContent?.toLowerCase() || '';
+    const isAdminUser = /^(admin|owner)$/.test(roleText);
+    if (isAdminUser) {
+      const adminBtn = document.createElement('button');
+      adminBtn.type = 'button';
+      adminBtn.dataset.section = 'admin-portal';
+      adminBtn.dataset.href = 'index.html';
+      adminBtn.textContent = 'Admin Site';
+      navContainer.appendChild(adminBtn);
+    }
+  } catch(_) {}
+
   // Add single click handler using event delegation
   if (!navContainer.dataset.hasClickHandler) {
     navContainer.addEventListener('click', async (e) => {
@@ -795,3 +830,136 @@ export async function upsertAchievement(supabase, kioskUserId, key, status, prog
 }
 
 export { createAchievementClient } from './achievement-system.js';
+
+// Site Settings Functions
+export async function getSiteSettings(supabase, siteId) {
+  try {
+    // First check localStorage for cached settings
+    const cacheKey = `site_${siteId}_settings`;
+    const cachedSettings = localStorage.getItem(cacheKey);
+    if (cachedSettings) {
+      try {
+        return JSON.parse(cachedSettings);
+      } catch (e) {
+        console.warn('Invalid cached settings:', e);
+      }
+    }
+
+    // Fetch from database
+    const { data, error } = await supabase
+      .from('site_settings')
+      .select('enable_achievements, enable_avatars')
+      .eq('site_id', siteId)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // No settings found, return defaults
+        return {
+          enable_achievements: true,
+          enable_avatars: true
+        };
+      }
+      console.error('Error fetching site settings:', error);
+      return {
+        enable_achievements: true,
+        enable_avatars: true
+      };
+    }
+
+    // Cache the settings
+    if (data) {
+      localStorage.setItem(cacheKey, JSON.stringify(data));
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Failed to get site settings:', error);
+    return {
+      enable_achievements: true,
+      enable_avatars: true
+    };
+  }
+}
+
+// Avatar Helper Functions
+export function getUserInitials(fullName) {
+  if (!fullName) return '?';
+
+  const names = fullName.trim().split(/\s+/);
+  if (names.length >= 2) {
+    // First letter of first name and last name
+    return (names[0][0] + names[names.length - 1][0]).toUpperCase();
+  } else if (names.length === 1) {
+    // First two letters of single name
+    return names[0].substring(0, 2).toUpperCase();
+  }
+  return '?';
+}
+
+export async function renderUserAvatar(element, profile, siteSettings = null) {
+  if (!element) return;
+
+  // If siteSettings not provided, try to get from localStorage
+  if (!siteSettings) {
+    try {
+      const siteId = profile?.site_id;
+      if (siteId) {
+        const cachedSettings = localStorage.getItem(`site_${siteId}_settings`);
+        if (cachedSettings) {
+          siteSettings = JSON.parse(cachedSettings);
+        }
+      }
+    } catch (e) {
+      console.warn('Could not load site settings for avatar:', e);
+    }
+  }
+
+  // Default to showing avatars if settings not available
+  const showAvatars = siteSettings?.enable_avatars !== false;
+
+  // Clear existing content
+  element.innerHTML = '';
+
+  if (showAvatars && profile?.avatar_url) {
+    // Show avatar image
+    const img = document.createElement('img');
+    img.src = profile.avatar_url;
+    img.alt = profile.full_name || 'User avatar';
+    img.style.width = '100%';
+    img.style.height = '100%';
+    img.style.objectFit = 'cover';
+    img.style.borderRadius = '50%';
+    element.appendChild(img);
+  } else {
+    // Show initials
+    const initials = getUserInitials(profile?.full_name || profile?.nickname || '');
+    const initialsSpan = document.createElement('span');
+    initialsSpan.textContent = initials;
+    initialsSpan.style.fontSize = '16px';
+    initialsSpan.style.fontWeight = '600';
+    initialsSpan.style.color = 'var(--white, #fff)';
+    element.appendChild(initialsSpan);
+
+    // Add background if not already styled
+    if (!element.style.background) {
+      element.style.background = 'linear-gradient(135deg, #667eea, #764ba2)';
+    }
+    element.style.display = 'flex';
+    element.style.alignItems = 'center';
+    element.style.justifyContent = 'center';
+    element.style.borderRadius = '50%';
+  }
+}
+
+// Check if achievements are enabled for the site
+export async function areAchievementsEnabled(supabase, siteId) {
+  const settings = await getSiteSettings(supabase, siteId);
+  return settings.enable_achievements !== false;
+}
+
+// Check if avatars are enabled for the site
+export async function areAvatarsEnabled(supabase, siteId) {
+  const settings = await getSiteSettings(supabase, siteId);
+  return settings.enable_avatars !== false;
+}

@@ -6211,8 +6211,53 @@ document.addEventListener('DOMContentLoaded', () => {
                 <!-- Editable box for entering a custom array (not wired to any logic yet) -->
                 <textarea id="debug-custom-array" placeholder='["one","two"]' style="display:none; width:100%; margin-top:8px; font-family:monospace; padding:8px; box-sizing:border-box; min-height:48px;" ></textarea>
               </div>
-              
-              
+
+              <!-- Feature Settings Section -->
+              <div class="settings-section" style="margin-top:40px; padding:20px; background:var(--glass); border-radius:12px; border:1px solid var(--border-color);">
+                <h3 style="margin-top:0; margin-bottom:20px; color:var(--white); font-size:18px;">Feature Settings</h3>
+                <p style="color:var(--muted); margin-bottom:20px; font-size:14px;">Enable or disable features for all users in your organization</p>
+
+                <div style="display:flex; flex-direction:column; gap:20px;">
+                  <!-- Enable Achievements -->
+                  <div class="field" style="display:flex; align-items:center; justify-content:space-between; padding:16px; background:var(--glass-2); border-radius:8px; border:1px solid var(--border-color);">
+                    <div style="flex:1;">
+                      <label for="enable-achievements" style="display:flex; align-items:center; gap:12px; cursor:pointer;">
+                        <span style="font-size:24px;">🏆</span>
+                        <div>
+                          <div style="color:var(--white); font-weight:600; font-size:15px;">Enable Achievements</div>
+                          <div style="color:var(--muted); font-size:13px; margin-top:2px;">Staff can earn achievements and view the achievements page</div>
+                        </div>
+                      </label>
+                    </div>
+                    <div class="toggle-switch" onclick="document.getElementById('enable-achievements').click();" style="cursor:pointer;">
+                      <input type="checkbox" id="enable-achievements" style="display:none;" onchange="updateSiteSettings()">
+                      <span class="toggle-slider"></span>
+                    </div>
+                  </div>
+
+                  <!-- Enable Avatars -->
+                  <div class="field" style="display:flex; align-items:center; justify-content:space-between; padding:16px; background:var(--glass-2); border-radius:8px; border:1px solid var(--border-color);">
+                    <div style="flex:1;">
+                      <label for="enable-avatars" style="display:flex; align-items:center; gap:12px; cursor:pointer;">
+                        <span style="font-size:24px;">👤</span>
+                        <div>
+                          <div style="color:var(--white); font-weight:600; font-size:15px;">Enable Avatars</div>
+                          <div style="color:var(--muted); font-size:13px; margin-top:2px;">Users can create custom avatars. When disabled, initials are shown instead</div>
+                        </div>
+                      </label>
+                    </div>
+                    <div class="toggle-switch" onclick="document.getElementById('enable-avatars').click();" style="cursor:pointer;">
+                      <input type="checkbox" id="enable-avatars" style="display:none;" onchange="updateSiteSettings()">
+                      <span class="toggle-slider"></span>
+                    </div>
+                  </div>
+                </div>
+
+                <div id="feature-settings-status" style="margin-top:16px; padding:12px; border-radius:6px; display:none;">
+                  <!-- Status message will appear here -->
+                </div>
+              </div>
+
               <!-- Debug Settings Section -->
               <div class="settings-section" style="margin-top:20px">
 
@@ -9036,7 +9081,9 @@ window.PIR_DEFINITIONS_DATA = [
       case 'settings':
         // Initialize debug features on Site Settings page
         initPageVisibilityToggles();
-        
+        // Load site feature settings
+        loadSiteSettings();
+
         // Fix layout issue: ensure settings view stays in content container
         setTimeout(() => {
           const view = document.querySelector('#view-settings');
@@ -9953,11 +10000,11 @@ window.PIR_DEFINITIONS_DATA = [
   async function handleInviteUserFormSubmit(e) {
     console.log('Invite user form submitted');
     e.preventDefault();
-    
+
     // Get error and success elements
     const errorElement = document.getElementById('add-user-error');
     const successElement = document.getElementById('add-user-success');
-    
+
     // Hide error and success messages
     if (errorElement) errorElement.style.display = 'none';
     if (successElement) successElement.style.display = 'none';
@@ -9966,7 +10013,7 @@ window.PIR_DEFINITIONS_DATA = [
     const submitBtn = document.getElementById('invite-user-submit');
     const originalBtnText = submitBtn.textContent;
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Inviting...';
+    submitBtn.textContent = 'Sending invitation...';
 
     // Collect form data
     const formData = {
@@ -9978,23 +10025,15 @@ window.PIR_DEFINITIONS_DATA = [
       siteId: ctx.site_id
     };
 
-    console.log('Creating user account', formData);
+    console.log('Processing invitation for:', formData.email);
 
     try {
       // Get the current user's session for authentication
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        throw new Error('You must be logged in to create users');
+        throw new Error('You must be logged in to invite users');
       }
 
-      console.log('Using Edge Function with service key for invitation', { email: formData.email, name: formData.fullName });
-      
-      // Create a temporary Supabase client with the service role key for admin operations
-      const serviceKey = (typeof process !== 'undefined' && process.env?.SUPABASE_SERVICE_ROLE_KEY) || '';
-      if (!serviceKey) {
-        throw new Error('SUPABASE_SERVICE_ROLE_KEY not set in environment');
-      }
-      
       // Check for existing invitations
       const { data: existingInvites, error: existingInviteError } = await supabase
         .from('site_invites')
@@ -10004,110 +10043,111 @@ window.PIR_DEFINITIONS_DATA = [
         .limit(1);
 
       if (existingInviteError && existingInviteError.code !== '42P01') {
-        console.warn('Error checking for existing user', existingInviteError);
+        console.warn('Error checking for existing invitations:', existingInviteError);
       } else if (existingInvites && existingInvites.length > 0) {
-        throw new Error(`An invitation for ${formData.email} already exists`);
+        throw new Error(`An invitation for ${formData.email} is already pending`);
       }
-      
-  // Send invitation email with magic link for password setup
-  console.log('Sending invitation email');
 
-      // First, create an entry in site_invites table (let database auto-generate ID)
+      // Create an entry in site_invites table
       const inviteInsertData = {
         site_id: formData.siteId,
         email: formData.email,
         full_name: formData.fullName,
         role: formData.siteRole,
         role_detail: formData.jobRole,
-        status: 'pending'
+        status: 'pending',
+        invite_data: {
+          created_at: new Date().toISOString(),
+          invited_by: session.user.email
+        }
       };
 
-      // Only add reports_to_id if it exists and convert to integer
+      // Add reports_to_id if it exists
       if (formData.teamId) {
         inviteInsertData.reports_to_id = parseInt(formData.teamId);
       }
 
-      const { error: inviteError } = await supabase
+      const { data: inviteRecord, error: inviteError } = await supabase
         .from('site_invites')
-        .insert(inviteInsertData);
+        .insert(inviteInsertData)
+        .select()
+        .single();
 
       if (inviteError) {
         console.error('Failed to create invite record:', inviteError);
-        throw new Error('Failed to create invite record: ' + inviteError.message);
+        throw new Error('Failed to create invitation: ' + inviteError.message);
       }
 
-      // Create admin client with service role key for user creation
-      const adminSupabase = createClient(CONFIG.SUPABASE_URL, serviceKey);
+      console.log('Invite record created:', inviteRecord.id);
 
-      // First check if user already exists
-      const { data: existingUser } = await adminSupabase.auth.admin.listUsers();
-      const userExists = existingUser?.users?.some(u => u.email === formData.email);
+      // Send magic link email using OTP
+      // Build the redirect URL with all necessary parameters
+      const baseUrl = 'https://checkloops.co.uk/simple-set-password.html';
+      const redirectParams = new URLSearchParams({
+        invite_email: formData.email,
+        site_id: formData.siteId,
+        full_name: formData.fullName,
+        role: formData.siteRole,
+        role_detail: formData.jobRole || '',
+        reports_to_id: formData.teamId || '',
+        invite_id: inviteRecord.id
+      });
+      const redirectUrl = `${baseUrl}?${redirectParams.toString()}`;
 
-      if (!userExists) {
-        // Create the user with admin API
-        const tempPassword = crypto.randomUUID();
-        const { error: createError } = await adminSupabase.auth.admin.createUser({
-          email: formData.email,
-          password: tempPassword,
-          email_confirm: true, // Auto-confirm the email
-          user_metadata: {
+      console.log('Sending magic link to:', formData.email);
+      console.log('Redirect URL:', redirectUrl);
+
+      // Try magic link first
+      const { error: magicLinkError } = await supabase.auth.signInWithOtp({
+        email: formData.email,
+        options: {
+          shouldCreateUser: true,
+          emailRedirectTo: redirectUrl,
+          data: {
             full_name: formData.fullName,
+            site_id: formData.siteId,
             role: formData.siteRole,
             role_detail: formData.jobRole,
             reports_to_id: formData.teamId,
-            site_id: formData.siteId,
-            invited: true
+            invite_id: inviteRecord.id
           }
-        });
-
-        if (createError) {
-          console.error('Failed to create user:', createError);
-          throw new Error(`Failed to create user: ${createError.message || 'Unknown error'}`);
         }
-        console.log('User account created successfully');
-      } else {
-        console.log('User already exists, will send password reset');
-      }
-
-      // APPROACH HISTORY:
-      // Previous approach (magic links): Failed when email security scanners pre-opened the links
-      // Current approach: Use resetPasswordForEmail which is NOT single-use and handles pre-opening
-      // The email will say "Reset Password" but it's more reliable than magic links
-
-      // Use CONFIG for dynamic redirect URL
-      const redirectUrl = typeof CONFIG !== 'undefined' && CONFIG.passwordRedirectUrl
-        ? `${CONFIG.passwordRedirectUrl}?invite_email=${encodeURIComponent(formData.email)}&site_id=${formData.siteId}&full_name=${encodeURIComponent(formData.fullName)}&role=${formData.siteRole}&role_detail=${encodeURIComponent(formData.jobRole || '')}&reports_to_id=${formData.teamId || ''}`
-        : `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(formData.email)}&site_id=${formData.siteId}&full_name=${encodeURIComponent(formData.fullName)}&role=${formData.siteRole}&role_detail=${encodeURIComponent(formData.jobRole || '')}&reports_to_id=${formData.teamId || ''}`;
-
-      const { error: emailError } = await supabase.auth.resetPasswordForEmail(formData.email, {
-        redirectTo: redirectUrl
       });
 
-      if (emailError) {
-        console.error('Failed to send invitation email:', emailError);
-        throw new Error(`Failed to send invitation email: ${emailError.message || 'Unknown error'}`);
+      if (magicLinkError) {
+        console.error('Magic link failed, falling back to password reset:', magicLinkError);
+
+        // Fallback to password reset email
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(formData.email, {
+          redirectTo: redirectUrl
+        });
+
+        if (resetError) {
+          throw new Error(`Failed to send invitation email: ${resetError.message}`);
+        }
+        console.log('Password reset email sent as fallback');
+      } else {
+        console.log('Magic link email sent successfully');
       }
 
-      console.log('Password reset email sent successfully (used as invitation)');
-
       // Success!
-      const successElement = document.getElementById('add-user-success');
       if (successElement) {
         successElement.innerHTML = `
-          <strong>Success!</strong> User ${formData.email} has been invited successfully!
-          <br><br>
-          They will receive an email with a secure link to set their password and complete setup.
-          <br><br>
-          <em>Note: The email may take a few minutes to arrive. Check spam folder if not received.</em>
+          <strong>✅ Invitation Sent!</strong><br><br>
+          <strong>${formData.email}</strong> will receive an email with a magic link to set up their account.<br><br>
+          <small>📧 The email should arrive within 2-3 minutes. Please ask them to check their spam folder if not received.</small>
         `;
         successElement.style.display = 'block';
       }
-  console.log('User invitation completed successfully!', { email: formData.email });
+
+      console.log('User invitation completed successfully!', {
+        email: formData.email,
+        inviteId: inviteRecord.id
+      });
 
       // Reset form fields
       document.getElementById('add-user-name').value = '';
       document.getElementById('add-user-email').value = '';
-      // Don't reset role selects as they're likely to invite multiple users with same roles
 
       // Refresh user list and close modal after delay
       setTimeout(() => {
@@ -10116,17 +10156,27 @@ window.PIR_DEFINITIONS_DATA = [
       }, 3000);
 
     } catch (err) {
-      console.error('Failed to create user - full error:', err);
-      const errorMessage = err.message || err.toString() || 'Failed to create user';
-      
+      console.error('Failed to invite user:', err);
+
       const errorElement = document.getElementById('add-user-error');
       if (errorElement) {
-        errorElement.textContent = errorMessage;
+        // Provide more user-friendly error messages
+        let errorMessage = err.message || 'Failed to send invitation';
+
+        if (errorMessage.includes('already')) {
+          errorMessage = `⚠️ ${errorMessage}`;
+        } else if (errorMessage.includes('email')) {
+          errorMessage = `📧 ${errorMessage}`;
+        } else {
+          errorMessage = `❌ ${errorMessage}`;
+        }
+
+        errorElement.innerHTML = errorMessage;
         errorElement.style.display = 'block';
       }
-      
-      debugLog('error', 'User creation failed', {
-        message: errorMessage,
+
+      debugLog('error', 'Invitation failed', {
+        message: err.message,
         error: err,
         stack: err.stack
       });
@@ -10378,21 +10428,52 @@ window.PIR_DEFINITIONS_DATA = [
         .eq('status', 'pending')
         .single();
 
-      // Use resetPasswordForEmail for resending - more reliable than magic links
-      const baseUrl = typeof CONFIG !== 'undefined' && CONFIG.passwordRedirectUrl
-        ? CONFIG.passwordRedirectUrl
-        : 'https://checkloops.co.uk/simple-set-password.html';
+      if (inviteError || !inviteData) {
+        throw new Error('Could not find invitation details');
+      }
 
-      const redirectUrl = inviteData ?
-        `${baseUrl}?invite_email=${encodeURIComponent(email)}&site_id=${inviteData.site_id}&full_name=${encodeURIComponent(inviteData.full_name || '')}&role=${inviteData.role || ''}&role_detail=${encodeURIComponent(inviteData.role_detail || '')}&reports_to_id=${inviteData.reports_to_id || ''}` :
-        `${baseUrl}?invite_email=${encodeURIComponent(email)}`;
+      // Build the redirect URL with all necessary parameters
+      const baseUrl = 'https://checkloops.co.uk/simple-set-password.html';
+      const redirectParams = new URLSearchParams({
+        invite_email: email,
+        site_id: inviteData.site_id,
+        full_name: inviteData.full_name || '',
+        role: inviteData.role || '',
+        role_detail: inviteData.role_detail || '',
+        reports_to_id: inviteData.reports_to_id || '',
+        invite_id: inviteData.id
+      });
+      const redirectUrl = `${baseUrl}?${redirectParams.toString()}`;
 
-      // Use resetPasswordForEmail which is more reliable and doesn't get consumed by scanners
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: redirectUrl
+      console.log('Resending magic link to:', email);
+
+      // Try magic link first
+      const { error: magicLinkError } = await supabase.auth.signInWithOtp({
+        email: email,
+        options: {
+          shouldCreateUser: true,
+          emailRedirectTo: redirectUrl,
+          data: {
+            full_name: inviteData.full_name,
+            site_id: inviteData.site_id,
+            role: inviteData.role,
+            role_detail: inviteData.role_detail,
+            reports_to_id: inviteData.reports_to_id,
+            invite_id: inviteData.id
+          }
+        }
       });
 
-      if (error) throw error;
+      if (magicLinkError) {
+        console.error('Magic link failed, using password reset:', magicLinkError);
+
+        // Fallback to password reset
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: redirectUrl
+        });
+
+        if (resetError) throw resetError;
+      }
 
       debugLog('success', 'Invitation resent successfully', { email });
 
@@ -10401,8 +10482,8 @@ window.PIR_DEFINITIONS_DATA = [
       alertDiv.className = 'alert success';
       alertDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 16px; background: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 8px; z-index: 10000; max-width: 400px;';
       alertDiv.innerHTML = `
-        <strong>Invitation resent to ${email}</strong><br>
-        <small>A magic link email has been sent to the user</small>
+        <strong>✅ Invitation resent to ${email}</strong><br>
+        <small>A new magic link has been sent. It should arrive within 2-3 minutes.</small>
       `;
       document.body.appendChild(alertDiv);
 
@@ -10410,7 +10491,7 @@ window.PIR_DEFINITIONS_DATA = [
 
     } catch (err) {
       debugLog('error', 'Failed to resend invitation', err);
-      alert('Failed to resend: ' + err.message);
+      alert('Failed to resend invitation: ' + err.message);
     }
   };
 
@@ -10814,6 +10895,146 @@ window.PIR_DEFINITIONS_DATA = [
       alert('Failed to save page permissions. Please try again.');
     }
   }
+
+  // Site Settings Functions for Feature Toggles
+  async function loadSiteSettings() {
+    try {
+      // Get the current site ID
+      const siteId = ctx?.site_id;
+      if (!siteId) {
+        console.warn('No site_id available for loading settings');
+        return;
+      }
+
+      // Check if site_settings table exists, if not create default settings
+      const { data, error } = await supabase
+        .from('site_settings')
+        .select('*')
+        .eq('site_id', siteId)
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116' || error.message.includes('no rows')) {
+          // No settings exist, create default settings
+          console.log('Creating default site settings');
+          const { error: insertError } = await supabase
+            .from('site_settings')
+            .insert({
+              site_id: siteId,
+              enable_achievements: true,  // Default to enabled
+              enable_avatars: true,       // Default to enabled
+              updated_at: new Date().toISOString()
+            });
+
+          if (insertError) {
+            console.error('Failed to create default settings:', insertError);
+          }
+
+          // Set default UI state
+          document.getElementById('enable-achievements').checked = true;
+          document.getElementById('enable-avatars').checked = true;
+        } else {
+          console.error('Error loading site settings:', error);
+        }
+        return;
+      }
+
+      // Apply loaded settings to UI
+      if (data) {
+        const achievementsCheckbox = document.getElementById('enable-achievements');
+        const avatarsCheckbox = document.getElementById('enable-avatars');
+
+        if (achievementsCheckbox) {
+          achievementsCheckbox.checked = data.enable_achievements !== false;
+        }
+        if (avatarsCheckbox) {
+          avatarsCheckbox.checked = data.enable_avatars !== false;
+        }
+
+        console.log('Site settings loaded:', {
+          achievements: data.enable_achievements,
+          avatars: data.enable_avatars
+        });
+      }
+
+    } catch (error) {
+      console.error('Failed to load site settings:', error);
+    }
+  }
+
+  // Update site settings when toggles change
+  async function updateSiteSettings() {
+    const statusDiv = document.getElementById('feature-settings-status');
+    const achievementsCheckbox = document.getElementById('enable-achievements');
+    const avatarsCheckbox = document.getElementById('enable-avatars');
+
+    if (!ctx?.site_id) {
+      console.error('No site_id available for saving settings');
+      return;
+    }
+
+    // Show saving status
+    if (statusDiv) {
+      statusDiv.style.display = 'block';
+      statusDiv.style.background = '#3b82f6';
+      statusDiv.style.color = 'white';
+      statusDiv.innerHTML = '💾 Saving settings...';
+    }
+
+    try {
+      const settings = {
+        site_id: ctx.site_id,
+        enable_achievements: achievementsCheckbox?.checked || false,
+        enable_avatars: avatarsCheckbox?.checked || false,
+        updated_at: new Date().toISOString()
+      };
+
+      // Upsert the settings (insert or update)
+      const { error } = await supabase
+        .from('site_settings')
+        .upsert(settings, {
+          onConflict: 'site_id',
+          returning: 'minimal'
+        });
+
+      if (error) {
+        throw error;
+      }
+
+      // Show success status
+      if (statusDiv) {
+        statusDiv.style.background = '#10b981';
+        statusDiv.innerHTML = '✅ Settings saved successfully!';
+
+        // Store in localStorage for immediate effect on other pages
+        localStorage.setItem(`site_${ctx.site_id}_settings`, JSON.stringify({
+          enable_achievements: settings.enable_achievements,
+          enable_avatars: settings.enable_avatars
+        }));
+
+        setTimeout(() => {
+          statusDiv.style.display = 'none';
+        }, 3000);
+      }
+
+      console.log('Site settings saved:', settings);
+
+    } catch (error) {
+      console.error('Failed to save site settings:', error);
+
+      if (statusDiv) {
+        statusDiv.style.background = '#ef4444';
+        statusDiv.innerHTML = '❌ Failed to save settings. Please try again.';
+
+        setTimeout(() => {
+          statusDiv.style.display = 'none';
+        }, 5000);
+      }
+    }
+  }
+
+  // Make updateSiteSettings available globally
+  window.updateSiteSettings = updateSiteSettings;
 
   // Global debug function for testing
   window.testDebugFunction = async function() {
