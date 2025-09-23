@@ -214,7 +214,11 @@ export async function initSupabase() {
   if (supabaseClientPromise) return supabaseClientPromise;
 
   supabaseClientPromise = (async () => {
-    const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+    // Use local Supabase bundle to avoid CSP issues
+    if (typeof supabase === 'undefined') {
+      throw new Error('Supabase library not loaded. Make sure supabase-js.js is included.');
+    }
+    const { createClient } = supabase;
     const client = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
       auth: {
         persistSession: true,
