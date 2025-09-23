@@ -34,8 +34,8 @@ serve(async (req) => {
     }
 
     // Get environment variables
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')
-    const supabaseServiceKey = Deno.env.get('SECRET_KEY')
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const supabaseServiceKey = Deno.env.get('SECRET_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
     if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error('Missing environment variables')
@@ -57,22 +57,46 @@ serve(async (req) => {
       throw new Error('Invalid authorization')
     }
 
-    // Get inviter's profile
-    const { data: inviterProfile, error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .select('site_id, role')
+    // Determine inviter authorization & site via master_users first, then profiles as fallback
+    let site_id: number | null = null
+    let inviterRole: string | null = null
+
+    const { data: mu, error: muErr } = await supabaseAdmin
+      .from('master_users')
+      .select('site_id, access_type')
       .eq('user_id', user.id)
-      .single()
+      .limit(1)
+      .maybeSingle()
 
-    if (profileError || !inviterProfile) {
-      throw new Error('Inviter profile not found')
+    if (mu && mu.site_id) {
+      site_id = Number(mu.site_id)
+      inviterRole = mu.access_type || null
+    } else {
+      const { data: inviterProfile, error: profileError } = await supabaseAdmin
+        .from('profiles')
+        .select('site_id, role')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (inviterProfile) {
+        site_id = Number(inviterProfile.site_id)
+        inviterRole = inviterProfile.role || null
+      }
     }
 
-    if (inviterProfile.role !== 'admin') {
-      throw new Error('Only admins can invite users')
+    if (!site_id) {
+      return new Response(JSON.stringify({ error: 'Inviter not linked to a site' }), {
+        status: 403,
+        headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' },
+      })
     }
 
-    const site_id = inviterProfile.site_id
+    if (!['admin', 'owner'].includes((inviterRole || '').toLowerCase())) {
+      return new Response(JSON.stringify({ error: 'Only admins/owners can invite users' }), {
+        status: 403,
+        headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' },
+      })
+    }
 
     // Get the redirect URL from the request
     const origin = req.headers.get('origin') || ''
@@ -80,7 +104,7 @@ serve(async (req) => {
     const defaultRedirect = isProduction
       ? 'https://checkloops.co.uk/simple-set-password.html'
       : 'http://127.0.0.1:5500/simple-set-password.html'
-    const redirectTo = req.headers.get('x-redirect-url') || defaultRedirect
+  const redirectTo = req.headers.get('x-redirect-url') || defaultRedirect
     
     // STEP 1: Create the site_invites record FIRST
     const { data: inviteRecord, error: inviteRecordError } = await supabaseAdmin
@@ -129,17 +153,29 @@ serve(async (req) => {
     }
 
     // STEP 3: Send Supabase magic link (OTP) invitation
+  // Append full onboarding parameters to redirect URL
+  const url = new URL(redirectTo)
+  url.searchParams.set('invite_id', String(inviteRecord.id))
+  url.searchParams.set('invite_email', email)
+  url.searchParams.set('site_id', String(site_id))
+  url.searchParams.set('full_name', name)
+  url.searchParams.set('role', role)
+  if (role_detail) url.searchParams.set('role_detail', role_detail)
+  if (reports_to_id) url.searchParams.set('reports_to_id', String(reports_to_id))
+  const redirectWithInvite = url.toString()
+
     const { error: authError } = await supabaseAdmin.auth.signInWithOtp({
       email,
       options: {
         shouldCreateUser: true,
-        emailRedirectTo: redirectTo,
+        emailRedirectTo: redirectWithInvite,
         data: {
           full_name: name,
           role,
           site_id,
           role_detail,
-          reports_to_id
+          reports_to_id,
+          invite_id: String(inviteRecord.id)
         }
       }
     })

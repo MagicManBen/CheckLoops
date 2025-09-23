@@ -111,6 +111,57 @@ function getStandardNavHTML(activePage = 'staff.html') {
   `;
 }
 
+// Render standardized nav into the DOM
+function renderStandardStaffNav(activePage = (typeof window !== 'undefined' ? window.location.pathname.split('/').pop() : 'staff.html')) {
+  try {
+    if (document.getElementById('nav-links')) return; // already rendered
+    const html = getStandardNavHTML(activePage);
+    // Prefer a placeholder if present
+    const mount = document.getElementById('navbar-root');
+    if (mount) {
+      mount.innerHTML = html;
+    } else {
+      document.body.insertAdjacentHTML('afterbegin', html);
+    }
+
+    // Wire mobile menu immediately after insertion
+    const mobileToggle = document.getElementById('mobile-menu-toggle');
+    const navLinks = document.getElementById('nav-links');
+    if (mobileToggle && navLinks) {
+      mobileToggle.addEventListener('click', function() {
+        navLinks.classList.toggle('mobile-open');
+        const svg = mobileToggle.querySelector('svg');
+        if (navLinks.classList.contains('mobile-open')) {
+          svg.innerHTML = '<line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>';
+        } else {
+          svg.innerHTML = '<line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="18" x2="21" y2="18"></line>';
+        }
+      });
+
+      document.addEventListener('click', function(e) {
+        if (!mobileToggle.contains(e.target) && !navLinks.contains(e.target)) {
+          navLinks.classList.remove('mobile-open');
+          const svg = mobileToggle.querySelector('svg');
+          if (svg) svg.innerHTML = '<line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="18" x2="21" y2="18"></line>';
+        }
+      });
+
+      const navItems = navLinks.querySelectorAll('.nav-link, .dropdown-item');
+      navItems.forEach(item => {
+        item.addEventListener('click', function() {
+          navLinks.classList.remove('mobile-open');
+          const svg = mobileToggle.querySelector('svg');
+          if (svg) svg.innerHTML = '<line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="18" x2="21" y2="18"></line>';
+        });
+      });
+    }
+
+    setActiveNavItem(activePage);
+  } catch (e) {
+    console.error('[staff-nav] render failed', e);
+  }
+}
+
 // Auto-initialize navigation if called from a page
 if (typeof window !== 'undefined' && document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', function() {
@@ -119,3 +170,6 @@ if (typeof window !== 'undefined' && document.readyState === 'loading') {
     setActiveNavItem(currentPath);
   });
 }
+
+// Expose render function globally
+try { if (typeof window !== 'undefined') window.renderStandardStaffNav = renderStandardStaffNav; } catch(_) {}

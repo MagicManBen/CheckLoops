@@ -655,14 +655,9 @@
       align-items: stretch;
     }
 
-    /* Equal-height panels on desktop to avoid page scroll */
+    /* Desktop tuning */
     @media (min-width: 1024px) {
-      .equal-panel {
-        height: 72vh; /* tall but leaves room for navbar/header */
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-      }
+      .equal-panel { height: auto; }
       .equal-panel .scroll-box {
         flex: 1 1 auto;
         max-height: none;
@@ -675,15 +670,24 @@
       .stat-row {
         grid-template-columns: repeat(3, 1fr);
       }
-      /* Lock page to viewport and flex the content area */
-      body { overflow-y: hidden; }
-      .page-container { height: 100vh; }
-      .content { display: flex; flex-direction: column; height: 100%; overflow: hidden; padding-top: 1rem; padding-bottom: 1rem; }
-      .hero { margin-bottom: 0.75rem; }
-      .stat-row { margin-bottom: 0.75rem; }
-      .content-grid { flex: 1 1 auto; min-height: 0; height: 100%; }
-      .panel.equal-panel { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+  /* Allow natural page scroll */
+  body { overflow-y: auto; }
+  .page-container { height: auto; }
+  .content { display: block; height: auto; overflow: visible; padding-top: 0.5rem; padding-bottom: 0.5rem; }
+      .navbar { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+      .hero { margin-bottom: 0.25rem; }
+      .h1 { font-size: 1.4rem; }
+      .subtitle { display: none; }
+      .stat-row { margin-bottom: 0.25rem; gap: 0.75rem; }
+      .stat-card { padding: 0.5rem 0.75rem; border-radius: var(--radius-lg); }
+      .stat-num { font-size: 1.25rem; }
+      .icon-wrap { width: 32px; height: 32px; }
+      .panel-header { margin-bottom: 0.6rem; }
+      .panel.equal-panel { margin-bottom: 0; height: auto; display: block; overflow: visible; }
+      .content-grid { height: auto; }
+      .panel.equal-panel.scrollable { overflow-y: auto; -webkit-overflow-scrolling: touch; }
       .panel.equal-panel .scroll-box { flex: 1 1 auto; min-height: 0; max-height: none; }
+      .footer { display: block; }
     }
 
     /* Overlap section styling */
@@ -769,54 +773,8 @@
         </div>
       </div>
     </div>
-    <!-- Top Navigation Bar -->
-    <nav class="navbar">
-      <div class="navbar-container">
-        <a href="staff.html" class="navbar-brand">
-          <img src="Logo.png" alt="CheckLoops" class="brand-logo">
-          <span class="brand-text">CheckLoops</span>
-        </a>
-
-        <!-- Mobile menu toggle -->
-        <button class="mobile-menu-toggle" id="mobile-menu-toggle" style="display: none;">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="3" y1="6" x2="21" y2="6"></line>
-            <line x1="3" y1="12" x2="21" y2="12"></line>
-            <line x1="3" y1="18" x2="21" y2="18"></line>
-          </svg>
-        </button>
-
-        <div class="navbar-nav nav-links" id="nav-links">
-          <a href="staff.html" class="nav-link">Dashboard</a>
-          <a href="staff-training.html" class="nav-link">Training</a>
-          <a href="staff-quiz.html" class="nav-link">Quiz</a>
-          <a href="my-holidays.html" class="nav-link active">Holidays</a>
-          <div class="nav-dropdown">
-            <a href="#" class="nav-link dropdown-toggle">More ▼</a>
-            <div class="dropdown-menu">
-              <a href="staff-welcome.html" class="dropdown-item">Welcome</a>
-              <a href="staff-calendar.html" class="dropdown-item">Calendar</a>
-              <a href="staff-meetings.html" class="dropdown-item">Meetings</a>
-              <a href="achievements.html" class="dropdown-item">Achievements</a>
-            </div>
-          </div>
-        </div>
-
-        <div class="navbar-user">
-          <a href="admin-dashboard.html" class="admin-portal-btn" id="admin-portal-btn" style="display:none;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z"/>
-            </svg>
-            Admin Portal
-          </a>
-          <div class="user-info">
-            <span class="user-pill" id="email-pill">—</span>
-            <span class="user-pill role" id="role-pill">—</span>
-          </div>
-          <button class="btn-signout" id="logout-btn">Sign Out</button>
-        </div>
-      </div>
-    </nav>
+    <!-- Standard nav mount point -->
+    <div id="navbar-root"></div>
 
     <!-- Main Content Area -->
     <main class="content">
@@ -865,7 +823,7 @@
       <!-- Main two-column grid: left = request form, right = requests list -->
       <div class="content-grid">
         <!-- Holiday Request Form -->
-  <section class="panel equal-panel" aria-labelledby="request-time-off">
+  <section class="panel equal-panel scrollable" aria-labelledby="request-time-off">
           <div class="panel-header">
             <div class="illus-circle"><img src="https://img.icons8.com/pastel-color/64/add--v2.png" alt="Request" style="width:30px;height:30px;"/></div>
             <h3 class="panel-title" id="request-time-off">Request Time Off</h3>
@@ -969,6 +927,10 @@
       // Make supabase available globally for Admin Portal button
       window.supabase = supabase;
       handleAuthState(supabase);
+      // Render shared nav and set active state
+      if (typeof window.renderStandardStaffNav === 'function') {
+        window.renderStandardStaffNav('my-holidays.html');
+      }
       navActivate('holidays');
       attachLogout(supabase);
 
@@ -1061,7 +1023,7 @@
 
         // Show admin portal button for admins/owners
         const adminRole = (profileRow?.access_type || profileRow?.role || '').toLowerCase();
-        const adminPortalBtn = document.getElementById('admin-portal-btn');
+  const adminPortalBtn = document.getElementById('adminPortalBtn');
         if (adminPortalBtn) {
           if (adminRole === 'admin' || adminRole === 'owner') {
             adminPortalBtn.style.display = 'inline-flex';
