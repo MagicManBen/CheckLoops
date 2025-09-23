@@ -2412,7 +2412,7 @@
     }
 
     // Working Pattern
-    async function initWorkingPattern(session, profileRow, workType) {
+  async function initWorkingPattern(session, profileRow, workType) {
       const container = document.getElementById('working-pattern-form');
       const note = document.getElementById('working-pattern-note');
 
@@ -2443,73 +2443,116 @@
         // Initial render based on chosen type
         renderForm(workType);
 
-        // Try to load existing pattern and prefill from master_users
+        // Prefill priority:
+        // 1) Use 3_staff_working_patterns if it exists and has values
+        // 2) Fallback to master_users mirrors
+        // 3) If HH:MM selected and still empty, default Mon–Fri to 07:30
         try {
-          const { data: pattern } = await supabase
-            .from('master_users')
-            .select('weekly_hours,weekly_sessions,monday_hours,tuesday_hours,wednesday_hours,thursday_hours,friday_hours,saturday_hours,sunday_hours,monday_sessions,tuesday_sessions,wednesday_sessions,thursday_sessions,friday_sessions,saturday_sessions,sunday_sessions,is_gp')
-            .eq('auth_user_id', session.user.id)
-            .maybeSingle();
+          const [wpRes, muRes] = await Promise.all([
+            supabase
+              .from('3_staff_working_patterns')
+              .select('monday_hours,tuesday_hours,wednesday_hours,thursday_hours,friday_hours,saturday_hours,sunday_hours,monday_sessions,tuesday_sessions,wednesday_sessions,thursday_sessions,friday_sessions,saturday_sessions,sunday_sessions')
+              .eq('user_id', session.user.id)
+              .maybeSingle(),
+            supabase
+              .from('master_users')
+              .select('weekly_hours,weekly_sessions,monday_hours,tuesday_hours,wednesday_hours,thursday_hours,friday_hours,saturday_hours,sunday_hours,monday_sessions,tuesday_sessions,wednesday_sessions,thursday_sessions,friday_sessions,saturday_sessions,sunday_sessions,is_gp')
+              .eq('auth_user_id', session.user.id)
+              .maybeSingle()
+          ]);
 
-          if (pattern) {
-            const dkeys = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
-            const hasAnyHours = dkeys.some(d => (pattern[`${d}_hours`] || 0) > 0);
-            const hasAnySessions = dkeys.some(d => (pattern[`${d}_sessions`] || 0) > 0);
+          const wp = wpRes?.data || null;
+          const mu = muRes?.data || null;
+          const dkeys = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
 
-            // Determine saved type - use is_gp flag primarily, fallback to data analysis
-            // But only auto-switch if user hasn't made a conscious selection
-            let savedType = workType;
-            if (window.currentWorkType) {
-              // User has explicitly chosen, respect their choice
-              savedType = window.currentWorkType;
-            } else if (pattern.is_gp === true || (pattern.is_gp === null && hasAnySessions && !hasAnyHours)) {
-              savedType = 'sessions';
-            } else if (pattern.is_gp === false || (pattern.is_gp === null && hasAnyHours)) {
-              savedType = 'hours';
+          const wpHasAnyHours = !!wp && dkeys.some(d => !!(wp[`${d}_hours`] && String(wp[`${d}_hours`]).length));
+          const wpHasAnySessions = !!wp && dkeys.some(d => (wp[`${d}_sessions`] || 0) > 0);
+          const muHasAnyHours = !!mu && dkeys.some(d => (mu[`${d}_hours`] || 0) > 0);
+          const muHasAnySessions = !!mu && dkeys.some(d => (mu[`${d}_sessions`] || 0) > 0);
+
+          // Determine savedType unless user explicitly chose in this visit
+          let savedType = workType;
+          if (window.currentWorkType) {
+            savedType = window.currentWorkType;
+          } else if (wpHasAnySessions && !wpHasAnyHours) {
+            savedType = 'sessions';
+          } else if (wpHasAnyHours) {
+            savedType = 'hours';
+          } else if (mu?.is_gp === true || (!muHasAnyHours && muHasAnySessions)) {
+            savedType = 'sessions';
+          } else if (mu?.is_gp === false || muHasAnyHours) {
+            savedType = 'hours';
+          }
+
+          if (savedType !== workType) {
+            renderForm(savedType);
+            workType = savedType;
+            window.currentWorkType = savedType;
+            // Sync radios and card selection
+            const hoursRadio = document.getElementById('work-type-hours');
+            const sessionsRadio = document.getElementById('work-type-sessions');
+            if (hoursRadio && sessionsRadio) {
+              hoursRadio.checked = savedType === 'hours';
+              sessionsRadio.checked = savedType === 'sessions';
+              document.querySelectorAll('.working-type-card').forEach(c => c.classList.remove('selected'));
+              const card = document.querySelector(`.working-type-card[data-type="${savedType}"]`);
+              if (card) card.classList.add('selected');
             }
-
-            // If saved type differs from current render, re-render form
-            if (savedType !== workType) {
-              renderForm(savedType);
-              workType = savedType;
-              window.currentWorkType = savedType;
-              // Sync working-type radios and card styles
-              const hoursRadio = document.getElementById('work-type-hours');
-              const sessionsRadio = document.getElementById('work-type-sessions');
-              if (hoursRadio && sessionsRadio) {
-                hoursRadio.checked = savedType === 'hours';
-                sessionsRadio.checked = savedType === 'sessions';
-                document.querySelectorAll('.working-type-card').forEach(c => c.classList.remove('selected'));
-                const card = document.querySelector(`.working-type-card[data-type="${savedType}"]`);
-                if (card) card.classList.add('selected');
-              }
-              if (note) {
-                note.textContent = savedType === 'hours'
-                  ? 'Enter your typical working hours for each day in HH:MM (e.g., 07:30)'
-                  : 'Enter the number of sessions for each day (e.g., 1, 2)';
-              }
+            if (note) {
+              note.textContent = savedType === 'hours'
+                ? 'Enter your typical working hours for each day in HH:MM (e.g., 07:30)'
+                : 'Enter the number of sessions for each day (e.g., 1, 2)';
             }
+          }
 
-            // Helper to convert decimal hours back to HH:MM
-            const decimalToHHMM = (decimal) => {
-              if (!decimal || decimal === 0) return '';
-              const hours = Math.floor(decimal);
-              const minutes = Math.round((decimal - hours) * 60);
-              return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-            };
+          // Helper to convert decimal hours back to HH:MM
+          const decimalToHHMM = (decimal) => {
+            if (!decimal || decimal === 0) return '';
+            const hours = Math.floor(decimal);
+            const minutes = Math.round((decimal - hours) * 60);
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+          };
 
-            // Prefill inputs
-            if (workType === 'hours') {
+          let prefilled = false;
+          if (workType === 'hours') {
+            if (wpHasAnyHours) {
+              // Prefer exact HH:MM values from working_patterns
               for (const d of dkeys) {
                 const el = document.getElementById(`pattern-hours-${d}`);
-                if (el && pattern[`${d}_hours`]) {
-                  el.value = decimalToHHMM(pattern[`${d}_hours`]);
-                }
+                const v = wp?.[`${d}_hours`] || '';
+                if (el && v) el.value = v;
               }
-            } else {
+              prefilled = true;
+            } else if (muHasAnyHours) {
+              for (const d of dkeys) {
+                const el = document.getElementById(`pattern-hours-${d}`);
+                const dec = mu?.[`${d}_hours`];
+                if (el && dec) el.value = decimalToHHMM(dec);
+              }
+              prefilled = true;
+            }
+
+            // Default Mon–Fri 07:30 if not prefilled at all
+            if (!prefilled) {
+              const weekdays = ['monday','tuesday','wednesday','thursday','friday'];
+              for (const d of weekdays) {
+                const el = document.getElementById(`pattern-hours-${d}`);
+                if (el && !el.value) el.value = '07:30';
+              }
+              // Leave weekends blank by default
+            }
+          } else {
+            // Sessions path
+            if (wpHasAnySessions) {
               for (const d of dkeys) {
                 const el = document.getElementById(`pattern-sessions-${d}`);
-                const v = pattern[`${d}_sessions`];
+                const v = wp?.[`${d}_sessions`];
+                if (el && (v || v === 0)) el.value = v;
+              }
+            } else if (muHasAnySessions) {
+              for (const d of dkeys) {
+                const el = document.getElementById(`pattern-sessions-${d}`);
+                const v = mu?.[`${d}_sessions`];
                 if (el && (v || v === 0)) el.value = v;
               }
             }

@@ -29,7 +29,7 @@ const DEFAULT_ACHIEVEMENTS = [
   {
     key: 'quiz_complete',
     name: 'Quiz Master',
-    description: 'Submit a mandatory quiz on time.',
+    description: 'Complete your weekly check‑in on time.',
     icon: 'medal',
     points: 40,
     metadata: { category: 'compliance' }
@@ -53,7 +53,7 @@ const DEFAULT_ACHIEVEMENTS = [
   {
     key: 'quiz_hat_trick',
     name: 'Quiz Hat Trick',
-    description: 'Submit three required weekly quizzes.',
+    description: 'Complete three weekly check‑ins.',
     icon: 'medal',
     points: 80,
     metadata: { category: 'compliance' }

@@ -611,8 +611,8 @@
     /* Stat cards */
     .stat-row {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 1.5rem;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.25rem;
       margin-bottom: 2rem;
     }
 
@@ -647,6 +647,43 @@
       margin-top: 0.25rem;
     }
 
+    /* New content grid for main columns */
+    .content-grid {
+      display: grid;
+      grid-template-columns: 1.6fr 1fr;
+      gap: 1.5rem;
+      align-items: stretch;
+    }
+
+    /* Equal-height panels on desktop to avoid page scroll */
+    @media (min-width: 1024px) {
+      .equal-panel {
+        height: 72vh; /* tall but leaves room for navbar/header */
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .equal-panel .scroll-box {
+        flex: 1 1 auto;
+        max-height: none;
+        min-height: 0; /* allow flexbox scrolling */
+      }
+    }
+
+    /* Make stat cards lock to three-up on larger screens */
+    @media (min-width: 1024px) {
+      .stat-row {
+        grid-template-columns: repeat(3, 1fr);
+      }
+      /* Lock page to viewport and flex the content area */
+      body { overflow-y: hidden; }
+      .page-container { height: 100vh; }
+      .content { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+      .content-grid { flex: 1 1 auto; min-height: 0; height: 100%; }
+      .panel.equal-panel { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+      .panel.equal-panel .scroll-box { flex: 1 1 auto; min-height: 0; max-height: none; }
+    }
+
     /* Overlap section styling */
     #overlap-section {
       background: var(--warning-light) !important;
@@ -656,6 +693,26 @@
     #overlap-section .calc-header {
       color: #b45309;
     }
+
+    /* Scrollable list box for requests */
+    .scroll-box {
+      max-height: 70vh;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-right: 0.25rem; /* room for scrollbar */
+      scroll-behavior: smooth;
+    }
+
+    /* Subtle scrollbar styling (WebKit) */
+    .scroll-box::-webkit-scrollbar { width: 10px; }
+    .scroll-box::-webkit-scrollbar-track { background: transparent; }
+    .scroll-box::-webkit-scrollbar-thumb {
+      background: var(--gray-300);
+      border-radius: 999px;
+      border: 2px solid transparent;
+      background-clip: padding-box;
+    }
+    .scroll-box:hover::-webkit-scrollbar-thumb { background: var(--gray-400); }
 
     /* Footer */
     .footer {
@@ -683,6 +740,12 @@
       .form-row {
         grid-template-columns: 1fr;
       }
+
+      .content-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .equal-panel { height: auto; }
     }
   </style>
 </head>
@@ -797,57 +860,60 @@
         </div>
       </div>
 
-      <!-- Holiday Request Form -->
-      <div class="panel">
-        <div class="panel-header">
-          <div class="illus-circle"><img src="https://img.icons8.com/pastel-color/64/add--v2.png" alt="Request" style="width:30px;height:30px;"/></div>
-          <h3 class="panel-title">Request Time Off</h3>
-        </div>
-
-        <div class="form-row">
-          <div class="form-group" style="grid-column: 1 / span 2;">
-            <label class="form-label">Date Range</label>
-            <input id="holiday-range" class="form-input" placeholder="Select holiday dates…" autocomplete="off" value="" />
-            <div style="color: var(--gray-500); font-size:0.875rem; margin-top:0.5rem;">Click start date, then end date (click once for a single day).</div>
+      <!-- Main two-column grid: left = request form, right = requests list -->
+      <div class="content-grid">
+        <!-- Holiday Request Form -->
+  <section class="panel equal-panel" aria-labelledby="request-time-off">
+          <div class="panel-header">
+            <div class="illus-circle"><img src="https://img.icons8.com/pastel-color/64/add--v2.png" alt="Request" style="width:30px;height:30px;"/></div>
+            <h3 class="panel-title" id="request-time-off">Request Time Off</h3>
           </div>
-          <button class="btn btn-primary" id="calculate-btn">Calculate</button>
-        </div>
 
-        <div id="calculation-result" class="calc-card" style="display:none; margin-top:1rem;">
-          <div class="calc-header">Time Off Calculation</div>
-          <div id="calc-list" class="calc-list"></div>
-          <div class="calc-total">
-            <span class="calc-total-label">Total</span>
-            <span class="calc-total-value"><span id="calc-total">0</span> <span id="calc-unit">hours</span></span>
+          <div class="form-row">
+            <div class="form-group" style="grid-column: 1 / span 2;">
+              <label class="form-label">Date Range</label>
+              <input id="holiday-range" class="form-input" placeholder="Select holiday dates…" autocomplete="off" value="" />
+              <div style="color: var(--gray-500); font-size:0.875rem; margin-top:0.5rem;">Click start date, then end date (click once for a single day).</div>
+            </div>
+            <button class="btn btn-primary" id="calculate-btn">Calculate</button>
           </div>
-        </div>
 
-        <!-- Overlap Detection Section -->
-        <div id="overlap-section" class="calc-card" style="display:none; margin-top:1rem;">
-          <div class="calc-header" style="color: #fbbf24;">⚠️ Other Staff on Holiday During This Period</div>
-          <div id="overlap-list" style="padding: 12px;">
-            <!-- Overlapping holidays will be loaded here -->
+          <div id="calculation-result" class="calc-card" style="display:none; margin-top:1rem;">
+            <div class="calc-header">Time Off Calculation</div>
+            <div id="calc-list" class="calc-list"></div>
+            <div class="calc-total">
+              <span class="calc-total-label">Total</span>
+              <span class="calc-total-value"><span id="calc-total">0</span> <span id="calc-unit">hours</span></span>
+            </div>
           </div>
-        </div>
 
-        <div class="form-group" style="margin-top:1rem;">
-          <label class="form-label">Reason (optional)</label>
-          <textarea id="reason" class="form-input" rows="3" placeholder="Holiday, personal time, etc."></textarea>
-        </div>
+          <!-- Overlap Detection Section -->
+          <div id="overlap-section" class="calc-card" style="display:none; margin-top:1rem;">
+            <div class="calc-header" style="color: #fbbf24;">⚠️ Other Staff on Holiday During This Period</div>
+            <div id="overlap-list" style="padding: 12px;">
+              <!-- Overlapping holidays will be loaded here -->
+            </div>
+          </div>
 
-        <button class="btn btn-primary" id="submit-request" style="margin-top:1rem; display:none;">Submit Request</button>
-        <div id="request-msg" style="margin-top:0.75rem; font-weight:600;"></div>
-      </div>
+          <div class="form-group" style="margin-top:1rem;">
+            <label class="form-label">Reason (optional)</label>
+            <textarea id="reason" class="form-input" rows="3" placeholder="Holiday, personal time, etc."></textarea>
+          </div>
 
-      <!-- Your Holiday Requests -->
-      <div class="panel">
-        <div class="panel-header">
-          <div class="illus-circle"><img src="https://img.icons8.com/pastel-color/64/todo-list--v2.png" alt="Requests" style="width:30px;height:30px;"/></div>
-          <h3 class="panel-title">Your Holiday Requests</h3>
-        </div>
-        <div id="bookings-container">
-          <!-- Bookings will be loaded here -->
-        </div>
+          <button class="btn btn-primary" id="submit-request" style="margin-top:1rem; display:none;">Submit Request</button>
+          <div id="request-msg" style="margin-top:0.75rem; font-weight:600;"></div>
+        </section>
+
+        <!-- Your Holiday Requests -->
+  <aside class="panel equal-panel" aria-labelledby="your-requests">
+          <div class="panel-header">
+            <div class="illus-circle"><img src="https://img.icons8.com/pastel-color/64/todo-list--v2.png" alt="Requests" style="width:30px;height:30px;"/></div>
+            <h3 class="panel-title" id="your-requests">Your Holiday Requests</h3>
+          </div>
+          <div id="bookings-container" class="scroll-box">
+            <!-- Bookings will be loaded here -->
+          </div>
+        </aside>
       </div>
     </main>
 
