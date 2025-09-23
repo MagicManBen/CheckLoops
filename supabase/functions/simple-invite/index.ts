@@ -138,25 +138,33 @@ serve(async (req) => {
 
     // Site invite created successfully
 
-    // STEP 2: Add user to kiosk_users table immediately (if role_detail is provided)
+    // STEP 2: Optionally add user to kiosk_users if the table exists and role_detail provided
     if (role_detail && role_detail.trim() !== '') {
-      const { data: kioskUserData, error: kioskUserError } = await supabaseAdmin
-        .from('kiosk_users')
-        .insert({
-          site_id: site_id,
-          full_name: name,
-          role: role_detail,
-          active: true,
-          reports_to_id: reports_to_id ? parseInt(reports_to_id, 10) : null,
-          created_at: new Date().toISOString()
-        })
-        .select()
+      let kioskTableExists = true
+      try {
+        const { error: existsErr } = await supabaseAdmin.from('kiosk_users').select('id').limit(1)
+        if (existsErr) kioskTableExists = false
+      } catch (_e) {
+        kioskTableExists = false
+      }
 
-      if (kioskUserError) {
-        // Warning: Failed to create kiosk user (but continuing with invitation)
-        // Don't fail the invitation if kiosk_users insert fails
-      } else {
-        // Kiosk user created successfully
+      if (kioskTableExists) {
+        const { error: kioskUserError } = await supabaseAdmin
+          .from('kiosk_users')
+          .insert({
+            site_id: site_id,
+            full_name: name,
+            role: role_detail,
+            active: true,
+            reports_to_id: reports_to_id ? parseInt(reports_to_id, 10) : null,
+            created_at: new Date().toISOString()
+          })
+          .select()
+
+        // Ignore kiosk user insert errors; do not block the invitation flow
+        if (kioskUserError) {
+          // no-op
+        }
       }
     }
 
