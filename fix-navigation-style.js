@@ -17,10 +17,33 @@
       overflow: hidden !important;
       position: relative !important;
     }
-    .nav.seg-nav {
-      display: flex !important;
-      gap: 10px !important;
-    }
+      .nav.seg-nav {
+        display: flex !important;
+        gap: 10px !important;
+      }
+      .nav.seg-nav {
+        display: flex !important;
+        gap: 10px !important;
+        align-items: center !important;
+        flex-wrap: wrap !important;
+      }
+      .nav.seg-nav button {
+        background: transparent !important;
+        border: none !important;
+        color: var(--ink, #0f172a) !important;
+        padding: 8px 12px !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        cursor: pointer !important;
+        transition: background 0.2s, transform 0.2s !important;
+      }
+      .nav.seg-nav button:hover { background: rgba(0,0,0,0.06) !important; }
+      .nav.seg-nav button.active {
+        background: rgba(0, 0, 0, 0.08) !important;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08) !important;
+      }
+      .nav.seg-nav button.disabled-nav-item { color: #9ca3af !important; opacity: 0.6 !important; }
+      .nav.seg-nav button.admin-only { background: linear-gradient(135deg, #8b5cf6, #6366f1) !important; color:#fff !important; }
     .topbar .pill {
       background: rgba(255, 255, 255, 0.12) !important;
       padding: 6px 12px !important;
@@ -37,8 +60,8 @@
       font-weight: 600 !important;
       cursor: pointer !important;
     }
-    /* Active button styling */
-    .nav.seg-nav button.active {
+    /* Active button styling on dark topbar */
+    .topbar .nav.seg-nav button.active {
       background: rgba(255, 255, 255, 0.15) !important;
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1) !important;
     }

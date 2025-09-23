@@ -3,239 +3,993 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="CheckLoop Staffing Calendar - View staff schedules, holidays and working patterns" />
+  <meta name="theme-color" content="#0b4fb3" />
   <title>CheckLoop — Staffing Calendar</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="preconnect" href="https://img.icons8.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="config.js"></script>
-  <link rel="stylesheet" href="staff.css">
-  <script src="fix-navigation-style.js"></script>
+  <script src="rls-fix.js"></script>
+  <link rel="stylesheet" href="nav-styles.css">
+
   <style>
-    /* Page theme aligned with my-holidays */
-    .filters {
-      display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
-      margin: 10px 0 6px 0;
+    :root {
+      /* Primary color palette - professional medical blue */
+      --primary: #0b4fb3;
+      --primary-dark: #062b6f;
+      --primary-light: #2b6ecc;
+      --primary-lightest: #e8f2ff;
+
+      /* Accent colors */
+      --accent: #76a7ff;
+      --accent-2: #5f96ff;
+      --success: #2bd4a7;
+      --success-light: #e8fdf8;
+      --warning: #ffca28;
+      --warning-light: #fffbeb;
+      --danger: #ff6b6b;
+      --danger-light: #fef2f2;
+
+      /* Neutral colors */
+      --white: #ffffff;
+      --gray-50: #f8fafc;
+      --gray-100: #f1f5f9;
+      --gray-200: #e2e8f0;
+      --gray-300: #cbd5e1;
+      --gray-400: #94a3b8;
+      --gray-500: #64748b;
+      --gray-600: #475569;
+      --gray-700: #334155;
+      --gray-800: #1e293b;
+      --gray-900: #0f172a;
+
+      /* Shadows */
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+      --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+      --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+      --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1);
+      --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+
+      /* Border radius */
+      --radius-sm: 0.375rem;
+      --radius: 0.5rem;
+      --radius-lg: 0.75rem;
+      --radius-xl: 1rem;
+      --radius-2xl: 1.5rem;
+
+      /* Typography */
+      --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+      --font-display: 'Plus Jakarta Sans', 'Inter', sans-serif;
+
+      /* Transitions */
+      --transition: all 0.2s ease-in-out;
     }
-    .filter-chip {
-      padding: 8px 12px; border-radius: 999px; font-weight: 700; font-size: 12px;
-      border: 1px solid var(--border-color); background: rgba(255,255,255,0.06); color: var(--white);
-      cursor: pointer; user-select: none;
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
     }
-    .filter-chip.active { background: linear-gradient(135deg, #4338ca, #3b82f6); border-color: transparent; }
-    .status-chip-group { display:flex; gap:8px; align-items:center; }
-    .status-chip {
-      position:relative; display:inline-flex; align-items:center; justify-content:center;
-      gap:6px; padding:4px 12px 4px 28px;
-      border-radius:14px; border:1px solid rgba(148,163,184,0.4);
-      background: rgba(255,255,255,0.92);
-      font-weight:600; color:#1f2937;
-      box-shadow:0 6px 16px rgba(15,23,42,0.08);
-      opacity:0.65;
-      cursor:pointer; transition: all .18s ease; min-width:72px; height:28px; line-height:18px;
+
+    html {
+      scroll-behavior: smooth;
     }
-    .status-chip::before{
-      content:''; position:absolute; left:10px; width:16px; height:16px; border-radius:6px;
-      border:2px solid rgba(148,163,184,0.5);
-      background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(226,232,240,0.7));
-      box-shadow: inset 0 2px 3px rgba(15,23,42,0.1);
-      transition: all .18s ease;
+
+    body {
+      font-family: var(--font-sans);
+      line-height: 1.6;
+      color: var(--gray-900);
+      background: linear-gradient(135deg, var(--primary-lightest) 0%, var(--white) 100%);
+      overflow-x: hidden;
+      min-height: 100vh;
+      position: relative;
     }
-    .status-chip::after{
-      content:''; position:absolute; left:14px; top:9px; width:8px; height:4px;
-      border-left:2px solid transparent; border-bottom:2px solid transparent;
-      transform: rotate(-45deg); opacity:0; transition: opacity .18s ease;
-    }
-    .status-chip.in{ border-color: rgba(34,197,94,0.4); }
-    .status-chip.off{ border-color: rgba(239,68,68,0.4); }
-    .status-chip.holiday{ border-color: rgba(59,130,246,0.4); }
-    .status-chip.in.active::before{ border-color: rgba(34,197,94,0.7); }
-    .status-chip.off.active::before{ border-color: rgba(239,68,68,0.7); }
-    .status-chip.holiday.active::before{ border-color: rgba(59,130,246,0.7); }
-    .status-chip.in.active::after{ border-color: rgba(34,197,94,0.85); opacity:1; }
-    .status-chip.off.active::after{ border-color: rgba(239,68,68,0.85); opacity:1; }
-    .status-chip.holiday.active::after{ border-color: rgba(59,130,246,0.85); opacity:1; }
-    .status-chip.active{ font-weight:700; color:#0f172a; box-shadow:0 10px 20px rgba(15,23,42,0.12); opacity:1; }
-    .calendar-grid {
-      display: grid;
-      grid-template-columns: repeat(7, minmax(0, 1fr));
-      gap: 12px;
-      margin-top: 12px;
-    }
-    .calendar-weekday {
-      text-align: center;
-      font-weight: 800;
-      padding: 12px;
-      border-radius: 14px;
-      background: linear-gradient(145deg, rgba(255,255,255,0.95), rgba(255,255,255,0.78));
-      border: 1px solid rgba(148,163,184,0.35);
-      color: #1e293b;
-      position: sticky;
+
+    /* Grid background pattern matching homepage */
+    body::before {
+      content: '';
+      position: fixed;
       top: 0;
-      z-index: 2;
-      box-shadow: 0 12px 24px rgba(15,23,42,0.08);
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="%23e2e8f0" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+      opacity: 0.3;
+      z-index: -1;
     }
-    .calendar-day {
-      background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(248,250,252,0.86));
-      border: 1px solid rgba(148,163,184,0.28);
-      border-radius: 16px;
-      min-height: 160px;
-      padding: 12px;
+
+    /* Navigation Bar */
+    .navbar, .header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 50;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--gray-200);
+      transition: var(--transition);
+      box-shadow: var(--shadow-sm);
+      padding: 1rem 0;
+    }
+
+    .nav-link {
+      padding: 0.5rem 1rem;
+      border-radius: var(--radius);
+      text-decoration: none;
+      color: var(--gray-600);
+      font-weight: 500;
+      transition: var(--transition);
+    }
+
+    .nav-link:hover {
+      background: var(--gray-100);
+      color: var(--gray-900);
+    }
+
+    .nav-link.active {
+      background: var(--primary-lightest);
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    .user-pill {
+      padding: 0.375rem 0.75rem;
+      background: var(--gray-100);
+      border: 1px solid var(--gray-200);
+      border-radius: 999px;
+      font-size: 0.875rem;
+      color: var(--gray-700);
+      font-weight: 500;
+    }
+
+    .user-pill.role {
+      background: var(--primary-lightest);
+      color: var(--primary);
+      border-color: var(--primary);
+    }
+
+    .btn-signout {
+      padding: 0.5rem 1rem;
+      background: var(--gray-100);
+      color: var(--gray-700);
+      border: 1px solid var(--gray-300);
+      border-radius: var(--radius);
+      font-weight: 600;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .btn-signout:hover {
+      background: var(--gray-200);
+      color: var(--gray-900);
+    }
+
+    .header.scrolled {
+      background: rgba(255, 255, 255, 0.98);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .nav {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 4rem;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      text-decoration: none;
+      transition: var(--transition);
+    }
+
+    .logo:hover {
+      transform: translateY(-1px);
+    }
+
+    .logo-icon {
+      width: 2rem;
+      height: 2rem;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 700;
+      font-size: 1.125rem;
+    }
+
+    .logo-text {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: var(--gray-900);
+      font-family: var(--font-display);
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+    }
+
+    .nav-links a {
+      text-decoration: none;
+      color: var(--gray-600);
+      font-weight: 500;
+      font-size: 0.9375rem;
+      transition: var(--transition);
+      position: relative;
+      padding: 0.5rem 1rem;
+      border-radius: var(--radius-lg);
+    }
+
+    .nav-links a:hover {
+      color: var(--primary);
+      background: var(--gray-100);
+    }
+
+    .nav-links a.active {
+      color: var(--primary);
+      background: var(--primary-lightest);
+      font-weight: 600;
+    }
+
+    /* User section */
+    .user-section {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .user-info {
       display: flex;
       flex-direction: column;
-      gap: 10px;
-      box-shadow: 0 18px 36px rgba(15,23,42,0.12);
-      transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+      align-items: flex-end;
+      text-align: right;
     }
-    .calendar-day:hover { transform: translateY(-2px); box-shadow: 0 22px 40px rgba(15,23,42,0.18); }
-    .calendar-day.muted { opacity: 0.6; }
+
+    .user-name {
+      font-weight: 600;
+      color: var(--gray-900);
+      font-size: 0.875rem;
+    }
+
+    .user-role {
+      font-size: 0.75rem;
+      color: var(--gray-500);
+    }
+
+    .logout-btn {
+      background: var(--danger);
+      color: var(--white);
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: var(--radius-lg);
+      font-weight: 500;
+      cursor: pointer;
+      transition: var(--transition);
+      font-size: 0.875rem;
+    }
+
+    .logout-btn:hover {
+      background: #ef4444;
+      transform: translateY(-1px);
+      box-shadow: var(--shadow);
+    }
+
+    /* Main content */
+    .main {
+      margin-top: 4rem;
+      padding: 2rem 1.5rem;
+    }
+
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+
+    /* Hero section */
+    .hero {
+      background: white;
+      border-radius: var(--radius-2xl);
+      padding: 2rem;
+      box-shadow: var(--shadow);
+      margin-bottom: 2rem;
+      border: 1px solid var(--gray-200);
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    .hero-content {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex: 1;
+    }
+
+    .hero-icon {
+      width: 3.5rem;
+      height: 3.5rem;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      border-radius: var(--radius-xl);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 1.5rem;
+      box-shadow: var(--shadow-lg);
+    }
+
+    .hero-text h1 {
+      font-size: 1.75rem;
+      font-weight: 800;
+      color: var(--gray-900);
+      margin-bottom: 0.25rem;
+      font-family: var(--font-display);
+    }
+
+    .hero-subtitle {
+      color: var(--gray-600);
+      font-size: 1rem;
+    }
+
+    .hero-controls {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .month-nav {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .nav-btn {
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--gray-300);
+      background: white;
+      color: var(--gray-700);
+      border-radius: var(--radius);
+      font-weight: 500;
+      cursor: pointer;
+      transition: var(--transition);
+      font-size: 0.875rem;
+    }
+
+    .nav-btn:hover {
+      background: var(--gray-50);
+      border-color: var(--gray-400);
+    }
+
+    .month-label {
+      padding: 0.5rem 1rem;
+      background: var(--primary-lightest);
+      color: var(--primary);
+      border-radius: var(--radius);
+      font-weight: 600;
+      font-size: 0.875rem;
+      min-width: 140px;
+      text-align: center;
+    }
+
+    /* Calendar section */
+    .calendar-section {
+      background: white;
+      border-radius: var(--radius-2xl);
+      box-shadow: var(--shadow);
+      border: 1px solid var(--gray-200);
+      overflow: hidden;
+    }
+
+    .calendar-header {
+      padding: 1.5rem;
+      border-bottom: 1px solid var(--gray-200);
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    /* Legend */
+    .legend {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.25rem 0.75rem;
+      border-radius: var(--radius);
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+
+    .legend-item.in {
+      background: var(--success-light);
+      color: #065f46;
+    }
+
+    .legend-item.off {
+      background: var(--danger-light);
+      color: #991b1b;
+    }
+
+    .legend-item.holiday {
+      background: var(--primary-lightest);
+      color: var(--primary);
+    }
+
+    .legend-dot {
+      width: 0.75rem;
+      height: 0.75rem;
+      border-radius: 50%;
+    }
+
+    .legend-dot.in { background: var(--success); }
+    .legend-dot.off { background: var(--danger); }
+    .legend-dot.holiday { background: var(--primary); }
+
+    /* Filters */
+    .filters {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-left: auto;
+      flex-wrap: wrap;
+    }
+
+    .team-filter {
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--gray-300);
+      border-radius: var(--radius);
+      background: white;
+      color: var(--gray-700);
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: var(--transition);
+      min-width: 140px;
+    }
+
+    .team-filter:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-lightest);
+    }
+
+    .status-filters {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .status-chip {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.375rem 0.75rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--gray-300);
+      background: white;
+      color: var(--gray-700);
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: var(--transition);
+      user-select: none;
+    }
+
+    .status-chip:hover {
+      background: var(--gray-50);
+    }
+
+    .status-chip.active {
+      font-weight: 600;
+      box-shadow: var(--shadow);
+    }
+
+    .status-chip.in.active {
+      background: var(--success-light);
+      border-color: var(--success);
+      color: #065f46;
+    }
+
+    .status-chip.off.active {
+      background: var(--danger-light);
+      border-color: var(--danger);
+      color: #991b1b;
+    }
+
+    .status-chip.holiday.active {
+      background: var(--primary-lightest);
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    .status-chip::before {
+      content: '';
+      width: 0.5rem;
+      height: 0.5rem;
+      border-radius: 50%;
+      background: var(--gray-400);
+      transition: var(--transition);
+    }
+
+    .status-chip.in::before { background: var(--success); }
+    .status-chip.off::before { background: var(--danger); }
+    .status-chip.holiday::before { background: var(--primary); }
+
+    /* Calendar grid */
+    .calendar-content {
+      padding: 1.5rem;
+    }
+
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 1rem;
+    }
+
+    .calendar-weekday {
+      text-align: center;
+      font-weight: 700;
+      padding: 0.75rem;
+      background: var(--gray-100);
+      color: var(--gray-700);
+      border-radius: var(--radius);
+      font-size: 0.875rem;
+      font-family: var(--font-display);
+    }
+
+    .calendar-day {
+      background: var(--gray-50);
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius-lg);
+      min-height: 160px;
+      padding: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      transition: var(--transition);
+    }
+
+    .calendar-day:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--shadow);
+    }
+
+    .calendar-day.muted {
+      opacity: 0.5;
+    }
+
     .calendar-day.today {
-      border-color: rgba(59,130,246,0.65);
-      box-shadow: 0 22px 42px rgba(59,130,246,0.22);
+      border-color: var(--primary);
+      background: var(--primary-lightest);
+      box-shadow: var(--shadow);
     }
-    .day-top { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
-    .day-num { font-weight:800; font-size:18px; color:#0f172a; }
-    .day-label { font-size:12px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.03em; }
-    .day-badges { display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end; }
+
+    .day-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+    }
+
+    .day-number {
+      font-weight: 800;
+      font-size: 1.125rem;
+      color: var(--gray-900);
+      font-family: var(--font-display);
+    }
+
+    .day-badges {
+      display: flex;
+      gap: 0.25rem;
+    }
+
     .day-badge {
-      padding:2px 6px;
-      border-radius:999px;
-      font-size:11px;
-      font-weight:700;
-      border:1px solid transparent;
+      padding: 0.125rem 0.375rem;
+      border-radius: 999px;
+      font-size: 0.625rem;
+      font-weight: 700;
+      line-height: 1;
     }
-    .day-badge.in { background: rgba(34,197,94,.18); color:#047857; border-color: rgba(34,197,94,.35); }
-    .day-badge.off { background: rgba(239,68,68,.18); color:#b91c1c; border-color: rgba(239,68,68,.35); }
-    .day-badge.holiday { background: rgba(59,130,246,.18); color:#1d4ed8; border-color: rgba(59,130,246,.35); }
-    .status-wrap { margin-top: 4px; display:flex; flex-direction:column; gap:8px; }
-    .status-group { background: rgba(15,23,42,0.04); border:1px solid rgba(148,163,184,0.2); border-radius:12px; padding:6px 8px; display:flex; flex-direction:column; gap:4px; }
-    .status-group.in { background: rgba(220,252,231,0.55); border-color: rgba(34,197,94,0.35); }
-    .status-group.holiday { background: rgba(219,234,254,0.55); border-color: rgba(59,130,246,0.35); }
-    .status-group.off { background: rgba(254,226,226,0.55); border-color: rgba(239,68,68,0.30); }
-    .status-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:#475569; }
-    .status-group.in .status-label { color:#047857; }
-    .status-group.holiday .status-label { color:#1d4ed8; }
-    .status-group.off .status-label { color:#b91c1c; }
-    .status-chips { display:flex; flex-wrap:wrap; gap:6px; }
+
+    .day-badge.in {
+      background: var(--success);
+      color: white;
+    }
+
+    .day-badge.off {
+      background: var(--danger);
+      color: white;
+    }
+
+    .day-badge.holiday {
+      background: var(--primary);
+      color: white;
+    }
+
+    /* Status groups */
+    .status-groups {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      flex: 1;
+    }
+
+    .status-group {
+      border-radius: var(--radius);
+      padding: 0.5rem;
+      border: 1px solid var(--gray-200);
+    }
+
+    .status-group.in {
+      background: var(--success-light);
+      border-color: var(--success);
+    }
+
+    .status-group.off {
+      background: var(--danger-light);
+      border-color: var(--danger);
+    }
+
+    .status-group.holiday {
+      background: var(--primary-lightest);
+      border-color: var(--primary);
+    }
+
+    .status-label {
+      font-size: 0.625rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.25rem;
+      color: var(--gray-600);
+    }
+
+    .status-group.in .status-label { color: #065f46; }
+    .status-group.off .status-label { color: #991b1b; }
+    .status-group.holiday .status-label { color: var(--primary); }
+
+    .person-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+    }
+
     .person-chip {
-      position:relative;
-      display:inline-flex;
-      align-items:center;
-      padding:2px 8px;
-      border-radius:999px;
-      font-weight:600;
-      font-size:12px;
-      background: rgba(255,255,255,0.9);
-      color:#0f172a;
-      box-shadow:0 6px 18px rgba(15,23,42,0.08);
-      max-width: 100%;
-      height: 24px;
-      line-height: 20px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      padding: 0.125rem 0.5rem;
+      background: white;
+      color: var(--gray-900);
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      line-height: 1.2;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      max-width: 100%;
+      box-shadow: var(--shadow-sm);
+      cursor: default;
     }
-    .person-chip.in { background: rgba(220,252,231,0.9); color:#065f46; }
-    .person-chip.off { background: rgba(254,226,226,0.92); color:#991b1b; }
-    .person-chip.holiday { background: rgba(219,234,254,0.92); color:#1d4ed8; }
+
+    .person-chip.in {
+      background: rgba(255, 255, 255, 0.9);
+      color: #065f46;
+    }
+
+    .person-chip.off {
+      background: rgba(255, 255, 255, 0.9);
+      color: #991b1b;
+    }
+
+    .person-chip.holiday {
+      background: rgba(255, 255, 255, 0.9);
+      color: var(--primary);
+    }
+
+    /* Avatar tooltip */
     .avatar-tooltip {
-      position:absolute;
-      top:-60px;
-      left:50%;
-      transform: translate(-50%, -6px) scale(0.85);
-      opacity:0;
-      pointer-events:none;
-      width:50px;
-      height:50px;
-      border-radius:16px;
-      background: rgba(255,255,255,0.96);
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      font-weight:700;
-      color:#0f172a;
-      box-shadow:0 12px 24px rgba(15,23,42,0.18);
-      transition: opacity .18s ease, transform .18s ease;
+      position: absolute;
+      top: -3.5rem;
+      left: 50%;
+      transform: translateX(-50%) scale(0.8);
+      opacity: 0;
+      pointer-events: none;
+      width: 3rem;
+      height: 3rem;
+      border-radius: var(--radius);
+      background: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      color: var(--gray-900);
+      box-shadow: var(--shadow-lg);
+      transition: var(--transition);
+      border: 2px solid var(--gray-200);
+      z-index: 10;
     }
-    .avatar-tooltip.is-image { background-size: cover; background-position: center; color: transparent; }
-    .avatar-tooltip:not(.is-image) { border:1px solid rgba(148,163,184,0.35); }
-    .person-chip:hover .avatar-tooltip { opacity:1; transform: translate(-50%, -11px) scale(1); }
-    .status-placeholder { font-size:12px; color:rgba(100,116,139,0.9); text-align:center; padding:6px 0; }
-    .legend { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-    .legend .chip { padding:6px 10px; border-radius:999px; font-size:12px; font-weight:800; border:1px solid var(--border-color); background: rgba(255,255,255,0.06); }
-    .legend .in { background: rgba(34,197,94,.18); border-color: rgba(34,197,94,.35); color:#86efac; }
-    .legend .off { background: rgba(239,68,68,.18); border-color: rgba(239,68,68,.35); color:#fca5a5; }
-    .legend .holiday { background: rgba(59,130,246,.18); border-color: rgba(59,130,246,.35); color:#93c5fd; }
-    .team-pill { padding: 2px 8px; border-radius: 999px; font-size: 11px; background: rgba(255,255,255,0.08); border: 1px solid var(--border-color); color:#e2e8f0; }
-    .team-filter {
-      min-width: 180px; padding: 10px 12px; border-radius: 12px;
-      border:1px solid rgba(148,163,184,0.4); background: rgba(255,255,255,0.95);
-      color:#0f172a; box-shadow:0 6px 18px rgba(15,23,42,0.08);
+
+    .avatar-tooltip.is-image {
+      background-size: cover;
+      background-position: center;
+      color: transparent;
     }
-    .week-switch { display:flex; gap:8px; align-items:center; }
-    .week-btn { padding:8px 12px; border-radius:10px; border:1px solid var(--border-color); background: rgba(255,255,255,0.06); color:var(--white); font-weight:800; cursor:pointer; }
+
+    .person-chip:hover .avatar-tooltip {
+      opacity: 1;
+      transform: translateX(-50%) scale(1);
+    }
+
+    .status-placeholder {
+      text-align: center;
+      color: var(--gray-500);
+      font-size: 0.75rem;
+      padding: 1rem;
+      font-style: italic;
+    }
+
+    /* Loading states */
+    .loading {
+      opacity: 0.6;
+      pointer-events: none;
+    }
+
+    .skeleton {
+      background: linear-gradient(90deg, var(--gray-200) 25%, var(--gray-100) 50%, var(--gray-200) 75%);
+      background-size: 200% 100%;
+      animation: loading 1.5s infinite;
+      border-radius: var(--radius);
+    }
+
+    @keyframes loading {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .nav {
+        padding: 0 1rem;
+      }
+
+      .nav-links {
+        display: none;
+      }
+
+      .hero {
+        flex-direction: column;
+        align-items: stretch;
+        text-align: center;
+        gap: 1rem;
+      }
+
+      .hero-content {
+        justify-content: center;
+      }
+
+      .hero-controls {
+        justify-content: center;
+      }
+
+      .calendar-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 1rem;
+      }
+
+      .filters {
+        margin-left: 0;
+        justify-content: center;
+      }
+
+      .legend {
+        justify-content: center;
+      }
+
+      .calendar-grid {
+        gap: 0.5rem;
+      }
+
+      .calendar-day {
+        min-height: 120px;
+        padding: 0.5rem;
+      }
+
+      .user-info {
+        display: none;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .main {
+        padding: 1rem;
+      }
+
+      .hero {
+        padding: 1.5rem;
+      }
+
+      .calendar-content {
+        padding: 1rem;
+      }
+
+      .month-nav {
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .status-filters {
+        flex-direction: column;
+        width: 100%;
+      }
+
+      .status-chip {
+        justify-content: center;
+      }
+    }
   </style>
 </head>
 <body>
-  <div class="bg"><div class="wave"></div><div class="wave wave2"></div></div>
-  <div class="mesh"><div class="m1"></div><div class="m2"></div><div class="m3"></div></div>
-  <main class="content">
-    <div class="topbar panel" style="position:relative;">
-      <div class="halo"></div>
-      <div class="nav seg-nav"></div>
-      <div class="spacer"></div>
-      <div class="pill" id="site-pill">Site: —</div>
-      <div class="pill" id="email-pill">—</div>
-      <div class="pill" id="role-pill">—</div>
-      <button class="btn" id="logout-btn">Sign Out</button>
+  <!-- Navigation Bar -->
+  <nav class="navbar">
+    <div class="navbar-container">
+      <a href="staff.html" class="navbar-brand">
+        <img src="Logo.png" alt="CheckLoops">
+        <span class="brand-text">CheckLoops</span>
+      </a>
+
+      <div class="navbar-nav" id="nav-links">
+        <a href="staff.html" class="nav-link">Dashboard</a>
+        <a href="staff-welcome.html" class="nav-link">Welcome</a>
+        <a href="staff-calendar.html" class="nav-link active">Calendar</a>
+        <a href="staff-meetings.html" class="nav-link">Meetings</a>
+        <a href="staff-training.html" class="nav-link">Training</a>
+        <a href="achievements.html" class="nav-link">Achievements</a>
+        <a href="staff-quiz.html" class="nav-link">Quiz</a>
+        <a href="my-holidays.html" class="nav-link">Holidays</a>
+      </div>
+
+      <div class="navbar-user">
+        <a href="admin-dashboard.html" class="admin-portal-btn" id="admin-portal-btn" style="display:none;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z"/>
+          </svg>
+          Admin Portal
+        </a>
+        <div class="user-info">
+          <span class="user-pill" id="email-pill">—</span>
+          <span class="user-pill role" id="role-pill">—</span>
+        </div>
+        <button class="btn-signout" id="logout-btn">Sign Out</button>
+      </div>
     </div>
+  </nav>
 
-    <section class="panel g-12" style="margin:0; position:relative; overflow:hidden;">
-      <div class="halo"></div>
-      <div class="hero" style="margin-bottom: 12px; display:flex; align-items:center; gap:14px;">
-        <div class="illus-circle" style="width:56px;height:56px; display:grid; place-items:center;"><img src="https://img.icons8.com/pastel-color/64/calendar--v3.png" alt="Calendar" style="width:40px;height:40px;"/></div>
-        <div>
-          <div class="h1" style="font-size:28px;">Staffing Calendar</div>
-          <div class="subtitle">See who is in, off, or on holiday</div>
+  <!-- Main Content -->
+  <main class="main">
+    <div class="container">
+      <!-- Hero Section -->
+      <section class="hero">
+        <div class="hero-content">
+          <div class="hero-icon">📅</div>
+          <div class="hero-text">
+            <h1>Staffing Calendar</h1>
+            <p class="hero-subtitle">View team schedules, holidays and working patterns</p>
+          </div>
         </div>
-        <div class="spacer"></div>
-        <div class="week-switch">
-          <button id="prev-month" class="week-btn">← Previous</button>
-          <div id="month-label" class="pill">—</div>
-          <button id="next-month" class="week-btn">Next →</button>
+        <div class="hero-controls">
+          <div class="month-nav">
+            <button id="prev-month" class="nav-btn">← Previous</button>
+            <div id="month-label" class="month-label">Loading...</div>
+            <button id="next-month" class="nav-btn">Next →</button>
+          </div>
         </div>
-      </div>
+      </section>
 
-      <div class="panel" style="margin-top: 6px;">
-        <div class="panel-header" style="align-items:center; gap:10px; flex-wrap:wrap;">
+      <!-- Calendar Section -->
+      <section class="calendar-section">
+        <div class="calendar-header">
           <div class="legend">
-            <span class="chip in">In</span>
-            <span class="chip off">Off</span>
-            <span class="chip holiday">Holiday</span>
+            <div class="legend-item in">
+              <div class="legend-dot in"></div>
+              <span>In</span>
+            </div>
+            <div class="legend-item off">
+              <div class="legend-dot off"></div>
+              <span>Off</span>
+            </div>
+            <div class="legend-item holiday">
+              <div class="legend-dot holiday"></div>
+              <span>Holiday</span>
+            </div>
           </div>
-          <div class="spacer"></div>
-          <select id="team-filter" class="team-filter" aria-label="Filter by team">
-            <option value="">All Teams</option>
-          </select>
-          <div id="status-filters" class="status-chip-group" aria-label="Filter by status">
-            <button type="button" class="status-chip in" data-status="in" title="Show people who are in">In</button>
-            <button type="button" class="status-chip off" data-status="off" title="Show people who are off">Off</button>
-            <button type="button" class="status-chip active holiday" data-status="holiday" title="Show people on holiday">Holiday</button>
+
+          <div class="filters">
+            <select id="team-filter" class="team-filter" aria-label="Filter by team">
+              <option value="">All Teams</option>
+            </select>
+
+            <div id="status-filters" class="status-filters" aria-label="Filter by status">
+              <button type="button" class="status-chip in" data-status="in" title="Show people who are in">
+                In
+              </button>
+              <button type="button" class="status-chip off" data-status="off" title="Show people who are off">
+                Off
+              </button>
+              <button type="button" class="status-chip active holiday" data-status="holiday" title="Show people on holiday">
+                Holiday
+              </button>
+            </div>
           </div>
         </div>
 
-        <div id="calendar" style="margin-top: 10px;">
-          <!-- Grid renders here -->
+        <div class="calendar-content">
+          <div id="calendar" class="loading">
+            <!-- Calendar grid renders here -->
+            <div class="calendar-grid">
+              <div class="skeleton" style="height: 2rem;"></div>
+              <div class="skeleton" style="height: 2rem;"></div>
+              <div class="skeleton" style="height: 2rem;"></div>
+              <div class="skeleton" style="height: 2rem;"></div>
+              <div class="skeleton" style="height: 2rem;"></div>
+              <div class="skeleton" style="height: 2rem;"></div>
+              <div class="skeleton" style="height: 2rem;"></div>
+              <div class="skeleton" style="height: 160px;"></div>
+              <div class="skeleton" style="height: 160px;"></div>
+              <div class="skeleton" style="height: 160px;"></div>
+              <div class="skeleton" style="height: 160px;"></div>
+              <div class="skeleton" style="height: 160px;"></div>
+              <div class="skeleton" style="height: 160px;"></div>
+              <div class="skeleton" style="height: 160px;"></div>
+            </div>
+          </div>
         </div>
-      </div>
-    </section>
-
-    <div class="muted" style="text-align:center; font-size:12px; padding:10px 0;">© CheckLoop • Staff</div>
+      </section>
+    </div>
   </main>
 
+  <!-- Scripts -->
   <script type="module">
-    import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, attachLogout } from './staff-common.js';
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+    // Initialize Supabase client
+    const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false
+      }
+    });
+
+    let currentUser = null;
+    let userProfile = null;
+    let siteId = null;
+
+    // Constants and utility functions
     const DAY_ORDER = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
 
     function startOfWeek(d){ const c=new Date(d); const day=c.getDay(); c.setDate(c.getDate()-day); c.setHours(0,0,0,0); return c; }
@@ -251,6 +1005,7 @@
     function getInitials(name){ return (name||'?').split(/\s+/).filter(Boolean).map(part=>part[0]).slice(0,2).join('').toUpperCase() || '?'; }
     function toNumber(value, fallback = 0){ if (value === null || value === undefined) return fallback; if (typeof value === 'number' && Number.isFinite(value)) return value; if (typeof value === 'string'){ const trimmed = value.trim(); if (!trimmed) return fallback; if (trimmed.includes(':')){ const [h='0', m='0'] = trimmed.split(':'); const hours = parseInt(h,10) || 0; const mins = parseInt(m,10) || 0; return hours + (mins/60); } const parsed = Number(trimmed); return Number.isFinite(parsed) ? parsed : fallback; } return fallback; }
     function toInt(value, fallback = 0){ if (value === null || value === undefined) return fallback; if (typeof value === 'number' && Number.isFinite(value)) return value; const parsed = Number(String(value).trim()); return Number.isFinite(parsed) ? parsed : fallback; }
+
     function statusFor(person, requests, day){
       const target=dateOnly(day);
       const hasHoliday=(requests||[]).some(r=>r.start<=target && target<=r.end);
@@ -261,60 +1016,105 @@
       return (hasHours||hasSessions)?'in':'off';
     }
 
-    (async function(){
-      const supabase = await initSupabase();
-      window.supabase = supabase;
-      handleAuthState(supabase);
-      navActivate('calendar');
-      attachLogout(supabase);
-
-      try{
-        const { session, profileRow } = await requireStaffSession(supabase);
-        const user = session.user;
-        let siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
-        if (!siteId) {
-          const { data: meRow } = await supabase
-            .from('master_users')
-            .select('site_id')
-            .eq('auth_user_id', user.id)
-            .single();
-          siteId = meRow?.site_id || null;
+    // Authentication and initialization
+    async function initializeApp() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          window.location.href = 'homepage.html';
+          return;
         }
-        setTopbar({ 
-          siteText: await getSiteText(supabase, siteId), 
-          email: user.email, 
-          role: profileRow?.access_type || profileRow?.role || 'staff',
-          access_type: profileRow?.access_type || profileRow?.role
-        });
 
-        const { data: teams } = await supabase.from('teams').select('id,name').eq('site_id', siteId).order('name', { ascending: true });
-        const teamSel = document.getElementById('team-filter');
-        teamSel.innerHTML = '<option value="" data-team-name="">All Teams</option>';
-        (teams||[]).forEach(team=>{
-          const option=document.createElement('option');
-          option.value=String(team.id);
-          option.textContent=team.name;
+        currentUser = session.user;
+
+        // Load user profile
+        const { data: profile, error } = await supabase
+          .from('master_users')
+          .select('*')
+          .eq('auth_user_id', currentUser.id)
+          .single();
+
+        if (error) {
+          console.error('Error loading profile:', error);
+          return;
+        }
+
+        userProfile = profile;
+        siteId = profile.site_id;
+
+        updateUI();
+        await loadTeams();
+        await initializeCalendar();
+      } catch (error) {
+        console.error('Error initializing app:', error);
+        window.location.href = 'homepage.html';
+      }
+    }
+
+    // Update UI with user data
+    function updateUI() {
+      if (!userProfile) return;
+
+      // Update email and role pills
+      const emailPill = document.getElementById('email-pill');
+      const rolePill = document.getElementById('role-pill');
+
+      if (emailPill) emailPill.textContent = currentUser?.email || '—';
+      // Always prioritize access_type over role
+      if (rolePill) rolePill.textContent = userProfile.access_type || userProfile.role || 'Staff';
+
+      // Show admin portal button for admins/owners
+      const adminRole = (userProfile.access_type || userProfile.role || '').toLowerCase();
+      const adminPortalBtn = document.getElementById('admin-portal-btn');
+      if (adminPortalBtn) {
+        if (adminRole === 'admin' || adminRole === 'owner') {
+          adminPortalBtn.style.display = 'inline-flex';
+        } else {
+          adminPortalBtn.style.display = 'none';
+        }
+      }
+    }
+
+    // Load teams for filtering
+    async function loadTeams() {
+      try {
+        const { data: teams } = await supabase
+          .from('teams')
+          .select('id,name')
+          .eq('site_id', siteId)
+          .order('name', { ascending: true });
+
+        const teamSelect = document.getElementById('team-filter');
+        teamSelect.innerHTML = '<option value="">All Teams</option>';
+
+        (teams || []).forEach(team => {
+          const option = document.createElement('option');
+          option.value = String(team.id);
+          option.textContent = team.name;
           option.dataset.teamName = (team.name || '').toLowerCase();
-          teamSel.appendChild(option);
+          teamSelect.appendChild(option);
         });
 
-        const staffQuery = supabase
+      } catch (error) {
+        console.error('Error loading teams:', error);
+      }
+    }
+
+    // Load staff data
+    async function loadStaff() {
+      try {
+        const { data: staffRows, error } = await supabase
           .from('master_users')
           .select(`
             auth_user_id, full_name, email, site_id, role, team_id, team_name, avatar_url, is_gp,
             monday_hours, tuesday_hours, wednesday_hours, thursday_hours, friday_hours, saturday_hours, sunday_hours,
             monday_sessions, tuesday_sessions, wednesday_sessions, thursday_sessions, friday_sessions, saturday_sessions, sunday_sessions
-          `);
-        if (siteId) staffQuery.eq('site_id', siteId);
-        const { data: muRows, error: muError } = await staffQuery;
+          `)
+          .eq('site_id', siteId);
 
-        if (muError) {
-          console.warn('[staff-calendar] master_users lookup failed', muError);
-        }
+        if (error) throw error;
 
-        console.log('[staff-calendar] staff rows fetched:', muRows?.length || 0, 'for site', siteId);
-
-        const people = (muRows || []).map((m, idx) => {
+        const people = (staffRows || []).map((m, idx) => {
           const authId = m.auth_user_id || null;
           const keyFallback = `${m.email || m.full_name || 'user'}-${idx}`;
           const hours = {};
@@ -325,10 +1125,12 @@
           const shortName = fullName ? fullName.split(/\s+/)[0] : (fallbackEmail ? fallbackEmail.split('@')[0] : 'Staff');
           const teamName = (m.team_name || '').trim();
           const teamNameLower = teamName.toLowerCase();
+
           DAY_ORDER.forEach((dayName, dayIdx) => {
             hours[dayIdx] = toNumber(m[`${dayName}_hours`]);
             sessions[dayIdx] = toInt(m[`${dayName}_sessions`]);
           });
+
           return {
             id: authId ? String(authId) : null,
             key: authId ? String(authId) : keyFallback,
@@ -345,262 +1147,318 @@
           };
         });
 
-        if (!people.length) {
-          console.warn('[staff-calendar] No staff records found for site', siteId);
-        } else {
-          people.sort((a, b) => a.name.localeCompare(b.name));
-        }
+        people.sort((a, b) => a.name.localeCompare(b.name));
+        return people;
 
-        const statusFilters = document.getElementById('status-filters');
-        const statusButtons = Array.from(statusFilters.querySelectorAll('.status-chip'));
-        statusButtons.forEach(btn => btn.setAttribute('aria-pressed', String(btn.classList.contains('active'))));
-        statusFilters.addEventListener('click', (event)=>{
-          const toggle=event.target.closest('.status-chip');
-          if(!toggle) return;
-          toggle.classList.toggle('active');
-          const activeCount=statusButtons.filter(btn => btn.classList.contains('active')).length;
-          if(activeCount===0) toggle.classList.add('active');
-          toggle.setAttribute('aria-pressed', String(toggle.classList.contains('active')));
-          statusButtons.forEach(btn => {
-            if(btn !== toggle) btn.setAttribute('aria-pressed', String(btn.classList.contains('active')));
-          });
-          render();
+      } catch (error) {
+        console.error('Error loading staff:', error);
+        return [];
+      }
+    }
+
+    // Load holiday requests
+    async function loadHolidayRequests(fromISO, toISO) {
+      try {
+        const { data: requests, error } = await supabase
+          .from('4_holiday_requests')
+          .select('user_id,start_date,end_date,status')
+          .eq('site_id', siteId)
+          .in('status', ['approved','pending'])
+          .lte('start_date', toISO)
+          .gte('end_date', fromISO);
+
+        if (error) throw error;
+
+        const byUser = new Map();
+        (requests || []).forEach(row => {
+          const rawId = row.user_id;
+          if (!rawId) return;
+          const key = String(rawId);
+          const entry = {
+            start: dateOnly(row.start_date),
+            end: dateOnly(row.end_date),
+            status: row.status
+          };
+          const existing = byUser.get(key);
+          if (existing) existing.push(entry);
+          else byUser.set(key, [entry]);
         });
 
-        teamSel.addEventListener('change', render);
+        return byUser;
 
-        const prevBtn = document.getElementById('prev-month');
-        const nextBtn = document.getElementById('next-month');
-        let cursor = startOfMonth(new Date());
-        prevBtn.addEventListener('click', ()=>{ cursor = shiftMonth(cursor, -1); render(); });
-        nextBtn.addEventListener('click', ()=>{ cursor = shiftMonth(cursor, 1); render(); });
+      } catch (error) {
+        console.error('Error loading holiday requests:', error);
+        return new Map();
+      }
+    }
 
-        const monthLabel = document.getElementById('month-label');
-        const calendar = document.getElementById('calendar');
-        let renderToken = 0;
+    // Calendar state
+    let cursor = startOfMonth(new Date());
+    let renderToken = 0;
+    let people = [];
 
-        async function loadStatuses(fromISO, toISO){
-          const { data: reqs, error } = await supabase
-            .from('4_holiday_requests')
-            .select('user_id,start_date,end_date,status')
-            .eq('site_id', siteId)
-            .in('status', ['approved','pending'])
-            .lte('start_date', toISO)
-            .gte('end_date', fromISO);
+    // Initialize calendar
+    async function initializeCalendar() {
+      people = await loadStaff();
 
-          if (error) {
-            console.error('Unable to load holiday data', error);
-            return new Map();
-          }
+      // Setup event listeners
+      setupEventListeners();
 
-          console.log('[staff-calendar] holiday requests fetched:', (reqs||[]).length, 'between', fromISO, 'and', toISO);
+      // Initial render
+      await renderCalendar();
+    }
 
-          const byUser = new Map();
-          (reqs||[]).forEach(row=>{
-            const rawId=row.user_id;
-            if(!rawId) return;
-            const key=String(rawId);
-            const entry={ start: dateOnly(row.start_date), end: dateOnly(row.end_date), status: row.status };
-            const existing=byUser.get(key);
-            if(existing) existing.push(entry); else byUser.set(key,[entry]);
-          });
-          return byUser;
+    // Setup event listeners
+    function setupEventListeners() {
+      // Month navigation
+      document.getElementById('prev-month').addEventListener('click', () => {
+        cursor = shiftMonth(cursor, -1);
+        renderCalendar();
+      });
+
+      document.getElementById('next-month').addEventListener('click', () => {
+        cursor = shiftMonth(cursor, 1);
+        renderCalendar();
+      });
+
+      // Status filter buttons
+      const statusFilters = document.getElementById('status-filters');
+      const statusButtons = Array.from(statusFilters.querySelectorAll('.status-chip'));
+
+      statusButtons.forEach(btn => btn.setAttribute('aria-pressed', String(btn.classList.contains('active'))));
+
+      statusFilters.addEventListener('click', (event) => {
+        const toggle = event.target.closest('.status-chip');
+        if (!toggle) return;
+
+        toggle.classList.toggle('active');
+        const activeCount = statusButtons.filter(btn => btn.classList.contains('active')).length;
+        if (activeCount === 0) toggle.classList.add('active');
+
+        toggle.setAttribute('aria-pressed', String(toggle.classList.contains('active')));
+        statusButtons.forEach(btn => {
+          if (btn !== toggle) btn.setAttribute('aria-pressed', String(btn.classList.contains('active')));
+        });
+
+        renderCalendar();
+      });
+
+      // Team filter
+      document.getElementById('team-filter').addEventListener('change', renderCalendar);
+
+      // Header scroll effect
+      window.addEventListener('scroll', () => {
+        const header = document.getElementById('header');
+        if (window.scrollY > 10) {
+          header.classList.add('scrolled');
+        } else {
+          header.classList.remove('scrolled');
+        }
+      });
+
+      // Logout
+      document.getElementById('logout-btn').addEventListener('click', async () => {
+        await supabase.auth.signOut();
+        window.location.href = 'homepage.html';
+      });
+    }
+
+    // Holiday handler
+    window.handleHolidaysClick = function() {
+      alert('Holiday management feature coming soon!');
+    };
+
+    // Render calendar
+    async function renderCalendar() {
+      const token = ++renderToken;
+      const calendarEl = document.getElementById('calendar');
+      calendarEl.classList.add('loading');
+
+      try {
+        const monthStart = startOfMonth(cursor);
+        const gridStart = startOfGrid(cursor);
+        const gridEnd = endOfGrid(cursor);
+        const days = [];
+
+        for (let iter = new Date(gridStart); iter <= gridEnd; iter.setDate(iter.getDate() + 1)) {
+          days.push(new Date(iter));
         }
 
-        async function render(){
-          const token=++renderToken;
-          const monthStart=startOfMonth(cursor);
-          const gridStart=startOfGrid(cursor);
-          const gridEnd=endOfGrid(cursor);
-          const days=[];
-          for(let iter=new Date(gridStart); iter<=gridEnd; iter.setDate(iter.getDate()+1)){
-            days.push(new Date(iter));
+        // Update month label
+        document.getElementById('month-label').textContent = fmtMonth(monthStart);
+
+        // Get filter states
+        const statusButtons = Array.from(document.querySelectorAll('.status-chip'));
+        const selectedStatuses = new Set(statusButtons.filter(btn => btn.classList.contains('active')).map(btn => btn.dataset.status));
+        const teamFilterVal = document.getElementById('team-filter').value;
+        const selectedOption = document.getElementById('team-filter').options[document.getElementById('team-filter').selectedIndex];
+        const selectedTeamName = (selectedOption?.dataset?.teamName || '').toLowerCase();
+
+        // Load holiday data
+        const fromISO = gridStart.toISOString().slice(0, 10);
+        const toISO = gridEnd.toISOString().slice(0, 10);
+        const statusesByUser = await loadHolidayRequests(fromISO, toISO);
+
+        if (token !== renderToken) return; // Prevent race conditions
+
+        // Filter people
+        const totalStatusOptions = statusButtons.length || 3;
+        const showAllStatuses = selectedStatuses.size === 0 || selectedStatuses.size === totalStatusOptions;
+
+        const visiblePeople = people.filter(person => {
+          // Team filter
+          if (teamFilterVal) {
+            const idMatch = String(person.teamId || '') === teamFilterVal;
+            const nameMatch = selectedTeamName && person.teamNameLower === selectedTeamName;
+            if (!idMatch && !nameMatch) return false;
           }
 
-          monthLabel.textContent=fmtMonth(monthStart);
+          // Status filter
+          if (showAllStatuses) return true;
+          const reqs = person.id ? statusesByUser.get(person.id) : undefined;
+          return days.some(day => selectedStatuses.has(statusFor(person, reqs, day)));
+        });
 
-          const selectedStatuses=new Set(statusButtons.filter(btn=>btn.classList.contains('active')).map(btn=>btn.dataset.status));
-          const teamFilterVal=teamSel.value;
-          const selectedOption = teamSel.options[teamSel.selectedIndex];
-          const selectedTeamName = (selectedOption?.dataset?.teamName || '').toLowerCase();
+        // Create calendar grid
+        const grid = document.createElement('div');
+        grid.className = 'calendar-grid';
 
-          const fromISO=gridStart.toISOString().slice(0,10);
-          const toISO=gridEnd.toISOString().slice(0,10);
-          const statusesByUser=await loadStatuses(fromISO, toISO);
-          if(token!==renderToken) return;
+        // Add weekday headers
+        days.slice(0, 7).forEach(day => {
+          const header = document.createElement('div');
+          header.className = 'calendar-weekday';
+          header.textContent = day.toLocaleDateString(undefined, { weekday: 'long' });
+          grid.appendChild(header);
+        });
 
-          const totalStatusOptions = statusButtons.length || 3;
-          const showAllStatuses = selectedStatuses.size === 0 || selectedStatuses.size === totalStatusOptions;
+        // Add calendar days
+        const today = dayKey(new Date());
+        const statusOrder = ['in', 'holiday', 'off'];
+        const statusLabels = { in: 'In', holiday: 'Holiday', off: 'Off' };
 
-          const visiblePeople=people.filter(person=>{
-            if(teamFilterVal){
-              const idMatch = String(person.teamId||'') === teamFilterVal;
-              const nameMatch = selectedTeamName && person.teamNameLower === selectedTeamName;
-              if(!idMatch && !nameMatch) return false;
-            }
-            if(showAllStatuses) return true;
-            const reqs=person.id ? statusesByUser.get(person.id) : undefined;
-            return days.some(day=>selectedStatuses.has(statusFor(person, reqs, day)));
-          });
+        days.forEach(day => {
+          const cell = document.createElement('div');
+          cell.className = 'calendar-day';
 
-          const today=dayKey(new Date());
-          const grid=document.createElement('div');
-          grid.className='calendar-grid';
-
-          days.slice(0,7).forEach(day=>{
-            const header=document.createElement('div');
-            header.className='calendar-weekday';
-            header.textContent=day.toLocaleDateString(undefined,{ weekday:'long' });
-            grid.appendChild(header);
-          });
-
-          const statusOrder=['in','holiday','off'];
-          const statusLabels={ in:'In', holiday:'Holiday', off:'Off' };
-
-          function createChip(person, status){
-            const chip=document.createElement('span');
-            chip.className=`person-chip ${status}`;
-            chip.textContent=person.shortName || person.name;
-            chip.title=`${person.name} — ${status.charAt(0).toUpperCase()+status.slice(1)}`;
-
-            const tooltip=document.createElement('div');
-            tooltip.className='avatar-tooltip';
-            if(person.avatar){
-              const safe=person.avatar.replace(/"/g,'%22');
-              tooltip.classList.add('is-image');
-              tooltip.style.backgroundImage=`url("${safe}")`;
-            }else{
-              tooltip.textContent=getInitials(person.name);
-            }
-            chip.appendChild(tooltip);
-            return chip;
+          if (day.getMonth() !== monthStart.getMonth()) {
+            cell.classList.add('muted');
+          }
+          if (dayKey(day) === today) {
+            cell.classList.add('today');
           }
 
-          days.forEach(day=>{
-            const cell=document.createElement('div');
-            cell.className='calendar-day';
-            if(day.getMonth() !== monthStart.getMonth()) cell.classList.add('muted');
-            if(dayKey(day)===today) cell.classList.add('today');
+          // Day header
+          const dayHeader = document.createElement('div');
+          dayHeader.className = 'day-header';
 
-            const top=document.createElement('div');
-            top.className='day-top';
+          const dayNumber = document.createElement('div');
+          dayNumber.className = 'day-number';
+          dayNumber.textContent = day.getDate();
+          dayHeader.appendChild(dayNumber);
 
-            const num=document.createElement('div');
-            num.className='day-num';
-            num.textContent=day.getDate();
-            top.appendChild(num);
+          const dayBadges = document.createElement('div');
+          dayBadges.className = 'day-badges';
+          dayHeader.appendChild(dayBadges);
 
-            const badges=document.createElement('div');
-            badges.className='day-badges';
-            top.appendChild(badges);
+          cell.appendChild(dayHeader);
 
-            cell.appendChild(top);
+          // Calculate status counts and lists
+          const counts = { in: 0, holiday: 0, off: 0 };
+          const statusLists = { in: [], holiday: [], off: [] };
 
-          const counts={ in:0, holiday:0, off:0 };
-          const statusLists={ in:[], holiday:[], off:[] };
-
-          visiblePeople.forEach(person=>{
-            const reqs=person.id ? statusesByUser.get(person.id) : undefined;
-            const status=statusFor(person, reqs, day);
-            counts[status]=(counts[status]||0)+1;
+          visiblePeople.forEach(person => {
+            const reqs = person.id ? statusesByUser.get(person.id) : undefined;
+            const status = statusFor(person, reqs, day);
+            counts[status] = (counts[status] || 0) + 1;
             if (statusLists[status]) statusLists[status].push(person);
           });
 
-          ['in','holiday','off'].forEach(status=>{
-            if(!counts[status] || (!showAllStatuses && !selectedStatuses.has(status))) return;
-            const badge=document.createElement('span');
-            badge.className=`day-badge ${status}`;
-            badge.title=`${counts[status]} ${status}`;
-            badge.textContent=counts[status];
-            badges.appendChild(badge);
+          // Add badges
+          ['in', 'holiday', 'off'].forEach(status => {
+            if (!counts[status] || (!showAllStatuses && !selectedStatuses.has(status))) return;
+            const badge = document.createElement('span');
+            badge.className = `day-badge ${status}`;
+            badge.title = `${counts[status]} ${status}`;
+            badge.textContent = counts[status];
+            dayBadges.appendChild(badge);
           });
 
-          const statusWrap=document.createElement('div');
-          statusWrap.className='status-wrap';
+          // Status groups
+          const statusGroups = document.createElement('div');
+          statusGroups.className = 'status-groups';
 
-          statusOrder.forEach(status=>{
-            if(!showAllStatuses && !selectedStatuses.has(status)) return;
-            const list=statusLists[status];
-            if(!list.length) return;
-            const group=document.createElement('div');
-            group.className=`status-group ${status}`;
+          statusOrder.forEach(status => {
+            if (!showAllStatuses && !selectedStatuses.has(status)) return;
+            const list = statusLists[status];
+            if (!list.length) return;
 
-            const label=document.createElement('div');
-            label.className='status-label';
-            label.textContent=statusLabels[status];
+            const group = document.createElement('div');
+            group.className = `status-group ${status}`;
+
+            const label = document.createElement('div');
+            label.className = 'status-label';
+            label.textContent = statusLabels[status];
             group.appendChild(label);
 
-            const chipRow=document.createElement('div');
-            chipRow.className='status-chips';
+            const chips = document.createElement('div');
+            chips.className = 'person-chips';
 
-            list.forEach(person=>{
-              const chip=createChip(person, status);
-              chipRow.appendChild(chip);
+            list.forEach(person => {
+              const chip = createPersonChip(person, status);
+              chips.appendChild(chip);
             });
 
-            group.appendChild(chipRow);
-            statusWrap.appendChild(group);
+            group.appendChild(chips);
+            statusGroups.appendChild(group);
           });
 
-          if(!statusWrap.childElementCount){
-            const placeholder=document.createElement('div');
-            placeholder.className='status-placeholder';
-            placeholder.textContent=showAllStatuses ? 'No one scheduled' : 'No one for selected filters';
-            statusWrap.appendChild(placeholder);
+          if (!statusGroups.childElementCount) {
+            const placeholder = document.createElement('div');
+            placeholder.className = 'status-placeholder';
+            placeholder.textContent = showAllStatuses ? 'No one scheduled' : 'No one for selected filters';
+            statusGroups.appendChild(placeholder);
           }
 
-          cell.appendChild(statusWrap);
+          cell.appendChild(statusGroups);
           grid.appendChild(cell);
-          });
+        });
 
-          calendar.innerHTML='';
-          calendar.appendChild(grid);
-        }
+        // Update calendar
+        calendarEl.innerHTML = '';
+        calendarEl.appendChild(grid);
 
-        await render();
-      }catch(err){
-        console.error(err);
-        if (String(err.message).includes('NO_SESSION') || String(err.message).includes('NOT_STAFF')) {
-          window.location.replace('home.html');
-        }
+      } catch (error) {
+        console.error('Error rendering calendar:', error);
+        calendarEl.innerHTML = '<div class="status-placeholder">Error loading calendar data</div>';
+      } finally {
+        calendarEl.classList.remove('loading');
       }
-    })();
+    }
+
+    // Create person chip
+    function createPersonChip(person, status) {
+      const chip = document.createElement('span');
+      chip.className = `person-chip ${status}`;
+      chip.textContent = person.shortName || person.name;
+      chip.title = `${person.name} — ${status.charAt(0).toUpperCase() + status.slice(1)}`;
+
+      const tooltip = document.createElement('div');
+      tooltip.className = 'avatar-tooltip';
+
+      if (person.avatar) {
+        const safe = person.avatar.replace(/"/g, '%22');
+        tooltip.classList.add('is-image');
+        tooltip.style.backgroundImage = `url("${safe}")`;
+      } else {
+        tooltip.textContent = getInitials(person.name);
+      }
+
+      chip.appendChild(tooltip);
+      return chip;
+    }
+
+    // Initialize the application
+    initializeApp();
   </script>
-
-
-  <script>
-    (function(){
-      function i8(name, opts = {}) {
-        var base  = 'https://img.icons8.com';
-        var style = opts.style || 'pastel-color';
-        var size  = opts.size  || 48;
-        var path  = [style, String(size), encodeURIComponent(name) + '.png'].join('/');
-        return base + '/' + path;
-      }
-      function setIcon(el){
-        var name  = el.getAttribute('data-i8');
-        var size  = el.getAttribute('data-i8-size');
-        var style = el.getAttribute('data-i8-style') || 'pastel-color';
-        var fallback = (el.getAttribute('data-i8-fallback') || '').toLowerCase();
-        if (fallback === 'auto') {
-          var stylesToTry = [style, 'pastel-glyph'];
-          var idx = 0;
-          function tryNext(){
-            if (idx >= stylesToTry.length) { el.onerror = null; return; }
-            var url = i8(name, {style: stylesToTry[idx++], size: size ? parseInt(size,10) : undefined});
-            if (el.src !== url) el.src = url; else tryNext();
-          }
-          el.onerror = tryNext; tryNext();
-        } else {
-          el.src = i8(name, {style: style, size: size ? parseInt(size,10) : undefined});
-        }
-      }
-      function wireIcons(){ document.querySelectorAll('img[data-i8]').forEach(setIcon); }
-      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wireIcons); else wireIcons();
-      window.i8 = i8; window.setIcon = setIcon; window.wireIcons = wireIcons;
-    })();
-  </script>
-
-  <script src="debug-console.js"></script>
 </body>
 </html>
