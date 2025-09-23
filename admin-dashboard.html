@@ -7209,22 +7209,11 @@ window.PIR_DEFINITIONS_DATA = [
   const { createClient } = supabase;
   import JSZip from "https://esm.sh/jszip@3.10.1";
 
-  // Use environment-aware configuration
-  const SUPABASE_URL = CONFIG.SUPABASE_URL;
-  const SUPABASE_ANON_KEY = CONFIG.SUPABASE_ANON_KEY;
-  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    auth: { 
-      persistSession: true, 
-      autoRefreshToken: true, 
-      detectSessionInUrl: true,
-      flowType: 'pkce',
-      storage: window.localStorage,
-      storageKey: `sb-${SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`
-    }
-  });
-  // Expose to global for non-module scripts
+  // Use the globally initialized supabase client from the top of the file
+  // This ensures we use the same session configuration as admin-login.html
+  // Note: window.supabase is already set at line 35
+  // Expose JSZip to global for non-module scripts
   window.JSZip = JSZip;
-  window.supabase = supabase;
   window.supabaseCreateClient = createClient; // Expose createClient globally
 
   // Initialize authentication once Supabase client is ready
@@ -7304,8 +7293,8 @@ window.PIR_DEFINITIONS_DATA = [
     }
 
     // Check for existing session
-    // console.log('🔥 ADMIN.HTML: About to call supabase.auth.getSession()');
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
+    // console.log('🔥 ADMIN.HTML: About to call window.supabase.auth.getSession()');
+    window.supabase.auth.getSession().then(({ data: { session }, error }) => {
       // console.log('🔥 ADMIN.HTML: getSession() result - session:', session, 'error:', error);
       if (error) {
         console.error('🔥 Failed to get session:', error);
@@ -7327,7 +7316,7 @@ window.PIR_DEFINITIONS_DATA = [
         try {
           // console.log('🔥 About to query master_users table for user:', session.user.id);
           // First check if user has a profile with admin role
-          const { data: profile, error: profileError } = await supabase
+          const { data: profile, error: profileError } = await window.supabase
             .from('master_users')
             .select('access_type, full_name, onboarding_complete')
             .eq('auth_user_id', session.user.id)
