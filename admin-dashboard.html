@@ -5195,6 +5195,71 @@ document.addEventListener('DOMContentLoaded', () => {
                 <button type="button" class="btn secondary" id="invite-user-cancel-btn">Cancel</button>
                 <button type="submit" class="btn" id="invite-user-submit" style="background:linear-gradient(135deg, #10b981, #059669);">📧 Send Invitation</button>
               </div>
+
+              <!-- Debug Console -->
+              <div id="invite-debug-console" style="display:none; margin-top:20px; padding:15px; background:#f8f9fa; border:1px solid #dee2e6; border-radius:8px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                  <h4 style="margin:0; font-size:14px; font-weight:600;">🔍 Debug Console</h4>
+                  <button type="button" id="copy-debug-log" class="btn" style="padding:4px 8px; font-size:12px; background:#6b7280;">📋 Copy Log</button>
+                </div>
+
+                <div id="debug-checklist" style="font-family:monospace; font-size:12px;">
+                  <!-- Session Check -->
+                  <div class="debug-step" data-step="session">
+                    <span class="debug-icon">⏳</span>
+                    <span class="debug-text">Check user session</span>
+                    <div class="debug-detail" style="margin-left:20px; color:#666; display:none;"></div>
+                  </div>
+
+                  <!-- Form Data -->
+                  <div class="debug-step" data-step="form">
+                    <span class="debug-icon">⏳</span>
+                    <span class="debug-text">Collect form data</span>
+                    <div class="debug-detail" style="margin-left:20px; color:#666; display:none;"></div>
+                  </div>
+
+                  <!-- Supabase Connection -->
+                  <div class="debug-step" data-step="connection">
+                    <span class="debug-icon">⏳</span>
+                    <span class="debug-text">Connect to Supabase API</span>
+                    <div class="debug-detail" style="margin-left:20px; color:#666; display:none;"></div>
+                  </div>
+
+                  <!-- Site Invites Insert -->
+                  <div class="debug-step" data-step="site_invites">
+                    <span class="debug-icon">⏳</span>
+                    <span class="debug-text">Insert to site_invites table</span>
+                    <div class="debug-detail" style="margin-left:20px; color:#666; display:none;"></div>
+                  </div>
+
+                  <!-- Master Users Insert -->
+                  <div class="debug-step" data-step="master_users">
+                    <span class="debug-icon">⏳</span>
+                    <span class="debug-text">Insert to master_users table</span>
+                    <div class="debug-detail" style="margin-left:20px; color:#666; display:none;"></div>
+                  </div>
+
+                  <!-- Send Email -->
+                  <div class="debug-step" data-step="email">
+                    <span class="debug-icon">⏳</span>
+                    <span class="debug-text">Send magic link email</span>
+                    <div class="debug-detail" style="margin-left:20px; color:#666; display:none;"></div>
+                  </div>
+
+                  <!-- Complete -->
+                  <div class="debug-step" data-step="complete">
+                    <span class="debug-icon">⏳</span>
+                    <span class="debug-text">Process complete</span>
+                    <div class="debug-detail" style="margin-left:20px; color:#666; display:none;"></div>
+                  </div>
+                </div>
+
+                <!-- Raw Log -->
+                <details style="margin-top:15px;">
+                  <summary style="cursor:pointer; font-size:12px; color:#666;">📝 Raw Debug Log</summary>
+                  <pre id="debug-raw-log" style="margin-top:10px; padding:10px; background:#fff; border:1px solid #e5e7eb; border-radius:4px; font-size:11px; max-height:200px; overflow-y:auto; white-space:pre-wrap; word-wrap:break-word;"></pre>
+                </details>
+              </div>
             </form>
           </div>
         </div>
@@ -10080,10 +10145,72 @@ window.PIR_DEFINITIONS_DATA = [
   // Training types modal event listeners
   document.getElementById('training-types-close')?.addEventListener('click', closeTrainingTypesModal);
 
-  // SIMPLIFIED INVITATION SYSTEM - Complete rewrite
+  // Debug logging system
+  let debugLog = [];
+  let debugStartTime = null;
+
+  function updateDebugStep(step, status, detail = '', data = null) {
+    const stepElement = document.querySelector(`.debug-step[data-step="${step}"]`);
+    if (!stepElement) return;
+
+    const iconElement = stepElement.querySelector('.debug-icon');
+    const detailElement = stepElement.querySelector('.debug-detail');
+
+    // Update icon based on status
+    if (status === 'running') {
+      iconElement.textContent = '🔄';
+    } else if (status === 'success') {
+      iconElement.textContent = '✅';
+    } else if (status === 'error') {
+      iconElement.textContent = '❌';
+    } else if (status === 'warning') {
+      iconElement.textContent = '⚠️';
+    }
+
+    // Add detail if provided
+    if (detail && detailElement) {
+      detailElement.style.display = 'block';
+      detailElement.innerHTML = detail;
+    }
+
+    // Add to raw log
+    const timestamp = new Date().toISOString();
+    const elapsed = debugStartTime ? `+${Date.now() - debugStartTime}ms` : '';
+    const logEntry = {
+      timestamp,
+      elapsed,
+      step,
+      status,
+      detail: detail.replace(/<[^>]*>/g, ''), // Strip HTML
+      data
+    };
+
+    debugLog.push(logEntry);
+
+    // Update raw log display
+    const rawLogElement = document.getElementById('debug-raw-log');
+    if (rawLogElement) {
+      rawLogElement.textContent = JSON.stringify(debugLog, null, 2);
+    }
+  }
+
+  // INVITATION SYSTEM WITH COMPREHENSIVE DEBUGGING
   async function handleInviteUserFormSubmit(e) {
     e.preventDefault();
-    console.log('Starting simple invitation process');
+
+    // Reset debug console
+    debugLog = [];
+    debugStartTime = Date.now();
+    document.querySelectorAll('.debug-step').forEach(step => {
+      step.querySelector('.debug-icon').textContent = '⏳';
+      step.querySelector('.debug-detail').style.display = 'none';
+      step.querySelector('.debug-detail').innerHTML = '';
+    });
+    document.getElementById('debug-raw-log').textContent = '';
+
+    // Show debug console
+    const debugConsole = document.getElementById('invite-debug-console');
+    if (debugConsole) debugConsole.style.display = 'block';
 
     const errorElement = document.getElementById('add-user-error');
     const successElement = document.getElementById('add-user-success');
@@ -10098,90 +10225,186 @@ window.PIR_DEFINITIONS_DATA = [
     submitBtn.textContent = 'Processing...';
 
     try {
-      // Get current session
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Not logged in');
+      // STEP 1: Check Session
+      updateDebugStep('session', 'running', 'Checking user session...');
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
-      // Collect form data
+      if (sessionError) {
+        updateDebugStep('session', 'error', `Error: ${sessionError.message}`, sessionError);
+        throw new Error(`Session error: ${sessionError.message}`);
+      }
+
+      if (!session) {
+        updateDebugStep('session', 'error', 'No active session found');
+        throw new Error('Not logged in');
+      }
+
+      updateDebugStep('session', 'success',
+        `User: ${session.user.email}<br>` +
+        `ID: ${session.user.id}<br>` +
+        `Role: ${session.user.role || 'none'}`,
+        { userId: session.user.id, email: session.user.email }
+      );
+
+      // STEP 2: Collect Form Data
+      updateDebugStep('form', 'running', 'Collecting form data...');
+
       const email = document.getElementById('add-user-email').value.trim().toLowerCase();
       const fullName = document.getElementById('add-user-name').value.trim();
-      const accessType = document.getElementById('add-user-access').value; // admin/staff/owner
+      const accessType = document.getElementById('add-user-access').value;
       const roleDetail = document.getElementById('add-user-role').value || '';
       const teamId = document.getElementById('add-user-team').value || null;
 
-      console.log('Inviting:', email);
+      const formData = {
+        email,
+        fullName,
+        accessType,
+        roleDetail,
+        teamId,
+        siteId: ctx.site_id
+      };
 
-      // Step 1: Create site_invites row
+      updateDebugStep('form', 'success',
+        `Email: ${email}<br>` +
+        `Name: ${fullName}<br>` +
+        `Access: ${accessType}<br>` +
+        `Role: ${roleDetail || 'none'}<br>` +
+        `Team ID: ${teamId || 'none'}<br>` +
+        `Site ID: ${ctx.site_id}`,
+        formData
+      );
+
+      // STEP 3: Check Supabase Connection
+      updateDebugStep('connection', 'running', 'Verifying Supabase connection...');
+
+      const supabaseUrl = supabase.supabaseUrl || supabase.restUrl || 'Unknown';
+      const supabaseKey = supabase.supabaseKey ? supabase.supabaseKey.substring(0, 20) + '...' : 'Unknown';
+
+      updateDebugStep('connection', 'success',
+        `URL: ${supabaseUrl}<br>` +
+        `Key: ${supabaseKey}<br>` +
+        `Auth: ${supabase.auth ? 'Ready' : 'Not ready'}`,
+        { url: supabaseUrl }
+      );
+
+      // STEP 4: Insert into site_invites
+      updateDebugStep('site_invites', 'running', 'Inserting into site_invites table...');
+
       const inviteExpiry = new Date();
       inviteExpiry.setDate(inviteExpiry.getDate() + 7);
 
-      const { error: inviteError } = await supabase
+      const inviteData = {
+        site_id: ctx.site_id,
+        email: email,
+        full_name: fullName,
+        role: accessType,
+        role_detail: roleDetail,
+        reports_to_id: teamId ? parseInt(teamId) : null,
+        status: 'pending',
+        expires_at: inviteExpiry.toISOString(),
+        invited_by: session.user.id
+      };
+
+      const { data: inviteResult, error: inviteError } = await supabase
         .from('site_invites')
-        .insert({
-          site_id: ctx.site_id,
-          email: email,
-          full_name: fullName,
-          role: accessType,
-          role_detail: roleDetail,
-          reports_to_id: teamId ? parseInt(teamId) : null,
-          status: 'pending',
-          expires_at: inviteExpiry.toISOString(),
-          invited_by: session.user.id
-        });
+        .insert(inviteData)
+        .select();
 
       if (inviteError) {
+        updateDebugStep('site_invites', 'warning',
+          `Initial insert failed: ${inviteError.message}<br>` +
+          `Code: ${inviteError.code || 'unknown'}`,
+          inviteError
+        );
+
         // If duplicate, delete old one and retry
         if (inviteError.message.includes('duplicate') || inviteError.message.includes('already')) {
-          await supabase.from('site_invites').delete().eq('email', email).eq('status', 'pending');
+          updateDebugStep('site_invites', 'running', 'Removing old invitation and retrying...');
+
+          const { error: deleteError } = await supabase
+            .from('site_invites')
+            .delete()
+            .eq('email', email)
+            .eq('status', 'pending');
+
+          if (deleteError) {
+            updateDebugStep('site_invites', 'error', `Failed to delete old invitation: ${deleteError.message}`, deleteError);
+          }
 
           // Retry insert
-          const { error: retryError } = await supabase
+          const { data: retryResult, error: retryError } = await supabase
             .from('site_invites')
-            .insert({
-              site_id: ctx.site_id,
-              email: email,
-              full_name: fullName,
-              role: accessType,
-              role_detail: roleDetail,
-              reports_to_id: teamId ? parseInt(teamId) : null,
-              status: 'pending',
-              expires_at: inviteExpiry.toISOString(),
-              invited_by: session.user.id
-            });
+            .insert(inviteData)
+            .select();
 
-          if (retryError) throw new Error('Failed to create invitation');
+          if (retryError) {
+            updateDebugStep('site_invites', 'error', `Retry failed: ${retryError.message}`, retryError);
+            throw new Error(`Failed to create invitation: ${retryError.message}`);
+          }
+
+          updateDebugStep('site_invites', 'success',
+            `Invitation created after removing duplicate<br>` +
+            `Result: ${retryResult ? JSON.stringify(retryResult[0] || {}).substring(0, 100) : 'No data returned'}`,
+            retryResult
+          );
         } else {
-          throw new Error('Failed to create invitation');
+          updateDebugStep('site_invites', 'error', `Failed: ${inviteError.message}`, inviteError);
+          throw new Error(`Failed to create invitation: ${inviteError.message}`);
         }
+      } else {
+        updateDebugStep('site_invites', 'success',
+          `Invitation created successfully<br>` +
+          `Columns inserted: ${Object.keys(inviteData).join(', ')}<br>` +
+          `Result: ${inviteResult ? JSON.stringify(inviteResult[0] || {}).substring(0, 100) : 'No data returned'}`,
+          inviteResult
+        );
       }
 
-      // Step 2: Create master_users row
-      const { error: userError } = await supabase
+      // STEP 5: Insert into master_users
+      updateDebugStep('master_users', 'running', 'Inserting into master_users table...');
+
+      const userData = {
+        site_id: ctx.site_id,
+        email: email,
+        full_name: fullName,
+        access_type: accessType,
+        role_detail: roleDetail,
+        team_id: teamId ? parseInt(teamId) : null,
+        reports_to_id: teamId ? parseInt(teamId) : null,
+        active: false,
+        invite_status: 'pending',
+        invited_by: session.user.id,
+        invite_sent_at: new Date().toISOString(),
+        invite_expires_at: inviteExpiry.toISOString()
+      };
+
+      const { data: userResult, error: userError } = await supabase
         .from('master_users')
-        .insert({
-          site_id: ctx.site_id,
-          email: email,
-          full_name: fullName,
-          access_type: accessType,
-          role_detail: roleDetail,
-          team_id: teamId ? parseInt(teamId) : null,
-          reports_to_id: teamId ? parseInt(teamId) : null,
-          active: false, // Inactive until they accept
-          invite_status: 'pending',
-          invited_by: session.user.id,
-          invite_sent_at: new Date().toISOString(),
-          invite_expires_at: inviteExpiry.toISOString()
-        });
+        .insert(userData)
+        .select();
 
       if (userError) {
-        // If duplicate, it's ok - user might already exist
-        console.log('User might already exist:', userError.message);
+        updateDebugStep('master_users', 'warning',
+          `Insert result: ${userError.message}<br>` +
+          `Code: ${userError.code || 'unknown'}<br>` +
+          `(User might already exist - this is OK)`,
+          userError
+        );
+      } else {
+        updateDebugStep('master_users', 'success',
+          `User record created<br>` +
+          `Columns inserted: ${Object.keys(userData).join(', ')}<br>` +
+          `Result: ${userResult ? JSON.stringify(userResult[0] || {}).substring(0, 100) : 'No data returned'}`,
+          userResult
+        );
       }
 
-      // Step 3: Send magic link email
+      // STEP 6: Send magic link email
+      updateDebugStep('email', 'running', 'Sending magic link email...');
+
       const redirectUrl = `https://checkloops.co.uk/simple-set-password.html?email=${encodeURIComponent(email)}&site_id=${ctx.site_id}`;
 
-      const { error: emailError } = await supabase.auth.signInWithOtp({
+      const { data: emailResult, error: emailError } = await supabase.auth.signInWithOtp({
         email: email,
         options: {
           emailRedirectTo: redirectUrl
@@ -10189,12 +10412,27 @@ window.PIR_DEFINITIONS_DATA = [
       });
 
       if (emailError) {
-        throw new Error('Failed to send email: ' + emailError.message);
+        updateDebugStep('email', 'error',
+          `Failed to send: ${emailError.message}<br>` +
+          `Code: ${emailError.code || 'unknown'}`,
+          emailError
+        );
+        throw new Error(`Failed to send email: ${emailError.message}`);
       }
 
-      // Success!
-      console.log('✅ Invitation sent successfully');
+      updateDebugStep('email', 'success',
+        `Magic link sent to: ${email}<br>` +
+        `Redirect URL: ${redirectUrl.substring(0, 50)}...`,
+        { email, redirectUrl, result: emailResult }
+      );
 
+      // STEP 7: Complete
+      updateDebugStep('complete', 'success',
+        `✅ All steps completed successfully<br>` +
+        `Total time: ${Date.now() - debugStartTime}ms`
+      );
+
+      // Show success message
       if (successElement) {
         successElement.innerHTML = `✅ Invitation sent to ${email}`;
         successElement.style.display = 'block';
@@ -10206,14 +10444,19 @@ window.PIR_DEFINITIONS_DATA = [
       document.getElementById('add-user-access').value = 'staff';
       document.getElementById('add-user-role').value = '';
 
-      // Close modal after 2 seconds
+      // Close modal after 3 seconds
       setTimeout(() => {
         closeInviteUserModal();
         loadPracticeUsers();
-      }, 2000);
+      }, 3000);
 
     } catch (err) {
-      console.error('Invitation error:', err);
+      updateDebugStep('complete', 'error',
+        `Process failed: ${err.message}<br>` +
+        `Stack: ${err.stack ? err.stack.substring(0, 200) : 'No stack trace'}`,
+        { error: err.message, stack: err.stack }
+      );
+
       if (errorElement) {
         errorElement.textContent = err.message;
         errorElement.style.display = 'block';
@@ -10230,6 +10473,71 @@ window.PIR_DEFINITIONS_DATA = [
   } else {
     console.error('Invite user form element not found! Form submission will not work.', { id: 'invite-user-form' });
   }
+
+  // Copy debug log button handler
+  document.getElementById('copy-debug-log')?.addEventListener('click', () => {
+    const fullLog = {
+      timestamp: new Date().toISOString(),
+      pageUrl: window.location.href,
+      userAgent: navigator.userAgent,
+      supabaseConfig: {
+        url: supabase.supabaseUrl || supabase.restUrl || 'Unknown',
+        authUrl: supabase.authUrl || 'Unknown'
+      },
+      context: {
+        siteId: ctx?.site_id || 'Unknown',
+        userEmail: ctx?.user?.email || 'Unknown',
+        role: ctx?.role || 'Unknown'
+      },
+      debugSteps: debugLog,
+      consoleErrors: []
+    };
+
+    // Capture any console errors
+    const originalError = console.error;
+    fullLog.consoleErrors = [];
+    console.error = function(...args) {
+      fullLog.consoleErrors.push(args.join(' '));
+      originalError.apply(console, args);
+    };
+
+    // Create formatted text
+    const debugText = `
+=== CHECKLOOPS INVITATION DEBUG LOG ===
+Generated: ${fullLog.timestamp}
+Page: ${fullLog.pageUrl}
+Browser: ${fullLog.userAgent}
+
+=== CONFIGURATION ===
+Supabase URL: ${fullLog.supabaseConfig.url}
+Auth URL: ${fullLog.supabaseConfig.authUrl}
+Site ID: ${fullLog.context.siteId}
+Current User: ${fullLog.context.userEmail}
+User Role: ${fullLog.context.role}
+
+=== PROCESS LOG ===
+${JSON.stringify(fullLog.debugSteps, null, 2)}
+
+=== RAW DATA ===
+${JSON.stringify(fullLog, null, 2)}
+    `;
+
+    // Copy to clipboard
+    navigator.clipboard.writeText(debugText).then(() => {
+      const copyBtn = document.getElementById('copy-debug-log');
+      const originalText = copyBtn.textContent;
+      copyBtn.textContent = '✅ Copied!';
+      copyBtn.style.background = '#10b981';
+
+      setTimeout(() => {
+        copyBtn.textContent = originalText;
+        copyBtn.style.background = '#6b7280';
+      }, 2000);
+    }).catch(err => {
+      console.error('Failed to copy debug log:', err);
+      alert('Failed to copy debug log. Please select and copy the text from the Raw Debug Log section.');
+    });
+  });
 
   async function loadPracticeUsers() {
     const tbody = document.getElementById('practice-users-tbody');
