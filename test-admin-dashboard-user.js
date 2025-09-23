@@ -13,8 +13,8 @@ import { chromium } from 'playwright';
   // Wait for page to load
   await page.waitForSelector('#email', { timeout: 10000 });
 
-  // Fill login form
-  await page.fill('#email', 'ben@laserlearningsolutions.co.uk');
+  // Fill login form with correct admin credentials
+  await page.fill('#email', 'benhowardmagic@hotmail.com');
   await page.fill('#password', 'Looptestadmin1');
   console.log('✓ Filled login credentials');
 
