@@ -11,13 +11,14 @@ const getAllowedOrigin = (req: Request): string => {
     'http://localhost:5173',
     'http://localhost:5500'
   ]
-
+  if (origin.startsWith('http://127.0.0.1') || origin.startsWith('http://localhost')) return origin
   return allowedOrigins.includes(origin) ? origin : allowedOrigins[0]
 }
 
 const getCorsHeaders = (req: Request) => ({
   'Access-Control-Allow-Origin': getAllowedOrigin(req),
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-redirect-url',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Credentials': 'true'
 })
 
@@ -27,10 +28,17 @@ serve(async (req) => {
   }
 
   try {
-    const { email, name, role, role_detail, reports_to_id } = await req.json()
+    let body: any
+    try {
+      body = await req.json()
+    } catch (_e) {
+      return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400, headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' } })
+    }
+
+    const { email, name, role, role_detail, reports_to_id } = body || {}
 
     if (!email || !name || !role) {
-      throw new Error('Missing required fields: email, name, or role')
+      return new Response(JSON.stringify({ error: 'Missing required fields: email, name, or role' }), { status: 400, headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' } })
     }
 
     // Get environment variables
@@ -38,7 +46,7 @@ serve(async (req) => {
   const supabaseServiceKey = Deno.env.get('SECRET_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
     if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Missing environment variables')
+      return new Response(JSON.stringify({ error: 'Missing environment variables' }), { status: 500, headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' } })
     }
 
     // Create Supabase admin client
@@ -47,14 +55,14 @@ serve(async (req) => {
     // Get user from Authorization header
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
-      throw new Error('Missing Authorization header')
+      return new Response(JSON.stringify({ error: 'Missing Authorization header' }), { status: 401, headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' } })
     }
 
     const token = authHeader.replace('Bearer ', '')
     const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token)
     
     if (userError || !user) {
-      throw new Error('Invalid authorization')
+      return new Response(JSON.stringify({ error: 'Invalid authorization' }), { status: 401, headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' } })
     }
 
     // Determine inviter authorization & site via master_users first, then profiles as fallback
@@ -64,7 +72,7 @@ serve(async (req) => {
     const { data: mu, error: muErr } = await supabaseAdmin
       .from('master_users')
       .select('site_id, access_type')
-      .eq('user_id', user.id)
+      .eq('auth_user_id', user.id)
       .limit(1)
       .maybeSingle()
 
@@ -121,11 +129,11 @@ serve(async (req) => {
         invited_by: user.id
       })
       .select()
-      .single()
+      .maybeSingle()
 
     if (inviteRecordError) {
       // Failed to create site invite
-      throw new Error(`Failed to create site invite: ${inviteRecordError.message}`)
+      return new Response(JSON.stringify({ error: `Failed to create site invite: ${inviteRecordError.message}` }), { status: 500, headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' } })
     }
 
     // Site invite created successfully
@@ -196,8 +204,9 @@ serve(async (req) => {
     })
 
   } catch (error) {
+    const message = (error && (error as any).message) ? (error as any).message : 'Unknown error'
     return new Response(JSON.stringify({ 
-      error: error.message
+      error: message
     }), {
       status: 500,
       headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' },
