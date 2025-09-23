@@ -265,7 +265,22 @@ export function clearAuthData(preserveRememberMe = false) {
 
 export async function requireStaffSession(supabase, options = {}) {
   console.log('[requireStaffSession] Checking session...');
-  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  let { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+  // Grace period: allow session to initialize after a fresh sign-in
+  if (!session && !sessionError) {
+    const start = Date.now();
+    const timeout = 2000; // up to 2s
+    while (!session && (Date.now() - start) < timeout) {
+      await new Promise(r => setTimeout(r, 150));
+      try {
+        const res = await supabase.auth.getSession();
+        session = res?.data?.session || null;
+      } catch (e) {
+        break;
+      }
+    }
+  }
 
   if (sessionError) {
     console.error('[requireStaffSession] Session error:', sessionError);

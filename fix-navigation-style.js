@@ -51,7 +51,10 @@
       font-size: 14px !important;
       font-weight: 500 !important;
     }
-    #logout-btn {
+    /* Scope logout styling to dark topbar contexts only */
+    .topbar.panel #logout-btn,
+    header.topbar #logout-btn,
+    .topbar #logout-btn {
       background: rgba(255, 255, 255, 0.15) !important;
       border: 1px solid rgba(255, 255, 255, 0.3) !important;
       color: var(--ink, #ffffff) !important;
