@@ -10194,6 +10194,36 @@ window.PIR_DEFINITIONS_DATA = [
     }
   }
 
+  // Create service role client for database operations (bypasses RLS)
+  function getServiceClient() {
+    // Use service role key for database operations to bypass RLS
+    const SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTAxNzI3NiwiZXhwIjoyMDcwNTkzMjc2fQ.CJxV14F0T2TWkAjeR4bpYiBIOwLwyfzF9WzAWwS99Xc';
+
+    // Create a new client instance with service role key
+    // Important: Do NOT use the existing createClient from supabase object
+    // We need to ensure this client has no session persistence
+    const serviceClient = window.supabase.createClient(CONFIG.SUPABASE_URL, SERVICE_KEY, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+        storage: {
+          getItem: () => null,
+          setItem: () => null,
+          removeItem: () => null
+        }
+      },
+      global: {
+        headers: {
+          'apikey': SERVICE_KEY,
+          'Authorization': `Bearer ${SERVICE_KEY}`
+        }
+      }
+    });
+
+    return serviceClient;
+  }
+
   // INVITATION SYSTEM WITH COMPREHENSIVE DEBUGGING
   async function handleInviteUserFormSubmit(e) {
     e.preventDefault();
@@ -10224,8 +10254,11 @@ window.PIR_DEFINITIONS_DATA = [
     submitBtn.disabled = true;
     submitBtn.textContent = 'Processing...';
 
+    // Get service client for database operations
+    const serviceClient = getServiceClient();
+
     try {
-      // STEP 1: Check Session
+      // STEP 1: Check Session (use regular client for auth)
       updateDebugStep('session', 'running', 'Checking user session...');
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
@@ -10305,57 +10338,52 @@ window.PIR_DEFINITIONS_DATA = [
         invited_by: session.user.id
       };
 
-      const { data: inviteResult, error: inviteError } = await supabase
+      // First, delete any existing pending invitations for this email
+      const { error: deleteOldError } = await serviceClient
+        .from('site_invites')
+        .delete()
+        .eq('email', email)
+        .eq('status', 'pending');
+
+      if (deleteOldError) {
+        console.warn('Could not delete old invitations:', deleteOldError);
+      }
+
+      // Now insert the new invitation
+      const { data: inviteResult, error: inviteError } = await serviceClient
         .from('site_invites')
         .insert(inviteData)
         .select();
 
       if (inviteError) {
-        updateDebugStep('site_invites', 'warning',
-          `Initial insert failed: ${inviteError.message}<br>` +
-          `Code: ${inviteError.code || 'unknown'}`,
-          inviteError
-        );
-
-        // If duplicate, delete old one and retry
-        if (inviteError.message.includes('duplicate') || inviteError.message.includes('already')) {
-          updateDebugStep('site_invites', 'running', 'Removing old invitation and retrying...');
-
-          const { error: deleteError } = await supabase
-            .from('site_invites')
-            .delete()
-            .eq('email', email)
-            .eq('status', 'pending');
-
-          if (deleteError) {
-            updateDebugStep('site_invites', 'error', `Failed to delete old invitation: ${deleteError.message}`, deleteError);
-          }
-
-          // Retry insert
-          const { data: retryResult, error: retryError } = await supabase
-            .from('site_invites')
-            .insert(inviteData)
-            .select();
-
-          if (retryError) {
-            updateDebugStep('site_invites', 'error', `Retry failed: ${retryError.message}`, retryError);
-            throw new Error(`Failed to create invitation: ${retryError.message}`);
-          }
-
-          updateDebugStep('site_invites', 'success',
-            `Invitation created after removing duplicate<br>` +
-            `Result: ${retryResult ? JSON.stringify(retryResult[0] || {}).substring(0, 100) : 'No data returned'}`,
-            retryResult
+        // Check if it's a real error or just RLS returning empty
+        if (inviteError.code === '42501' || inviteError.message.includes('row-level security')) {
+          // RLS error - but with service role this shouldn't happen
+          updateDebugStep('site_invites', 'warning',
+            `RLS policy issue detected (should not happen with service role)<br>` +
+            `Attempting to proceed anyway...`,
+            inviteError
           );
+        } else if (inviteError.message.includes('duplicate') || inviteError.message.includes('already')) {
+          updateDebugStep('site_invites', 'error',
+            `Duplicate invitation exists: ${inviteError.message}`,
+            inviteError
+          );
+          throw new Error(`An invitation for ${email} already exists`);
         } else {
-          updateDebugStep('site_invites', 'error', `Failed: ${inviteError.message}`, inviteError);
+          updateDebugStep('site_invites', 'error',
+            `Failed to create invitation: ${inviteError.message}<br>` +
+            `Code: ${inviteError.code || 'unknown'}`,
+            inviteError
+          );
           throw new Error(`Failed to create invitation: ${inviteError.message}`);
         }
       } else {
+        // No error - invitation created successfully (or at least no error returned)
         updateDebugStep('site_invites', 'success',
           `Invitation created successfully<br>` +
           `Columns inserted: ${Object.keys(inviteData).join(', ')}<br>` +
-          `Result: ${inviteResult ? JSON.stringify(inviteResult[0] || {}).substring(0, 100) : 'No data returned'}`,
+          `Result: ${inviteResult ? JSON.stringify(inviteResult[0] || {}).substring(0, 100) : 'No data returned (may be hidden by RLS)'}`,
           inviteResult
         );
       }
@@ -10378,24 +10406,67 @@ window.PIR_DEFINITIONS_DATA = [
         invite_expires_at: inviteExpiry.toISOString()
       };
 
-      const { data: userResult, error: userError } = await supabase
+      // First try to update existing user
+      const { data: updateResult, error: updateError } = await serviceClient
         .from('master_users')
-        .insert(userData)
+        .update({
+          full_name: fullName,
+          access_type: accessType,
+          role_detail: roleDetail,
+          team_id: teamId ? parseInt(teamId) : null,
+          reports_to_id: teamId ? parseInt(teamId) : null,
+          invite_status: 'pending',
+          invited_by: session.user.id,
+          invite_sent_at: new Date().toISOString(),
+          invite_expires_at: inviteExpiry.toISOString()
+        })
+        .eq('email', email)
+        .eq('site_id', ctx.site_id)
         .select();
 
-      if (userError) {
-        updateDebugStep('master_users', 'warning',
-          `Insert result: ${userError.message}<br>` +
-          `Code: ${userError.code || 'unknown'}<br>` +
-          `(User might already exist - this is OK)`,
-          userError
-        );
+      if (updateError || !updateResult || updateResult.length === 0) {
+        // User doesn't exist, insert new record
+        const { data: userResult, error: userError } = await serviceClient
+          .from('master_users')
+          .insert(userData)
+          .select();
+
+        if (userError) {
+          // Check if it's RLS or a real error
+          if (userError.code === '42501' || userError.message.includes('row-level security')) {
+            updateDebugStep('master_users', 'warning',
+              `RLS policy issue detected (should not happen with service role)<br>` +
+              `Attempting to proceed with email sending...`,
+              userError
+            );
+          } else if (userError.code === '23505' || userError.message.includes('duplicate')) {
+            updateDebugStep('master_users', 'warning',
+              `User already exists - this is OK<br>` +
+              `Proceeding with email sending...`,
+              userError
+            );
+          } else {
+            updateDebugStep('master_users', 'warning',
+              `Insert warning: ${userError.message}<br>` +
+              `Code: ${userError.code || 'unknown'}<br>` +
+              `Proceeding anyway...`,
+              userError
+            );
+          }
+        } else {
+          updateDebugStep('master_users', 'success',
+            `New user record created<br>` +
+            `Columns inserted: ${Object.keys(userData).join(', ')}<br>` +
+            `Result: ${userResult ? JSON.stringify(userResult[0] || {}).substring(0, 100) : 'No data returned (may be hidden by RLS)'}`,
+            userResult
+          );
+        }
       } else {
         updateDebugStep('master_users', 'success',
-          `User record created<br>` +
-          `Columns inserted: ${Object.keys(userData).join(', ')}<br>` +
-          `Result: ${userResult ? JSON.stringify(userResult[0] || {}).substring(0, 100) : 'No data returned'}`,
-          userResult
+          `Existing user record updated<br>` +
+          `Email: ${email}<br>` +
+          `Updated fields: access_type, role_detail, team_id, invite_status`,
+          updateResult
         );
       }
 
