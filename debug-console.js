@@ -24,7 +24,7 @@
             font-size: 12px;
             max-width: 500px;
             transition: all 0.3s ease;
-            display: none;
+            display: block;
         ">
             <!-- Toggle Button -->
             <button id="debug-toggle" style="

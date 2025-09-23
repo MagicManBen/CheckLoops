@@ -10134,11 +10134,12 @@ window.PIR_DEFINITIONS_DATA = [
       }
 
       // Insert invite, with compatibility fallback if schema lacks invite_data
+      // Use maybeSingle() to avoid PGRST116 when 0 rows are returned (e.g., RLS blocks returning)
       let { data: inviteRecord, error: inviteError } = await supabase
         .from('site_invites')
         .insert(inviteInsertData)
         .select()
-        .single();
+        .maybeSingle();
 
       // If the project doesn't yet have the invite_data column, retry without it
       if (inviteError && (
@@ -10151,7 +10152,7 @@ window.PIR_DEFINITIONS_DATA = [
           .from('site_invites')
           .insert(fallbackInsert)
           .select()
-          .single();
+          .maybeSingle();
         inviteRecord = retry.data;
         inviteError = retry.error;
       }
@@ -10164,7 +10165,25 @@ window.PIR_DEFINITIONS_DATA = [
         throw new Error(helpful);
       }
 
-      console.log('Invite record created:', inviteRecord.id);
+      // If RLS prevented returning the row, inviteRecord may be null. Try to fetch the id.
+      let inviteRecordId = inviteRecord?.id || null;
+      if (!inviteRecordId) {
+        const { data: fetchedInvite, error: fetchInviteErr } = await supabase
+          .from('site_invites')
+          .select('id')
+          .eq('email', formData.email)
+          .eq('site_id', formData.siteId)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false })
+          .maybeSingle();
+        if (fetchedInvite?.id) {
+          inviteRecordId = fetchedInvite.id;
+        } else if (fetchInviteErr) {
+          console.warn('Invite inserted but unable to fetch id (likely RLS):', fetchInviteErr);
+        }
+      }
+
+      console.log('Invite record created:', inviteRecordId || '(id unavailable)');
 
       // Send magic link email using OTP
       // Build the redirect URL with all necessary parameters
@@ -10175,9 +10194,9 @@ window.PIR_DEFINITIONS_DATA = [
         full_name: formData.fullName,
         role: formData.siteRole,
         role_detail: formData.jobRole || '',
-        reports_to_id: formData.teamId || '',
-        invite_id: inviteRecord.id
+        reports_to_id: formData.teamId || ''
       });
+      if (inviteRecordId) redirectParams.set('invite_id', String(inviteRecordId));
       const redirectUrl = `${baseUrl}?${redirectParams.toString()}`;
 
       console.log('Sending magic link to:', formData.email);
@@ -10195,7 +10214,7 @@ window.PIR_DEFINITIONS_DATA = [
             role: formData.siteRole,
             role_detail: formData.jobRole,
             reports_to_id: formData.teamId,
-            invite_id: inviteRecord.id
+            invite_id: inviteRecordId || undefined
           }
         }
       });
@@ -10218,7 +10237,7 @@ window.PIR_DEFINITIONS_DATA = [
 
       console.log('User invitation completed successfully!', {
         email: formData.email,
-        inviteId: inviteRecord.id
+        inviteId: inviteRecordId || null
       });
 
       // Reset form fields
