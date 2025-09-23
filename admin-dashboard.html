@@ -14,6 +14,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="pdf.min.js"></script>
 <script src="xlsx.full.min.js"></script>
+<script src="jszip.min.js"></script>
 <script src="config.js"></script>
 <script src="rls-fix.js"></script>
 <script src="supabase-js.js"></script>
@@ -57,6 +58,20 @@
         window.location.replace('staff.html');
       } else {
         console.log('Admin Dashboard: Admin access confirmed, staying on dashboard');
+        // Call bootstrap to initialize the dashboard with user data
+        if (typeof bootstrap === 'function') {
+          console.log('Admin Dashboard: Calling bootstrap()');
+          bootstrap();
+        } else {
+          console.log('Admin Dashboard: bootstrap() not available yet, waiting...');
+          // If bootstrap isn't defined yet, wait for the module to load
+          window.addEventListener('DOMContentLoaded', () => {
+            if (typeof bootstrap === 'function') {
+              console.log('Admin Dashboard: Calling bootstrap() after DOM ready');
+              bootstrap();
+            }
+          });
+        }
       }
     } catch (e) {
       console.log('Admin Dashboard: Error checking session, redirecting to login:', e);
@@ -7207,13 +7222,12 @@ window.PIR_DEFINITIONS_DATA = [
 <script type="module">
   // Supabase v2 client
   const { createClient } = supabase;
-  import JSZip from "https://esm.sh/jszip@3.10.1";
+  // JSZip is already loaded globally from jszip.min.js script tag
+  // No need to import it as a module
 
   // Use the globally initialized supabase client from the top of the file
   // This ensures we use the same session configuration as admin-login.html
   // Note: window.supabase is already set at line 35
-  // Expose JSZip to global for non-module scripts
-  window.JSZip = JSZip;
   window.supabaseCreateClient = createClient; // Expose createClient globally
 
   // Initialize authentication once Supabase client is ready
@@ -11728,11 +11742,12 @@ window.PIR_DEFINITIONS_DATA = [
       ctx.site_id = profile.site_id;
       ctx.role = profile.access_type || profile.role;
       // Try to get full name from profile, user metadata, or construct from email
-      ctx.full_name = profile.full_name || 
-                      user?.user_metadata?.full_name || 
+      ctx.full_name = profile.full_name ||
+                      user?.user_metadata?.full_name ||
                       user?.user_metadata?.name ||
                       (user.email ? user.email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : null);
       ctx.avatar_url = user?.user_metadata?.avatar_url || null;
+      ctx.user = user; // Store the user object in context
       
       // Make ctx available globally for training matrix and other features
       window.ctx = ctx;
@@ -11818,20 +11833,25 @@ window.PIR_DEFINITIONS_DATA = [
         }
       } catch (e) { console.warn('Avatar render failed', e); }
       
-      // Set user name - extract name from email if full_name not available
+      // Set user name - use full_name from profile or construct from email
       console.log('Setting user display - ctx.full_name:', ctx.full_name, 'ctx.user.email:', ctx.user?.email);
       let displayName = ctx.full_name;
-      
-      // For benhowardmagic@hotmail.com, show "Ben Howard" if that's the full_name in profile
-      // Otherwise show the email
-      if (!displayName) {
+
+      if (!displayName && ctx.user?.email) {
         // Try to get from user metadata first
         displayName = ctx.user?.user_metadata?.nickname || ctx.user?.user_metadata?.full_name;
+
+        // If still no name, construct from email
+        if (!displayName) {
+          displayName = ctx.user.email.split('@')[0]
+            .replace(/[._-]/g, ' ')
+            .replace(/\b\w/g, l => l.toUpperCase());
+        }
       }
-      
-      // Display email and role
-      userName.textContent = ctx.user?.email || "User";
-      console.log('Final display set to email:', userName.textContent);
+
+      // Display the name (not email)
+      userName.textContent = displayName || ctx.user?.email || "User";
+      console.log('Final display set to:', userName.textContent);
       
       // Update role display
 
@@ -15486,8 +15506,8 @@ function applySchedulesFilters() {
     });
   }
 
-  // Bootstrap
-  async function bootstrap(){
+  // Bootstrap - expose globally so it can be called from early session check
+  window.bootstrap = async function bootstrap(){
     console.log('🚀 Bootstrap starting...');
     
     try {
