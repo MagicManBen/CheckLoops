@@ -570,7 +570,7 @@
   </style>
 </head>
 <body>
-  <a href="home.html" class="back-link">
+  <a href="homepage.html" class="back-link">
     ← Back to Homepage
   </a>
 
@@ -622,7 +622,7 @@
             </div>
 
             <div style="margin-top: 0.75rem;">
-              <a href="home.html?redirect=admin" class="btn btn-secondary">Admin Login</a>
+              <a href="admin-login.html" class="btn btn-secondary">Admin Login</a>
             </div>
 
             <div class="security-badge">
@@ -705,6 +705,9 @@
         persistSessionOnWindowClose: true
       }
     });
+
+    // Make the client available to non-module scripts like login-redirect.js
+    try { window.supabase = supabase; } catch(_) {}
 
     // Helper: Clear any stale auth data that might cause session confusion
     function clearStaleAuthData() {
@@ -926,7 +929,7 @@
       }
     }
 
-    // Initialize page
+  // Initialize page
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       // Clear any stale auth data first
       clearStaleAuthData();
@@ -949,6 +952,17 @@
         rememberMeCheckbox.checked = true;
       }
     });
+
+    // As a safety net, redirect on auth state changes too
+    try {
+      supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'SIGNED_IN' && session?.user) {
+          await redirectByRole(session.user);
+        }
+      });
+    } catch (e) {
+      console.warn('Auth state listener setup failed:', e);
+    }
 
     // Store original button text
     document.querySelectorAll('.btn').forEach(btn => {

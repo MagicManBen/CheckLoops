@@ -139,14 +139,36 @@ serve(async (req) => {
         .eq('id', profileData.id)
     }
 
-    // Send password reset email for user to set their own password
-    const { error: resetError } = await supabaseAdmin.auth.resetPasswordForEmail(
-      requestData.email,
-      { redirectTo: `${req.headers.get('origin')}/simple-set-password.html` }
-    )
+    // Send a magic link for the user to sign in and set their password
+    try {
+      const origin = req.headers.get('origin') || ''
+      const baseUrl = origin ? `${origin}/simple-set-password.html` : 'https://checkloops.co.uk/simple-set-password.html'
+      const params = new URLSearchParams({
+        email: requestData.email,
+        site_id: String(requestData.siteId || ''),
+        full_name: requestData.fullName || '',
+        role: requestData.role || 'Visitor'
+      })
+      const redirectUrl = `${baseUrl}?${params.toString()}`
 
-    if (resetError) {
-      console.error('Password reset email failed:', resetError)
+      const { error: magicError } = await supabaseAdmin.auth.signInWithOtp({
+        email: requestData.email,
+        options: {
+          shouldCreateUser: false,
+          emailRedirectTo: redirectUrl,
+          data: {
+            full_name: requestData.fullName,
+            site_id: requestData.siteId,
+            role: requestData.role || 'Visitor'
+          }
+        }
+      })
+
+      if (magicError) {
+        console.error('Magic link email failed:', magicError)
+      }
+    } catch (e) {
+      console.error('Unexpected error sending magic link:', e)
     }
 
     return new Response(

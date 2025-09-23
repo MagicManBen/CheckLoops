@@ -30,7 +30,7 @@
       const { data: { session } } = await sb.auth.getSession();
       if (!session) {
         sessionStorage.setItem('redirectAfterLogin', window.location.pathname);
-        window.location.replace('home.html?redirect=admin');
+  window.location.replace('admin-login.html');
         return;
       }
       const { data: profile } = await sb
@@ -44,7 +44,7 @@
         window.location.replace('staff.html');
       }
     } catch (e) {
-      window.location.replace('home.html?redirect=admin');
+  window.location.replace('admin-login.html');
     }
   })();
   window.CONFIG = CONFIG;
@@ -6265,6 +6265,17 @@ document.addEventListener('DOMContentLoaded', () => {
               <div class="settings-section" style="margin-top:40px; padding:20px; background:var(--glass); border-radius:12px; border:1px solid var(--border-color);">
                 <h3 style="margin-top:0; margin-bottom:20px; color:var(--white); font-size:18px;">Feature Settings</h3>
                 <p style="color:var(--muted); margin-bottom:20px; font-size:14px;">Enable or disable features for all users in your organization</p>
+                <!-- Scoped styles for clear toggle switches -->
+                <style>
+                  .cl-switch { display:inline-flex; align-items:center; gap:10px; cursor:pointer; user-select:none; }
+                  .cl-switch input { position:absolute; opacity:0; width:0; height:0; }
+                  .cl-switch-track { width:52px; height:28px; border-radius:999px; background:rgba(148,163,184,0.25); border:1px solid var(--border-color, #334155); position:relative; transition:background .2s, border-color .2s; box-shadow: inset 0 0 0 1px rgba(0,0,0,.06); }
+                  .cl-switch-track::after { content:""; width:22px; height:22px; background:#fff; border-radius:50%; position:absolute; top:3px; left:3px; transition:transform .2s; box-shadow:0 1px 2px rgba(0,0,0,.25); }
+                  .cl-switch input:checked + .cl-switch-track { background:#10b981; border-color:#10b981; }
+                  .cl-switch input:checked + .cl-switch-track::after { transform: translateX(24px); }
+                  .cl-switch-text { font-size:12px; color:var(--muted, #94a3b8); min-width:28px; }
+                  .cl-switch input:checked ~ .cl-switch-text { color:#10b981; }
+                </style>
 
                 <div style="display:flex; flex-direction:column; gap:20px;">
                   <!-- Enable Achievements -->
@@ -6278,9 +6289,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                       </label>
                     </div>
-                    <div class="toggle-switch" onclick="document.getElementById('enable-achievements').click();" style="cursor:pointer;">
-                      <input type="checkbox" id="enable-achievements" style="display:none;" onchange="updateSiteSettings()">
-                      <span class="toggle-slider"></span>
+                    <div>
+                      <label class="cl-switch" aria-label="Enable Achievements">
+                        <input type="checkbox" id="enable-achievements" onchange="updateSiteSettings()">
+                        <span class="cl-switch-track" aria-hidden="true"></span>
+                        <span class="cl-switch-text" data-off="Off" data-on="On">Off</span>
+                      </label>
                     </div>
                   </div>
 
@@ -6295,9 +6309,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                       </label>
                     </div>
-                    <div class="toggle-switch" onclick="document.getElementById('enable-avatars').click();" style="cursor:pointer;">
-                      <input type="checkbox" id="enable-avatars" style="display:none;" onchange="updateSiteSettings()">
-                      <span class="toggle-slider"></span>
+                    <div>
+                      <label class="cl-switch" aria-label="Enable Avatars">
+                        <input type="checkbox" id="enable-avatars" onchange="updateSiteSettings()">
+                        <span class="cl-switch-track" aria-hidden="true"></span>
+                        <span class="cl-switch-text" data-off="Off" data-on="On">Off</span>
+                      </label>
                     </div>
                   </div>
                 </div>
@@ -7204,7 +7221,7 @@ window.PIR_DEFINITIONS_DATA = [
     // When the Admin UI needs to show auth, direct to home.html for the login screen
     if (show) {
       // Add a query parameter to indicate this was an admin page
-      window.location.href = 'home.html?redirect=admin';
+  window.location.href = 'admin-login.html';
       return;
     }
     if (appShell) appShell.style.display = 'grid';
@@ -10116,15 +10133,35 @@ window.PIR_DEFINITIONS_DATA = [
         inviteInsertData.reports_to_id = parseInt(formData.teamId);
       }
 
-      const { data: inviteRecord, error: inviteError } = await supabase
+      // Insert invite, with compatibility fallback if schema lacks invite_data
+      let { data: inviteRecord, error: inviteError } = await supabase
         .from('site_invites')
         .insert(inviteInsertData)
         .select()
         .single();
 
+      // If the project doesn't yet have the invite_data column, retry without it
+      if (inviteError && (
+          (typeof inviteError.message === 'string' && inviteError.message.toLowerCase().includes('invite_data')) ||
+          (typeof inviteError.details === 'string' && inviteError.details.toLowerCase().includes('invite_data'))
+        )) {
+        console.warn('site_invites.invite_data not found — retrying insert without invite_data');
+        const { invite_data, ...fallbackInsert } = inviteInsertData;
+        const retry = await supabase
+          .from('site_invites')
+          .insert(fallbackInsert)
+          .select()
+          .single();
+        inviteRecord = retry.data;
+        inviteError = retry.error;
+      }
+
       if (inviteError) {
         console.error('Failed to create invite record:', inviteError);
-        throw new Error('Failed to create invitation: ' + inviteError.message);
+        const helpful = 'Failed to create invitation: ' + inviteError.message +
+          (String(inviteError.message || '').toLowerCase().includes('invite_data') ?
+            ' — Tip: add column invite_data JSONB to public.site_invites or run the provided SQL patch.' : '');
+        throw new Error(helpful);
       }
 
       console.log('Invite record created:', inviteRecord.id);
@@ -10164,17 +10201,7 @@ window.PIR_DEFINITIONS_DATA = [
       });
 
       if (magicLinkError) {
-        console.error('Magic link failed, falling back to password reset:', magicLinkError);
-
-        // Fallback to password reset email
-        const { error: resetError } = await supabase.auth.resetPasswordForEmail(formData.email, {
-          redirectTo: redirectUrl
-        });
-
-        if (resetError) {
-          throw new Error(`Failed to send invitation email: ${resetError.message}`);
-        }
-        console.log('Password reset email sent as fallback');
+        throw new Error(`Failed to send magic link: ${magicLinkError.message}`);
       } else {
         console.log('Magic link email sent successfully');
       }
@@ -10514,14 +10541,7 @@ window.PIR_DEFINITIONS_DATA = [
       });
 
       if (magicLinkError) {
-        console.error('Magic link failed, using password reset:', magicLinkError);
-
-        // Fallback to password reset
-        const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: redirectUrl
-        });
-
-        if (resetError) throw resetError;
+        throw new Error(`Failed to send magic link: ${magicLinkError.message}`);
       }
 
       debugLog('success', 'Invitation resent successfully', { email });
