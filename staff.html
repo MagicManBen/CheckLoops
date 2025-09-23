@@ -1142,31 +1142,7 @@
     // Navigation will be handled by staff-common.js
     navActivate('home');
 
-    let isLoggingOut = false;
-    function cleanupAndRedirect() {
-      try { clearAuthData(true); } catch(_) {}
-      try { sessionStorage.clear(); } catch(_) {}
-      try { document.cookie.split(';').forEach(c => document.cookie = c.replace(/^ +/, '').replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`)); } catch(_) {}
-      window.location.replace('homepage.html?_=' + Date.now());
-    }
-
-    async function forceLogout() {
-      if (isLoggingOut) return;
-      isLoggingOut = true;
-      try {
-        const { data } = await supabase.auth.getSession();
-        if (data?.session) await supabase.auth.signOut();
-      } catch (e) {
-        console.error('Supabase signOut failed:', e);
-      }
-      cleanupAndRedirect();
-    }
-
-    document.getElementById('logout-btn').addEventListener('click', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      await forceLogout();
-    });
+  document.getElementById('logout-btn')?.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); window.signOut && window.signOut(); });
 
     requireStaffSession(supabase).then(async ({ session, profileRow }) => {
       await loadDashboard(session.user, profileRow);
@@ -1185,16 +1161,14 @@
           const holidayCard = document.getElementById('holidays-card');
           if (holidayCard) {
             if (userData.holiday_approved === true) {
+              // Enable existing card without replacing its inner HTML (keeps icon wired)
               holidayCard.classList.remove('disabled');
-              holidayCard.innerHTML = `
-                <a href="my-holidays.html" style="text-decoration: none; color: inherit;">
-                  <div class="action-icon">
-                    <img data-i8="calendar" data-i8-size="32" alt="My Holidays">
-                  </div>
-                  <div class="action-title">My Holidays</div>
-                </a>
-              `;
+              holidayCard.removeAttribute('title');
+              holidayCard.removeAttribute('onclick');
+              holidayCard.style.cursor = '';
+              holidayCard.setAttribute('href', 'my-holidays.html');
             } else {
+              holidayCard.setAttribute('href', '#');
               holidayCard.title = 'Holiday entitlement awaiting admin approval';
               holidayCard.onclick = handleHolidaysClick;
               holidayCard.style.cursor = 'pointer';
@@ -1217,11 +1191,11 @@
       }
     }).catch(e => {
       if (String(e.message).includes('NO_SESSION')) {
-        window.location.replace('homepage.html');
+        window.location.replace('home.html');
         return;
       }
       if (String(e.message).includes('NOT_STAFF')) {
-        window.location.replace('homepage.html');
+        window.location.replace('home.html');
         return;
       }
       console.error(e);
@@ -1410,10 +1384,15 @@
         console.log('Quiz data received:', quizData);
 
         if (quizData && quizData.length > 0) {
-          const lastScore = quizData[0].score_percent || 0;
-          const passCount = quizData.filter(q => q.score_percent >= 80).length;
+          const rawScore = quizData[0].score_percent;
+          const passCount = quizData.filter(q => (q.score_percent ?? -1) >= 80).length;
 
-          document.getElementById('quiz-score').textContent = `${lastScore}%`;
+          const scoreEl = document.getElementById('quiz-score');
+          if (rawScore === null || rawScore === undefined) {
+            scoreEl.textContent = '—';
+          } else {
+            scoreEl.textContent = `${rawScore}%`;
+          }
           document.getElementById('quiz-attempts-pass').textContent = passCount;
           document.getElementById('quiz-attempts-total').textContent = quizData.length;
         } else {
@@ -1471,6 +1450,23 @@
         if (lastAttempt?.completed_at) {
           nextDue = new Date(lastAttempt.completed_at);
           nextDue.setDate(nextDue.getDate() + 7);
+        } else {
+          // Fallback to master_users metadata if no attempts row exists
+          try {
+            const { data: mu } = await supabase
+              .from('master_users')
+              .select('next_quiz_due, last_required_quiz_at')
+              .eq('auth_user_id', user.id)
+              .maybeSingle();
+            if (mu?.next_quiz_due) {
+              nextDue = new Date(mu.next_quiz_due);
+            } else if (mu?.last_required_quiz_at) {
+              nextDue = new Date(mu.last_required_quiz_at);
+              nextDue.setDate(nextDue.getDate() + 7);
+            }
+          } catch (e) {
+            console.warn('Could not read master_users quiz metadata:', e);
+          }
         }
 
         if (!nextDue || now >= nextDue) {
@@ -1491,6 +1487,10 @@
             quizAlert.classList.remove('hidden');
             quizAlertMessage.textContent = `Quiz due in ${Math.ceil(hoursUntilDue)} hour${Math.ceil(hoursUntilDue)>1?'s':''}`;
             quizBubble.classList.add('due');
+          } else {
+            // Not due yet, ensure banner is hidden and bubble not flagged
+            quizAlert.classList.add('hidden');
+            quizBubble.classList.remove('due');
           }
         }
       } catch (error) {

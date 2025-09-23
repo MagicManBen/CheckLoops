@@ -504,43 +504,19 @@
   </main>
 
   <script type="module">
-    import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, fmtDate, clearAuthData, createAchievementClient } from './staff-common.js';
+    import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, fmtDate, clearAuthData, createAchievementClient, attachLogout } from './staff-common.js';
 
     const supabase = await initSupabase();
     window.supabase = supabase;
-    handleAuthState(supabase);
-    navActivate('scans');
+  handleAuthState(supabase);
+  navActivate('scans');
+  attachLogout(supabase);
 
     let currentUser = null;
     let currentProfile = null;
     let achievementClient = null;
 
-    // Logout handling
-    let isLoggingOut = false;
-    function cleanupAndRedirect() {
-      try { clearAuthData(true); } catch { }
-      try { sessionStorage.clear(); } catch { }
-      try { document.cookie.split(';').forEach(c => document.cookie = c.replace(/^ +/, '').replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`)); } catch { }
-      window.location.replace('home.html?_=' + Date.now());
-    }
-    
-    async function forceLogout() {
-      if (isLoggingOut) return;
-      isLoggingOut = true;
-      try {
-        const { data } = await supabase.auth.getSession();
-        if (data?.session) await supabase.auth.signOut();
-      } catch (e) {
-        console.error('signOut failed', e);
-      }
-      cleanupAndRedirect();
-    }
-    
-    document.getElementById('logout-btn').addEventListener('click', async e => {
-      e.preventDefault();
-      e.stopPropagation();
-      await forceLogout();
-    });
+    // Logout now handled by attachLogout(supabase)
 
     // Utility functions
     function formatTimeAgo(date) {
