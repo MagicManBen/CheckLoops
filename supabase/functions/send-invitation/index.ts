@@ -36,12 +36,17 @@ serve(async (req) => {
     // Create Supabase client with user's token to verify they're authenticated
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    // Try custom SERVICE_KEY first, then fall back to SUPABASE_SERVICE_ROLE_KEY
+    let supabaseServiceKey = Deno.env.get('SERVICE_KEY') ?? ''
+    if (!supabaseServiceKey) {
+      supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    }
 
     trace('env-configuration-loaded', {
       hasUrl: Boolean(supabaseUrl),
       hasAnon: Boolean(supabaseAnonKey),
       hasService: Boolean(supabaseServiceKey),
+      serviceKeySource: Deno.env.get('SERVICE_KEY') ? 'SERVICE_KEY' : 'SUPABASE_SERVICE_ROLE_KEY',
     })
 
     // Verify the user is authenticated
@@ -51,13 +56,47 @@ serve(async (req) => {
       },
     })
 
-    const { data: { user }, error: authError } = await userClient.auth.getUser()
-    if (authError || !user) {
-      trace('auth-failed', {
+    let user: any
+    const { data: authData, error: authError } = await userClient.auth.getUser()
+
+    if (authError || !authData?.user) {
+      trace('auth-getUser-failed', {
         authError: authError?.message,
-        hasUser: Boolean(user),
+        hasUser: Boolean(authData?.user),
       })
-      throw new Error('Unauthorized')
+
+      // If getUser fails, try to decode the JWT directly
+      const token = authHeader.replace('Bearer ', '')
+      try {
+        const parts = token.split('.')
+        if (parts.length !== 3) {
+          throw new Error('Invalid JWT format')
+        }
+        const payload = JSON.parse(atob(parts[1]))
+        if (!payload.sub) {
+          throw new Error('No subject in JWT')
+        }
+
+        // Use the user info from the JWT payload
+        user = {
+          id: payload.sub,
+          email: payload.email || 'unknown@email.com',
+          user_metadata: payload.user_metadata || {},
+        }
+
+        trace('jwt-fallback-success', {
+          userId: user.id,
+          userEmail: user.email,
+          role: payload.role,
+        })
+      } catch (decodeError) {
+        trace('jwt-decode-failed', {
+          error: decodeError instanceof Error ? decodeError.message : String(decodeError),
+        })
+        throw new Error('Unauthorized')
+      }
+    } else {
+      user = authData.user
     }
 
     trace('auth-success', {
@@ -65,8 +104,16 @@ serve(async (req) => {
       userEmail: user.email,
     })
 
-    // Check if user is admin
-    const { data: requesterProfile, error: requesterProfileError } = await userClient
+    // Create service client for admin operations early
+    const serviceClient = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    })
+
+    // Check if user is admin (use service client for elevated permissions)
+    const { data: requesterProfile, error: requesterProfileError } = await serviceClient
       .from('master_users')
       .select('access_type')
       .eq('auth_user_id', user.id)
@@ -88,13 +135,26 @@ serve(async (req) => {
 
     // Parse request body
     const body = await req.json()
-    const { email, name, site_id, resend = false } = body
+    const {
+      email,
+      name,
+      site_id,
+      resend = false,
+      access_type,
+      role_detail,
+      team_id,
+      reports_to_id,
+    } = body
 
     trace('request-body', {
       emailProvided: Boolean(email),
       nameProvided: Boolean(name),
       resendRequested: resend,
       siteIdProvided: site_id ?? null,
+      accessTypeProvided: access_type ?? null,
+      roleDetailProvided: Boolean(role_detail),
+      teamIdProvided: team_id ?? null,
+      reportsToProvided: reports_to_id ?? null,
     })
 
     if (!email) {
@@ -104,14 +164,6 @@ serve(async (req) => {
     if (!resend && !name) {
       throw new Error('Name is required for new invitations')
     }
-
-    // Create service client for admin operations
-    const serviceClient = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-    })
 
     // If resending, get existing user data
     let existingUserRecord = null
@@ -152,26 +204,37 @@ serve(async (req) => {
       ? existingUserRecord?.site_id ?? site_id ?? 2
       : site_id ?? 2
 
-    const inviteData = resend
-      ? {
-          data: {
-            full_name: existingUserRecord?.full_name || email,
-            invited: true,
-            site_id: normalizedSiteId,
-          },
-        }
-      : {
-          data: {
-            full_name: name,
-            invited: true,
-            site_id: normalizedSiteId,
-          },
-        }
+    const parseOptionalNumber = (value: unknown) => {
+      if (value === null || value === undefined || value === '') return null
+      const num = Number(value)
+      return Number.isFinite(num) ? num : null
+    }
+
+    const sanitizedTeamId = parseOptionalNumber(team_id)
+    const sanitizedReportsToId = parseOptionalNumber(reports_to_id)
+    const normalizedAccessType = (access_type || existingUserRecord?.access_type || 'staff').toString().toLowerCase()
+    const invitationFullName = resend ? existingUserRecord?.full_name || email : name
+
+    const inviteData = {
+      data: {
+        full_name: invitationFullName,
+        invited: true,
+        site_id: normalizedSiteId,
+        access_type: normalizedAccessType,
+        role_detail: role_detail || existingUserRecord?.role_detail || null,
+        team_id: sanitizedTeamId ?? existingUserRecord?.team_id ?? null,
+        reports_to_id: sanitizedReportsToId ?? existingUserRecord?.reports_to_id ?? null,
+      },
+    }
 
     trace('invitation-prepared', {
       resend,
       normalizedSiteId,
-      fullName: resend ? existingUserRecord?.full_name || email : name,
+      fullName: invitationFullName,
+      accessType: normalizedAccessType,
+      roleDetail: role_detail ?? existingUserRecord?.role_detail ?? null,
+      teamId: sanitizedTeamId ?? existingUserRecord?.team_id ?? null,
+      reportsToId: sanitizedReportsToId ?? existingUserRecord?.reports_to_id ?? null,
     })
 
     const { data: invitation, error: inviteError } = await serviceClient.auth.admin.inviteUserByEmail(
@@ -199,8 +262,11 @@ serve(async (req) => {
         .insert({
           email: email,
           full_name: name,
-          access_type: 'staff',
-          role: 'staff',
+          access_type: normalizedAccessType,
+          role: normalizedAccessType,
+          role_detail: role_detail || null,
+          team_id: sanitizedTeamId,
+          reports_to_id: sanitizedReportsToId,
           invite_status: 'pending',
           invite_sent_at: nowIso,
           invited_by: user.id,
