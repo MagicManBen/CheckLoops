@@ -171,7 +171,87 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 <script>
+// Populate the Invite User → Team dropdown. Minimal query: teams(id,name) by site_id.
+async function populateTeamsSelect() {
+  try {
+    if (typeof supabase === 'undefined') {
+      console.error('populateTeamsSelect: Supabase not available');
+      return;
+    }
 
+    const sel = document.getElementById('add-user-team');
+    if (!sel) { console.warn('populateTeamsSelect: #add-user-team not found'); return; }
+    sel.innerHTML = '<option value="" disabled selected>Loading teams…</option>';
+
+    // Resolve siteId from existing context or session metadata
+    let siteId = (window.ctx && window.ctx.site_id) ? window.ctx.site_id : null;
+    if (!siteId) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const u = session?.user;
+        siteId = u?.user_metadata?.site_id || u?.raw_user_meta_data?.site_id || null;
+      } catch (e) {
+        console.warn('populateTeamsSelect: getSession failed', e && (e.message || e));
+      }
+    }
+
+    if (!siteId) {
+      console.warn('populateTeamsSelect: no site_id resolved');
+      sel.innerHTML = '<option value="" disabled selected>No teams available</option>';
+      return;
+    }
+
+    console.log('Loading teams from teams table for site', siteId);
+    const { data: teams, error } = await supabase
+      .from('teams')
+      .select('id, name')
+      .eq('site_id', siteId)
+      .order('name');
+
+    if (error) {
+      console.error('populateTeamsSelect: teams query failed', error);
+      const msg = String(error.message || '').toLowerCase();
+      // Helpful hint if an RLS/policy references a non-existent column like auth_user_id
+      if (error.code === '42703' || msg.includes('auth_user_id') || msg.includes('column') ) {
+        sel.innerHTML = '<option value="" disabled selected>DB policy error – please fix RLS on teams</option>';
+      } else if (msg.includes('policy') || msg.includes('rls')) {
+        sel.innerHTML = '<option value="" disabled selected>Permission denied by RLS</option>';
+      } else {
+        sel.innerHTML = '<option value="" disabled selected>Error loading teams</option>';
+      }
+      return;
+    }
+
+    if (!Array.isArray(teams) || teams.length === 0) {
+      sel.innerHTML = '<option value="" disabled selected>No teams found</option>';
+      return;
+    }
+
+    // Populate options
+    sel.innerHTML = '<option value="" disabled selected>Select a team…</option>';
+    teams.forEach(t => {
+      if (!t) return;
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.name;
+      sel.appendChild(opt);
+    });
+  } catch (e) {
+    console.error('populateTeamsSelect: fatal', e && (e.message || e));
+    const sel = document.getElementById('add-user-team');
+    if (sel) sel.innerHTML = '<option value="" disabled selected>Error loading teams</option>';
+  }
+}
+
+// Run when the page is ready (safe if the select exists), and also when opening the Invite modal
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => setTimeout(populateTeamsSelect, 0));
+} else {
+  setTimeout(populateTeamsSelect, 0);
+}
+
+// Also repopulate when the Invite User modal is opened, so the dropdown stays fresh
+(document.getElementById('btn-invite-user') || {}).addEventListener?.('click', () => setTimeout(populateTeamsSelect, 0));
 </script>
 <style>
   :root{
@@ -3195,6 +3275,66 @@ document.addEventListener('DOMContentLoaded', () => {
     font-size: 12px;
   }
 
+  /* Enhanced User Management Styles */
+  .user-status-badge {
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: inline-block;
+  }
+  .status-not-invited {
+    background: linear-gradient(135deg, #fbbf24, #f59e0b);
+    color: #451a03;
+  }
+  .status-invited {
+    background: linear-gradient(135deg, #60a5fa, #3b82f6);
+    color: #ffffff;
+  }
+  .status-active {
+    background: linear-gradient(135deg, #34d399, #10b981);
+    color: #ffffff;
+  }
+  .status-error {
+    background: linear-gradient(135deg, #f87171, #ef4444);
+    color: #ffffff;
+  }
+
+  .action-buttons {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .action-btn {
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .action-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  .action-btn.invite {
+    background: linear-gradient(135deg, #60a5fa, #3b82f6);
+    color: white;
+  }
+  .action-btn.test {
+    background: linear-gradient(135deg, #a78bfa, #8b5cf6);
+    color: white;
+  }
+  .action-btn.remove {
+    background: linear-gradient(135deg, #f87171, #ef4444);
+    color: white;
+  }
   .action-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
@@ -4616,9 +4756,7 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
       </div>
       <nav class="nav" id="nav">
-        <button data-section="dashboard"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg><span class="menu-item-label">Dashboard</span></button>
-
-        <button data-section="main-dashboard"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg><span class="menu-item-label">Main Dashboard</span></button>
+        <button onclick="window.location.href='admin-dashboard.html'" style="background: linear-gradient(135deg, #4f89ff, #3f78ff);"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg><span class="menu-item-label">Dashboard</span></button>
 
         <button class="nav-group-toggle" id="toggle-pre-inspection" type="button" aria-expanded="false" aria-controls="group-pre-inspection">Inspection Notice <span class="caret" aria-hidden="true"></span></button>
   <div class="nav-group collapsed" id="group-pre-inspection">
@@ -4715,16 +4853,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     <main class="content">
       <section class="view active" id="view-dashboard">
-        <div class="panel">
-          <h2 style="margin-top: 0; color: var(--white); font-size: 24px; font-weight: 600;">Dashboard</h2>
-          <p style="color: var(--muted); margin-bottom: 20px;">Welcome to your new dashboard. This space is ready for your content.</p>
-        </div>
-      </section>
-
-      <section class="view" id="view-main-dashboard">
         <div class="panel" style="display:grid; place-items:center; min-height:220px; text-align:center;">
           <div>
-            <div style="font-size:32px; font-weight:800; color: var(--white); margin-bottom: 12px;">Welcome to Dashboard</div>
+            <div style="font-size:24px; font-weight:800; color: var(--white);">Dashboard Coming Soon</div>
             <div style="margin-top:6px; color: var(--muted);">We’re building a fresh overview with live metrics and quick actions.</div>
           </div>
         </div>
@@ -4955,6 +5086,184 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
         </div>
       </section>
+      
+      
+      <!-- Users Configuration View - Completely Redesigned -->
+      <section class="view" id="view-users">
+        <div class="panel">
+          <div class="page-header">
+            <div class="page-title-wrapper">
+              <h1 class="page-title">User Management</h1>
+              <button class="help-icon" onclick="showHelp('view-users')" title="Help">?</button>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center;">
+              <button class="btn" id="btn-invite-user" style="background:linear-gradient(135deg, #4f89ff, #3f78ff);">📧 Invite User</button>
+            </div>
+          </div>
+
+          <!-- User Management Table -->
+          <div class="settings-section" style="margin-top:20px">
+            <h3>Practice Users</h3>
+            <div style="background:#e0f2fe; border:1px solid #38bdf8; border-radius:8px; padding:12px; margin-bottom:16px;">
+              <p style="margin:0; color:#075985; font-size:14px;">
+                <strong>ℹ️ How it works:</strong> Invite users with their details. They'll receive an email to set their password and complete onboarding.
+              </p>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Job Role</th>
+                    <th>Team</th>
+                    <th>Status</th>
+                    <th style="min-width:200px;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="practice-users-tbody">
+                  <tr><td colspan="6" class="muted">Loading...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Debug Console removed -->
+        </div>
+
+        <!-- Invite User Modal -->
+        <div class="modal" id="invite-user-modal">
+          <div class="modal-content" style="width:800px; max-height:90vh; overflow-y:auto;">
+            <div class="modal-header" style="background:linear-gradient(135deg, #4f89ff, #3f78ff); color:white; padding:20px; border-radius:12px 12px 0 0;">
+              <h3 style="margin:0; font-size:20px;">📧 Invite New User</h3>
+              <button type="button" class="modal-close" id="invite-user-modal-close" style="color:white; font-size:24px;">&times;</button>
+            </div>
+            <form id="invite-user-form" style="padding:20px;">
+              <!-- Basic Information -->
+              <div style="background:#f8fafc; border-radius:12px; padding:16px; margin-bottom:20px;">
+                <h4 style="margin-top:0; color:#3b82f6;">Basic Information</h4>
+                <div class="field">
+                  <label>Full Name *</label>
+                  <input type="text" id="add-user-name" name="full_name" required placeholder="e.g., John Smith">
+                </div>
+                <div class="field">
+                  <label>Email *</label>
+                  <input type="email" id="add-user-email" name="email" required placeholder="e.g., john.smith@practice.nhs.uk">
+                </div>
+                <div class="field">
+                  <label>Site Access Level *</label>
+                  <select id="add-user-access" name="access" required>
+                    <option value="">Select access level</option>
+                    <option value="owner">Owner - Full system control</option>
+                    <option value="admin">Admin - Can manage users and settings</option>
+                    <option value="staff">Staff - Standard user access</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Role and Team -->
+              <div style="background:#f0f9ff; border-radius:12px; padding:16px; margin-bottom:20px;">
+                <h4 style="margin-top:0; color:#3b82f6;">Role and Team</h4>
+                <div class="field">
+                  <label>Job Role *</label>
+                  <select id="add-user-role" name="job_role" required>
+                    <option value="">Select job role</option>
+                    <option value="GP">GP (Doctor)</option>
+                    <option value="Nurse">Nurse</option>
+                    <option value="Practice Manager">Practice Manager</option>
+                    <option value="Admin Assistant">Admin Assistant</option>
+                    <option value="Receptionist">Receptionist</option>
+                    <option value="Healthcare Assistant">Healthcare Assistant</option>
+                    <option value="Pharmacist">Pharmacist</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>Team</label>
+                  <select id="add-user-team" name="team">
+                    <option value="">Select team (optional)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Status Messages -->
+              <div class="error" id="add-user-error" style="display:none; padding:12px; border-radius:8px; background:#fee2e2; color:#991b1b; border:1px solid #fecaca;"></div>
+              <div class="success" id="add-user-success" style="display:none; padding:12px; border-radius:8px; background:#dcfce7; color:#166534; border:1px solid #86efac;"></div>
+
+              <!-- Action Buttons -->
+              <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px; padding-top:20px; border-top:1px solid #e5e7eb;">
+                <button type="button" class="btn secondary" id="invite-user-cancel-btn">Cancel</button>
+                <button type="submit" class="btn" id="invite-user-submit" style="background:linear-gradient(135deg, #10b981, #059669);">📧 Send Invitation</button>
+              </div>
+
+              <!-- Debug Console -->
+              <div id="invite-debug-console" style="display:none; margin-top:20px; padding:15px; background:#f8f9fa; border:1px solid #dee2e6; border-radius:8px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                  <h4 style="margin:0; font-size:14px; font-weight:600;">🔍 Debug Console</h4>
+                  <button type="button" id="copy-debug-log" class="btn" style="padding:4px 8px; font-size:12px; background:#6b7280;">📋 Copy Log</button>
+                </div>
+
+                <div id="debug-checklist" style="font-family:monospace; font-size:12px;">
+                  <!-- Session Check -->
+                  <div class="debug-step" data-step="session">
+                    <span class="debug-icon">⏳</span>
+                    <span class="debug-text">Check user session</span>
+                    <div class="debug-detail" style="margin-left:20px; color:#666; display:none;"></div>
+                  </div>
+
+                  <!-- Form Data -->
+                  <div class="debug-step" data-step="form">
+                    <span class="debug-icon">⏳</span>
+                    <span class="debug-text">Collect form data</span>
+                    <div class="debug-detail" style="margin-left:20px; color:#666; display:none;"></div>
+                  </div>
+
+                  <!-- Supabase Connection -->
+                  <div class="debug-step" data-step="connection">
+                    <span class="debug-icon">⏳</span>
+                    <span class="debug-text">Connect to Supabase API</span>
+                    <div class="debug-detail" style="margin-left:20px; color:#666; display:none;"></div>
+                  </div>
+
+                  <!-- Site Invites Insert -->
+                  <div class="debug-step" data-step="site_invites">
+                    <span class="debug-icon">⏳</span>
+                    <span class="debug-text">Insert to site_invites table</span>
+                    <div class="debug-detail" style="margin-left:20px; color:#666; display:none;"></div>
+                  </div>
+
+                  <!-- Master Users Insert -->
+                  <div class="debug-step" data-step="edge_function">
+                    <span class="debug-icon">⏳</span>
+                    <span class="debug-text">Call send-invitation Edge Function</span>
+                    <div class="debug-detail" style="margin-left:20px; color:#666; display:none;"></div>
+                  </div>
+
+                  <!-- Send Email -->
+                  <div class="debug-step" data-step="email">
+                    <span class="debug-icon">⏳</span>
+                    <span class="debug-text">Edge Function email response</span>
+                    <div class="debug-detail" style="margin-left:20px; color:#666; display:none;"></div>
+                  </div>
+
+                  <!-- Complete -->
+                  <div class="debug-step" data-step="complete">
+                    <span class="debug-icon">⏳</span>
+                    <span class="debug-text">Process complete</span>
+                    <div class="debug-detail" style="margin-left:20px; color:#666; display:none;"></div>
+                  </div>
+                </div>
+
+                <!-- Raw Log -->
+                <details style="margin-top:15px;">
+                  <summary style="cursor:pointer; font-size:12px; color:#666;">📝 Raw Debug Log</summary>
+                  <pre id="debug-raw-log" style="margin-top:10px; padding:10px; background:#fff; border:1px solid #e5e7eb; border-radius:4px; font-size:11px; max-height:200px; overflow-y:auto; white-space:pre-wrap; word-wrap:break-word;"></pre>
+                </details>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
 
       <!-- Fuzzy Match Holiday Import -->
       <section class="view" id="view-fuzzy-match">
@@ -5126,8 +5435,148 @@ document.addEventListener('DOMContentLoaded', () => {
       </section>
 
       <!-- Training Import Section -->
+      <section class="view" id="view-training-import">
+        <div class="panel">
+          <div class="page-header">
+            <div class="page-title-wrapper">
+              <h1 class="page-title">Training Import</h1>
+              <button class="help-icon" onclick="showHelp('view-training-import')" title="Help">?</button>
+            </div>
+            <div style="display:flex; gap:10px;">
+              <button class="btn" onclick="downloadTrainingTemplate()" style="background:linear-gradient(135deg, #667eea, #764ba2);">
+                📥 Download Template
+              </button>
+              <button class="btn" onclick="downloadTrainingTypesList()" style="background:linear-gradient(135deg, #3b82f6, #2563eb);">
+                📋 Training Types List
+              </button>
+            </div>
+          </div>
 
+          <!-- Instructions -->
+          <div class="panel" style="background: #f8fafc; padding: 20px; margin-bottom: 20px;">
+            <h3 style="margin-top:0; color:#2d3748;">📋 How to Import Training Records</h3>
+            <ol style="color:#4a5568; line-height:1.8;">
+              <li>Download the Excel template and Training Types list</li>
+              <li>Fill in: Staff Name, Training Type (must match exactly from list), Completion Date</li>
+              <li>Upload the completed Excel file below</li>
+              <li>Review type matches and correct any mismatches</li>
+              <li>Select users and click "Match & Transfer" to assign training</li>
+            </ol>
+            <div class="alert alert-info" style="margin-top:15px;">
+              <strong>⚠️ Important:</strong> Training Type names must match exactly from the Training Types list.
+              The system will attempt to match similar names, but exact matches work best.
+            </div>
+          </div>
 
+          <!-- Statistics -->
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:16px; margin-bottom:20px;">
+            <div class="panel" style="text-align:center; padding:16px;">
+              <div style="font-size:28px; font-weight:700; color:#667eea;" id="training-stat-pending">0</div>
+              <div style="color:#718096; font-size:12px;">Pending</div>
+            </div>
+            <div class="panel" style="text-align:center; padding:16px;">
+              <div style="font-size:28px; font-weight:700; color:#10b981;" id="training-stat-matched">0</div>
+              <div style="color:#718096; font-size:12px;">Matched</div>
+            </div>
+            <div class="panel" style="text-align:center; padding:16px;">
+              <div style="font-size:28px; font-weight:700; color:#3b82f6;" id="training-stat-transferred">0</div>
+              <div style="color:#718096; font-size:12px;">Transferred</div>
+            </div>
+            <div class="panel" style="text-align:center; padding:16px;">
+              <div style="font-size:28px; font-weight:700; color:#ef4444;" id="training-stat-invalid">0</div>
+              <div style="color:#718096; font-size:12px;">Invalid Types</div>
+            </div>
+            <div class="panel" style="text-align:center; padding:16px;">
+              <div style="font-size:28px; font-weight:700; color:#6b7280;" id="training-stat-total">0</div>
+              <div style="color:#718096; font-size:12px;">Total</div>
+            </div>
+          </div>
+
+          <!-- Messages -->
+          <div class="alert alert-error" id="training-error-message" style="display:none;"></div>
+          <div class="alert alert-success" id="training-success-message" style="display:none;"></div>
+
+          <!-- Upload Zone -->
+          <div class="upload-zone" id="training-upload-zone" style="border:2px dashed #667eea; border-radius:12px; padding:40px; text-align:center; background:rgba(102,126,234,0.05); cursor:pointer; margin-bottom:20px;">
+            <input type="file" id="training-file-input" accept=".xlsx,.xls" style="display:none;">
+            <svg width="48" height="48" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin:0 auto 16px; opacity:0.5;">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+            </svg>
+            <h3 style="margin:0 0 8px;">Upload Excel File</h3>
+            <p style="color:#718096; margin:0;">Drag & drop or click to browse</p>
+          </div>
+
+          <!-- Data Preview -->
+          <div class="panel" id="training-data-preview" style="display:none; margin-bottom:20px;">
+            <h3>Preview Data</h3>
+            <div style="overflow-x:auto;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Training Type</th>
+                    <th>Type Status</th>
+                    <th>Completion Date</th>
+                  </tr>
+                </thead>
+                <tbody id="training-preview-tbody">
+                </tbody>
+              </table>
+            </div>
+            <div style="display:flex; gap:10px; justify-content:center; margin-top:20px;">
+              <button class="btn" onclick="confirmTrainingUpload()" style="background:linear-gradient(135deg, #667eea, #764ba2);">Confirm Upload</button>
+              <button class="btn secondary" onclick="cancelTrainingUpload()">Cancel</button>
+            </div>
+          </div>
+
+          <!-- Existing Records -->
+          <div class="panel">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+              <div>
+                <h3 style="margin:0;">Training Import Records</h3>
+                <div id="training-match-info" style="font-size:12px; color:#718096; margin-top:4px;"></div>
+              </div>
+              <div style="display:flex; gap:10px; align-items:center;">
+                <input type="text" id="training-search" placeholder="Search by name..."
+                  style="padding:8px 12px; border:1px solid #cbd5e0; border-radius:8px; width:200px;"
+                  onkeyup="filterTrainingRecords()">
+                <button class="btn" onclick="autoMatchAllTraining()"
+                  style="background:linear-gradient(135deg, #10b981, #059669); padding:8px 16px;"
+                  title="Automatically match and transfer all records where names and training types match">
+                  🎯 Auto-Match All
+                </button>
+                <button class="btn" onclick="matchSelectedTraining()"
+                  style="background:linear-gradient(135deg, #667eea, #764ba2); padding:8px 16px;">
+                  ✓ Match Selected
+                </button>
+              </div>
+            </div>
+            <div style="overflow-x:auto;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th style="width:40px;">
+                      <input type="checkbox" id="training-select-all" onclick="toggleAllTrainingCheckboxes()"
+                        style="width:16px; height:16px; cursor:pointer;">
+                    </th>
+                    <th>Name</th>
+                    <th>Training Type</th>
+                    <th>Match Training Type</th>
+                    <th>Completion Date</th>
+                    <th>Status</th>
+                    <th>Match to User</th>
+                    <th>Uploaded</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="training-existing-tbody">
+                  <tr>
+                    <td colspan="9" style="text-align:center; color:#718096;">Loading...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -5977,81 +6426,8 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
       </section>
 
-      <!-- Site Users Section -->
-      <section class="view" id="view-users">
-        <div class="panel">
-          <div class="page-header">
-            <div class="page-title-wrapper">
-              <h1 class="page-title">Site Users</h1>
-              <p style="color: var(--muted); margin-top: 8px;">Manage users and send invitations</p>
-            </div>
-          </div>
-
-          <!-- Add New User Form -->
-          <div style="background: var(--glass); padding: 24px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 32px;">
-            <h3 style="margin-top: 0; margin-bottom: 20px; color: var(--white);">Send Invitation</h3>
-            <div style="display: flex; gap: 16px; align-items: flex-end;">
-              <div style="flex: 1;">
-                <label style="display: block; margin-bottom: 8px; color: var(--muted); font-size: 14px;">Full Name</label>
-                <input type="text" id="new-user-name" placeholder="Enter full name"
-                       style="width: 100%; padding: 10px; background: var(--glass-2); border: 1px solid var(--border-color); border-radius: 6px; color: var(--white);">
-              </div>
-              <div style="flex: 1;">
-                <label style="display: block; margin-bottom: 8px; color: var(--muted); font-size: 14px;">Email Address</label>
-                <input type="email" id="new-user-email" placeholder="Enter email address"
-                       style="width: 100%; padding: 10px; background: var(--glass-2); border: 1px solid var(--border-color); border-radius: 6px; color: var(--white);">
-              </div>
-              <button class="btn primary" onclick="sendUserInvitation()" style="padding: 10px 24px;">
-                Send Invitation
-              </button>
-            </div>
-            <div id="invitation-status" style="margin-top: 16px; padding: 12px; border-radius: 6px; display: none;"></div>
-          </div>
-
-          <!-- Existing Users List -->
-          <div style="background: var(--glass); padding: 24px; border-radius: 12px; border: 1px solid var(--border-color);">
-            <h3 style="margin-top: 0; margin-bottom: 20px; color: var(--white);">Existing Users</h3>
-            <div style="overflow-x: auto;">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Access Type</th>
-                    <th>Status</th>
-                    <th>Created</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody id="users-tbody">
-                  <tr>
-                    <td colspan="6" class="muted" style="text-align: center;">Loading users...</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- Debug Output Section -->
-          <div id="debug-section" style="background: #1a1a1a; padding: 24px; border-radius: 12px; border: 2px solid #ef4444; margin-top: 32px; display: none;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-              <h3 style="margin: 0; color: #ef4444;">🐛 Debug Output</h3>
-              <div style="display: flex; gap: 10px;">
-                <button onclick="clearDebugOutput()" style="padding: 8px 16px; background: #374151; color: white; border: none; border-radius: 6px; cursor: pointer;">
-                  Clear
-                </button>
-                <button onclick="copyDebugOutput()" style="padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer;">
-                  📋 Copy All Debug Info
-                </button>
-              </div>
-            </div>
-            <pre id="debug-output" style="background: #0a0a0a; color: #10b981; padding: 16px; border-radius: 8px; overflow-x: auto; max-height: 600px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></pre>
-          </div>
-        </div>
-      </section>
-
       <!-- Working Hours Section -->
-      <section class="view" id="view-working-hours">
+      <section class="view" id="working-hours">
         <div class="page-header">
           <div class="page-title-wrapper">
             <h1 class="page-title">Staff Working Hours Management</h1>
@@ -6080,7 +6456,7 @@ document.addEventListener('DOMContentLoaded', () => {
       </section>
 
       <!-- Entitlement Management Section -->
-      <section class="view" id="view-entitlement-management">
+      <section class="view" id="entitlement-management">
         <div class="panel">
           <div class="page-header">
             <div class="page-title-wrapper">
@@ -6202,19 +6578,11 @@ document.addEventListener('DOMContentLoaded', () => {
       </section>
 
       <!-- Scheduling Dashboard Section -->
-      <section class="view" id="view-scheduling-dashboard">
+      <section class="view" id="scheduling-dashboard">
         <h2>Scheduling Dashboard</h2>
         <div class="card">
           <h3>Schedule Overview</h3>
           <p>View and manage all scheduling activities.</p>
-        </div>
-      </section>
-
-      <!-- Training Import Section -->
-      <section class="view" id="view-training-import">
-        <div class="panel">
-          <h2 style="margin-top: 0; color: var(--white); font-size: 24px; font-weight: 600;">Training Import</h2>
-          <p style="color: var(--muted); margin-bottom: 20px;">Import and manage training records.</p>
         </div>
       </section>
     </main>
@@ -8772,9 +9140,6 @@ window.PIR_DEFINITIONS_DATA = [
     // Load section data
     switch(id) {
       case 'dashboard':
-        // New blank dashboard - no data loading needed
-        break;
-      case 'main-dashboard':
         Promise.all([
           loadCounts(),
           loadDue(),
@@ -8878,7 +9243,8 @@ window.PIR_DEFINITIONS_DATA = [
         }, 0);
         break;
       case 'users':
-        loadUsersData();
+        // Users page hosts practice users listing and invite management
+        loadPracticeUsers();
         break;
       case 'fuzzy-match':
         // Check if loadFuzzyMatch is available
@@ -8907,7 +9273,25 @@ window.PIR_DEFINITIONS_DATA = [
           }, 1000);
         }
         break;
-
+      case 'training-import':
+        // Check if loadTrainingImport is defined (it's defined later in the script)
+        if (typeof loadTrainingImport === 'function') {
+          loadTrainingImport();
+        } else if (typeof window.loadTrainingImport === 'function') {
+          window.loadTrainingImport();
+        } else {
+          console.error('❌ loadTrainingImport function not found!');
+          // Try to load it after a delay when the script has fully loaded
+          setTimeout(() => {
+            if (typeof window.loadTrainingImport === 'function') {
+              console.log('✅ Found loadTrainingImport after delay, loading now...');
+              window.loadTrainingImport();
+            } else {
+              console.error('❌ loadTrainingImport still not available after delay');
+            }
+          }, 1000);
+        }
+        break;
       case 'training':
         // Ensure proper tab state initialization
         currentTrainingTab = 'clinical';
@@ -8935,18 +9319,6 @@ window.PIR_DEFINITIONS_DATA = [
       case 'scheduling-dashboard':
         loadSchedulingDashboard();
         break;
-      case 'project-management':
-        // Project management page - no special loading needed
-        break;
-      case 'training-import':
-        // Training import page - no special loading needed
-        break;
-      case 'quiz':
-        // Initialize quiz page if loadQuiz function exists
-        if (typeof loadQuiz === 'function') {
-          loadQuiz();
-        }
-        break;
     }
     
     // persist
@@ -8966,6 +9338,11 @@ window.PIR_DEFINITIONS_DATA = [
     if (id === 'settings') {
       setTimeout(() => {
         // initDebugToggle(); // Removed - debug window no longer exists
+      }, 100);
+    }
+    if (id === 'users') {
+      setTimeout(() => {
+        loadPracticeUsers();
       }, 100);
     }
     
@@ -9301,6 +9678,1381 @@ window.PIR_DEFINITIONS_DATA = [
 
   // (Removed duplicate nav group toggle logic to avoid conflicts with manageNavGroups above)
 
+  // User Management System
+  const inviteUserModal = document.getElementById('invite-user-modal');
+  const inviteUserForm = document.getElementById('invite-user-form');
+  // Debug console removed; `window.debugLog` is a noop defined in the page head
+
+  // Load job roles from kiosk_roles table
+  async function loadJobRolesFromKiosk() {
+    try {
+      console.log('Loading job roles from kiosk_roles table');
+      const roleSelect = document.getElementById('add-user-role');
+      
+      if (!roleSelect) {
+        console.error('Job role select element not found!');
+        return;
+      }
+
+      // Clear existing options, keep the first placeholder option
+      roleSelect.innerHTML = '<option value="">Select job role</option>';
+
+      // Fetch roles from kiosk_roles table
+      const { data: roles, error } = await supabase
+        .from('kiosk_roles')
+        .select('role')
+        .order('role');
+
+      if (error) {
+        console.error('Failed to load job roles from kiosk_roles table', error);
+        // Fall back to default roles
+        const defaultRoles = [
+          'GP',
+          'Nurse',
+          'Practice Manager',
+          'Admin Assistant',
+          'Receptionist',
+          'Healthcare Assistant',
+          'Pharmacist',
+          'Other'
+        ];
+        
+        defaultRoles.forEach(role => {
+          roleSelect.innerHTML += `<option value="${role}">${esc(role)}</option>`;
+        });
+      } else if (roles && roles.length > 0) {
+        // Add roles from database to the dropdown
+        roles.forEach(role => {
+          roleSelect.innerHTML += `<option value="${esc(role.role)}">${esc(role.role)}</option>`;
+        });
+      } else {
+        console.warn('No job roles found in kiosk_roles table');
+      }
+    } catch (error) {
+      console.error('Error loading job roles:', error);
+    }
+  }
+
+  // Show Invite User Modal
+  function showInviteUserModal() {
+    inviteUserModal.classList.add('show');
+    
+    // Hide error and success messages
+    const errorElement = document.getElementById('add-user-error');
+    const successElement = document.getElementById('add-user-success');
+    if (errorElement) errorElement.style.display = 'none';
+    if (successElement) successElement.style.display = 'none';
+    
+    // Make sure we have valid references to all elements
+    const form = document.getElementById('invite-user-form');
+    const submitBtn = document.getElementById('invite-user-submit');
+    
+    if (!form) {
+      console.error('Invite user form element not found!');
+    }
+    
+    if (!submitBtn) {
+      console.error('Submit button not found!');
+    } else {
+      // Ensure button is enabled
+      submitBtn.disabled = false;
+      submitBtn.textContent = '📧 Send Invitation';
+    }
+    
+    if (form) {
+      form.reset();
+      
+      // Re-attach the submit event listener to be safe
+      form.removeEventListener('submit', handleInviteUserFormSubmit);
+      form.addEventListener('submit', handleInviteUserFormSubmit);
+    }
+
+    // Load teams and job roles for dropdowns
+    loadTeamsForDropdown();
+    loadJobRolesFromKiosk();
+
+    console.log('Invite User modal opened');
+  }
+
+  function closeInviteUserModal() {
+    inviteUserModal.classList.remove('show');
+  }
+
+  document.getElementById('btn-invite-user')?.addEventListener('click', showInviteUserModal);
+  document.getElementById('invite-user-modal-close')?.addEventListener('click', closeInviteUserModal);
+  document.getElementById('invite-user-cancel-btn')?.addEventListener('click', closeInviteUserModal);
+  
+  // Add a direct click handler for the submit button as a fallback
+  document.addEventListener('DOMContentLoaded', () => {
+    const submitBtn = document.getElementById('invite-user-submit');
+      if (submitBtn) {
+      console.log('Adding backup click handler to invite-user-submit button');
+      submitBtn.addEventListener('click', (e) => {
+        console.log('Submit button clicked directly');
+        const form = submitBtn.closest('form');
+        if (form) {
+          e.preventDefault(); // Prevent double submission
+          console.log('Manually submitting the form');
+          form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+        }
+      });
+    } else {
+      console.error('Could not find invite-user-submit button for backup handler');
+    }
+  });
+
+  // Load teams from teams table
+  async function loadTeamsForDropdown() {
+    const teamSelect = document.getElementById('add-user-team');
+    if (!teamSelect) {
+      console.error('Team select element not found!');
+      return;
+    }
+    teamSelect.innerHTML = '<option value="">Select team (optional)</option>';
+
+    try {
+      // Ensure context is loaded
+      if (!window.ctx || !ctx.site_id) {
+        console.log('Context not loaded, attempting to load...');
+        try {
+          await loadContext();
+          console.log('Context loaded successfully, site_id:', ctx?.site_id);
+        } catch (e) {
+          console.error('Failed to load context:', e);
+        }
+      }
+
+      if (!window.ctx || !ctx.site_id) {
+        console.warn('No site_id in context; cannot load teams');
+        // Try to load teams without site filter as fallback
+        console.log('Attempting to load all teams as fallback...');
+        const { data: allTeams, error: allError } = await supabase
+          .from('teams')
+          .select('id, name, site_id')
+          .order('name');
+
+        if (!allError && allTeams && allTeams.length > 0) {
+          console.log(`Found ${allTeams.length} teams across all sites`);
+          teamSelect.innerHTML = '<option value="">Select team</option>';
+          allTeams.forEach(t => {
+            teamSelect.innerHTML += `<option value="${t.id}">${esc(t.name)} ${t.site_id ? `(Site ${t.site_id})` : ''}</option>`;
+          });
+          return;
+        }
+        teamSelect.innerHTML = '<option value="">No teams available</option>';
+        return;
+      }
+
+      console.log('Loading teams from teams table for site', ctx.site_id);
+      const { data: teams, error } = await supabase
+        .from('teams')
+        .select('id, name')
+        .eq('site_id', ctx.site_id)
+        .order('name');
+
+      if (error) {
+        console.error('Failed to load teams for site', ctx.site_id, error);
+
+        // Try without site filter as fallback
+        console.log('Trying to load teams without site filter...');
+        const { data: allTeams, error: allError } = await supabase
+          .from('teams')
+          .select('id, name')
+          .order('name');
+
+        if (!allError && allTeams && allTeams.length > 0) {
+          console.log(`Loaded ${allTeams.length} teams (all sites)`);
+          teamSelect.innerHTML = '<option value="">Select team</option>';
+          allTeams.forEach(t => {
+            teamSelect.innerHTML += `<option value="${t.id}">${esc(t.name)}</option>`;
+          });
+        } else {
+          const msg = (error && (error.message || error.error_description)) || '';
+          if (String(msg).toLowerCase().includes('policy') || String(msg).toLowerCase().includes('rls')) {
+            console.warn('RLS/policy prevented team select; showing fallback teams');
+            // Show newly created teams with correct IDs
+            [
+              { id: 'clinical', name: 'Clinical Team' },
+              { id: 'admin', name: 'Admin Team' },
+              { id: 'reception', name: 'Reception' },
+              { id: 'management', name: 'Management' },
+              { id: 'nursing', name: 'Nursing' },
+              { id: 'support', name: 'Support Staff' }
+            ].forEach(t => teamSelect.innerHTML += `<option value="${t.id}">${esc(t.name)}</option>`);
+          } else {
+            teamSelect.innerHTML = '<option value="">Error loading teams</option>';
+            console.error('All attempts to load teams failed');
+          }
+        }
+        return;
+      }
+
+      if (Array.isArray(teams) && teams.length > 0) {
+        console.log(`Successfully loaded ${teams.length} teams for site ${ctx.site_id}`);
+        teams.forEach(t => teamSelect.innerHTML += `<option value="${t.id}">${esc(t.name)}</option>`);
+      } else {
+        console.log('No teams returned for site', ctx.site_id);
+        // Try to load all teams as fallback
+        const { data: allTeams } = await supabase
+          .from('teams')
+          .select('id, name')
+          .order('name');
+
+        if (allTeams && allTeams.length > 0) {
+          console.log(`Loading ${allTeams.length} teams from all sites as fallback`);
+          allTeams.forEach(t => {
+            teamSelect.innerHTML += `<option value="${t.id}">${esc(t.name)}</option>`;
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Unexpected error loading teams:', err);
+      // Show generic teams as last resort
+      [
+        { id: 'clinical', name: 'Clinical Team' },
+        { id: 'admin', name: 'Admin Team' },
+        { id: 'reception', name: 'Reception' },
+        { id: 'management', name: 'Management' }
+      ].forEach(t => teamSelect.innerHTML += `<option value="${t.id}">${esc(t.name)}</option>`);
+    }
+  }
+
+  // Role change handler - working pattern removed, staff will set during welcome
+  document.getElementById('add-user-role')?.addEventListener('change', function() {
+    console.log('Role changed to:', this.value);
+  });
+
+  // Training stub functions
+  function openTrainingTypesModal() {
+    // Create a modal for managing training types
+    let modal = document.getElementById('training-types-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'training-types-modal';
+      modal.className = 'modal';
+      modal.innerHTML = `
+        <div class="modal-content" style="max-width: 800px;">
+          <div class="modal-header">
+            <h3>Manage Training Types</h3>
+            <button class="modal-close" onclick="closeTrainingTypesModal()">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div style="margin-bottom: 20px; display: flex; gap: 10px; align-items: center;">
+              <button class="btn" onclick="addTrainingType()">Add New Type</button>
+              <button class="btn secondary" onclick="refreshTrainingTypes()">Refresh</button>
+            </div>
+            <div id="training-types-list">
+              <p>Loading training types...</p>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn secondary" onclick="closeTrainingTypesModal()">Close</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    }
+    
+    // Load training types
+    loadTrainingTypesForManagement();
+    modal.classList.add('show');
+  }
+  
+  function closeTrainingTypesModal() {
+    const modal = document.getElementById('training-types-modal');
+    if (modal) modal.classList.remove('show');
+  }
+  
+  async function loadTrainingTypesForManagement() {
+    const container = document.getElementById('training-types-list');
+    try {
+      const { data, error } = await supabase
+        .from('training_types')
+        .select('*')
+        .eq('site_id', ctx.site_id)
+        .order('name');
+      
+      if (error) throw error;
+      
+      if (!data || data.length === 0) {
+        container.innerHTML = '<p>No training types found.</p>';
+        return;
+      }
+      
+      const table = `
+        <table style="width: 100%; margin-top: 12px;">
+          <thead>
+            <tr style="background: var(--glass-2);">
+              <th style="padding: 12px; text-align: left;">Name</th>
+              <th style="padding: 12px; text-align: left;">Description</th>
+              <th style="padding: 12px; text-align: center;">Active</th>
+              <th style="padding: 12px; text-align: center;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${data.map(type => `
+              <tr style="border-bottom: 1px solid var(--border-color);">
+                <td style="padding: 12px;">${esc(type.name || '')}</td>
+                <td style="padding: 12px;">${esc(type.description || 'No description')}</td>
+                <td style="padding: 12px; text-align: center;">
+                  <span style="color: ${type.active ? '#10b981' : '#ef4444'};">
+                    ${type.active ? '✅ Yes' : '❌ No'}
+                  </span>
+                </td>
+                <td style="padding: 12px; text-align: center;">
+                  <button class="btn secondary" style="margin-right: 8px;" onclick="editTrainingType(${type.id})">Edit</button>
+                  <button class="btn" style="background: #ef4444;" onclick="toggleTrainingTypeActive(${type.id}, ${!type.active})">${type.active ? 'Deactivate' : 'Activate'}</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+      
+      container.innerHTML = table;
+      
+    } catch (error) {
+      container.innerHTML = `<p style="color: red;">Error loading training types: ${error.message}</p>`;
+    }
+  }
+  
+  function addTrainingType() {
+    const name = prompt('Enter training type name:');
+    if (!name) return;
+    
+    const description = prompt('Enter description (optional):') || '';
+    
+    createTrainingType(name, description);
+  }
+  
+  async function createTrainingType(name, description) {
+    try {
+      const { error } = await supabase
+        .from('training_types')
+        .insert({
+          name: name,
+          description: description,
+          site_id: ctx.site_id,
+          active: true
+        });
+      
+      if (error) throw error;
+      
+      alert('Training type created successfully!');
+      loadTrainingTypesForManagement();
+      // Refresh the main training matrix
+      if (typeof loadTrainingMatrix === 'function') {
+        loadTrainingMatrix();
+      }
+    } catch (error) {
+      alert('Failed to create training type: ' + error.message);
+    }
+  }
+  
+  async function toggleTrainingTypeActive(id, newActiveState) {
+    try {
+      const { error } = await supabase
+        .from('training_types')
+        .update({ active: newActiveState })
+        .eq('id', id);
+      
+      if (error) throw error;
+      
+      alert(`Training type ${newActiveState ? 'activated' : 'deactivated'} successfully!`);
+      loadTrainingTypesForManagement();
+      // Refresh the main training matrix
+      if (typeof loadTrainingMatrix === 'function') {
+        loadTrainingMatrix();
+      }
+    } catch (error) {
+      alert('Failed to update training type: ' + error.message);
+    }
+  }
+  
+  function editTrainingType(id) {
+    // This could open a more detailed editing modal
+    alert(`Edit functionality for training type ID ${id} would be implemented here. For now, use the Activate/Deactivate buttons to manage training types.`);
+  }
+  
+  async function exportTrainingReport() {
+    try {
+      if (!window.trainingData || !window.trainingData.staff || !window.trainingData.types || !window.trainingData.records) {
+        alert('No training data available to export. Please ensure the training matrix has loaded.');
+        return;
+      }
+      
+      const { staff, types, records } = window.trainingData;
+      
+      if (!staff.length || !types.length) {
+        alert('Insufficient training data to export.');
+        return;
+      }
+      
+      // Prepare export data
+      const exportData = [];
+      
+      staff.forEach(staffMember => {
+        const row = {
+          'Staff Name': staffMember.full_name || '',
+          'Role': staffMember.role || '',
+          'Department': staffMember.department || ''
+        };
+        
+        // Add training status for each training type
+        types.forEach(trainingType => {
+          const record = records.find(r => 
+            r.staff_id === staffMember.id && r.training_type_id === trainingType.id
+          );
+          
+          if (record) {
+            const completionDate = record.completion_date ? new Date(record.completion_date).toLocaleDateString() : '';
+            const expiryDate = record.expiry_date ? new Date(record.expiry_date).toLocaleDateString() : '';
+            const status = record.expiry_date && new Date(record.expiry_date) < new Date() ? 'Expired' : 
+                          record.expiry_date && new Date(record.expiry_date) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) ? 'Expiring Soon' : 'Valid';
+            
+            row[trainingType.name] = `${status} (Completed: ${completionDate}, Expires: ${expiryDate})`;
+          } else {
+            row[trainingType.name] = 'Not Completed';
+          }
+        });
+        
+        exportData.push(row);
+      });
+      
+      // Use the existing downloadCSV function
+      downloadCSV(exportData, `training-matrix-export-${new Date().toISOString().split('T')[0]}.csv`);
+      
+    } catch (error) {
+      console.error('Training export failed:', error);
+      alert('Failed to export training report: ' + (error.message || error));
+    }
+  }
+
+  // Training event listeners
+  document.getElementById('tab-clinical')?.addEventListener('click', () => switchTrainingTab('clinical'));
+  document.getElementById('tab-non-clinical')?.addEventListener('click', () => switchTrainingTab('non-clinical'));
+  document.getElementById('btn-manage-training-types')?.addEventListener('click', openTrainingTypesModal);
+  document.getElementById('btn-export-training')?.addEventListener('click', exportTrainingReport);
+  document.getElementById('training-modal-close')?.addEventListener('click', closeTrainingModal);
+  document.getElementById('training-cancel-btn')?.addEventListener('click', closeTrainingModal);
+  document.getElementById('training-form')?.addEventListener('submit', saveTrainingRecord);
+  document.getElementById('training-certificate')?.addEventListener('change', handleTrainingFileUpload);
+  document.getElementById('training-completion-date')?.addEventListener('change', calculateTrainingExpiry);
+  document.getElementById('training-upload-zone')?.addEventListener('click', () => {
+    document.getElementById('training-certificate')?.click();
+  });
+
+  // Training types modal event listeners
+  document.getElementById('training-types-close')?.addEventListener('click', closeTrainingTypesModal);
+
+  // Debug logging system
+  let invitationDebugLog = [];
+  let debugStartTime = null;
+
+  function updateDebugStep(step, status, detail = '', data = null) {
+    const stepElement = document.querySelector(`.debug-step[data-step="${step}"]`);
+    if (!stepElement) return;
+
+    const iconElement = stepElement.querySelector('.debug-icon');
+    const detailElement = stepElement.querySelector('.debug-detail');
+
+    // Update icon based on status
+    if (status === 'running') {
+      iconElement.textContent = '🔄';
+    } else if (status === 'success') {
+      iconElement.textContent = '✅';
+    } else if (status === 'error') {
+      iconElement.textContent = '❌';
+    } else if (status === 'warning') {
+      iconElement.textContent = '⚠️';
+    }
+
+    // Add detail if provided
+    if (detail && detailElement) {
+      detailElement.style.display = 'block';
+      detailElement.innerHTML = detail;
+    }
+
+    // Add to raw log
+    const timestamp = new Date().toISOString();
+    const elapsed = debugStartTime ? `+${Date.now() - debugStartTime}ms` : '';
+    const logEntry = {
+      timestamp,
+      elapsed,
+      step,
+      status,
+      detail: detail.replace(/<[^>]*>/g, ''), // Strip HTML
+      data
+    };
+
+    invitationDebugLog.push(logEntry);
+
+    // Update raw log display
+    const rawLogElement = document.getElementById('debug-raw-log');
+    if (rawLogElement) {
+      rawLogElement.textContent = JSON.stringify(invitationDebugLog, null, 2);
+    }
+  }
+
+  // INVITATION SYSTEM WITH COMPREHENSIVE DEBUGGING
+  async function handleInviteUserFormSubmit(e) {
+    e.preventDefault();
+
+    // Reset debug console
+    invitationDebugLog = [];
+    debugStartTime = Date.now();
+    document.querySelectorAll('.debug-step').forEach(step => {
+      step.querySelector('.debug-icon').textContent = '⏳';
+      step.querySelector('.debug-detail').style.display = 'none';
+      step.querySelector('.debug-detail').innerHTML = '';
+    });
+    document.getElementById('debug-raw-log').textContent = '';
+
+    // Show debug console
+    const debugConsole = document.getElementById('invite-debug-console');
+    if (debugConsole) debugConsole.style.display = 'block';
+
+    const errorElement = document.getElementById('add-user-error');
+    const successElement = document.getElementById('add-user-success');
+    const submitBtn = document.getElementById('invite-user-submit');
+
+    // Hide messages
+    if (errorElement) errorElement.style.display = 'none';
+    if (successElement) successElement.style.display = 'none';
+
+    // Disable button
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Processing...';
+
+    try {
+      // STEP 1: Check Session
+      updateDebugStep('session', 'running', 'Checking user session...');
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        updateDebugStep('session', 'error', `Error: ${sessionError.message}`, sessionError);
+        throw new Error(`Session error: ${sessionError.message}`);
+      }
+
+      if (!session) {
+        updateDebugStep('session', 'error', 'No active session found');
+        throw new Error('Not logged in');
+      }
+
+      updateDebugStep('session', 'success',
+        `User: ${session.user.email}<br>` +
+        `ID: ${session.user.id}<br>` +
+        `Role: ${session.user.role || 'none'}`,
+        { userId: session.user.id, email: session.user.email }
+      );
+
+      // STEP 2: Collect Form Data
+      updateDebugStep('form', 'running', 'Collecting form data...');
+
+      const email = document.getElementById('add-user-email').value.trim().toLowerCase();
+      const fullName = document.getElementById('add-user-name').value.trim();
+      const accessType = document.getElementById('add-user-access').value;
+      const roleDetail = document.getElementById('add-user-role').value || '';
+      const teamId = document.getElementById('add-user-team').value || null;
+      const teamIdNumber = teamId ? parseInt(teamId, 10) : null;
+
+      const formData = {
+        email,
+        fullName,
+        accessType,
+        roleDetail,
+        teamId: teamIdNumber,
+        siteId: ctx.site_id
+      };
+
+      updateDebugStep('form', 'success',
+        `Email: ${email}<br>` +
+        `Name: ${fullName}<br>` +
+        `Access: ${accessType}<br>` +
+        `Role: ${roleDetail || 'none'}<br>` +
+        `Team ID: ${teamId || 'none'}<br>` +
+        `Site ID: ${ctx.site_id}`,
+        formData
+      );
+
+      // STEP 3: Check Supabase Connection
+      updateDebugStep('connection', 'running', 'Verifying Supabase connection...');
+
+      const supabaseUrl = supabase.supabaseUrl || supabase.restUrl || 'Unknown';
+      const supabaseKey = supabase.supabaseKey ? supabase.supabaseKey.substring(0, 20) + '...' : 'Unknown';
+
+      updateDebugStep('connection', 'success',
+        `URL: ${supabaseUrl}<br>` +
+        `Key: ${supabaseKey}<br>` +
+        `Auth: ${supabase.auth ? 'Ready' : 'Not ready'}`,
+        { url: supabaseUrl }
+      );
+
+      // STEP 4: Insert into site_invites
+      updateDebugStep('site_invites', 'running', 'Inserting into site_invites table...');
+
+      const inviteExpiry = new Date();
+      inviteExpiry.setDate(inviteExpiry.getDate() + 7);
+
+      const inviteData = {
+        site_id: ctx.site_id,
+        email: email,
+        full_name: fullName,
+        role: accessType,
+        role_detail: roleDetail,
+        reports_to_id: null,
+        status: 'pending',
+        expires_at: inviteExpiry.toISOString(),
+        invited_by: session.user.id
+      };
+
+      const { data: inviteResult, error: inviteError } = await supabase
+        .from('site_invites')
+        .insert(inviteData)
+        .select();
+
+      if (inviteError) {
+        updateDebugStep('site_invites', 'warning',
+          `Initial insert failed: ${inviteError.message}<br>` +
+          `Code: ${inviteError.code || 'unknown'}`,
+          inviteError
+        );
+
+        // If duplicate, delete old one and retry
+        if (inviteError.message.includes('duplicate') || inviteError.message.includes('already')) {
+          updateDebugStep('site_invites', 'running', 'Removing old invitation and retrying...');
+
+          const { error: deleteError } = await supabase
+            .from('site_invites')
+            .delete()
+            .eq('email', email)
+            .eq('status', 'pending');
+
+          if (deleteError) {
+            updateDebugStep('site_invites', 'error', `Failed to delete old invitation: ${deleteError.message}`, deleteError);
+          }
+
+          // Retry insert
+          const { data: retryResult, error: retryError } = await supabase
+            .from('site_invites')
+            .insert(inviteData)
+            .select();
+
+          if (retryError) {
+            updateDebugStep('site_invites', 'error', `Retry failed: ${retryError.message}`, retryError);
+            throw new Error(`Failed to create invitation: ${retryError.message}`);
+          }
+
+          updateDebugStep('site_invites', 'success',
+            `Invitation created after removing duplicate<br>` +
+            `Result: ${retryResult ? JSON.stringify(retryResult[0] || {}).substring(0, 100) : 'No data returned'}`,
+            retryResult
+          );
+        } else {
+          updateDebugStep('site_invites', 'error', `Failed: ${inviteError.message}`, inviteError);
+          throw new Error(`Failed to create invitation: ${inviteError.message}`);
+        }
+      } else {
+        updateDebugStep('site_invites', 'success',
+          `Invitation created successfully<br>` +
+          `Columns inserted: ${Object.keys(inviteData).join(', ')}<br>` +
+          `Result: ${inviteResult ? JSON.stringify(inviteResult[0] || {}).substring(0, 100) : 'No data returned'}`,
+          inviteResult
+        );
+      }
+
+      // STEP 5: Invoke Edge Function to send invitation
+      updateDebugStep('edge_function', 'running', 'Invoking send-invitation Edge Function...');
+      updateDebugStep('email', 'running', 'Waiting for Edge Function response...');
+
+      const edgePayload = {
+        email,
+        name: fullName,
+        site_id: ctx.site_id,
+        access_type: accessType,
+        role_detail: roleDetail || null,
+        team_id: teamIdNumber,
+        reports_to_id: null,
+      };
+
+      const { data: edgeResponse, error: edgeError } = await supabase.functions.invoke('send-invitation', {
+        body: edgePayload,
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (edgeError) {
+        updateDebugStep('edge_function', 'error',
+          `Edge Function error: ${edgeError.message || 'Unknown error'}`,
+          edgeError
+        );
+
+        if (edgeError.context) {
+          try {
+            const parsedContext = typeof edgeError.context === 'string'
+              ? JSON.parse(edgeError.context)
+              : edgeError.context;
+            updateDebugStep('edge_function', 'warning',
+              `Edge context: ${JSON.stringify(parsedContext).substring(0, 300)}`,
+              parsedContext
+            );
+          } catch (ctxErr) {
+            updateDebugStep('edge_function', 'warning',
+              'Failed to parse edge error context',
+              { raw: edgeError.context, parseError: ctxErr instanceof Error ? ctxErr.message : String(ctxErr) }
+            );
+          }
+        }
+
+        updateDebugStep('email', 'error', 'Edge Function did not complete email send');
+        throw new Error(edgeError.message || 'Edge Function returned an error');
+      }
+
+      updateDebugStep('edge_function', 'success',
+        `Edge Function completed<br>` +
+        `Request ID: ${edgeResponse?.requestId || 'n/a'}<br>` +
+        `Message: ${edgeResponse?.message || 'Invitation sent'}`,
+        { payload: edgePayload, response: edgeResponse }
+      );
+
+      const traceCount = Array.isArray(edgeResponse?.debug) ? edgeResponse.debug.length : 0;
+      if (traceCount) {
+        updateDebugStep('edge_function', 'success',
+          `Edge debug trace entries: ${traceCount}`,
+          edgeResponse.debug
+        );
+
+        try {
+          edgeResponse.debug.forEach((entry, idx) => {
+            invitationDebugLog.push({
+              timestamp: entry.timestamp || new Date().toISOString(),
+              elapsed: `edge-${idx}`,
+              step: `edge:${entry.step}`,
+              status: 'info',
+              detail: JSON.stringify(entry),
+              data: entry,
+            });
+          });
+          const rawLogElement = document.getElementById('debug-raw-log');
+          if (rawLogElement) {
+            rawLogElement.textContent = JSON.stringify(invitationDebugLog, null, 2);
+          }
+        } catch (traceErr) {
+          updateDebugStep('edge_function', 'warning', 'Failed to record edge trace data', {
+            error: traceErr instanceof Error ? traceErr.message : String(traceErr),
+          });
+        }
+      }
+
+      if (!edgeResponse?.success) {
+        updateDebugStep('email', 'error', `Edge Function reported failure: ${edgeResponse?.error || 'Unknown error'}`);
+        throw new Error(edgeResponse?.error || 'Edge Function reported failure');
+      }
+
+      updateDebugStep('email', 'success',
+        `Edge Function message: ${edgeResponse.message || 'Invitation sent'}<br>` +
+        `Email: ${email}`,
+        edgeResponse
+      );
+
+      // STEP 7: Complete
+      updateDebugStep('complete', 'success',
+        `✅ All steps completed successfully<br>` +
+        `Total time: ${Date.now() - debugStartTime}ms`
+      );
+
+      // Show success message
+      if (successElement) {
+        successElement.innerHTML = `✅ Invitation sent to ${email}`;
+        successElement.style.display = 'block';
+      }
+
+      // Reset form
+      document.getElementById('add-user-name').value = '';
+      document.getElementById('add-user-email').value = '';
+      document.getElementById('add-user-access').value = 'staff';
+      document.getElementById('add-user-role').value = '';
+
+      // Close modal after 3 seconds
+      setTimeout(() => {
+        closeInviteUserModal();
+        loadPracticeUsers();
+      }, 3000);
+
+    } catch (err) {
+      updateDebugStep('complete', 'error',
+        `Process failed: ${err.message}<br>` +
+        `Stack: ${err.stack ? err.stack.substring(0, 200) : 'No stack trace'}`,
+        { error: err.message, stack: err.stack }
+      );
+
+      if (errorElement) {
+        errorElement.textContent = err.message;
+        errorElement.style.display = 'block';
+      }
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = '📧 Send Invitation';
+    }
+  }
+  
+  // Initial attachment of the form submit handler
+  if (inviteUserForm) {
+    inviteUserForm.addEventListener('submit', handleInviteUserFormSubmit);
+  } else {
+    console.error('Invite user form element not found! Form submission will not work.', { id: 'invite-user-form' });
+  }
+
+  // Copy debug log button handler
+  document.getElementById('copy-debug-log')?.addEventListener('click', () => {
+    const fullLog = {
+      timestamp: new Date().toISOString(),
+      pageUrl: window.location.href,
+      userAgent: navigator.userAgent,
+      supabaseConfig: {
+        url: supabase.supabaseUrl || supabase.restUrl || 'Unknown',
+        authUrl: supabase.authUrl || 'Unknown'
+      },
+      context: {
+        siteId: ctx?.site_id || 'Unknown',
+        userEmail: ctx?.user?.email || 'Unknown',
+        role: ctx?.role || 'Unknown'
+      },
+      debugSteps: invitationDebugLog,
+      consoleErrors: []
+    };
+
+    // Capture any console errors
+    const originalError = console.error;
+    fullLog.consoleErrors = [];
+    console.error = function(...args) {
+      fullLog.consoleErrors.push(args.join(' '));
+      originalError.apply(console, args);
+    };
+
+    // Create formatted text
+    const debugText = `
+=== CHECKLOOPS INVITATION DEBUG LOG ===
+Generated: ${fullLog.timestamp}
+Page: ${fullLog.pageUrl}
+Browser: ${fullLog.userAgent}
+
+=== CONFIGURATION ===
+Supabase URL: ${fullLog.supabaseConfig.url}
+Auth URL: ${fullLog.supabaseConfig.authUrl}
+Site ID: ${fullLog.context.siteId}
+Current User: ${fullLog.context.userEmail}
+User Role: ${fullLog.context.role}
+
+=== PROCESS LOG ===
+${JSON.stringify(fullLog.debugSteps, null, 2)}
+
+=== RAW DATA ===
+${JSON.stringify(fullLog, null, 2)}
+    `;
+
+    // Copy to clipboard
+    navigator.clipboard.writeText(debugText).then(() => {
+      const copyBtn = document.getElementById('copy-debug-log');
+      const originalText = copyBtn.textContent;
+      copyBtn.textContent = '✅ Copied!';
+      copyBtn.style.background = '#10b981';
+
+      setTimeout(() => {
+        copyBtn.textContent = originalText;
+        copyBtn.style.background = '#6b7280';
+      }, 2000);
+    }).catch(err => {
+      console.error('Failed to copy debug log:', err);
+      alert('Failed to copy debug log. Please select and copy the text from the Raw Debug Log section.');
+    });
+  });
+
+  async function loadPracticeUsers() {
+    const tbody = document.getElementById('practice-users-tbody');
+    if (!tbody) {
+      console.error('practice-users-tbody element not found');
+      return;
+    }
+
+    if (!ctx.site_id) {
+      tbody.innerHTML = '<tr><td colspan="6" class="muted">No site selected</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = '<tr><td colspan="6" class="muted">Loading users...</td></tr>';
+    debugLog('info', 'Loading practice users');
+
+    try {
+      // Get all data needed
+      const [profiles, invites, welcomeData] = await Promise.all([
+        // Get profiles
+        supabase.from('master_users').select('*').eq('site_id', ctx.site_id),
+        // Get invites
+        supabase.from('site_invites').select('*').eq('site_id', ctx.site_id),
+        // Get welcome data for job roles and teams
+        supabase.from('master_users').select('*').eq('site_id', ctx.site_id)
+      ]);
+
+      const users = profiles.data || [];
+      const allInvites = invites.data || [];
+      const welcomeMap = {};
+
+      // Create welcome data map
+      welcomeData.data?.forEach(w => {
+        welcomeMap[w.user_id] = {
+          jobRole: w.role_detail,
+          teamName: w.team_name
+        };
+      });
+
+      // Get emails from invites
+      const emailMap = {};
+      allInvites.forEach(invite => {
+        if (invite.email) {
+          // Find matching user by name
+          const matchingUser = users.find(u => u.full_name === invite.full_name);
+          if (matchingUser) {
+            emailMap[matchingUser.user_id] = invite.email;
+          }
+        }
+      });
+
+      console.log('Loaded user data', { usersCount: users.length, invitesCount: allInvites.length });
+
+      const allRows = [];
+
+      // Process existing users
+      users.forEach(u => {
+        const welcomeInfo = welcomeMap[u.user_id] || {};
+        const invite = allInvites.find(i => i.email === emailMap[u.user_id]);
+
+        // Determine status - simplified logic
+        let status = 'active'; // If user exists in profiles, they're active
+        if (invite && invite.status === 'pending') {
+          status = 'invited';
+        }
+
+        allRows.push({
+          name: u.full_name || 'Unknown',
+          email: emailMap[u.user_id] || invite?.email || 'No email',
+          jobRole: welcomeInfo.jobRole || u.role_detail || invite?.role_detail || '-',
+          team: welcomeInfo.teamName || '-',
+          status,
+          userId: u.user_id,
+          inviteId: invite?.id
+        });
+      });
+
+      // Process invites without profiles (pending invites)
+      allInvites.forEach(invite => {
+        // Skip if we already have this user in profiles
+        if (!users.find(u => emailMap[u.user_id] === invite.email || u.full_name === invite.full_name)) {
+          if (invite.status === 'pending') {
+            allRows.push({
+              name: invite.full_name,
+              email: invite.email,
+              jobRole: '-',
+              team: '-',
+              status: 'invited',
+              inviteId: invite.id
+            });
+          }
+        }
+      });
+
+      // Render the table
+      tbody.innerHTML = allRows.length ?
+        allRows.map(row => `
+          <tr>
+            <td>${esc(row.name)}</td>
+            <td>${esc(row.email)}</td>
+            <td>${esc(row.jobRole)}</td>
+            <td>${esc(row.team)}</td>
+            <td>
+              <span class="user-status-badge status-${row.status}">
+                ${row.status === 'not-invited' ? 'Not Invited' :
+                  row.status === 'invited' ? 'Invited' : 'Active'}
+              </span>
+            </td>
+            <td>
+              <div class="action-buttons">
+                ${row.status === 'invited' ? `
+                  <button class="action-btn" onclick="resendInvitation('${row.email}')" title="Resend invitation email" style="background: linear-gradient(135deg, #60a5fa, #3b82f6);">
+                    🔁 Resend
+                  </button>
+                ` : ''}
+                <button class="action-btn remove" onclick="removeUserComplete('${row.userId || row.inviteId}', ${row.userId ? 'true' : 'false'})" title="Remove user">
+                  🗑 Remove
+                </button>
+              </div>
+            </td>
+          </tr>
+        `).join('') :
+        '<tr><td colspan="6" class="muted">No users yet. Click "Add New User" to start.</td></tr>';
+
+      debugLog('success', `Rendered ${allRows.length} users`);
+
+    } catch (err) {
+      console.error('Failed to load users:', err);
+      debugLog('error', 'Failed to load users', err);
+      tbody.innerHTML = `<tr><td colspan="6" class="muted">Failed to load users: ${err.message}</td></tr>`;
+    }
+  }
+
+  // Global functions for user actions
+  window.deactivateUser = async function(userId) {
+    if (!confirm('Are you sure you want to deactivate this user? This will prevent them from logging in but preserve all their data.')) return;
+
+    try {
+      // Update the master_users table to set active = false
+      const { data, error } = await supabase
+        .from('master_users')
+        .update({ active: false })
+        .eq('auth_user_id', userId)
+        .eq('site_id', ctx.site_id)
+        .select('full_name')
+        .single();
+
+      if (error) throw error;
+
+      console.log('Successfully deactivated user:', data);
+      
+      // Show success message
+      const alertDiv = document.createElement('div');
+      alertDiv.className = 'alert success';
+      alertDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 16px; background: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 8px; z-index: 10000;';
+      alertDiv.textContent = `User ${data.full_name || 'Unknown'} has been deactivated and can no longer log in.`;
+      document.body.appendChild(alertDiv);
+      
+      setTimeout(() => alertDiv.remove(), 5000);
+      
+      // Reload the user list to reflect changes
+      loadPracticeUsers();
+    } catch (err) {
+      console.error('Failed to deactivate user:', err);
+      let errorMsg = 'Failed to deactivate user';
+      if (err.message) {
+        errorMsg += ': ' + err.message;
+      }
+      alert(errorMsg);
+    }
+  };
+
+  window.reactivateUser = async function(userId) {
+    if (!confirm('Are you sure you want to reactivate this user? This will allow them to log in again.')) return;
+
+    try {
+      // Update the master_users table to set active = true
+      const { data, error } = await supabase
+        .from('master_users')
+        .update({ active: true })
+        .eq('auth_user_id', userId)
+        .eq('site_id', ctx.site_id)
+        .select('full_name')
+        .single();
+
+      if (error) throw error;
+
+      console.log('Successfully reactivated user:', data);
+      
+      // Show success message
+      const alertDiv = document.createElement('div');
+      alertDiv.className = 'alert success';
+      alertDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 16px; background: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 8px; z-index: 10000;';
+      alertDiv.textContent = `User ${data.full_name || 'Unknown'} has been reactivated and can now log in.`;
+      document.body.appendChild(alertDiv);
+      
+      setTimeout(() => alertDiv.remove(), 5000);
+      
+      // Reload the user list to reflect changes
+      loadPracticeUsers();
+    } catch (err) {
+      console.error('Failed to reactivate user:', err);
+      let errorMsg = 'Failed to reactivate user';
+      if (err.message) {
+        errorMsg += ': ' + err.message;
+      }
+      alert(errorMsg);
+    }
+  };
+
+  // SIMPLIFIED RESEND INVITATION
+  window.resendInvitation = async function(email) {
+    if (!confirm(`Resend invitation to ${email}?`)) return;
+
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      if (!session) throw new Error('Not logged in');
+
+      const payload = {
+        email,
+        resend: true,
+        site_id: ctx?.site_id || 2,
+      };
+
+      const { data, error } = await supabase.functions.invoke('send-invitation', {
+        body: payload,
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (error) {
+        console.error('Resend invitation Edge Function error:', error);
+        throw new Error(error.message || 'Edge Function returned an error');
+      }
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Edge Function reported failure');
+      }
+
+      alert(`✅ ${data.message || 'Invitation resent successfully'}`);
+      loadPracticeUsers();
+    } catch (err) {
+      console.error('Failed to resend invitation:', err);
+      alert(`Failed to resend invitation: ${err.message}`);
+    }
+  };
+
+
+  window.removeUserComplete = async function(id, isUserId = true) {
+    const confirmMsg = isUserId ?
+      'Are you sure you want to remove this user and ALL their data? This cannot be undone!' :
+      'Are you sure you want to cancel this invitation?';
+
+    if (!confirm(confirmMsg)) return;
+
+    debugLog('warning', 'Removing user/invite', { id, isUserId });
+
+    try {
+      if (isUserId) {
+        // Get user profile data first for proper cleanup
+        const { data: profile, error: profileError } = await supabase
+          .from('master_users')
+          .select('full_name, auth_auth_user_id, email')
+          .eq('auth_user_id', id)
+          .single();
+
+        if (profileError && profileError.code !== 'PGRST116') {
+          debugLog('warning', 'Could not fetch profile for cleanup', profileError);
+        }
+
+        // Also try to get user email from auth.users
+        let userEmail = profile?.email;
+        if (!userEmail) {
+          const { data: authUser } = await supabase.auth.admin.getUserById(id);
+          userEmail = authUser?.user?.email;
+        }
+
+        // Get holiday profile data for staff_id relationships
+        let holidayProfile = null;
+        if (profile?.full_name) {
+          const { data: hp } = await supabase
+            .from('master_users')
+            .select('id')
+            .eq('full_name', profile.full_name)
+            .single();
+          holidayProfile = hp;
+        }
+
+        // Remove user from all tables in correct dependency order (child tables first)
+        const deletionSteps = [
+          // Child tables first (those that depend on other user tables)
+          {
+            table: 'training_records',
+            condition: { user_id: id },
+            description: 'training records'
+          },
+          {
+            table: 'complaints',
+            condition: { created_by: id },
+            description: 'complaints created by user'
+          },
+          {
+            table: 'meeting_notes',
+            condition: { created_by: id },
+            description: 'meeting notes created by user'
+          },
+          {
+            table: 'meetings',
+            condition: { created_by: id },
+            description: 'meetings created by user'
+          },
+          {
+            table: 'quiz_questions',
+            condition: { created_by: id },
+            description: 'quiz questions created by user'
+          },
+          // Legacy tables - delete for cleanup (if migration hasn't been run yet)
+          {
+            table: '2_staff_entitlements',
+            condition: holidayProfile ? { staff_id: holidayProfile.id } : null,
+            description: 'staff entitlements (legacy)'
+          },
+          {
+            table: '3_staff_working_patterns',
+            condition: { user_id: id },
+            description: 'working patterns (legacy)'
+          },
+          {
+            table: '1_staff_holiday_profiles',
+            condition: profile?.full_name ? { full_name: profile.full_name } : { user_id: id },
+            description: 'holiday profiles (legacy)'
+          },
+          // Master users table - the new consolidated table
+          {
+            table: 'master_users',
+            condition: { auth_user_id: id },
+            description: 'master user data'
+          },
+          // Other core tables
+          {
+            table: 'staff_app_welcome',
+            condition: { user_id: id },
+            description: 'welcome app data'
+          },
+          {
+            table: 'user_profiles_complete',
+            condition: { user_id: id },
+            description: 'complete user profiles'
+          },
+          {
+            table: 'site_invites',
+            condition: userEmail ? { email: userEmail } : { user_id: id },
+            description: 'site invitations'
+          }
+        ];
+
+        let deletedTables = [];
+        let errorTables = [];
+
+        for (const step of deletionSteps) {
+          if (!step.condition) {
+            debugLog('info', `Skipping ${step.table} - no valid condition`);
+            continue;
+          }
+
+          try {
+            debugLog('info', `Deleting from ${step.table} (${step.description})`);
+            
+            const { error: deleteError, count } = await supabase
+              .from(step.table)
+              .delete({ count: 'exact' })
+              .match(step.condition);
+
+            if (deleteError) {
+              if (deleteError.code === 'PGRST116') {
+                // No matching rows - this is fine
+                debugLog('info', `No data found in ${step.table}`);
+              } else {
+                debugLog('warning', `Error deleting from ${step.table}:`, deleteError);
+                errorTables.push(`${step.table}: ${deleteError.message}`);
+              }
+            } else {
+              debugLog('info', `Deleted ${count || 0} record(s) from ${step.table}`);
+              if (count > 0) deletedTables.push(`${step.table} (${count})`);
+            }
+          } catch (tableError) {
+            debugLog('warning', `Exception deleting from ${step.table}:`, tableError);
+            errorTables.push(`${step.table}: ${tableError.message}`);
+          }
+        }
+
+        // Additional cleanup: Try to delete from master_users by email as fallback
+        if (userEmail) {
+          try {
+            debugLog('info', 'Attempting master_users cleanup by email');
+            const { error: masterUserEmailError, count: emailCount } = await supabase
+              .from('master_users')
+              .delete({ count: 'exact' })
+              .eq('email', userEmail);
+
+            if (masterUserEmailError) {
+              if (masterUserEmailError.code !== 'PGRST116') {
+                debugLog('warning', 'Error deleting master_users by email:', masterUserEmailError);
+              }
+            } else if (emailCount > 0) {
+              debugLog('info', `Deleted ${emailCount} record(s) from master_users by email`);
+              if (!deletedTables.some(t => t.startsWith('master_users'))) {
+                deletedTables.push(`master_users by email (${emailCount})`);
+              }
+            }
+          } catch (emailError) {
+            debugLog('warning', 'Exception deleting master_users by email:', emailError);
+          }
+        }
+
+        // Finally, delete from auth.users
+        debugLog('info', 'Deleting from auth.users');
+        const { error: authError } = await supabase.functions.invoke('delete-user', {
+          body: { user_id: id }
+        });
+
+        if (authError) {
+          debugLog('warning', 'Could not delete auth user', authError);
+          errorTables.push(`auth.users: ${authError.message}`);
+        } else {
+          deletedTables.push('auth.users');
+        }
+
+        // Log summary
+        debugLog('success', 'User removal complete', {
+          deletedTables,
+          errorTables,
+          userId: id,
+          profileName: profile?.full_name
+        });
+
+        // Show appropriate message based on results
+        let message = 'User and all data removed successfully';
+        if (errorTables.length > 0) {
+          message += ` (with ${errorTables.length} minor errors - see console)`;
+        }
+        
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert success';
+        alertDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 16px; background: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 8px; z-index: 10000; max-width: 400px;';
+        alertDiv.innerHTML = `
+          <strong>User Removed</strong><br>
+          ${message}<br>
+          <small>Cleaned up ${deletedTables.length} table(s)</small>
+        `;
+        document.body.appendChild(alertDiv);
+        setTimeout(() => alertDiv.remove(), 5000);
+
+      } else {
+        // Just remove the invitation
+        const { error } = await supabase
+          .from('site_invites')
+          .delete()
+          .eq('id', id);
+
+        if (error) throw error;
+
+        debugLog('success', 'Invitation cancelled');
+        
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert success';
+        alertDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 16px; background: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 8px; z-index: 10000;';
+        alertDiv.textContent = 'Invitation cancelled';
+        document.body.appendChild(alertDiv);
+        setTimeout(() => alertDiv.remove(), 3000);
+      }
+
+      // Reload the user list to reflect changes
+      loadPracticeUsers();
+
+    } catch (err) {
+      debugLog('error', 'Failed to remove user/invite', err);
+      alert('Failed to remove user: ' + err.message);
+    }
+  };
+
+  // Keep old function for backwards compatibility
+  window.cancelInvite = window.removeUserComplete;
 
 
 
@@ -9635,445 +11387,6 @@ window.PIR_DEFINITIONS_DATA = [
 
   // Make updateSiteSettings available globally
   window.updateSiteSettings = updateSiteSettings;
-
-  // User Management Functions
-  async function loadUsersData() {
-    const tbody = document.getElementById('users-tbody');
-    if (!tbody) return;
-
-    tbody.innerHTML = '<tr><td colspan="6" class="muted" style="text-align: center;">Loading users...</td></tr>';
-
-    try {
-      // Get all users from master_users table
-      const { data: users, error } = await supabase
-        .from('master_users')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      if (!users || users.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="muted" style="text-align: center;">No users found</td></tr>';
-        return;
-      }
-
-      // Get auth users data for status
-      const authUserIds = users.map(u => u.auth_user_id).filter(Boolean);
-      let authUsers = [];
-
-      if (authUserIds.length > 0) {
-        // Note: We'll need to use service role for full user listing
-        // For now, we can only show master_users data
-      }
-
-      tbody.innerHTML = users.map(user => {
-        const createdDate = user.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A';
-        const email = user.email || 'N/A';
-        const status = user.auth_user_id ? 'Active' : 'Pending';
-
-        return `
-          <tr>
-            <td>${user.full_name || user.nickname || 'Unnamed'}</td>
-            <td>${email}</td>
-            <td><span class="badge ${user.access_type === 'admin' ? 'badge-primary' : 'badge-secondary'}">${user.access_type || 'user'}</span></td>
-            <td><span class="badge ${status === 'Active' ? 'badge-success' : 'badge-warning'}">${status}</span></td>
-            <td>${createdDate}</td>
-            <td>
-              <button class="btn btn-sm secondary" onclick="resendInvitation('${email}')" ${!email || email === 'N/A' ? 'disabled' : ''}>
-                Resend Invite
-              </button>
-            </td>
-          </tr>
-        `;
-      }).join('');
-
-    } catch (error) {
-      console.error('Failed to load users:', error);
-      tbody.innerHTML = '<tr><td colspan="6" class="muted" style="text-align: center; color: red;">Failed to load users</td></tr>';
-    }
-  }
-
-  // --- Invitation Debugging Utilities ---
-  const INVITATION_DEBUG_MAX_LOGS = 200;
-  const invitationDebugStore = {
-    logs: [],
-    push(entry) {
-      this.logs.push(entry);
-      if (this.logs.length > INVITATION_DEBUG_MAX_LOGS) {
-        this.logs.shift();
-      }
-      renderInvitationDebugLogs();
-    },
-    clear() {
-      this.logs = [];
-      renderInvitationDebugLogs();
-    },
-  };
-
-  function logInvitationDebug(event, details = {}) {
-    const redactKeys = new Set(['access_token', 'refresh_token', 'provider_token', 'service_key', 'apikey', 'authorization']);
-    let safeDetails;
-    try {
-      safeDetails = JSON.parse(JSON.stringify(details, (key, value) => {
-        if (typeof value === 'string' && redactKeys.has(key.toLowerCase())) {
-          return '[redacted]';
-        }
-        return value;
-      }));
-    } catch (error) {
-      safeDetails = {
-        serializationError: error instanceof Error ? error.message : String(error),
-        originalType: typeof details,
-      };
-    }
-
-    invitationDebugStore.push({
-      event,
-      timestamp: new Date().toISOString(),
-      ...safeDetails,
-    });
-  }
-
-  function renderInvitationDebugLogs() {
-    const debugSection = document.getElementById('debug-section');
-    const output = document.getElementById('debug-output');
-    if (!debugSection || !output) return;
-
-    if (!invitationDebugStore.logs.length) {
-      debugSection.style.display = 'none';
-      output.textContent = '';
-      return;
-    }
-
-    debugSection.style.display = 'block';
-    const formatted = invitationDebugStore.logs
-      .map((entry, index) => `#${index + 1}\n${JSON.stringify(entry, null, 2)}`)
-      .join('\n\n');
-
-    output.textContent = formatted;
-  }
-
-  function ensureInvitationDebugBaseline() {
-    if (ensureInvitationDebugBaseline.initialized) return;
-    ensureInvitationDebugBaseline.initialized = true;
-
-    logInvitationDebug('environment:init', {
-      location: window.location.href,
-      userAgent: navigator.userAgent,
-      supabaseConfigured: Boolean(window.CONFIG?.SUPABASE_URL),
-      supabaseUrlPrefix: window.CONFIG?.SUPABASE_URL?.slice(0, 32) || null,
-      supabaseProjectRef: window.CONFIG?.SUPABASE_URL?.split('https://')[1]?.split('.supabase.co')[0] || null,
-      ctxSummary: {
-        hasCtx: typeof window.ctx !== 'undefined',
-        siteId: window.ctx?.site_id ?? null,
-      },
-    });
-  }
-
-  function copyDebugOutput() {
-    const output = document.getElementById('debug-output');
-    if (!output) return;
-
-    const text = output.textContent || '';
-    const doAlertSuccess = () => {
-      logInvitationDebug('ui:copy-debug', { success: true, length: text.length });
-      alert('Debug output copied to clipboard.');
-    };
-    const doAlertFailure = (err) => {
-      logInvitationDebug('ui:copy-debug', { success: false, message: err?.message || String(err) });
-      alert('Failed to copy debug output. See console for details.');
-      console.error('Copy debug output failed:', err);
-    };
-
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(text).then(doAlertSuccess).catch(doAlertFailure);
-      return;
-    }
-
-    try {
-      const textarea = document.createElement('textarea');
-      textarea.value = text;
-      textarea.setAttribute('readonly', '');
-      textarea.style.position = 'absolute';
-      textarea.style.left = '-9999px';
-      document.body.appendChild(textarea);
-      textarea.select();
-      const successful = document.execCommand('copy');
-      document.body.removeChild(textarea);
-      if (successful) {
-        doAlertSuccess();
-      } else {
-        throw new Error('Document execCommand copy failed');
-      }
-    } catch (err) {
-      doAlertFailure(err);
-    }
-  }
-
-  function clearDebugOutput() {
-    invitationDebugStore.clear();
-  }
-
-  ensureInvitationDebugBaseline.initialized = false;
-  window.copyDebugOutput = copyDebugOutput;
-  window.clearDebugOutput = clearDebugOutput;
-  window.invitationDebugStore = invitationDebugStore;
-  window.logInvitationDebug = logInvitationDebug;
-  window.renderInvitationDebugLogs = renderInvitationDebugLogs;
-
-  // Send user invitation using Edge Function (secure, no exposed keys)
-  async function sendUserInvitation() {
-    const nameInput = document.getElementById('new-user-name');
-    const emailInput = document.getElementById('new-user-email');
-    const statusDiv = document.getElementById('invitation-status');
-
-    const name = nameInput?.value?.trim();
-    const email = emailInput?.value?.trim();
-
-    ensureInvitationDebugBaseline();
-    logInvitationDebug('invitation:start', {
-      nameLength: name?.length ?? 0,
-      email,
-      ctxSiteId: window.ctx?.site_id ?? null,
-    });
-
-    if (!name || !email) {
-      logInvitationDebug('invitation:validation-error', { reason: 'missing-fields', nameProvided: Boolean(name), emailProvided: Boolean(email) });
-      showStatus(statusDiv, 'Please enter both name and email', 'error');
-      return;
-    }
-
-    if (!email.includes('@') || !email.includes('.')) {
-      logInvitationDebug('invitation:validation-error', { reason: 'invalid-email', email });
-      showStatus(statusDiv, 'Please enter a valid email address', 'error');
-      return;
-    }
-
-    try {
-      showStatus(statusDiv, 'Sending invitation...', 'info');
-
-      // Get current session for authentication
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      const session = sessionData?.session || null;
-      logInvitationDebug('session:retrieved', {
-        hasSession: Boolean(session),
-        sessionError: sessionError?.message || null,
-        userEmail: session?.user?.email || null,
-        userId: session?.user?.id || null,
-      });
-
-      if (!session) {
-        showStatus(statusDiv, 'You must be logged in to send invitations', 'error');
-        logInvitationDebug('invitation:abort', { reason: 'no-session' });
-        return;
-      }
-
-      const payload = {
-        email,
-        name,
-        site_id: window.ctx?.site_id || 2,
-        resend: false,
-      };
-
-      logInvitationDebug('edge-request:prepared', {
-        functionName: 'send-invitation',
-        payload,
-      });
-
-      const { data, error } = await supabase.functions.invoke('send-invitation', {
-        body: payload,
-      });
-
-      logInvitationDebug('edge-response:received', {
-        hasError: Boolean(error),
-        errorMessage: error?.message || null,
-        errorName: error?.name || null,
-        errorStatus: error?.status || null,
-        errorContext: error?.context || null,
-        data,
-      });
-
-      if (error?.context) {
-        try {
-          const parsed = typeof error.context === 'string' ? JSON.parse(error.context) : error.context;
-          logInvitationDebug('edge-response:error-context', parsed);
-        } catch (ctxErr) {
-          logInvitationDebug('edge-response:error-context-parse-failed', {
-            raw: error.context,
-            message: ctxErr instanceof Error ? ctxErr.message : String(ctxErr),
-          });
-        }
-      }
-
-      if (data?.debug) {
-        logInvitationDebug('edge-response:debug-trace', {
-          traceCount: Array.isArray(data.debug) ? data.debug.length : null,
-          requestId: data.requestId || null,
-          trace: data.debug,
-        });
-      }
-
-      if (error) {
-        throw new Error(error.message || 'Failed to send a request to the Edge Function');
-      }
-
-      if (!data?.success) {
-        throw new Error(data?.error || 'Failed to send invitation');
-      }
-
-      showStatus(statusDiv, `✅ ${data.message || 'Invitation sent successfully'}`, 'success');
-
-      logInvitationDebug('invitation:success', {
-        email,
-        requestId: data.requestId || null,
-      });
-
-      nameInput.value = '';
-      emailInput.value = '';
-
-      setTimeout(() => {
-        logInvitationDebug('invitation:refresh-users');
-        loadUsersData();
-      }, 1000);
-
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      console.error('Failed to send invitation - Full error:', err);
-      logInvitationDebug('invitation:error', {
-        message: err.message,
-        stack: err.stack || null,
-        email,
-        name,
-      });
-      showStatus(statusDiv, `❌ Failed to send invitation: ${err.message || 'Unknown error'}`, 'error');
-    }
-  }
-
-  // Resend invitation to existing user using Edge Function (secure, no exposed keys)
-  async function resendInvitation(email) {
-    if (!email || email === 'N/A') return;
-
-    ensureInvitationDebugBaseline();
-    logInvitationDebug('resend:start', { email });
-
-    if (!confirm(`Resend invitation to ${email}?`)) return;
-
-    try {
-      // Get current session for authentication
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      const session = sessionData?.session || null;
-      logInvitationDebug('resend:session', {
-        hasSession: Boolean(session),
-        sessionError: sessionError?.message || null,
-        userEmail: session?.user?.email || null,
-        userId: session?.user?.id || null,
-      });
-
-      if (!session) {
-        alert('You must be logged in to resend invitations');
-        logInvitationDebug('resend:abort', { reason: 'no-session' });
-        return;
-      }
-
-      const payload = {
-        email,
-        resend: true,
-        site_id: window.ctx?.site_id || 2,
-      };
-
-      logInvitationDebug('resend:edge-request', { payload });
-
-      const { data, error } = await supabase.functions.invoke('send-invitation', {
-        body: payload,
-      });
-
-      logInvitationDebug('resend:edge-response', {
-        hasError: Boolean(error),
-        errorMessage: error?.message || null,
-        errorName: error?.name || null,
-        errorStatus: error?.status || null,
-        errorContext: error?.context || null,
-        data,
-      });
-
-      if (data?.debug) {
-        logInvitationDebug('edge-response:debug-trace', {
-          context: 'resend',
-          traceCount: Array.isArray(data.debug) ? data.debug.length : null,
-          requestId: data.requestId || null,
-          trace: data.debug,
-        });
-      }
-
-      if (error) {
-        throw new Error(error.message || 'Failed to send a request to the Edge Function');
-      }
-
-      if (error?.context) {
-        try {
-          const parsed = typeof error.context === 'string' ? JSON.parse(error.context) : error.context;
-          logInvitationDebug('edge-response:error-context', { context: parsed, scope: 'resend' });
-        } catch (ctxErr) {
-          logInvitationDebug('edge-response:error-context-parse-failed', {
-            raw: error.context,
-            scope: 'resend',
-            message: ctxErr instanceof Error ? ctxErr.message : String(ctxErr),
-          });
-        }
-      }
-
-      if (!data?.success) {
-        throw new Error(data?.error || 'Failed to resend invitation');
-      }
-
-      logInvitationDebug('resend:success', {
-        email,
-        requestId: data.requestId || null,
-      });
-
-      alert(`✅ ${data.message || 'Invitation resent successfully'}`);
-
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      console.error('Failed to resend invitation:', err);
-      logInvitationDebug('resend:error', {
-        email,
-        message: err.message,
-        stack: err.stack || null,
-      });
-      alert(`❌ Failed to resend invitation: ${err.message || 'Unknown error'}`);
-    }
-  }
-
-  // Helper function to show status messages
-  function showStatus(div, message, type) {
-    if (!div) return;
-
-    div.style.display = 'block';
-    div.innerHTML = message;
-
-    if (type === 'error') {
-      div.style.background = '#ef4444';
-      div.style.color = '#fff';
-    } else if (type === 'success') {
-      div.style.background = '#10b981';
-      div.style.color = '#fff';
-    } else {
-      div.style.background = '#3b82f6';
-      div.style.color = '#fff';
-    }
-
-    if (type !== 'info') {
-      setTimeout(() => {
-        div.style.display = 'none';
-      }, 5000);
-    }
-  }
-
-  // Make functions available globally
-  window.loadUsersData = loadUsersData;
-  window.sendUserInvitation = sendUserInvitation;
-  window.resendInvitation = resendInvitation;
 
   // Global debug function for testing
   window.testDebugFunction = async function() {
@@ -10655,10 +11968,77 @@ window.PIR_DEFINITIONS_DATA = [
         }
       }
       
-      // If no profile exists, show error
+      // If no profile exists, try to create one from pending invitation
       if(!profile) {
-        console.log('⚠️ No profile found for user.');
-        throw new Error("No profile found for this user");
+        console.log('⚠️ No profile found, checking for pending invitation...');
+        
+        // Look for pending invitation for this email
+        const { data: invitation } = await supabase
+          .from("site_invites")
+          .select("site_id, role, full_name, role_detail, reports_to_id")
+          .eq("email", user.email)
+          .eq("status", "pending")
+          .gt("expires_at", new Date().toISOString())
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (invitation) {
+          console.log('✅ Found invitation, creating profile...', invitation);
+          
+          // Create profile from invitation data
+          const { data: newProfile, error: createError } = await supabase
+            .from('master_users')
+            .insert({
+              user_id: user.id,
+              site_id: invitation.site_id,
+              role: invitation.role,
+              full_name: invitation.full_name
+            })
+            .select("site_id, role, full_name")
+            .single();
+
+          if (createError) {
+            console.error('Failed to create profile:', createError);
+            throw new Error("Failed to create user profile");
+          }
+
+          // If role_detail is provided, also create kiosk_users entry
+          if (invitation.role_detail && invitation.role_detail.trim() !== '') {
+            console.log('Creating kiosk_users entry...', invitation.role_detail);
+            const { error: kioskError } = await supabase
+              .from('master_users')
+              .insert({
+                site_id: invitation.site_id,
+                full_name: invitation.full_name,
+                role: invitation.role_detail,
+                active: true,
+                reports_to_id: invitation.reports_to_id
+              });
+
+            if (kioskError) {
+              console.error('Failed to create kiosk_users entry:', kioskError);
+              // Don't throw here - profile creation succeeded, this is just additional
+            } else {
+              console.log('Kiosk user created successfully');
+            }
+          }
+
+          // Update invitation status to accepted
+          await supabase
+            .from("site_invites")
+            .update({ status: "accepted" })
+            .eq("email", user.email)
+            .eq("status", "pending");
+
+          profile = newProfile;
+          console.log('Profile created successfully:', profile);
+          
+          // Give the database a moment to commit the transaction
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } else {
+          throw new Error("No profile found and no valid invitation");
+        }
       }
 
       ctx.site_id = profile.site_id;
@@ -14456,7 +15836,6 @@ function applySchedulesFilters() {
         console.log('📍 Loading context...');
         await loadContext();
         console.log('✅ Context loaded successfully');
-
       } catch (contextError) {
         console.error('❌ Context loading failed:', contextError);
         
@@ -17564,6 +18943,10 @@ const pageHelp = {
     title: '2-Week Notice Email',
     content: 'When CQC announces an inspection, you have just two weeks notice. This page helps you prepare the required documentation packages quickly and efficiently. Upload and organize documents into the nine email packages that CQC requires, ensure all information is current and relevant, then export everything with a single click. Stay inspection-ready with organized, up-to-date documentation.'
   },
+  'view-users': {
+    title: 'User Management',
+    content: 'Manage staff accounts, roles, and permissions for your CheckLoop system. Add new team members, assign appropriate access levels (Admin or Staff), and maintain security by managing user credentials. Control who can access sensitive compliance data and administrative functions.'
+  },
   'view-calendar': {
     title: 'Compliance Calendar',
     content: 'Visual overview of all compliance-related activities, deadlines, and scheduled tasks. Track safety checks, training renewals, equipment servicing, and other time-sensitive compliance activities. Never miss critical deadlines with automated reminders and clear visual indicators of upcoming requirements.'
@@ -20311,9 +21694,28 @@ window.refreshStaffData = refreshStaffData;
     }
   }
 
+  // Training Import Functions
+  let trainingUploadData = [];
+  let trainingTypes = [];
 
+  async function loadTrainingImport() {
+    console.log('Loading training import data...');
 
+    // Load site users for matching
+    await loadSiteUsers(); // Already defined for holiday import
 
+    // Load training types
+    await loadTrainingTypes();
+
+    // Load statistics
+    await loadTrainingStatistics();
+
+    // Load existing records
+    await loadTrainingRecords();
+
+    // Setup file upload handlers
+    setupTrainingUploadHandlers();
+  }
 
   async function loadTrainingTypes() {
     try {
@@ -21153,6 +22555,19 @@ window.refreshStaffData = refreshStaffData;
     await loadTrainingStatistics();
     await loadTrainingRecords();
   }
+
+  // Export training import functions
+  window.loadTrainingImport = loadTrainingImport;
+  window.confirmTrainingUpload = confirmTrainingUpload;
+  window.cancelTrainingUpload = cancelTrainingUpload;
+  window.deleteTrainingRecord = deleteTrainingRecord;
+  window.downloadTrainingTemplate = downloadTrainingTemplate;
+  window.downloadTrainingTypesList = downloadTrainingTypesList;
+  window.matchAndTransferTrainingRecord = matchAndTransferTrainingRecord;
+  window.toggleAllTrainingCheckboxes = toggleAllTrainingCheckboxes;
+  window.filterTrainingRecords = filterTrainingRecords;
+  window.autoMatchAllTraining = autoMatchAllTraining;
+  window.matchSelectedTraining = matchSelectedTraining;
 
   // Export functions
   window.loadHolidayEntitlements = loadHolidayEntitlements;
