@@ -426,11 +426,19 @@
       box-shadow: var(--shadow-lg);
       border-color: var(--primary);
     }
+    
+    /* Apply hover effect to disabled cards too, but with different border color */
+    .action-card.disabled:hover {
+      background: var(--white);
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-lg);
+      border-color: var(--gray-400); /* Lighter border color for disabled state */
+    }
 
     .action-card.disabled {
       opacity: 0.6;
       cursor: not-allowed;
-      pointer-events: none;
+      /* Removed pointer-events: none to allow hover effects */
     }
 
     .action-card.due::after {
@@ -536,11 +544,31 @@
       border: 1px solid var(--gray-200);
       padding: 1.25rem;
       transition: var(--transition);
+      cursor: pointer;
+      position: relative;
     }
 
     .dashboard-card:hover {
       box-shadow: var(--shadow-md);
       transform: translateY(-1px);
+      border-color: var(--primary);
+    }
+    
+    .dashboard-card::after {
+      content: '';
+      position: absolute;
+      bottom: 0.75rem;
+      right: 0.75rem;
+      width: 0.75rem;
+      height: 0.75rem;
+      border-right: 2px solid var(--gray-400);
+      border-bottom: 2px solid var(--gray-400);
+      transform: rotate(-45deg);
+      transition: var(--transition);
+    }
+    
+    .dashboard-card:hover::after {
+      border-color: var(--primary);
     }
 
     .metric-value {
@@ -1026,7 +1054,7 @@
         <div class="card-body">
           <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
             <!-- Training Status -->
-            <div class="dashboard-card">
+            <div class="dashboard-card" id="training-card" style="cursor: pointer;" onclick="window.location.href='staff-training.html';">
               <div class="metric-value" id="training-percent">0%</div>
               <div class="metric-label">Training Compliance</div>
               <div class="progress-bar">
@@ -1039,7 +1067,7 @@
             </div>
 
             <!-- Quiz Performance -->
-            <div class="dashboard-card">
+            <div class="dashboard-card" id="quiz-card" style="cursor: pointer;" onclick="window.location.href='staff-quiz.html';">
               <div class="metric-value" id="quiz-score">--</div>
               <div class="metric-label">Last Quiz Score</div>
               <div style="margin-top: 0.75rem; font-size: 0.875rem; color: var(--gray-600);">
@@ -1048,7 +1076,7 @@
             </div>
 
             <!-- Holiday Status -->
-            <div class="dashboard-card">
+            <div class="dashboard-card" id="holiday-card" style="cursor: pointer;" onclick="handleHolidayCardClick();">
               <div class="metric-value" id="holiday-days-remaining">--</div>
               <div class="metric-label">Holiday Days Remaining</div>
               <div style="margin-top: 0.75rem; font-size: 0.875rem; color: var(--gray-600);">
@@ -1057,7 +1085,7 @@
             </div>
 
             <!-- Alerts -->
-            <div class="dashboard-card">
+            <div class="dashboard-card" id="alerts-card" style="cursor: pointer;" onclick="handleAlertsCardClick();">
               <div class="metric-value" id="alerts-count">0</div>
               <div class="metric-label">Active Alerts</div>
               <div id="alerts-summary" style="margin-top: 0.75rem; font-size: 0.875rem; color: var(--gray-600);">
@@ -1109,6 +1137,13 @@
     // Global function to handle holidays click
     window.handleHolidaysClick = async function() {
       try {
+        // Check if the card has the disabled class - if so, show the message without doing the fetch
+        const holidaysCard = document.getElementById('holidays-card');
+        if (holidaysCard && holidaysCard.classList.contains('disabled')) {
+          alert('Your holiday entitlement is awaiting admin approval. Please check back later or contact your admin.');
+          return;
+        }
+        
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
           alert('Please sign in to access My Holidays.');
@@ -1892,6 +1927,59 @@
 
       window.i8 = i8;
     })();
+    
+    // Handle clicks on dashboard cards
+    window.handleHolidayCardClick = async function() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          alert('Please sign in to access My Holidays.');
+          return;
+        }
+
+        const { data: userData, error } = await supabase
+          .from('master_users')
+          .select('holiday_approved')
+          .eq('auth_user_id', session.user.id)
+          .single();
+
+        if (error) {
+          console.error('Error checking holiday approval:', error);
+          alert('Unable to check holiday access. Please try again later.');
+          return;
+        }
+
+        if (userData && userData.holiday_approved === true) {
+          window.location.href = 'my-holidays.html';
+        } else {
+          alert('Your holiday entitlement is awaiting admin approval. Please check back later or contact your admin.');
+        }
+      } catch (error) {
+        console.error('Error in handleHolidayCardClick:', error);
+        alert('An error occurred. Please try again.');
+      }
+    };
+    
+    window.handleAlertsCardClick = function() {
+      // Determine the most pressing alert and navigate to the appropriate page
+      const alertCount = parseInt(document.getElementById('alerts-count').textContent || '0');
+      
+      if (alertCount === 0) {
+        alert('There are no active alerts that require your attention.');
+        return;
+      }
+      
+      const alertSummary = document.getElementById('alerts-summary').textContent || '';
+      
+      if (alertSummary.includes('Training')) {
+        window.location.href = 'staff-training.html';
+      } else if (alertSummary.includes('Quiz')) {
+        window.location.href = 'staff-quiz.html';
+      } else {
+        // Default to training page if we can't determine the specific alert
+        window.location.href = 'staff-training.html';
+      }
+    };
   </script>
 
   <!-- Debug Console -->
