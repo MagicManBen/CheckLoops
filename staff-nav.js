@@ -78,7 +78,6 @@ function getStandardNavHTML(activePage = 'staff.html') {
           <a href="#" class="nav-link dropdown-toggle">More ▼</a>
           <div class="dropdown-menu">
             <a href="staff-welcome.html" class="dropdown-item ${activePage === 'staff-welcome.html' ? 'active' : ''}">Welcome</a>
-            <a href="staff-calendar.html" class="dropdown-item ${activePage === 'staff-calendar.html' ? 'active' : ''}">Calendar</a>
             <a href="staff-meetings.html" class="dropdown-item ${activePage === 'staff-meetings.html' ? 'active' : ''}">Meetings</a>
             <a href="achievements.html" class="dropdown-item ${activePage === 'achievements.html' ? 'active' : ''}">Achievements</a>
           </div>
@@ -86,18 +85,18 @@ function getStandardNavHTML(activePage = 'staff.html') {
       </div>
 
       <div class="navbar-user">
-        <a href="admin-dashboard.html" class="btn-admin" id="adminPortalBtn" style="display:none;" title="Access Admin Dashboard">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <a href="admin-dashboard.html" class="admin-portal-btn" id="adminPortalBtn" style="display:none; padding: 0.5rem 1rem; background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white; border: none; border-radius: var(--radius); font-weight: 600; font-size: 0.875rem; text-decoration: none; transition: var(--transition); box-shadow: var(--shadow-sm);" title="Access Admin Dashboard">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem; display: inline-block; vertical-align: middle;">
             <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z"/>
           </svg>
           Admin Portal
         </a>
+        <button class="btn-signout" id="logout-btn">Sign Out</button>
         <div class="user-info">
           <div id="navbar-avatar" style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--accent)); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 0.875rem;"></div>
           <span class="user-pill" id="email-pill">—</span>
           <span class="user-pill role" id="role-pill">—</span>
         </div>
-  <button class="btn-signout" id="logout-btn" onclick="signOut()" title="Sign Out">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
             <polyline points="16,17 21,12 16,7"></polyline>
