@@ -6108,6 +6108,79 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
       </section>
 
+      <!-- Site Users Section -->
+      <section class="view" id="view-users">
+        <div class="panel">
+          <div class="page-header">
+            <div class="page-title-wrapper">
+              <h1 class="page-title">Site Users</h1>
+              <p style="color: var(--muted); margin-top: 8px;">Manage users and send invitations</p>
+            </div>
+          </div>
+
+          <!-- Add New User Form -->
+          <div style="background: var(--glass); padding: 24px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 32px;">
+            <h3 style="margin-top: 0; margin-bottom: 20px; color: var(--white);">Send Invitation</h3>
+            <div style="display: flex; gap: 16px; align-items: flex-end;">
+              <div style="flex: 1;">
+                <label style="display: block; margin-bottom: 8px; color: var(--muted); font-size: 14px;">Full Name</label>
+                <input type="text" id="new-user-name" placeholder="Enter full name"
+                       style="width: 100%; padding: 10px; background: var(--glass-2); border: 1px solid var(--border-color); border-radius: 6px; color: var(--white);">
+              </div>
+              <div style="flex: 1;">
+                <label style="display: block; margin-bottom: 8px; color: var(--muted); font-size: 14px;">Email Address</label>
+                <input type="email" id="new-user-email" placeholder="Enter email address"
+                       style="width: 100%; padding: 10px; background: var(--glass-2); border: 1px solid var(--border-color); border-radius: 6px; color: var(--white);">
+              </div>
+              <button class="btn primary" onclick="sendUserInvitation()" style="padding: 10px 24px;">
+                Send Invitation
+              </button>
+            </div>
+            <div id="invitation-status" style="margin-top: 16px; padding: 12px; border-radius: 6px; display: none;"></div>
+          </div>
+
+          <!-- Existing Users List -->
+          <div style="background: var(--glass); padding: 24px; border-radius: 12px; border: 1px solid var(--border-color);">
+            <h3 style="margin-top: 0; margin-bottom: 20px; color: var(--white);">Existing Users</h3>
+            <div style="overflow-x: auto;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Access Type</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="users-tbody">
+                  <tr>
+                    <td colspan="6" class="muted" style="text-align: center;">Loading users...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Debug Output Section -->
+          <div id="debug-section" style="background: #1a1a1a; padding: 24px; border-radius: 12px; border: 2px solid #ef4444; margin-top: 32px; display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <h3 style="margin: 0; color: #ef4444;">🐛 Debug Output</h3>
+              <div style="display: flex; gap: 10px;">
+                <button onclick="clearDebugOutput()" style="padding: 8px 16px; background: #374151; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                  Clear
+                </button>
+                <button onclick="copyDebugOutput()" style="padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                  📋 Copy All Debug Info
+                </button>
+              </div>
+            </div>
+            <pre id="debug-output" style="background: #0a0a0a; color: #10b981; padding: 16px; border-radius: 8px; overflow-x: auto; max-height: 600px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></pre>
+          </div>
+        </div>
+      </section>
+
       <!-- Working Hours Section -->
       <section class="view" id="working-hours">
         <div class="page-header">
@@ -8924,6 +8997,9 @@ window.PIR_DEFINITIONS_DATA = [
           }
         }, 0);
         break;
+      case 'users':
+        loadUsersData();
+        break;
       case 'fuzzy-match':
         // Check if loadFuzzyMatch is available
         if (typeof loadFuzzyMatch === 'function') {
@@ -9685,6 +9761,239 @@ window.PIR_DEFINITIONS_DATA = [
 
   // Make updateSiteSettings available globally
   window.updateSiteSettings = updateSiteSettings;
+
+  // User Management Functions
+  async function loadUsersData() {
+    const tbody = document.getElementById('users-tbody');
+    if (!tbody) return;
+
+    tbody.innerHTML = '<tr><td colspan="6" class="muted" style="text-align: center;">Loading users...</td></tr>';
+
+    try {
+      // Get all users from master_users table
+      const { data: users, error } = await supabase
+        .from('master_users')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      if (!users || users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="muted" style="text-align: center;">No users found</td></tr>';
+        return;
+      }
+
+      // Get auth users data for status
+      const authUserIds = users.map(u => u.auth_user_id).filter(Boolean);
+      let authUsers = [];
+
+      if (authUserIds.length > 0) {
+        // Note: We'll need to use service role for full user listing
+        // For now, we can only show master_users data
+      }
+
+      tbody.innerHTML = users.map(user => {
+        const createdDate = user.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A';
+        const email = user.email || 'N/A';
+        const status = user.auth_user_id ? 'Active' : 'Pending';
+
+        return `
+          <tr>
+            <td>${user.full_name || user.nickname || 'Unnamed'}</td>
+            <td>${email}</td>
+            <td><span class="badge ${user.access_type === 'admin' ? 'badge-primary' : 'badge-secondary'}">${user.access_type || 'user'}</span></td>
+            <td><span class="badge ${status === 'Active' ? 'badge-success' : 'badge-warning'}">${status}</span></td>
+            <td>${createdDate}</td>
+            <td>
+              <button class="btn btn-sm secondary" onclick="resendInvitation('${email}')" ${!email || email === 'N/A' ? 'disabled' : ''}>
+                Resend Invite
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+    } catch (error) {
+      console.error('Failed to load users:', error);
+      tbody.innerHTML = '<tr><td colspan="6" class="muted" style="text-align: center; color: red;">Failed to load users</td></tr>';
+    }
+  }
+
+  // Send user invitation using Edge Function (secure, no exposed keys)
+  async function sendUserInvitation() {
+    const nameInput = document.getElementById('new-user-name');
+    const emailInput = document.getElementById('new-user-email');
+    const statusDiv = document.getElementById('invitation-status');
+
+    const name = nameInput?.value?.trim();
+    const email = emailInput?.value?.trim();
+
+    if (!name || !email) {
+      showStatus(statusDiv, 'Please enter both name and email', 'error');
+      return;
+    }
+
+    if (!email.includes('@') || !email.includes('.')) {
+      showStatus(statusDiv, 'Please enter a valid email address', 'error');
+      return;
+    }
+
+    try {
+      showStatus(statusDiv, 'Sending invitation...', 'info');
+
+      // Get current session for authentication
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        showStatus(statusDiv, 'You must be logged in to send invitations', 'error');
+        return;
+      }
+
+      console.log('Sending invitation with session:', session.user.email);
+
+      // Use the simple-invite function that's already deployed
+      const { data, error } = await supabase.functions.invoke('simple-invite', {
+        body: {
+          email: email,
+          name: name,
+          site_id: ctx?.site_id || 2
+        }
+      });
+
+      console.log('Invitation response:', { data, error });
+
+      if (error) {
+        // If simple-invite doesn't work, try our send-invitation function
+        console.log('Trying send-invitation function instead...');
+        const { data: data2, error: error2 } = await supabase.functions.invoke('send-invitation', {
+          body: {
+            email: email,
+            name: name,
+            site_id: ctx?.site_id || 2
+          }
+        });
+
+        if (error2) throw error2;
+
+        if (data2?.success) {
+          showStatus(statusDiv, `✅ ${data2.message || 'Invitation sent successfully'}`, 'success');
+          nameInput.value = '';
+          emailInput.value = '';
+          setTimeout(() => loadUsersData(), 1000);
+          return;
+        } else if (data2?.error) {
+          throw new Error(data2.error);
+        }
+      }
+
+      if (data?.success || data?.message) {
+        showStatus(statusDiv, `✅ ${data.message || 'Invitation sent successfully'}`, 'success');
+      } else if (!error && !data?.error) {
+        // If no explicit error but also no success flag, assume success
+        showStatus(statusDiv, `✅ Invitation sent successfully to ${email}`, 'success');
+      } else {
+        throw new Error(data?.error || 'Failed to send invitation');
+      }
+
+      // Clear form
+      nameInput.value = '';
+      emailInput.value = '';
+
+      // Reload users list
+      setTimeout(() => {
+        loadUsersData();
+      }, 1000);
+
+    } catch (error) {
+      console.error('Failed to send invitation - Full error:', error);
+      showStatus(statusDiv, `❌ Failed to send invitation: ${error.message || 'Unknown error'}`, 'error');
+    }
+  }
+
+  // Resend invitation to existing user using Edge Function (secure, no exposed keys)
+  async function resendInvitation(email) {
+    if (!email || email === 'N/A') return;
+
+    if (!confirm(`Resend invitation to ${email}?`)) return;
+
+    try {
+      // Get current session for authentication
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        alert('You must be logged in to resend invitations');
+        return;
+      }
+
+      // Try using the resend-invitation function first
+      const { data, error } = await supabase.functions.invoke('resend-invitation', {
+        body: {
+          email: email
+        }
+      });
+
+      if (error) {
+        // Fallback to send-invitation with resend flag
+        console.log('Trying send-invitation with resend flag...');
+        const { data: data2, error: error2 } = await supabase.functions.invoke('send-invitation', {
+          body: {
+            email: email,
+            resend: true,
+            site_id: ctx?.site_id || 2
+          }
+        });
+
+        if (error2) throw error2;
+
+        if (data2?.success || data2?.message) {
+          alert(`✅ ${data2.message || 'Invitation resent successfully'}`);
+        } else {
+          throw new Error(data2?.error || 'Failed to resend invitation');
+        }
+        return;
+      }
+
+      if (data?.success || data?.message) {
+        alert(`✅ ${data.message || 'Invitation resent successfully'}`);
+      } else if (!error) {
+        alert(`✅ Invitation resent to ${email}`);
+      } else {
+        throw new Error(data?.error || 'Failed to resend invitation');
+      }
+
+    } catch (error) {
+      console.error('Failed to resend invitation:', error);
+      alert(`❌ Failed to resend invitation: ${error.message || 'Unknown error'}`);
+    }
+  }
+
+  // Helper function to show status messages
+  function showStatus(div, message, type) {
+    if (!div) return;
+
+    div.style.display = 'block';
+    div.innerHTML = message;
+
+    if (type === 'error') {
+      div.style.background = '#ef4444';
+      div.style.color = '#fff';
+    } else if (type === 'success') {
+      div.style.background = '#10b981';
+      div.style.color = '#fff';
+    } else {
+      div.style.background = '#3b82f6';
+      div.style.color = '#fff';
+    }
+
+    if (type !== 'info') {
+      setTimeout(() => {
+        div.style.display = 'none';
+      }, 5000);
+    }
+  }
+
+  // Make functions available globally
+  window.loadUsersData = loadUsersData;
+  window.sendUserInvitation = sendUserInvitation;
+  window.resendInvitation = resendInvitation;
 
   // Global debug function for testing
   window.testDebugFunction = async function() {
