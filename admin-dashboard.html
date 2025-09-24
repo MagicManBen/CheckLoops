@@ -13840,217 +13840,82 @@ ${JSON.stringify(fullLog, null, 2)}
   };
 
 
-  window.removeUserComplete = async function(id, isUserId = true) {
-    const confirmMsg = isUserId ?
+  window.removeUserComplete = async function(payload) {
+    // If payload is a string or simple object, handle it for backward compatibility
+    if (typeof payload === 'string' || (payload && !payload.email && (payload.userId || payload.inviteId))) {
+      const id = typeof payload === 'string' ? payload : (payload.userId || payload.inviteId || payload);
+      const isUserId = typeof payload === 'string' ? arguments[1] !== false : !!payload.userId;
+      
+      const confirmMsg = isUserId ?
+        'Are you sure you want to remove this user and ALL their data? This cannot be undone!' :
+        'Are you sure you want to cancel this invitation?';
+
+      if (!confirm(confirmMsg)) return;
+
+      debugLog('warning', 'Removing user/invite (legacy mode)', { id, isUserId });
+      
+      // Handle old-style call with just ID
+      try {
+        if (!isUserId) {
+          // Just remove the invitation
+          const { error } = await supabase
+            .from('site_invites')
+            .delete()
+            .eq('id', id);
+
+          if (error) throw error;
+
+          debugLog('success', 'Invitation cancelled');
+          
+          const alertDiv = document.createElement('div');
+          alertDiv.className = 'alert success';
+          alertDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 16px; background: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 8px; z-index: 10000;';
+          alertDiv.textContent = 'Invitation cancelled';
+          document.body.appendChild(alertDiv);
+          setTimeout(() => alertDiv.remove(), 3000);
+          
+          // Reload the user list to reflect changes
+          loadPracticeUsers();
+          return;
+        }
+        
+        // Otherwise, continue with user ID deletion (will be handled by code below)
+        payload = { userId: id };
+      } catch (err) {
+        debugLog('error', 'Failed to remove invite', err);
+        alert('Failed to remove invitation: ' + err.message);
+        return;
+      }
+    }
+    
+    // Extract data from payload
+    const userId = payload.userId || '';
+    const masterId = payload.masterId || '';
+    const inviteId = payload.inviteId || '';
+    const email = payload.email || '';
+    
+    // Determine if this is a user or just an invitation
+    const isUser = !!userId;
+    
+    const confirmMsg = isUser ?
       'Are you sure you want to remove this user and ALL their data? This cannot be undone!' :
       'Are you sure you want to cancel this invitation?';
 
     if (!confirm(confirmMsg)) return;
 
-    debugLog('warning', 'Removing user/invite', { id, isUserId });
+    debugLog('warning', 'Removing user/invite', { userId, masterId, inviteId, email, isUser });
 
     try {
-      if (isUserId) {
-        // Get user profile data first for proper cleanup
-        const { data: profile, error: profileError } = await supabase
-          .from('master_users')
-          .select('full_name, auth_auth_user_id, email')
-          .eq('auth_user_id', id)
-          .single();
-
-        if (profileError && profileError.code !== 'PGRST116') {
-          debugLog('warning', 'Could not fetch profile for cleanup', profileError);
-        }
-
-        // Also try to get user email from auth.users
-        let userEmail = profile?.email;
-        if (!userEmail) {
-          const { data: authUser } = await supabase.auth.admin.getUserById(id);
-          userEmail = authUser?.user?.email;
-        }
-
-        // Get holiday profile data for staff_id relationships
-        let holidayProfile = null;
-        if (profile?.full_name) {
-          const { data: hp } = await supabase
-            .from('master_users')
-            .select('id')
-            .eq('full_name', profile.full_name)
-            .single();
-          holidayProfile = hp;
-        }
-
-        // Remove user from all tables in correct dependency order (child tables first)
-        const deletionSteps = [
-          // Child tables first (those that depend on other user tables)
-          {
-            table: 'training_records',
-            condition: { user_id: id },
-            description: 'training records'
-          },
-          {
-            table: 'complaints',
-            condition: { created_by: id },
-            description: 'complaints created by user'
-          },
-          {
-            table: 'meeting_notes',
-            condition: { created_by: id },
-            description: 'meeting notes created by user'
-          },
-          {
-            table: 'meetings',
-            condition: { created_by: id },
-            description: 'meetings created by user'
-          },
-          {
-            table: 'quiz_questions',
-            condition: { created_by: id },
-            description: 'quiz questions created by user'
-          },
-          // Legacy tables - delete for cleanup (if migration hasn't been run yet)
-          {
-            table: '2_staff_entitlements',
-            condition: holidayProfile ? { staff_id: holidayProfile.id } : null,
-            description: 'staff entitlements (legacy)'
-          },
-          {
-            table: '3_staff_working_patterns',
-            condition: { user_id: id },
-            description: 'working patterns (legacy)'
-          },
-          {
-            table: '1_staff_holiday_profiles',
-            condition: profile?.full_name ? { full_name: profile.full_name } : { user_id: id },
-            description: 'holiday profiles (legacy)'
-          },
-          // Master users table - the new consolidated table
-          {
-            table: 'master_users',
-            condition: { auth_user_id: id },
-            description: 'master user data'
-          },
-          // Other core tables
-          {
-            table: 'staff_app_welcome',
-            condition: { user_id: id },
-            description: 'welcome app data'
-          },
-          {
-            table: 'user_profiles_complete',
-            condition: { user_id: id },
-            description: 'complete user profiles'
-          },
-          {
-            table: 'site_invites',
-            condition: userEmail ? { email: userEmail } : { user_id: id },
-            description: 'site invitations'
-          }
-        ];
-
-        let deletedTables = [];
-        let errorTables = [];
-
-        for (const step of deletionSteps) {
-          if (!step.condition) {
-            debugLog('info', `Skipping ${step.table} - no valid condition`);
-            continue;
-          }
-
-          try {
-            debugLog('info', `Deleting from ${step.table} (${step.description})`);
-            
-            const { error: deleteError, count } = await supabase
-              .from(step.table)
-              .delete({ count: 'exact' })
-              .match(step.condition);
-
-            if (deleteError) {
-              if (deleteError.code === 'PGRST116') {
-                // No matching rows - this is fine
-                debugLog('info', `No data found in ${step.table}`);
-              } else {
-                debugLog('warning', `Error deleting from ${step.table}:`, deleteError);
-                errorTables.push(`${step.table}: ${deleteError.message}`);
-              }
-            } else {
-              debugLog('info', `Deleted ${count || 0} record(s) from ${step.table}`);
-              if (count > 0) deletedTables.push(`${step.table} (${count})`);
-            }
-          } catch (tableError) {
-            debugLog('warning', `Exception deleting from ${step.table}:`, tableError);
-            errorTables.push(`${step.table}: ${tableError.message}`);
-          }
-        }
-
-        // Additional cleanup: Try to delete from master_users by email as fallback
-        if (userEmail) {
-          try {
-            debugLog('info', 'Attempting master_users cleanup by email');
-            const { error: masterUserEmailError, count: emailCount } = await supabase
-              .from('master_users')
-              .delete({ count: 'exact' })
-              .eq('email', userEmail);
-
-            if (masterUserEmailError) {
-              if (masterUserEmailError.code !== 'PGRST116') {
-                debugLog('warning', 'Error deleting master_users by email:', masterUserEmailError);
-              }
-            } else if (emailCount > 0) {
-              debugLog('info', `Deleted ${emailCount} record(s) from master_users by email`);
-              if (!deletedTables.some(t => t.startsWith('master_users'))) {
-                deletedTables.push(`master_users by email (${emailCount})`);
-              }
-            }
-          } catch (emailError) {
-            debugLog('warning', 'Exception deleting master_users by email:', emailError);
-          }
-        }
-
-        // Finally, delete from auth.users
-        debugLog('info', 'Deleting from auth.users');
-        const { error: authError } = await supabase.functions.invoke('delete-user', {
-          body: { user_id: id }
-        });
-
-        if (authError) {
-          debugLog('warning', 'Could not delete auth user', authError);
-          errorTables.push(`auth.users: ${authError.message}`);
-        } else {
-          deletedTables.push('auth.users');
-        }
-
-        // Log summary
-        debugLog('success', 'User removal complete', {
-          deletedTables,
-          errorTables,
-          userId: id,
-          profileName: profile?.full_name
-        });
-
-        // Show appropriate message based on results
-        let message = 'User and all data removed successfully';
-        if (errorTables.length > 0) {
-          message += ` (with ${errorTables.length} minor errors - see console)`;
+      if (!isUser) {
+        // Just remove the invitation
+        if (!inviteId) {
+          throw new Error('No invitation ID provided');
         }
         
-        const alertDiv = document.createElement('div');
-        alertDiv.className = 'alert success';
-        alertDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 16px; background: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 8px; z-index: 10000; max-width: 400px;';
-        alertDiv.innerHTML = `
-          <strong>User Removed</strong><br>
-          ${message}<br>
-          <small>Cleaned up ${deletedTables.length} table(s)</small>
-        `;
-        document.body.appendChild(alertDiv);
-        setTimeout(() => alertDiv.remove(), 5000);
-
-      } else {
-        // Just remove the invitation
         const { error } = await supabase
           .from('site_invites')
           .delete()
-          .eq('id', id);
+          .eq('id', inviteId);
 
         if (error) throw error;
 
@@ -14062,6 +13927,42 @@ ${JSON.stringify(fullLog, null, 2)}
         alertDiv.textContent = 'Invitation cancelled';
         document.body.appendChild(alertDiv);
         setTimeout(() => alertDiv.remove(), 3000);
+      } else {
+        // Run comprehensive SQL script to delete all user data by email
+        debugLog('info', 'Running comprehensive SQL cleanup script');
+        
+        if (!email) {
+          debugLog('warning', 'No email provided for SQL cleanup, falling back to conventional deletion');
+          
+          // Get user profile data first for proper cleanup
+          const { data: profile, error: profileError } = await supabase
+            .from('master_users')
+            .select('full_name, auth_auth_user_id, email')
+            .eq('auth_user_id', userId)
+            .single();
+  
+          if (profileError && profileError.code !== 'PGRST116') {
+            debugLog('warning', 'Could not fetch profile for cleanup', profileError);
+          }
+  
+          // Also try to get user email from auth.users if needed
+          let userEmail = profile?.email;
+          if (!userEmail) {
+            const { data: authUser } = await supabase.auth.admin.getUserById(userId);
+            userEmail = authUser?.user?.email;
+          }
+          
+          if (!userEmail) {
+            throw new Error('Could not determine user email for deletion');
+          }
+          
+          // Use the email we found for SQL-based cleanup
+          debugLog('info', `Found email for cleanup: ${userEmail}`);
+          executeCompositeDelete(userId, userEmail);
+        } else {
+          // Use the email provided directly
+          executeCompositeDelete(userId, email);
+        }
       }
 
       // Reload the user list to reflect changes
@@ -14072,6 +13973,151 @@ ${JSON.stringify(fullLog, null, 2)}
       alert('Failed to remove user: ' + err.message);
     }
   };
+  
+  // Helper function to execute the SQL deletion script
+  async function executeCompositeDelete(userId, email) {
+    debugLog('info', `Executing composite delete for user ${userId} with email ${email}`);
+    
+    try {
+      // First run the comprehensive SQL script to clean up all tables with this email
+      const sql = `
+      -- Record counts before deletion
+      WITH before_counts AS (
+        SELECT
+          (SELECT COUNT(*) FROM master_users WHERE email = '${email}') as master_users_count,
+          (SELECT COUNT(*) FROM training_records WHERE user_id = '${userId}') as training_records_count,
+          (SELECT COUNT(*) FROM complaints WHERE created_by = '${userId}') as complaints_count,
+          (SELECT COUNT(*) FROM meeting_notes WHERE created_by = '${userId}') as meeting_notes_count,
+          (SELECT COUNT(*) FROM meetings WHERE created_by = '${userId}') as meetings_count,
+          (SELECT COUNT(*) FROM quiz_practices WHERE email = '${email}') as quiz_practices_count,
+          (SELECT COUNT(*) FROM quiz_attempts WHERE user_id = '${userId}') as quiz_attempts_count,
+          (SELECT COUNT(*) FROM quiz_questions WHERE created_by = '${userId}') as quiz_questions_count,
+          (SELECT COUNT(*) FROM '1_staff_holiday_profiles' WHERE user_id = '${userId}') as holiday_profiles_count,
+          (SELECT COUNT(*) FROM '2_staff_entitlements' WHERE staff_id IN (SELECT id FROM '1_staff_holiday_profiles' WHERE user_id = '${userId}')) as entitlements_count,
+          (SELECT COUNT(*) FROM '3_staff_working_patterns' WHERE user_id = '${userId}') as working_patterns_count,
+          (SELECT COUNT(*) FROM staff_app_welcome WHERE user_id = '${userId}') as welcome_count,
+          (SELECT COUNT(*) FROM user_profiles_complete WHERE user_id = '${userId}') as profiles_complete_count,
+          (SELECT COUNT(*) FROM site_invites WHERE email = '${email}') as invites_count,
+          (SELECT COUNT(*) FROM holidays WHERE user_id = '${userId}') as holidays_count
+      ),
+      
+      -- Delete from child tables first to maintain referential integrity
+      delete_training AS (
+          DELETE FROM training_records WHERE user_id = '${userId}' RETURNING 1
+      ),
+      delete_complaints AS (
+          DELETE FROM complaints WHERE created_by = '${userId}' RETURNING 1
+      ),
+      delete_meeting_notes AS (
+          DELETE FROM meeting_notes WHERE created_by = '${userId}' RETURNING 1
+      ),
+      delete_meetings AS (
+          DELETE FROM meetings WHERE created_by = '${userId}' RETURNING 1
+      ),
+      delete_quiz_practices AS (
+          DELETE FROM quiz_practices WHERE email = '${email}' RETURNING 1
+      ),
+      delete_quiz_attempts AS (
+          DELETE FROM quiz_attempts WHERE user_id = '${userId}' RETURNING 1
+      ),
+      delete_quiz_questions AS (
+          DELETE FROM quiz_questions WHERE created_by = '${userId}' RETURNING 1
+      ),
+      
+      -- Legacy holiday system
+      delete_entitlements AS (
+          DELETE FROM "2_staff_entitlements" 
+          WHERE staff_id IN (SELECT id FROM "1_staff_holiday_profiles" WHERE user_id = '${userId}')
+          RETURNING 1
+      ),
+      delete_working_patterns AS (
+          DELETE FROM "3_staff_working_patterns" WHERE user_id = '${userId}' RETURNING 1
+      ),
+      delete_holiday_profiles AS (
+          DELETE FROM "1_staff_holiday_profiles" WHERE user_id = '${userId}' RETURNING 1
+      ),
+      
+      -- Main user tables
+      delete_welcome AS (
+          DELETE FROM staff_app_welcome WHERE user_id = '${userId}' RETURNING 1
+      ),
+      delete_profiles_complete AS (
+          DELETE FROM user_profiles_complete WHERE user_id = '${userId}' RETURNING 1
+      ),
+      delete_invites AS (
+          DELETE FROM site_invites WHERE email = '${email}' RETURNING 1
+      ),
+      delete_holidays AS (
+          DELETE FROM holidays WHERE user_id = '${userId}' RETURNING 1
+      ),
+      delete_master_users AS (
+          DELETE FROM master_users WHERE email = '${email}' OR auth_user_id = '${userId}' RETURNING 1
+      )
+      
+      -- Return summary of operations
+      SELECT
+          (SELECT COUNT(*) FROM delete_training) as training_deleted,
+          (SELECT COUNT(*) FROM delete_complaints) as complaints_deleted,
+          (SELECT COUNT(*) FROM delete_meeting_notes) as meeting_notes_deleted,
+          (SELECT COUNT(*) FROM delete_meetings) as meetings_deleted,
+          (SELECT COUNT(*) FROM delete_quiz_practices) as quiz_practices_deleted,
+          (SELECT COUNT(*) FROM delete_quiz_attempts) as quiz_attempts_deleted,
+          (SELECT COUNT(*) FROM delete_quiz_questions) as quiz_questions_deleted,
+          (SELECT COUNT(*) FROM delete_entitlements) as entitlements_deleted,
+          (SELECT COUNT(*) FROM delete_working_patterns) as working_patterns_deleted,
+          (SELECT COUNT(*) FROM delete_holiday_profiles) as holiday_profiles_deleted,
+          (SELECT COUNT(*) FROM delete_welcome) as welcome_deleted,
+          (SELECT COUNT(*) FROM delete_profiles_complete) as profiles_complete_deleted,
+          (SELECT COUNT(*) FROM delete_invites) as invites_deleted,
+          (SELECT COUNT(*) FROM delete_holidays) as holidays_deleted,
+          (SELECT COUNT(*) FROM delete_master_users) as master_users_deleted,
+          *
+      FROM before_counts;
+      `;
+      
+      // Execute the SQL script
+      const { data: sqlResult, error: sqlError } = await supabase.rpc('exec_sql', { sql });
+      
+      if (sqlError) {
+        debugLog('error', 'SQL execution error:', sqlError);
+        throw new Error(`SQL execution error: ${sqlError.message}`);
+      }
+      
+      debugLog('success', 'SQL cleanup completed', sqlResult);
+      
+      // Now delete from auth.users using the edge function
+      debugLog('info', 'Deleting from auth.users');
+      const { error: authError } = await supabase.functions.invoke('delete-user', {
+        body: { user_id: userId }
+      });
+
+      if (authError) {
+        debugLog('warning', 'Could not delete auth user', authError);
+      }
+      
+      // Calculate how many tables were affected
+      const deletedTablesCount = Object.keys(sqlResult[0] || {})
+        .filter(key => key.endsWith('_deleted') && sqlResult[0][key] > 0)
+        .length;
+      
+      // Show success message
+      const alertDiv = document.createElement('div');
+      alertDiv.className = 'alert success';
+      alertDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 16px; background: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 8px; z-index: 10000; max-width: 400px;';
+      alertDiv.innerHTML = `
+        <strong>User Removed</strong><br>
+        User and all data removed successfully<br>
+        <small>Cleaned up data from ${deletedTablesCount} table(s)</small>
+      `;
+      document.body.appendChild(alertDiv);
+      setTimeout(() => alertDiv.remove(), 5000);
+      
+      return true;
+    } catch (err) {
+      debugLog('error', 'Composite delete execution failed:', err);
+      throw err;
+    }
+  }
 
   // Keep old function for backwards compatibility
   window.cancelInvite = window.removeUserComplete;
