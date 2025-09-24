@@ -81,7 +81,8 @@
 
     body {
       font-family: var(--font-sans);
-      background: linear-gradient(135deg, var(--primary-lightest) 0%, var(--white) 100%);
+      background: linear-gradient(135deg, #e8f2ff 0%, #ffffff 100%) !important;
+      background-attachment: fixed;
       min-height: 100vh;
       color: var(--gray-900);
       position: relative;
@@ -96,9 +97,10 @@
       left: 0;
       right: 0;
       bottom: 0;
-      background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="%23e2e8f0" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+      background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="%23e2e8f0" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>') !important;
       opacity: 0.3;
       z-index: -1;
+      pointer-events: none;
     }
 
     /* Remove old background animations */
@@ -655,6 +657,20 @@
       transform: translateY(-2px);
       box-shadow: var(--shadow-md);
     }
+
+    .quiz-btn-secondary {
+      background: var(--gray-100);
+      color: var(--gray-700);
+      border: 2px solid var(--gray-300);
+      padding: 1rem 2rem;
+    }
+
+    .quiz-btn-secondary:hover {
+      background: var(--gray-200);
+      border-color: var(--gray-400);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
     /* Category Selector */
     .category-selector {
       margin-bottom: 1.25rem;
@@ -771,6 +787,67 @@
 
     .hidden { display: none !important; }
     
+    /* Full-width layout for quiz taking mode */
+    .quiz-taking-mode .content {
+      max-width: none;
+      padding: 1rem;
+    }
+    
+    .quiz-taking-mode .panel {
+      padding: 0;
+      box-shadow: none;
+      border: none;
+      border-radius: 0;
+      background: transparent;
+    }
+    
+    .quiz-taking-mode .panel::before {
+      display: none;
+    }
+    
+    /* Sticky progress bar */
+    .quiz-active .progress-container {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: var(--white);
+      padding: 1rem 2rem;
+      margin: -2.5rem -2.5rem 2rem -2.5rem;
+      border-bottom: 1px solid var(--gray-200);
+      box-shadow: var(--shadow-sm);
+    }
+    
+    /* Adjust quiz content spacing when progress is sticky */
+    .quiz-active {
+      padding: 2.5rem;
+      background: var(--white);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-lg);
+      animation: slideUp 0.5s ease;
+      border: 1px solid var(--gray-200);
+      margin: 1rem;
+    }
+    
+    /* Full-width questions container */
+    .quiz-taking-mode #questions-container {
+      max-width: none;
+    }
+    
+    /* Wider question cards for better use of space */
+    .quiz-taking-mode .question-card {
+      max-width: none;
+      padding: 2rem;
+    }
+    
+    /* Responsive grid for options on wider screens */
+    @media (min-width: 1024px) {
+      .quiz-taking-mode .options {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+      }
+    }
+    
     @media (max-width: 768px) {
       .quiz-modes {
         grid-template-columns: 1fr;
@@ -778,6 +855,25 @@
       
       .welcome-banner h1 {
         font-size: 28px;
+      }
+      
+      /* Adjust for mobile in quiz mode */
+      .quiz-taking-mode .content {
+        padding: 0.5rem;
+      }
+      
+      .quiz-active {
+        margin: 0.5rem;
+        padding: 1.5rem;
+      }
+      
+      .quiz-active .progress-container {
+        margin: -1.5rem -1.5rem 1.5rem -1.5rem;
+        padding: 1rem;
+      }
+      
+      .quiz-taking-mode .question-card {
+        padding: 1.5rem;
       }
     }
    /* Accessibility / Contrast Fix: ensure readable dark text inside light quiz panels
@@ -816,6 +912,28 @@
    /* Keep semantic colors for correctness states */
    .quiz-review .choice.correct { color:#1d5e24; }
    .quiz-review .choice.incorrect.user { color:#8d1e1e; }
+   
+   /* Full-width review mode styling */
+   .quiz-taking-mode .quiz-review {
+     margin: 1rem;
+     padding: 2.5rem;
+   }
+   
+   .quiz-taking-mode .review-card {
+     max-width: none;
+     padding: 2rem;
+   }
+   
+   @media (max-width: 768px) {
+     .quiz-taking-mode .quiz-review {
+       margin: 0.5rem;
+       padding: 1.5rem;
+     }
+     
+     .quiz-taking-mode .review-card {
+       padding: 1.5rem;
+     }
+   }
   </style>
 </head>
 <body>
@@ -933,7 +1051,7 @@
 
         <div class="review-actions">
           <button id="btn-review-summary" class="quiz-btn quiz-btn-submit">
-            <img data-i8="clipboard" data-i8-size="16" alt=""> Skip to summary
+            <img data-i8="clipboard" data-i8-size="16" alt=""> Back to Summary
           </button>
         </div>
         </div>
@@ -945,9 +1063,14 @@
         <div class="score-display" id="score-display">0/10</div>
         <div class="score-message" id="score-message">Good effort!</div>
         <div id="result-mode-info" style="margin: 20px 0; color: #666;"></div>
-        <button id="btn-home" class="quiz-btn quiz-btn-home">
+        <div class="quiz-actions" style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+          <button id="btn-review-answers" class="quiz-btn quiz-btn-secondary">
+            <img data-i8="books" data-i8-size="16" alt=""> Review Answers
+          </button>
+          <button id="btn-home" class="quiz-btn quiz-btn-home">
             Back to Quiz Home
           </button>
+        </div>
         </div>
       </div>
     </main>
@@ -1327,6 +1450,7 @@ async function refreshRequiredAchievements({ scorePercent, totalQuestions }) {
       document.getElementById('quiz-home').classList.add('hidden');
       document.getElementById('quiz-active').classList.remove('hidden');
       document.getElementById('quiz-results').classList.add('hidden');
+      document.body.classList.add('quiz-taking-mode');
       
       // Set mode-specific UI
       const titleEl = document.getElementById('quiz-title');
@@ -1569,7 +1693,9 @@ async function refreshRequiredAchievements({ scorePercent, totalQuestions }) {
         userIndex: userAnswers[index] ?? null,
         isCorrect: userAnswers[index] === q.answer
       }));
-      startReview(correctCount, currentQuestions.length, scorePercent);
+      
+      // Show results screen first instead of going directly to review
+      showResults(correctCount, currentQuestions.length, scorePercent);
 
       // If this was a required quiz, refresh the status and next due (UI only)
       if (currentMode === 'required') {
@@ -1624,12 +1750,14 @@ async function refreshRequiredAchievements({ scorePercent, totalQuestions }) {
       document.getElementById('quiz-results').classList.add('hidden');
       const reviewEl = document.getElementById('quiz-review');
       reviewEl.classList.remove('hidden');
+      // Keep quiz-taking-mode for full width in review
 
       // Wire controls
       document.getElementById('review-prev').onclick = () => gotoReviewIndex(reviewIndex - 1);
       document.getElementById('review-next').onclick = () => gotoReviewIndex(reviewIndex + 1);
       document.getElementById('btn-review-summary').onclick = () => {
         reviewEl.classList.add('hidden');
+        document.removeEventListener('keydown', reviewKeyHandler);
         showResults(correct, total, percentage);
       };
       document.addEventListener('keydown', reviewKeyHandler);
@@ -1686,6 +1814,8 @@ async function refreshRequiredAchievements({ scorePercent, totalQuestions }) {
     function showResults(correct, total, percentage) {
       document.getElementById('quiz-active').classList.add('hidden');
       document.getElementById('quiz-results').classList.remove('hidden');
+      // Remove quiz-taking-mode class for normal layout in results
+      document.body.classList.remove('quiz-taking-mode');
       
       // Set score display
       document.getElementById('score-display').textContent = `${correct}/${total}`;
@@ -1743,6 +1873,31 @@ async function refreshRequiredAchievements({ scorePercent, totalQuestions }) {
         wireIcons();
       } catch (e) {
         console.error('Error wiring icons:', e);
+      }
+      
+      // Wire up the new buttons
+      const btnReviewAnswers = document.getElementById('btn-review-answers');
+      const btnHome = document.getElementById('btn-home');
+      
+      if (btnReviewAnswers) {
+        btnReviewAnswers.onclick = () => {
+          // Start review mode with the stored review results
+          startReview(correct, total, percentage);
+        };
+      }
+      
+      if (btnHome) {
+        btnHome.onclick = () => {
+          // Return to quiz selection screen
+          document.getElementById('quiz-results').classList.add('hidden');
+          document.getElementById('quiz-selection').classList.remove('hidden');
+          
+          // Reset quiz state
+          currentQuestions = [];
+          userAnswers = {};
+          reviewResults = [];
+          reviewIndex = 0;
+        };
       }
     }
     
@@ -1807,6 +1962,7 @@ async function refreshRequiredAchievements({ scorePercent, totalQuestions }) {
         document.getElementById('quiz-home').classList.remove('hidden');
         document.getElementById('quiz-active').classList.add('hidden');
         document.getElementById('quiz-results').classList.add('hidden');
+        document.body.classList.remove('quiz-taking-mode');
         
         // Force refresh the quiz status to ensure UI is up to date
         // Add a small delay to ensure database write is complete

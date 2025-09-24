@@ -700,7 +700,6 @@ export function renderStaffNavigation(activePage = 'home') {
   // Standardized navigation items across all pages
   const navItems = [
     { page: 'home', href: 'staff.html', label: 'Home' },
-    { page: 'calendar', href: 'staff-calendar.html', label: 'Staffing Calendar' },
     { page: 'welcome', href: 'staff-welcome.html', label: 'Welcome' },
     { page: 'holidays', href: 'my-holidays.html', label: 'My Holidays' },
     { page: 'meetings', href: 'staff-meetings.html', label: 'Meetings', disabled: true, tooltip: 'Coming Soon!' },
