@@ -36,17 +36,19 @@ serve(async (req) => {
     // Create Supabase client with user's token to verify they're authenticated
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-    // Try custom SERVICE_KEY first, then fall back to SUPABASE_SERVICE_ROLE_KEY
-    let supabaseServiceKey = Deno.env.get('SERVICE_KEY') ?? ''
+    // Always prefer the official Supabase service role key. Only fall back to SERVICE_KEY if explicitly needed.
+    let supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     if (!supabaseServiceKey) {
-      supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      supabaseServiceKey = Deno.env.get('SERVICE_KEY') ?? ''
     }
 
     trace('env-configuration-loaded', {
       hasUrl: Boolean(supabaseUrl),
       hasAnon: Boolean(supabaseAnonKey),
       hasService: Boolean(supabaseServiceKey),
-      serviceKeySource: Deno.env.get('SERVICE_KEY') ? 'SERVICE_KEY' : 'SUPABASE_SERVICE_ROLE_KEY',
+      serviceKeySource: supabaseServiceKey && supabaseServiceKey === (Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '')
+        ? 'SUPABASE_SERVICE_ROLE_KEY'
+        : 'SERVICE_KEY',
     })
 
     // Verify the user is authenticated
@@ -165,45 +167,6 @@ serve(async (req) => {
       throw new Error('Name is required for new invitations')
     }
 
-    // If resending, get existing user data
-    let existingUserRecord = null
-    if (resend) {
-      const { data: existing } = await serviceClient
-        .from('master_users')
-        .select('*')
-        .eq('email', email)
-        .single()
-
-      if (!existing) {
-        trace('resend-user-not-found', { email })
-        throw new Error('User not found. Cannot resend invitation.')
-      }
-      existingUserRecord = existing
-      trace('resend-user-found', {
-        email,
-        accessType: existing.access_type,
-        siteId: existing.site_id,
-        hasAuthUser: Boolean(existing.auth_user_id),
-      })
-    } else {
-      // Check if user already exists (for new invitations)
-      const { data: existingUser } = await serviceClient
-        .from('master_users')
-        .select('*')
-        .eq('email', email)
-        .single()
-
-      if (existingUser) {
-        trace('duplicate-email', { email })
-        throw new Error('User with this email already exists')
-      }
-    }
-
-    // Send invitation through Supabase Auth Admin API
-    const normalizedSiteId = resend
-      ? existingUserRecord?.site_id ?? site_id ?? 2
-      : site_id ?? 2
-
     const parseOptionalNumber = (value: unknown) => {
       if (value === null || value === undefined || value === '') return null
       const num = Number(value)
@@ -212,8 +175,109 @@ serve(async (req) => {
 
     const sanitizedTeamId = parseOptionalNumber(team_id)
     const sanitizedReportsToId = parseOptionalNumber(reports_to_id)
-    const normalizedAccessType = (access_type || existingUserRecord?.access_type || 'staff').toString().toLowerCase()
-    const invitationFullName = resend ? existingUserRecord?.full_name || email : name
+    const normalizedAccessType = (access_type || 'staff').toString().toLowerCase()
+    const invitationFullName = name || email
+
+    // Check for existing master_users record
+    const { data: existingUserRecord, error: existingUserError } = await serviceClient
+      .from('master_users')
+      .select('*')
+      .eq('email', email)
+      .eq('site_id', site_id ?? normalizedSiteId)
+      .maybeSingle()
+
+    if (existingUserError && existingUserError.code && existingUserError.code !== 'PGRST116') {
+      trace('existing-user-lookup-error', {
+        code: existingUserError.code,
+        message: existingUserError.message,
+        details: existingUserError.details,
+      })
+      throw new Error('Failed to check existing user state')
+    }
+
+    const hasExistingUser = Boolean(existingUserRecord)
+    const existingUserHasAccount = Boolean(existingUserRecord?.auth_user_id)
+
+    if (!resend && hasExistingUser && existingUserHasAccount) {
+      trace('duplicate-email-active-account', { email })
+      throw new Error('User with this email already exists')
+    }
+
+    const normalizedSiteId = resend
+      ? existingUserRecord?.site_id ?? site_id ?? 2
+      : site_id ?? 2
+
+    // Upsert site_invites entry here (replace front-end insert)
+    const inviteExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    const inviteRow = {
+      site_id: normalizedSiteId,
+      email,
+      full_name: invitationFullName,
+      role: normalizedAccessType,
+      role_detail: role_detail || existingUserRecord?.role_detail || null,
+      reports_to_id: sanitizedReportsToId ?? existingUserRecord?.reports_to_id ?? null,
+      status: 'pending',
+      expires_at: inviteExpiry,
+      invited_by: user.id,
+    }
+
+    const { data: existingInvite, error: existingInviteError } = await serviceClient
+      .from('site_invites')
+      .select('id, status, created_at')
+      .eq('site_id', normalizedSiteId)
+      .eq('email', email)
+      .maybeSingle()
+
+    if (existingInviteError && existingInviteError.code && existingInviteError.code !== 'PGRST116') {
+      trace('site-invite-lookup-error', {
+        code: existingInviteError.code,
+        message: existingInviteError.message,
+        details: existingInviteError.details,
+      })
+      throw new Error('Failed to prepare invitation record')
+    }
+
+    if (existingInvite) {
+      const { error: updateInviteError } = await serviceClient
+        .from('site_invites')
+        .update({ ...inviteRow })
+        .eq('id', existingInvite.id)
+
+      if (updateInviteError) {
+        trace('site-invite-update-error', {
+          message: updateInviteError.message,
+          code: updateInviteError.code,
+          details: updateInviteError.details,
+        })
+        throw new Error('Failed to refresh existing invitation')
+      }
+
+      trace('site-invite-updated', {
+        inviteId: existingInvite.id,
+        email,
+        expiresAt: inviteExpiry,
+      })
+    } else {
+      const { error: insertInviteError } = await serviceClient
+        .from('site_invites')
+        .insert({ ...inviteRow })
+
+      if (insertInviteError) {
+        trace('site-invite-insert-error', {
+          message: insertInviteError.message,
+          code: insertInviteError.code,
+          details: insertInviteError.details,
+        })
+        throw new Error('Failed to create invitation record')
+      }
+
+      trace('site-invite-inserted', {
+        email,
+        expiresAt: inviteExpiry,
+      })
+    }
+
+    const redirectTo = `https://checkloops.co.uk/simple-set-password.html?email=${encodeURIComponent(email)}&site_id=${normalizedSiteId}`
 
     const inviteData = {
       data: {
@@ -225,16 +289,18 @@ serve(async (req) => {
         team_id: sanitizedTeamId ?? existingUserRecord?.team_id ?? null,
         reports_to_id: sanitizedReportsToId ?? existingUserRecord?.reports_to_id ?? null,
       },
+      redirectTo,
     }
 
     trace('invitation-prepared', {
-      resend,
+      resend: resend || (hasExistingUser && !existingUserHasAccount),
       normalizedSiteId,
       fullName: invitationFullName,
       accessType: normalizedAccessType,
       roleDetail: role_detail ?? existingUserRecord?.role_detail ?? null,
       teamId: sanitizedTeamId ?? existingUserRecord?.team_id ?? null,
       reportsToId: sanitizedReportsToId ?? existingUserRecord?.reports_to_id ?? null,
+      redirectTo,
     })
 
     const { data: invitation, error: inviteError } = await serviceClient.auth.admin.inviteUserByEmail(
@@ -254,46 +320,77 @@ serve(async (req) => {
       email,
     })
 
-    // Create entry in master_users table (only for new invitations)
-    if (!resend) {
-      const nowIso = new Date().toISOString()
+    const nowIso = new Date().toISOString()
+    const masterUserPayload = {
+      email,
+      full_name: invitationFullName,
+      access_type: normalizedAccessType,
+      role: normalizedAccessType,
+      role_detail: role_detail || existingUserRecord?.role_detail || null,
+      team_id: sanitizedTeamId ?? existingUserRecord?.team_id ?? null,
+      reports_to_id: sanitizedReportsToId ?? existingUserRecord?.reports_to_id ?? null,
+      invite_status: 'pending',
+      invite_sent_at: nowIso,
+      invite_expires_at: inviteExpiry,
+      invited_by: user.id,
+      site_id: normalizedSiteId,
+      updated_at: nowIso,
+    }
+
+    if (existingUserRecord) {
+      const { error: updateUserError } = await serviceClient
+        .from('master_users')
+        .update(masterUserPayload)
+        .eq('id', existingUserRecord.id)
+
+      if (updateUserError) {
+        console.error(`[send-invitation][${requestId}] master_users update error`, updateUserError)
+        trace('database-update-error', {
+          message: updateUserError.message,
+          code: updateUserError.code,
+          details: updateUserError.details,
+        })
+      } else {
+        trace('database-update-complete', {
+          email,
+          table: 'master_users',
+          id: existingUserRecord.id,
+        })
+      }
+    } else {
+      const insertPayload = { ...masterUserPayload, created_at: nowIso }
       const { error: dbError } = await serviceClient
         .from('master_users')
-        .insert({
-          email: email,
-          full_name: name,
-          access_type: normalizedAccessType,
-          role: normalizedAccessType,
-          role_detail: role_detail || null,
-          team_id: sanitizedTeamId,
-          reports_to_id: sanitizedReportsToId,
-          invite_status: 'pending',
-          invite_sent_at: nowIso,
-          invited_by: user.id,
-          site_id: normalizedSiteId,
-          created_at: nowIso,
-          updated_at: nowIso,
-        })
+        .insert(insertPayload)
 
       if (dbError) {
-        console.error(`[send-invitation][${requestId}] Database insert error`, dbError)
+        console.error(`[send-invitation][${requestId}] master_users insert error`, dbError)
         trace('database-insert-error', {
           message: dbError.message,
           code: dbError.code,
           details: dbError.details,
         })
-        // Continue anyway - invitation was sent
+      } else {
+        trace('database-insert-complete', {
+          email,
+          table: 'master_users',
+        })
       }
-      trace('database-insert-complete', {
-        email,
-        table: 'master_users',
-      })
     }
 
-    trace('completed', { email, resend })
+    const finalResend = resend || (hasExistingUser && !existingUserHasAccount)
+
+    trace('completed', { email, resend: finalResend })
 
     return new Response(
-      JSON.stringify({ success: true, message: `Invitation sent successfully to ${email}`, debug: debugSteps, requestId }),
+      JSON.stringify({
+        success: true,
+        message: finalResend
+          ? `Invitation resent successfully to ${email}`
+          : `Invitation sent successfully to ${email}`,
+        debug: debugSteps,
+        requestId,
+      }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
