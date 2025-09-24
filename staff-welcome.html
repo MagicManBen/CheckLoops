@@ -1504,8 +1504,74 @@
       // DiceBear Adventurer style avatar system
       const preview = document.getElementById('avatarPreview');
       if (preview) {
-        // Set default avatar or load existing
+        // Set existing avatar from user profile or default
         preview.src = profileRow?.avatar_url || 'https://api.dicebear.com/7.x/adventurer/svg';
+        
+        // If user has an existing avatar from DiceBear, parse its parameters
+        if (profileRow?.avatar_url && profileRow.avatar_url.includes('api.dicebear.com/7.x/adventurer/svg')) {
+          try {
+            const url = new URL(profileRow.avatar_url);
+            const params = new URLSearchParams(url.search);
+            
+            // Map URL parameters back to form controls
+            setTimeout(() => {
+              // Face features
+              if (params.has('eyes')) setSelectValue('opt-eyes', params.get('eyes'));
+              if (params.has('mouth')) setSelectValue('opt-mouth', params.get('mouth'));
+              if (params.has('eyebrows')) setSelectValue('opt-eyebrows', params.get('eyebrows'));
+              if (params.has('skinColor')) setSelectValue('opt-skinColor', params.get('skinColor'));
+              
+              // Accessories
+              if (params.has('glasses')) setSelectValue('opt-glasses', params.get('glasses'));
+              if (params.has('glassesProbability')) setSelectValue('opt-glassesProbability', params.get('glassesProbability'));
+              if (params.has('earrings')) setSelectValue('opt-earrings', params.get('earrings'));
+              if (params.has('earringsProbability')) setSelectValue('opt-earringsProbability', params.get('earringsProbability'));
+              
+              // Features (multi-select)
+              const featuresEl = document.getElementById('opt-features');
+              if (featuresEl && params.has('features')) {
+                const features = params.getAll('features');
+                if (features.length) {
+                  Array.from(featuresEl.options).forEach(opt => {
+                    opt.selected = features.includes(opt.value);
+                  });
+                  if (params.has('featuresProbability')) {
+                    setSelectValue('opt-featuresProbability', params.get('featuresProbability'));
+                  }
+                }
+              }
+              
+              // Hair
+              if (params.has('hair')) setSelectValue('opt-hair', params.get('hair'));
+              if (params.has('hairColor')) setSelectValue('opt-hairColor', params.get('hairColor'));
+              if (params.has('hairProbability')) setSelectValue('opt-hairProbability', params.get('hairProbability'));
+              
+              console.log('Avatar parameters restored from URL');
+            }, 500); // Short delay to ensure dropdowns are populated
+          } catch (e) {
+            console.warn('Could not parse existing avatar URL parameters:', e);
+          }
+        }
+      }
+      
+      // Helper function to set select element value
+      function setSelectValue(id, value) {
+        const el = document.getElementById(id);
+        if (el && value) {
+          el.value = value;
+          // Trigger change event to update any dependent elements
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+          
+          // Also update any option buttons if they exist
+          const buttons = el.parentElement.querySelector('.option-buttons');
+          if (buttons) {
+            const btn = buttons.querySelector(`.option-btn[data-value="${value}"]`);
+            if (btn) {
+              buttons.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
+              btn.classList.add('selected');
+            }
+          }
+        }
       }
       
       // Helper functions for avatar building
