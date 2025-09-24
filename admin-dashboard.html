@@ -254,6 +254,1350 @@ if (document.readyState === 'loading') {
 // Also repopulate when the Invite User modal is opened, so the dropdown stays fresh
 (document.getElementById('btn-invite-user') || {}).addEventListener?.('click', () => setTimeout(populateTeamsSelect, 0));
 </script>
+<script>
+// --- NHS Practice Search: Search-first approach with Supabase ---
+(function () {
+  const log = (...a) => { try { console.log('[NHS Search]', ...a); } catch(_){} };
+
+  // Initialize window.ctx if it doesn't exist
+  window.ctx = window.ctx || {};
+
+  let currentSearchType = 'name';
+  let selectedPractice = null;
+
+  // Search NHS practices using Supabase Edge Function for scalable filtering
+  async function searchPracticesInSupabase(searchType, searchTerm, options = {}) {
+    if (!window.supabase?.functions) {
+      throw new Error('Supabase functions client unavailable');
+    }
+
+    const query = (searchTerm || '').trim();
+
+    if (!query && searchType !== 'type') {
+      throw new Error('Please provide a search term');
+    }
+
+    const payload = {
+      searchType,
+      query,
+      options: {
+        limit: options.limit ?? 25,
+        radius: options.radius,
+        practiceType: options.practiceType,
+        includeRaw: false,
+      },
+    };
+
+    console.log('[NHS Search] invoking search-gp-practices', payload);
+
+    const { data, error } = await window.supabase.functions.invoke('search-gp-practices', {
+      body: payload,
+    });
+
+    if (error) {
+      console.error('search-gp-practices edge error:', error);
+      throw new Error(error.message || 'Search failed');
+    }
+
+    return data || { results: [], total: 0 };
+  }
+
+  // Display search results as cards
+  function displaySearchResults(result) {
+    const resultsContainer = document.getElementById('searchResultsContainer');
+    const resultsDiv = document.getElementById('searchResults');
+    const resultsCount = document.getElementById('resultsCount');
+
+    if (!resultsDiv || !resultsContainer) return;
+
+    // Clear previous results
+    resultsDiv.innerHTML = '';
+
+    const practices = result?.results || [];
+    const total = result?.total ?? practices.length;
+
+    if (!practices.length) {
+      resultsContainer.style.display = 'block';
+      if (resultsCount) resultsCount.textContent = '0';
+      resultsDiv.innerHTML = `
+        <div style="padding: 30px; text-align: center; color: var(--muted);">
+          <p style="font-size: 16px;">No practices found</p>
+          <p style="font-size: 14px; margin-top: 8px;">Try adjusting your search criteria</p>
+        </div>
+      `;
+      return;
+    }
+
+    // Show results container
+    resultsContainer.style.display = 'block';
+    if (resultsCount) resultsCount.textContent = total.toLocaleString();
+
+    // Create practice cards
+    practices.forEach(practice => {
+      const card = document.createElement('div');
+      card.className = 'practice-card';
+      card.dataset.code = practice.ods_code;
+      card.dataset.name = practice.name;
+      if (practice.score !== undefined) {
+        card.dataset.score = practice.score;
+      }
+      card.style.cssText = `
+        padding: 15px;
+        border-bottom: 1px solid var(--border-color);
+        cursor: pointer;
+        transition: all 0.2s;
+      `;
+
+      card.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: start;">
+          <div style="flex: 1;">
+            <div style="font-weight: 600; color: var(--ink); font-size: 15px;">
+              ${practice.name}
+            </div>
+            <div style="color: var(--accent); font-size: 13px; margin-top: 3px;">
+              ODS Code: ${practice.ods_code}
+            </div>
+            ${practice.address_line1 || practice.city ? `
+              <div style="color: var(--muted); font-size: 13px; margin-top: 5px;">
+                ${[practice.address_line1, practice.city].filter(Boolean).join(', ')}
+              </div>
+            ` : ''}
+            ${practice.postcode ? `
+              <div style="color: var(--muted); font-size: 13px; margin-top: 2px;">
+                ${practice.postcode}
+              </div>
+            ` : ''}
+            ${practice.phone ? `
+              <div style="color: var(--muted); font-size: 13px; margin-top: 2px; display:flex; align-items:center; gap:6px;">
+                <span style="font-size: 12px; opacity: 0.75;">☎</span> ${practice.phone}
+              </div>
+            ` : ''}
+            ${practice.status ? `
+              <div style="margin-top: 6px; font-size: 12px; color: var(--muted);">
+                Status: <span style="color: var(--white); font-weight: 500;">${practice.status}</span>
+              </div>
+            ` : ''}
+          </div>
+          <button class="practice-select-btn"
+                  style="padding: 6px 12px; background: var(--accent); color: white;
+                         border: none; border-radius: 6px; cursor: pointer;
+                         font-size: 13px; transition: all 0.2s;">
+            Select
+          </button>
+        </div>
+        ${practice.score !== undefined ? `
+          <div style="margin-top: 10px; font-size: 11px; color: var(--muted); display:flex; justify-content:space-between;">
+            <span>Match score: <strong style="color: var(--accent);">${Math.round(practice.score)}</strong></span>
+            ${practice.highlight?.fields?.length ? `<span>Matched: ${practice.highlight.fields.join(', ')}</span>` : ''}
+          </div>
+        ` : ''}
+      `;
+
+      // Add hover effect
+      card.addEventListener('mouseenter', () => {
+        card.style.background = 'var(--glass)';
+      });
+      card.addEventListener('mouseleave', () => {
+        card.style.background = 'transparent';
+      });
+
+      resultsDiv.appendChild(card);
+    });
+
+    // Click handlers for select buttons are handled via event delegation in setupSearchHandlers
+  }
+
+  // [Removed old selectPractice function - using new search-first implementation below]
+
+  // Perform search
+  async function performSearch() {
+    console.log('performSearch called, currentSearchType:', currentSearchType);
+
+    const searchTerm = currentSearchType === 'name'
+      ? document.getElementById('siteSearch')?.value
+      : currentSearchType === 'postcode'
+      ? document.getElementById('postcodeSearch')?.value
+      : '';
+
+    console.log('Search term:', searchTerm);
+
+    if (!searchTerm || searchTerm.trim() === '') {
+      alert('Please enter a search term');
+      return;
+    }
+
+    if (currentSearchType === 'name' && searchTerm.length < 3) {
+      alert('Please enter at least 3 characters');
+      return;
+    }
+
+    // Show loading
+    const loadingDiv = document.getElementById('searchLoading');
+    const resultsContainer = document.getElementById('searchResultsContainer');
+
+    if (loadingDiv) loadingDiv.style.display = 'block';
+    if (resultsContainer) resultsContainer.style.display = 'none';
+
+    try {
+      const options = {};
+
+      if (currentSearchType === 'postcode') {
+        options.radius = document.getElementById('postcodeRadius')?.value || 'area';
+      }
+
+      console.log('Calling searchPracticesInSupabase with:', {
+        searchType: currentSearchType,
+        searchTerm: searchTerm.trim(),
+        options
+      });
+
+      const results = await searchPracticesInSupabase(
+        currentSearchType,
+        searchTerm.trim(),
+        options
+      );
+
+      console.log('Search returned', results?.returned ?? results?.results?.length ?? 0, 'results');
+      displaySearchResults(results);
+
+    } catch (error) {
+      console.error('Search failed:', error);
+      alert(`Search failed: ${error.message || 'Unknown error'}`);
+    } finally {
+      if (loadingDiv) loadingDiv.style.display = 'none';
+    }
+  }
+
+  // Perform type filter search
+  async function performTypeSearch(practiceType) {
+    // Show loading
+    const loadingDiv = document.getElementById('searchLoading');
+    const resultsContainer = document.getElementById('searchResultsContainer');
+
+    if (loadingDiv) loadingDiv.style.display = 'block';
+    if (resultsContainer) resultsContainer.style.display = 'none';
+
+    try {
+      const results = await searchPracticesInSupabase(
+        'type',
+        '',
+        { practiceType }
+      );
+
+      displaySearchResults(results);
+
+    } catch (error) {
+      log('Type search failed:', error);
+      alert('Search failed. Please try again.');
+    } finally {
+      if (loadingDiv) loadingDiv.style.display = 'none';
+    }
+  }
+
+  // Setup event handlers for NHS practice search
+  function setupSearchHandlers() {
+    // Handle search tab switching
+    const searchTabs = document.querySelectorAll('.search-tab');
+    searchTabs.forEach(tab => {
+      tab.addEventListener('click', function() {
+        // Update active tab styling
+        searchTabs.forEach(t => {
+          t.classList.remove('active');
+          t.style.background = 'var(--glass)';
+          t.style.color = 'var(--ink)';
+          t.style.border = '1px solid var(--border-color)';
+        });
+
+        this.classList.add('active');
+        this.style.background = 'var(--accent)';
+        this.style.color = 'white';
+        this.style.border = 'none';
+
+        // Switch panels
+        const searchType = this.dataset.searchType;
+        currentSearchType = searchType;
+
+        document.querySelectorAll('.search-panel').forEach(panel => {
+          panel.style.display = 'none';
+        });
+
+        const activePanel = document.querySelector(`.search-panel[data-panel="${searchType}"]`);
+        if (activePanel) {
+          activePanel.style.display = 'block';
+
+          // Focus appropriate input
+          if (searchType === 'name') {
+            document.getElementById('siteSearch')?.focus();
+          } else if (searchType === 'postcode') {
+            document.getElementById('postcodeSearch')?.focus();
+          }
+        }
+      });
+    });
+
+    // Handle name search button
+    const searchButton = document.getElementById('searchButton');
+    if (searchButton) {
+      searchButton.addEventListener('click', performSearch);
+    }
+
+    // Handle Enter key on name search
+    const siteSearch = document.getElementById('siteSearch');
+    if (siteSearch) {
+      siteSearch.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          performSearch();
+        }
+      });
+    }
+
+    // Handle postcode search button
+    const postcodeSearchButton = document.getElementById('postcodeSearchButton');
+    if (postcodeSearchButton) {
+      postcodeSearchButton.addEventListener('click', performSearch);
+    }
+
+    // Handle Enter key on postcode search
+    const postcodeSearch = document.getElementById('postcodeSearch');
+    if (postcodeSearch) {
+      postcodeSearch.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          performSearch();
+        }
+      });
+    }
+
+    // Handle type filters
+    document.addEventListener('click', function(e) {
+      if (e.target.classList.contains('type-filter-btn')) {
+        const practiceType = e.target.dataset.type;
+        performTypeSearch(practiceType);
+      }
+    });
+
+    // Handle practice selection from search results
+    document.addEventListener('click', function(e) {
+      if (e.target.classList.contains('practice-select-btn')) {
+        const practiceCard = e.target.closest('.practice-card');
+        if (practiceCard) {
+          const code = practiceCard.dataset.code;
+          const name = practiceCard.dataset.name;
+          selectPractice(code, name);
+        }
+      }
+    });
+
+    // Handle "Change" button to reset selection
+    document.addEventListener('click', function(e) {
+      if (e.target.id === 'changePracticeBtn') {
+        resetPracticeSelection();
+      }
+    });
+  }
+
+  // Select a practice and fetch comprehensive details
+  async function selectPractice(code, name) {
+    log('Selected practice:', code, name);
+
+    // Store in context
+    window.ctx = window.ctx || {};
+    window.ctx.site_id = code;
+    window.ctx.site_name = name;
+
+    // Update UI to show selected practice
+    const searchWrapper = document.getElementById('siteSearchWrapper');
+    const selectedDisplay = document.getElementById('selectedPracticeDisplay');
+
+    if (!selectedDisplay) {
+      // Create selected display if it doesn't exist
+      const display = document.createElement('div');
+      display.id = 'selectedPracticeDisplay';
+      display.style.cssText = `
+        background: var(--success-bg);
+        border: 1px solid var(--success);
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 15px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      `;
+      display.innerHTML = `
+        <div>
+          <strong style="color: var(--success);">✓ Selected:</strong>
+          <span id="selectedPracticeName" style="margin-left: 8px;">${name}</span>
+          <span style="color: var(--muted); margin-left: 8px;">(${code})</span>
+        </div>
+        <div>
+          <button id="viewDetailsBtn" class="btn primary" style="padding: 6px 12px; font-size: 13px; margin-right: 8px;">View Full Details</button>
+          <button id="changePracticeBtn" class="btn" style="padding: 6px 12px; font-size: 13px;">Change</button>
+        </div>
+      `;
+
+      searchWrapper.parentElement.insertBefore(display, searchWrapper);
+
+      // Add event listener for View Details button
+      document.getElementById('viewDetailsBtn').addEventListener('click', () => {
+        showPracticeDetailsModal(code, name);
+      });
+    } else {
+      // Update existing display
+      selectedDisplay.style.display = 'flex';
+      document.getElementById('selectedPracticeName').textContent = name;
+      selectedDisplay.querySelector('span:last-of-type').textContent = `(${code})`;
+    }
+
+    // Hide search interface
+    if (searchWrapper) searchWrapper.style.display = 'none';
+
+    // Hide results
+    const resultsContainer = document.getElementById('searchResultsContainer');
+    if (resultsContainer) resultsContainer.style.display = 'none';
+
+    // Fire custom event
+    window.dispatchEvent(new CustomEvent('checkloops:siteSelected', {
+      detail: { code, name }
+    }));
+
+    // Enable next button
+    const nextBtn = document.querySelector('#step-site-search .next-btn');
+    if (nextBtn) {
+      nextBtn.disabled = false;
+      nextBtn.style.opacity = '1';
+    }
+
+    // Automatically fetch and show details
+    showPracticeDetailsModal(code, name);
+  }
+
+  // Reset practice selection
+  function resetPracticeSelection() {
+    // Clear context
+    if (window.ctx) {
+      delete window.ctx.site_id;
+      delete window.ctx.site_name;
+    }
+
+    // Show search interface
+    const searchWrapper = document.getElementById('siteSearchWrapper');
+    if (searchWrapper) searchWrapper.style.display = 'block';
+
+    // Hide selected display
+    const selectedDisplay = document.getElementById('selectedPracticeDisplay');
+    if (selectedDisplay) selectedDisplay.style.display = 'none';
+
+    // Clear search results
+    const resultsContainer = document.getElementById('searchResultsContainer');
+    if (resultsContainer) resultsContainer.innerHTML = '';
+
+    // Focus search input
+    if (currentSearchType === 'name') {
+      document.getElementById('siteSearch')?.focus();
+    } else if (currentSearchType === 'postcode') {
+      document.getElementById('postcodeSearch')?.focus();
+    }
+  }
+
+  function setSelectError(sel, msg) {
+    sel.innerHTML = '';
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = msg;
+    opt.disabled = true;
+    opt.selected = true;
+    sel.appendChild(opt);
+  }
+
+  // Store all practices for filtering
+  let allPractices = [];
+
+  async function populateORDSites() {
+    log('populateORDSites called');
+    const sel = findTargetSelect();
+    if (!sel) {
+      log('Select not found; skipping. Give it id="siteSelect" if needed.');
+      return;
+    }
+
+    log('Select element found, current options count:', sel.options.length);
+
+    // If the UI already has options, keep them until load completes
+    const prevHTML = sel.innerHTML;
+    try {
+      sel.disabled = true;
+      sel.innerHTML = '<option value="" disabled selected>Loading NHS GP practices…</option>';
+      log('Set loading state on select');
+
+      let data = await fetchPractices(0, 100, 'ro76');
+      log('fetchPractices returned:', data);
+
+      let list = (data && (data.Organisations || data.organisations)) || [];
+      log('Organisations list extracted, count:', list.length);
+
+      let isMockData = false; // Only use real NHS data
+
+      // If no results with RO76, try RO177 (unless we're already using mock data)
+      if (!isMockData && list.length === 0 && !data.__error) {
+        log('No results with RO76, trying RO177...');
+        data = await fetchPractices(0, 100, 'ro177');
+        list = (data && (data.Organisations || data.organisations)) || [];
+        log('RO177 fetch returned', list.length, 'organisations');
+        // No mock data
+      }
+
+      // If still no results, test if API works at all (diagnostic)
+      if (!isMockData && list.length === 0 && !data.__error) {
+        log('Still no results, testing if API returns ANY organisations...');
+        data = await fetchPractices(0, 10, 'any');
+        const testList = (data && (data.Organisations || data.organisations)) || [];
+        if (testList.length > 0) {
+          log('API is working! Found', testList.length, 'test organisations');
+          log('Sample org:', testList[0]);
+          log('The role filters might need adjustment. Check the organisation roles in the sample.');
+        } else {
+          log('API returned no organisations even without filters. Check API status.');
+        }
+        // Don't use the test data, keep the empty list
+        // No mock data
+      }
+
+      if (isMockData) {
+        log('Using mock data for demonstration due to CORS restrictions');
+      }
+
+      if (!Array.isArray(list) || list.length === 0) {
+        const hint = (data && data.__error && (/cors|blocked/i.test(data.__error) || data.__error === 'CORS blocked - proxy required'))
+          ? 'Blocked by CORS — proxy required'
+          : 'No GP practices found — tried both RO76 and RO177 filters';
+        log('Setting error state:', hint);
+        setSelectError(sel, hint);
+        sel.disabled = false;
+
+        // Update status to show error
+        const statusElem = document.getElementById('siteSelectStatus');
+        if (statusElem) {
+          statusElem.textContent = '⚠️ No GP practices loaded - see console for details';
+          statusElem.style.display = 'block';
+          statusElem.style.color = 'var(--warning)';
+        }
+
+        log('API might be working but returning empty results.');
+        log('Tried both NonPrimaryRoleId=RO76 and PrimaryRoleId=RO177.');
+        return;
+      }
+
+      log('Building options from', list.length, 'organisations');
+
+      // Store all practices for filtering with enhanced data
+      allPractices = [];
+      for (const org of list) {
+        try {
+          const code = org?.OrgId?.extension || org?.OrgId?.id || org?.ODSCode || org?.OrgId || '';
+          const name = org?.Name || org?.OrganisationName || '';
+          const postcode = org?.PostCode || org?.GeoLoc?.Location?.PostCode || org?.Address?.PostCode || '';
+          const address = org?.GeoLoc?.Location?.AddrLn1 || org?.Address?.AddrLn1 || '';
+          const city = org?.GeoLoc?.Location?.Town || org?.Address?.Town || '';
+
+          if (!code || !name) {
+            log('Skipping org with missing code or name:', org);
+            continue;
+          }
+          allPractices.push({ code, name, postcode, address, city });
+        } catch(err) {
+          log('Error processing org:', err);
+        }
+      }
+
+      log('Stored', allPractices.length, 'practices for filtering');
+
+      // Populate the dropdown
+      renderPractices(allPractices);
+
+      sel.disabled = false;
+      sel.dataset.source = isMockData ? 'mock-data' : 'nhs-ord';
+
+      // Show search input if we have practices
+      if (allPractices.length > 0) {
+        const searchWrapper = document.getElementById('siteSearchWrapper');
+        if (searchWrapper) {
+          searchWrapper.style.display = 'block';
+          setupSearchFilter();
+        }
+      }
+
+      // Update hint text and status
+      const hintElem = document.getElementById('siteSelectHint');
+      const statusElem = document.getElementById('siteSelectStatus');
+
+      if (isMockData) {
+        if (hintElem) {
+          hintElem.innerHTML = '<strong>⚠️ Using mock data</strong> - CORS blocked direct access to NHS ORD. Implement a server-side proxy to use real data.';
+          hintElem.style.color = 'var(--warning)';
+        }
+      }
+
+      if (statusElem && allPractices.length > 0) {
+        statusElem.textContent = `✓ Loaded ${allPractices.length} GP practices`;
+        statusElem.style.display = 'block';
+        statusElem.style.color = 'var(--success)';
+      }
+
+      log('Successfully populated', sel.options.length - 1, 'sites (excluding placeholder)');
+    } catch (e) {
+      log('Populate failed with error:', e && (e.message || e));
+      log('Error stack:', e && e.stack);
+      // Restore previous options so page never blanks
+      sel.innerHTML = prevHTML || '<option value="" disabled selected>Could not load NHS sites</option>';
+      sel.disabled = false;
+    }
+  }
+
+  // Render practices in the dropdown (with optional filtering)
+  function renderPractices(practices) {
+    const sel = findTargetSelect();
+    if (!sel) return;
+
+    const frag = document.createDocumentFragment();
+
+    // Add placeholder option prompting selection
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = practices.length === 0 ? 'No matching practices' : 'Select a practice...';
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    frag.appendChild(placeholder);
+
+    // Add all practices as options
+    for (const practice of practices) {
+      const opt = document.createElement('option');
+      opt.value = practice.code;
+      opt.textContent = `${practice.name} (${practice.code})`;
+      opt.dataset.ods = practice.code;
+      frag.appendChild(opt);
+    }
+
+    sel.innerHTML = '';
+    sel.appendChild(frag);
+
+    log('Rendered', practices.length, 'practices in dropdown');
+  }
+
+  // Store current filter state (already declared above on line 265)
+  // let currentSearchType = 'name'; // Removed duplicate declaration
+  let currentTypeFilter = 'all';
+
+  // Setup enhanced search filter functionality
+  function setupSearchFilter() {
+    // Setup tab switching
+    const tabs = document.querySelectorAll('.search-tab');
+    tabs.forEach(tab => {
+      tab.addEventListener('click', function() {
+        // Update active tab
+        tabs.forEach(t => {
+          t.classList.remove('active');
+          t.style.background = 'var(--glass)';
+          t.style.color = 'var(--ink)';
+          t.style.border = '1px solid var(--border-color)';
+        });
+        this.classList.add('active');
+        this.style.background = 'var(--accent)';
+        this.style.color = 'white';
+        this.style.border = 'none';
+
+        // Show corresponding panel
+        const searchType = this.dataset.searchType;
+        currentSearchType = searchType;
+        document.querySelectorAll('.search-panel').forEach(panel => {
+          panel.style.display = 'none';
+        });
+        document.querySelector(`.search-panel[data-panel="${searchType}"]`).style.display = 'block';
+
+        // Clear and refocus based on type
+        if (searchType === 'name') {
+          document.getElementById('siteSearch').focus();
+        } else if (searchType === 'postcode') {
+          document.getElementById('postcodeSearch').focus();
+        }
+      });
+    });
+
+    // Setup name search
+    const searchInput = document.getElementById('siteSearch');
+    if (searchInput) {
+      searchInput.addEventListener('input', handleNameSearch);
+      searchInput.addEventListener('keyup', handleNameSearch);
+    }
+
+    // Setup postcode search
+    const postcodeInput = document.getElementById('postcodeSearch');
+    if (postcodeInput) {
+      postcodeInput.addEventListener('input', handlePostcodeSearch);
+      postcodeInput.addEventListener('keyup', handlePostcodeSearch);
+    }
+
+    // Setup postcode radius change
+    const postcodeRadius = document.getElementById('postcodeRadius');
+    if (postcodeRadius) {
+      postcodeRadius.addEventListener('change', handlePostcodeSearch);
+    }
+
+    // Setup practice type filters
+    const typeFilters = document.querySelectorAll('.type-filter');
+    typeFilters.forEach(filter => {
+      filter.addEventListener('click', function() {
+        // Update active filter
+        typeFilters.forEach(f => {
+          f.classList.remove('active');
+          f.style.background = 'var(--glass)';
+          f.style.color = 'var(--ink)';
+          f.style.border = '1px solid var(--border-color)';
+        });
+        this.classList.add('active');
+        this.style.background = 'var(--accent)';
+        this.style.color = 'white';
+        this.style.border = 'none';
+
+        currentTypeFilter = this.dataset.type;
+        handleTypeFilter();
+      });
+    });
+  }
+
+  function handleNameSearch(e) {
+    const searchTerm = (e?.target?.value || document.getElementById('siteSearch')?.value || '').toLowerCase().trim();
+
+    if (!searchTerm) {
+      renderPractices(allPractices);
+      updateResultsCount(allPractices.length);
+      return;
+    }
+
+    // Filter practices by name or code
+    const filtered = allPractices.filter(practice =>
+      practice.name.toLowerCase().includes(searchTerm) ||
+      practice.code.toLowerCase().includes(searchTerm)
+    );
+
+    log('Filtered to', filtered.length, 'practices matching:', searchTerm);
+    renderPractices(filtered);
+    updateResultsCount(filtered.length);
+  }
+
+  function handlePostcodeSearch(e) {
+    const postcodeInput = document.getElementById('postcodeSearch');
+    const radiusSelect = document.getElementById('postcodeRadius');
+
+    if (!postcodeInput) return;
+
+    const postcode = postcodeInput.value.toUpperCase().trim();
+    const radius = radiusSelect?.value || 'area';
+
+    if (!postcode) {
+      renderPractices(allPractices);
+      updateResultsCount(allPractices.length);
+      return;
+    }
+
+    let filtered = [];
+
+    if (radius === 'exact') {
+      // Exact postcode match
+      filtered = allPractices.filter(practice =>
+        practice.postcode && practice.postcode.replace(/\s+/g, '').startsWith(postcode.replace(/\s+/g, ''))
+      );
+    } else if (radius === 'area') {
+      // Same postcode area (first part)
+      const area = postcode.split(' ')[0] || postcode.substring(0, 4);
+      filtered = allPractices.filter(practice =>
+        practice.postcode && practice.postcode.toUpperCase().startsWith(area)
+      );
+    } else if (radius === 'district') {
+      // Same district (first 2-3 characters)
+      const district = postcode.substring(0, 2);
+      filtered = allPractices.filter(practice =>
+        practice.postcode && practice.postcode.toUpperCase().startsWith(district)
+      );
+    }
+
+    log('Postcode search:', postcode, 'radius:', radius, 'found:', filtered.length);
+    renderPractices(filtered);
+    updateResultsCount(filtered.length);
+  }
+
+  function handleTypeFilter() {
+    if (currentTypeFilter === 'all') {
+      renderPractices(allPractices);
+      updateResultsCount(allPractices.length);
+      return;
+    }
+
+    let filtered = [];
+    const nameUpper = (name) => name.toUpperCase();
+
+    switch(currentTypeFilter) {
+      case 'surgery':
+        filtered = allPractices.filter(p => nameUpper(p.name).includes('SURGERY'));
+        break;
+      case 'medical-centre':
+        filtered = allPractices.filter(p =>
+          nameUpper(p.name).includes('MEDICAL CENTRE') ||
+          nameUpper(p.name).includes('MEDICAL CENTER')
+        );
+        break;
+      case 'health-centre':
+        filtered = allPractices.filter(p =>
+          nameUpper(p.name).includes('HEALTH CENTRE') ||
+          nameUpper(p.name).includes('HEALTH CENTER')
+        );
+        break;
+      case 'practice':
+        filtered = allPractices.filter(p =>
+          nameUpper(p.name).includes('PRACTICE') &&
+          !nameUpper(p.name).includes('SURGERY')
+        );
+        break;
+      case 'clinic':
+        filtered = allPractices.filter(p => nameUpper(p.name).includes('CLINIC'));
+        break;
+      default:
+        filtered = allPractices;
+    }
+
+    log('Type filter:', currentTypeFilter, 'found:', filtered.length);
+    renderPractices(filtered);
+    updateResultsCount(filtered.length);
+  }
+
+  function updateResultsCount(count) {
+    const resultsDiv = document.getElementById('filterResults');
+    const resultsCount = document.getElementById('resultsCount');
+
+    if (resultsDiv && resultsCount) {
+      resultsCount.textContent = count.toLocaleString();
+      resultsDiv.style.display = 'block';
+
+      // Color code based on results
+      if (count === 0) {
+        resultsDiv.style.background = 'var(--danger)';
+        resultsDiv.style.color = 'white';
+      } else if (count < 10) {
+        resultsDiv.style.background = 'var(--warning)';
+        resultsDiv.style.color = 'white';
+      } else {
+        resultsDiv.style.background = 'var(--glass)';
+        resultsDiv.style.color = 'var(--ink)';
+      }
+    }
+  }
+
+  // Export function to global scope for use by event handlers
+  window.populateORDSites = populateORDSites;
+
+  // Don't run automatically - will be triggered on user interaction
+  // Commenting out automatic load to save bandwidth and avoid unnecessary API calls
+  // if (document.readyState === 'loading') {
+  //   document.addEventListener('DOMContentLoaded', () => setTimeout(populateORDSites, 0));
+  // } else {
+  //   setTimeout(populateORDSites, 0);
+  // }
+})();
+</script>
+
+<script>
+// NHS Practice Dropdown Event Handlers
+(function() {
+  'use strict';
+
+  // Initialize window.ctx if it doesn't exist
+  window.ctx = window.ctx || {};
+
+  // Handle dropdown focus to trigger population
+  function initSiteSelectHandlers() {
+    const select = document.getElementById('siteSelect');
+    if (!select) {
+      console.warn('siteSelect element not found');
+      return;
+    }
+
+    let hasPopulated = false;
+
+    // Trigger population on first interaction
+    select.addEventListener('focus', async function() {
+      if (!hasPopulated && select.options.length <= 1) {
+        hasPopulated = true;
+
+        // Check if populateORDSites function exists (check window scope)
+        if (typeof window.populateORDSites === 'function') {
+          console.log('Triggering NHS ORD data fetch...');
+          console.log('Select element found:', select);
+
+          try {
+            await window.populateORDSites();
+            console.log('populateORDSites completed successfully');
+          } catch (error) {
+            console.error('Error in populateORDSites:', error);
+            console.error('Error stack:', error.stack);
+            select.innerHTML = '<option value="" disabled selected>Error loading sites - check console</option>';
+            select.disabled = false;
+          }
+        } else {
+          console.warn('window.populateORDSites function not found - dropdown will not populate');
+          console.warn('Available window functions:', Object.keys(window).filter(k => typeof window[k] === 'function').slice(0, 10));
+          select.innerHTML = '<option value="" disabled selected>ORD loader not available</option>';
+          select.disabled = false;
+        }
+      }
+    });
+
+    // Handle selection change
+    select.addEventListener('change', function(e) {
+      const selectedValue = e.target.value;
+
+      if (selectedValue) {
+        // Store the selected ODS code
+        window.ctx.site_id = selectedValue;
+        console.log('Selected NHS site ODS code:', selectedValue);
+
+        // Dispatch custom event for other scripts to consume
+        const event = new CustomEvent('checkloops:siteSelected', {
+          detail: { ods: selectedValue },
+          bubbles: true
+        });
+        document.dispatchEvent(event);
+
+        // Optional: Show the selected practice name
+        const selectedOption = select.options[select.selectedIndex];
+        if (selectedOption) {
+          console.log('Selected practice:', selectedOption.text);
+        }
+      }
+    });
+
+    // Handle keyboard navigation (accessibility)
+    select.addEventListener('keydown', function(e) {
+      // Trigger population on arrow key navigation if not populated
+      if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !hasPopulated && select.options.length <= 1) {
+        select.dispatchEvent(new Event('focus'));
+      }
+    });
+  }
+
+  async function fetchPracticeDetails(odsCode, practiceName, options = {}) {
+    if (!window.supabase?.functions) {
+      throw new Error('Supabase functions client unavailable');
+    }
+
+    console.log('[NHS Search] invoking fetch-practice-details', odsCode, practiceName);
+
+    const { data, error } = await window.supabase.functions.invoke('fetch-practice-details', {
+      body: {
+        odsCode,
+        practiceName,
+        includeRaw: options.includeRaw ?? false
+      }
+    });
+
+    if (error) {
+      console.error('fetch-practice-details edge error:', error);
+      throw new Error(error.message || 'Unable to load practice details');
+    }
+
+    return data;
+  }
+
+  function formatDate(value) {
+    if (!value) return '';
+    try {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleDateString();
+    } catch (error) {
+      console.warn('formatDate error:', error);
+      return value;
+    }
+  }
+
+  function formatAddress(practice) {
+    if (!practice) return '';
+    const parts = [practice.address_line1, practice.address_line2, practice.city, practice.postcode].filter(Boolean);
+    return parts.length ? parts.join('<br>') : '';
+  }
+
+  function renderContacts(contacts = []) {
+    if (!contacts.length) {
+      return '<p style="color: var(--muted); margin: 0;">No contact details available.</p>';
+    }
+
+    return `
+      <div style="display: grid; gap: 12px;">
+        ${contacts.map(contact => `
+          <div style="background: var(--panel-bg); padding: 12px; border-radius: 8px;">
+            <div style="font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em;">${contact.type || 'Contact'}</div>
+            <div style="margin-top: 4px; color: var(--white); font-weight: 600;">${contact.value || 'Unavailable'}</div>
+            ${contact.department ? `<div style="color: var(--muted); font-size: 12px;">${contact.department}</div>` : ''}
+            ${contact.usage ? `<div style="color: var(--muted); font-size: 12px;">${contact.usage}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  function renderOpeningTimes(openingTimes = []) {
+    if (!openingTimes.length) {
+      return '<p style="color: var(--muted); margin: 0;">Opening times unavailable.</p>';
+    }
+
+    return `
+      <div style="overflow-x: auto; border-radius: 8px; border: 1px solid var(--border-color);">
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+          <thead>
+            <tr style="background: var(--glass); text-align: left; color: var(--muted);">
+              <th style="padding: 10px 12px;">Days</th>
+              <th style="padding: 10px 12px;">Opens</th>
+              <th style="padding: 10px 12px;">Closes</th>
+              <th style="padding: 10px 12px;">Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${openingTimes.map(time => `
+              <tr style="border-top: 1px solid var(--border-color);">
+                <td style="padding: 8px 12px; color: var(--white);">${time.days || '—'}</td>
+                <td style="padding: 8px 12px; color: var(--white);">${time.open || '—'}</td>
+                <td style="padding: 8px 12px; color: var(--white);">${time.close || '—'}</td>
+                <td style="padding: 8px 12px; color: var(--muted);">${time.description || ''}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderChipList(items = [], labelAccessor = () => '') {
+    if (!items.length) {
+      return '<p style="color: var(--muted); margin: 0;">No data available.</p>';
+    }
+
+    return `
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        ${items.map(item => `<span style="padding: 6px 12px; background: var(--panel-bg); border-radius: 20px; font-size: 12px; color: var(--white);">${labelAccessor(item)}</span>`).join('')}
+      </div>
+    `;
+  }
+
+  function renderReports(reports = []) {
+    if (!reports.length) return '';
+
+    return `
+      <div style="margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap;">
+        ${reports.slice(0, 4).map(report => `
+          <a href="${report.reportUri}" target="_blank" style="padding: 8px 14px; background: var(--accent); color: white; border-radius: 6px; text-decoration: none; font-size: 13px;">
+            View Report (${formatDate(report.reportDate) || 'date unknown'})
+          </a>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  // Show comprehensive practice details modal
+  async function showPracticeDetailsModal(odsCode, practiceName, preloadedDetails) {
+    let modal = document.getElementById('practiceDetailsModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'practiceDetailsModal';
+      modal.className = 'modal';
+      modal.style.cssText = `
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.85);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        backdrop-filter: blur(8px);
+      `;
+
+      modal.innerHTML = `
+        <div class="modal-content" style="
+          background: var(--panel-bg);
+          border-radius: 16px;
+          width: 90%;
+          max-width: 900px;
+          max-height: 90vh;
+          overflow-y: auto;
+          padding: 0;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        ">
+          <div style="
+            padding: 24px;
+            border-bottom: 1px solid var(--border-color);
+            background: linear-gradient(135deg, var(--glass) 0%, var(--panel-bg) 100%);
+            border-radius: 16px 16px 0 0;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+          ">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <h2 style="margin: 0; color: var(--white); font-size: 1.5rem;">Practice Details</h2>
+              <button onclick="document.getElementById('practiceDetailsModal').style.display='none'"
+                      style="background: transparent; border: none; color: var(--muted); font-size: 24px; cursor: pointer;">
+                ×
+              </button>
+            </div>
+          </div>
+          <div id="practiceDetailsContent" style="padding: 24px;"></div>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+    }
+
+    modal.style.display = 'flex';
+    const contentDiv = document.getElementById('practiceDetailsContent');
+
+    contentDiv.innerHTML = `
+      <div style="text-align: center; padding: 40px;">
+        <div class="spinner" style="margin: 0 auto 20px;"></div>
+        <p style="color: var(--muted);">Loading comprehensive practice data...</p>
+      </div>
+    `;
+
+    let details = preloadedDetails;
+    if (!details && selectedPractice?.details?.meta?.odsCode === odsCode) {
+      details = selectedPractice.details;
+    }
+
+    try {
+      if (!details) {
+        details = await fetchPracticeDetails(odsCode, practiceName);
+      }
+      selectedPractice = selectedPractice || {};
+      selectedPractice.details = details;
+    } catch (error) {
+      console.error('Practice details load failed:', error);
+      contentDiv.innerHTML = `
+        <div style="text-align: center; padding: 40px;">
+          <p style="color: var(--muted); font-size: 16px;">We couldn't load the details for this practice.</p>
+          <p style="color: var(--muted); font-size: 13px;">${error.message || 'Please try again in a few moments.'}</p>
+          <button class="btn primary" id="retry-practice-details" style="margin-top: 16px;">Retry</button>
+        </div>
+      `;
+
+      document.getElementById('retry-practice-details')?.addEventListener('click', () => {
+        showPracticeDetailsModal(odsCode, practiceName);
+      });
+      return;
+    }
+
+    const practice = details?.practice || { name: practiceName, ods_code: odsCode };
+    const nhs = details?.nhs || {};
+    const cqc = details?.cqc || null;
+    const meta = details?.meta || {};
+
+    const addressHtml = formatAddress(practice);
+    const contacts = Array.isArray(nhs.contacts) ? [...nhs.contacts] : [];
+    if (practice.phone && !contacts.some(contact => contact?.value === practice.phone)) {
+      contacts.unshift({ type: 'Telephone', value: practice.phone });
+    }
+
+    const openingTimes = Array.isArray(nhs.openingTimes) ? nhs.openingTimes : [];
+    const services = Array.isArray(nhs.services) ? nhs.services : [];
+    const roles = Array.isArray(nhs.roles) ? nhs.roles : [];
+    const relationships = Array.isArray(nhs.relationships) ? nhs.relationships : [];
+    const reports = Array.isArray(cqc?.reports) ? cqc.reports : [];
+
+    const rating = cqc?.overallRating || null;
+    const ratingColor = rating === 'Outstanding'
+      ? 'var(--success)'
+      : rating === 'Good'
+        ? '#4CAF50'
+        : rating === 'Requires improvement'
+          ? 'var(--warning)'
+          : rating === 'Inadequate'
+            ? 'var(--danger)'
+            : 'var(--muted)';
+
+    const providerName = cqc?.provider?.providerName || cqc?.detail?.providerName || cqc?.location?.providerName;
+    const providerId = cqc?.provider?.providerId || cqc?.location?.providerId;
+
+    const html = `
+      <div style="display: grid; gap: 24px;">
+        <div style="background: var(--glass); padding: 20px; border-radius: 12px;">
+          <h3 style="margin: 0 0 16px 0; color: var(--accent); font-size: 1.2rem;">${practice.name || practiceName}</h3>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px;">
+            <div>
+              <label style="color: var(--muted); font-size: 12px;">ODS Code</label>
+              <p style="margin: 4px 0; color: var(--white); font-weight: 600;">${practice.ods_code || odsCode}</p>
+            </div>
+            ${practice.primary_role ? `
+              <div>
+                <label style="color: var(--muted); font-size: 12px;">Primary Role</label>
+                <p style="margin: 4px 0; color: var(--white);">${practice.primary_role}</p>
+              </div>
+            ` : ''}
+            ${practice.status ? `
+              <div>
+                <label style="color: var(--muted); font-size: 12px;">Status</label>
+                <p style="margin: 4px 0; color: var(--success); font-weight: 500;">${practice.status}</p>
+              </div>
+            ` : ''}
+            ${practice.phone ? `
+              <div>
+                <label style="color: var(--muted); font-size: 12px;">Switchboard</label>
+                <p style="margin: 4px 0; color: var(--white);">${practice.phone}</p>
+              </div>
+            ` : ''}
+          </div>
+          ${addressHtml ? `
+            <div style="margin-top: 16px;">
+              <label style="color: var(--muted); font-size: 12px;">Address</label>
+              <p style="margin: 4px 0; color: var(--white); line-height: 1.5;">${addressHtml}</p>
+            </div>
+          ` : ''}
+        </div>
+
+        ${cqc ? `
+          <div style="background: var(--glass); padding: 20px; border-radius: 12px;">
+            <h3 style="margin: 0 0 16px 0; color: var(--accent); font-size: 1.1rem;">Care Quality Commission (CQC)</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+              ${rating ? `
+                <div style="text-align: center; padding: 16px; background: var(--panel-bg); border-radius: 8px;">
+                  <div style="font-size: 1.8rem; font-weight: 700; color: ${ratingColor};">${rating}</div>
+                  <div style="color: var(--muted); font-size: 12px; margin-top: 4px;">Overall rating</div>
+                </div>
+              ` : ''}
+              ${cqc.lastInspection ? `
+                <div>
+                  <label style="color: var(--muted); font-size: 12px;">Last inspection</label>
+                  <p style="margin: 4px 0; color: var(--white);">${formatDate(cqc.lastInspection)}</p>
+                </div>
+              ` : ''}
+              ${cqc.registrationDate ? `
+                <div>
+                  <label style="color: var(--muted); font-size: 12px;">CQC registration</label>
+                  <p style="margin: 4px 0; color: var(--white);">${formatDate(cqc.registrationDate)}</p>
+                </div>
+              ` : ''}
+              ${providerName ? `
+                <div>
+                  <label style="color: var(--muted); font-size: 12px;">Provider</label>
+                  <p style="margin: 4px 0; color: var(--white);">${providerName}${providerId ? ` <span style="color: var(--muted);">(${providerId})</span>` : ''}</p>
+                </div>
+              ` : ''}
+            </div>
+            ${cqc.regulatedActivities?.length ? `
+              <div style="margin-top: 16px;">
+                <label style="color: var(--muted); font-size: 12px;">Regulated activities</label>
+                ${renderChipList(cqc.regulatedActivities, activity => activity?.name || activity?.ActivityName || 'Activity')}
+              </div>
+            ` : ''}
+            ${renderReports(reports)}
+          </div>
+        ` : ''}
+
+        <div style="background: var(--glass); padding: 20px; border-radius: 12px;">
+          <h3 style="margin: 0 0 16px 0; color: var(--accent); font-size: 1.1rem;">Contact & Access</h3>
+          ${renderContacts(contacts)}
+          ${openingTimes.length ? `
+            <div style="margin-top: 18px;">
+              <h4 style="margin: 0 0 10px 0; font-size: 14px; color: var(--muted);">Opening times</h4>
+              ${renderOpeningTimes(openingTimes)}
+            </div>
+          ` : ''}
+        </div>
+
+        ${services.length ? `
+          <div style="background: var(--glass); padding: 20px; border-radius: 12px;">
+            <h3 style="margin: 0 0 16px 0; color: var(--accent); font-size: 1.1rem;">Services & Clinics</h3>
+            ${renderChipList(services, svc => svc?.name || svc?.ServiceName || svc?.description || 'Service')}
+          </div>
+        ` : ''}
+
+        ${roles.length ? `
+          <div style="background: var(--glass); padding: 20px; border-radius: 12px;">
+            <h3 style="margin: 0 0 16px 0; color: var(--accent); font-size: 1.1rem;">NHS Roles</h3>
+            ${renderChipList(roles, role => {
+              const code = role?.id || role?.code || role?.RoleId || role?.Role?.id || role?.roleId;
+              const desc = role?.PrimaryRoleDescription || role?.description || role?.RoleDescription || role?.name;
+              return [code, desc].filter(Boolean).join(' · ') || 'Role';
+            })}
+          </div>
+        ` : ''}
+
+        ${relationships.length ? `
+          <div style="background: var(--glass); padding: 20px; border-radius: 12px;">
+            <h3 style="margin: 0 0 16px 0; color: var(--accent); font-size: 1.1rem;">Organisational Relationships</h3>
+            ${renderChipList(relationships, rel => {
+              const type = rel?.RelationshipType || rel?.type || rel?.relationshipTypeDescription;
+              const target = rel?.TargetOrg?.Name || rel?.targetName || rel?.name;
+              return [type, target].filter(Boolean).join(' · ') || 'Relationship';
+            })}
+          </div>
+        ` : ''}
+
+        <div style="display: flex; flex-direction: column; gap: 12px; align-items: center; border-top: 1px solid var(--border-color); padding-top: 18px;">
+          <div style="display: flex; gap: 12px;">
+            <button onclick="confirmPracticeSelection('${odsCode}', '${practiceName.replace(/'/g, "\\'")}')"
+                    class="btn primary" style="padding: 12px 24px;">
+              Confirm Selection
+            </button>
+            <button onclick="document.getElementById('practiceDetailsModal').style.display='none'"
+                    class="btn" style="padding: 12px 24px;">
+              Close
+            </button>
+          </div>
+          <div style="font-size: 12px; color: var(--muted); text-align: center;">
+            <span>Data refreshed: ${formatDate(meta.fetchedAt) || 'now'}</span>
+            ${meta.sources ? `<span style="margin-left: 12px;">Sources: ${Object.entries(meta.sources).filter(([, value]) => Boolean(value)).map(([key]) => key).join(', ') || 'N/A'}</span>` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+
+    contentDiv.innerHTML = html;
+  }
+
+  // Confirm practice selection from modal
+  window.confirmPracticeSelection = function(odsCode, practiceName) {
+    // Store selection
+    window.ctx = window.ctx || {};
+    window.ctx.site_id = odsCode;
+    window.ctx.site_name = practiceName;
+
+    // Close modal
+    const modal = document.getElementById('practiceDetailsModal');
+    if (modal) modal.style.display = 'none';
+
+    // Fire event
+    window.dispatchEvent(new CustomEvent('checkloops:practiceConfirmed', {
+      detail: { code: odsCode, name: practiceName }
+    }));
+
+    console.log('Practice confirmed:', odsCode, practiceName);
+  };
+
+  // Initialize when DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+      // Initialize the new search-first interface
+      setupSearchHandlers();
+      console.log('NHS practice search handlers initialized');
+    });
+  } else {
+    // DOM already loaded, init immediately
+    setupSearchHandlers();
+    console.log('NHS practice search handlers initialized');
+  }
+
+  // Also listen for the custom event (for logging/debugging)
+  document.addEventListener('checkloops:siteSelected', function(e) {
+    console.log('Site selection event fired:', e.detail);
+  });
+})();
+</script>
+
 <style>
   :root{
     --bg1:#0b4fb3; --bg2:#062b6f; --glass:#ffffff12; --glass-2:#ffffff1a;
@@ -765,6 +2109,43 @@ if (document.readyState === 'loading') {
   @media (forced-colors: active){
     .ui-select{ forced-color-adjust:none; background:Canvas; color:CanvasText; border-color:GrayText; }
     .ui-select option{ background:Canvas; color:CanvasText; }
+  }
+
+  /* Enhanced search UI styles */
+  .search-tab:hover:not(.active) {
+    background: var(--accent-2) !important;
+    color: white !important;
+    border-color: var(--accent-2) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(118, 167, 255, 0.3);
+  }
+
+  .type-filter:hover:not(.active) {
+    background: var(--accent-2) !important;
+    color: white !important;
+    border-color: var(--accent-2) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(118, 167, 255, 0.3);
+  }
+
+  #postcodeSearch:focus, #siteSearch:focus {
+    outline: 2px solid var(--accent);
+    box-shadow: 0 0 0 3px rgba(118, 167, 255, 0.2);
+  }
+
+  #filterResults {
+    animation: slideIn 0.3s ease;
+  }
+
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
   .error{ color:var(--danger); font-size:12px; margin-top:6px; }
 
@@ -6943,7 +8324,7 @@ document.addEventListener('DOMContentLoaded', () => {
               </div>
               <div class="step" data-step="1">
                 <div class="step-circle">2</div>
-                <span>Surgery Setup</span>
+                <span>Site Search</span>
               </div>
               <div class="step" data-step="2">
                 <div class="step-circle">3</div>
@@ -7068,266 +8449,186 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
           </div>
 
-          <!-- Surgery Setup Page -->
+          <!-- Blank Page 2 (placeholder) -->
           <div class="setup-page" id="setup-page-1">
-            <div class="surgery-full-container">
-
-              <!-- Page Header Section -->
-              <div class="surgery-header-section">
-                <div class="header-content">
-                  <div class="header-badge">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5Z"/>
-                    <path d="M12 5L8 21l4-7 4 7-4-16"/>
-                  </svg>
-                  </div>
-                  <div class="header-text">
-                    <h1>Surgery Setup</h1>
-                    <p>Configure your surgery's information and operating schedule</p>
-                  </div>
-                </div>
+            <div class="page-content">
+              <div class="page-header">
+                <h2>Site Searched</h2>
               </div>
 
-              <!-- Main Content Grid -->
-              <div class="surgery-content-grid">
+              <!-- NHS Practice Search -->
+              <div class="nhs-practice-search" style="max-width: 600px; margin: 20px 0;">
+                <h3 style="color: var(--ink); margin-bottom: 15px; font-size: 18px;">
+                  Find Your NHS Practice
+                </h3>
+                <p style="color: var(--muted); margin-bottom: 20px; font-size: 14px;">
+                  Search from over 12,000 NHS GP practices by name, postcode, or location
+                </p>
 
-                <!-- Left Panel - Surgery Information -->
-                <div class="surgery-info-panel">
-                  <div class="panel-header">
-                    <div class="panel-icon">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-                        <path d="M2 17l10 5 10-5"/>
-                        <path d="M2 12l10 5 10-5"/>
-                      </svg>
-                    </div>
-                    <h2>Surgery Information</h2>
+                <!-- Search Interface - Always visible -->
+                <div id="siteSearchWrapper" style="margin-bottom: 15px;">
+                  <!-- Search Tabs -->
+                  <div style="display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;">
+                    <button class="search-tab active" data-search-type="name"
+                            style="padding: 8px 16px; background: var(--accent); color: white; border: none;
+                                   border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.2s;">
+                      <span style="margin-right: 5px;">🔍</span> Name Search
+                    </button>
+                    <button class="search-tab" data-search-type="postcode"
+                            style="padding: 8px 16px; background: var(--glass); color: var(--ink); border: 1px solid var(--border-color);
+                                   border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.2s;">
+                      <span style="margin-right: 5px;">📍</span> Postcode
+                    </button>
+                    <button class="search-tab" data-search-type="type"
+                            style="padding: 8px 16px; background: var(--glass); color: var(--ink); border: 1px solid var(--border-color);
+                                   border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.2s;">
+                      <span style="margin-right: 5px;">🏥</span> Practice Type
+                    </button>
                   </div>
 
-                  <div class="info-fields">
-                    <div class="field-wrapper">
-                      <label for="surgery-name">
-                        <span class="label-text">Surgery Name</span>
-                        <span class="required">*</span>
-                      </label>
-                      <input type="text"
-                             id="surgery-name"
-                             placeholder="e.g. Stoke Medical Centre"
-                             required>
-                      <div class="field-help">
-                        <svg viewBox="0 0 16 16" fill="currentColor">
-                          <circle cx="8" cy="8" r="6" opacity="0.3"/>
-                          <path d="M8 7v4m0-6v.5"/>
-                        </svg>
-                        The official name of your surgical facility
-                      </div>
+                  <!-- Name Search Input -->
+                  <div class="search-panel" data-panel="name" style="display: block;">
+                    <div style="display: flex; gap: 10px;">
+                      <input
+                        type="text"
+                        id="siteSearch"
+                        placeholder="Enter practice name (min 3 characters)..."
+                        aria-label="Search NHS practices by name"
+                        style="flex: 1; padding: 12px; background: var(--glass); color: var(--ink);
+                               border: 1px solid var(--border-color); border-radius: 8px; font-size: 14px;"
+                        autocomplete="off"
+                      />
+                      <button id="searchButton"
+                              style="padding: 12px 24px; background: var(--success); color: white; border: none;
+                                     border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px;
+                                     transition: all 0.2s; min-width: 100px;">
+                        Search
+                      </button>
                     </div>
+                    <div class="hint" style="margin-top: 4px; font-size: 12px; color: var(--muted);">
+                      Type at least 3 characters and press Search or Enter
+                    </div>
+                  </div>
 
-                    <div class="field-wrapper">
-                      <label for="surgery-town">
-                        <span class="label-text">Town/City</span>
-                        <span class="required">*</span>
-                      </label>
-                      <input type="text"
-                             id="surgery-town"
-                             placeholder="e.g. London, Birmingham, Manchester"
-                             required>
-                      <div class="field-help">
-                        <svg viewBox="0 0 16 16" fill="currentColor">
-                          <circle cx="8" cy="8" r="6" opacity="0.3"/>
-                          <path d="M8 7v4m0-6v.5"/>
-                        </svg>
-                        The city or town where your surgery is located
-                      </div>
+                  <!-- Postcode Search Input -->
+                  <div class="search-panel" data-panel="postcode" style="display: none;">
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                      <input
+                        type="text"
+                        id="postcodeSearch"
+                        placeholder="Enter postcode..."
+                        aria-label="Search NHS practices by postcode"
+                        style="flex: 1; padding: 12px; background: var(--glass); color: var(--ink);
+                               border: 1px solid var(--border-color); border-radius: 8px; font-size: 14px;
+                               text-transform: uppercase;"
+                        autocomplete="off"
+                      />
+                      <select id="postcodeRadius" class="ui-select" style="width: 120px; padding: 11px; font-size: 14px;">
+                        <option value="exact">Exact match</option>
+                        <option value="area" selected>Same area</option>
+                        <option value="district">District</option>
+                      </select>
+                      <button id="postcodeSearchButton"
+                              style="padding: 12px 24px; background: var(--success); color: white; border: none;
+                                     border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px;
+                                     transition: all 0.2s; min-width: 100px;">
+                        Search
+                      </button>
                     </div>
+                    <div class="hint" style="margin-top: 4px; font-size: 12px; color: var(--muted);">
+                      Enter full or partial postcode (e.g., SW1A 1AA or SW1)
+                    </div>
+                  </div>
+
+                  <!-- Practice Type Filter -->
+                  <div class="search-panel" data-panel="type" style="display: none;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px;">
+                      <button class="type-filter-btn active" data-type="all"
+                              style="padding: 8px 12px; background: var(--accent); color: white; border: none;
+                                     border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.2s;">
+                        All Practices
+                      </button>
+                      <button class="type-filter-btn" data-type="surgery"
+                              style="padding: 8px 12px; background: var(--glass); color: var(--ink);
+                                     border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.2s;">
+                        🏥 Surgeries
+                      </button>
+                      <button class="type-filter-btn" data-type="medical-centre"
+                              style="padding: 8px 12px; background: var(--glass); color: var(--ink);
+                                     border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.2s;">
+                        🏢 Medical Centres
+                      </button>
+                      <button class="type-filter-btn" data-type="health-centre"
+                              style="padding: 8px 12px; background: var(--glass); color: var(--ink);
+                                     border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.2s;">
+                        🏥 Health Centres
+                      </button>
+                      <button class="type-filter-btn" data-type="practice"
+                              style="padding: 8px 12px; background: var(--glass); color: var(--ink);
+                                     border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.2s;">
+                        👨‍⚕️ Practices
+                      </button>
+                      <button class="type-filter-btn" data-type="clinic"
+                              style="padding: 8px 12px; background: var(--glass); color: var(--ink);
+                                     border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.2s;">
+                        🩺 Clinics
+                      </button>
+                    </div>
+                    <div class="hint" style="margin-top: 8px; font-size: 12px; color: var(--muted);">
+                      Filter by practice type based on name
+                    </div>
+                  </div>
+
+                  <!-- Results count -->
+                  <div id="filterResults" style="margin-top: 10px; padding: 8px 12px; background: var(--glass);
+                                                  border-radius: 6px; font-size: 13px; color: var(--ink); display: none;">
+                    <span id="resultsCount">0</span> practices found
                   </div>
                 </div>
 
-                <!-- Right Panel - Operating Hours -->
-                <div class="surgery-hours-panel">
-                  <div class="panel-header">
-                    <div class="panel-icon">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"/>
-                        <polyline points="12,6 12,12 16,14"/>
-                      </svg>
-                    </div>
-                    <h2>Operating Hours</h2>
+                <!-- Search Results Display -->
+                <div id="searchResultsContainer" style="display: none; margin-top: 20px;">
+                  <div id="searchResultsHeader" style="padding: 12px; background: var(--glass); border-radius: 8px 8px 0 0;
+                                                       border-bottom: 1px solid var(--border-color);">
+                    <span id="resultsCount" style="font-weight: 600; color: var(--ink);">0</span>
+                    <span style="color: var(--muted); margin-left: 5px;">practices found</span>
                   </div>
 
-                  <div class="hours-table">
-                    <!-- Header Row -->
-                    <div class="hours-header">
-                      <div class="col-day">Day</div>
-                      <div class="col-status">Open</div>
-                      <div class="col-times">Hours</div>
-                    </div>
-
-                    <!-- Monday -->
-                    <div class="hours-row">
-                      <div class="col-day">
-                        <span class="day-name">Monday</span>
-                      </div>
-                      <div class="col-status">
-                        <label class="toggle-switch">
-                          <input type="checkbox" id="monday-enabled" checked>
-                          <span class="toggle-slider"></span>
-                        </label>
-                      </div>
-                      <div class="col-times">
-                        <input type="time" id="monday-open" value="08:00" class="time-field">
-                        <span class="time-divider">–</span>
-                        <input type="time" id="monday-close" value="17:00" class="time-field">
-                      </div>
-                    </div>
-
-                    <!-- Tuesday -->
-                    <div class="hours-row">
-                      <div class="col-day">
-                        <span class="day-name">Tuesday</span>
-                      </div>
-                      <div class="col-status">
-                        <label class="toggle-switch">
-                          <input type="checkbox" id="tuesday-enabled" checked>
-                          <span class="toggle-slider"></span>
-                        </label>
-                      </div>
-                      <div class="col-times">
-                        <input type="time" id="tuesday-open" value="08:00" class="time-field">
-                        <span class="time-divider">–</span>
-                        <input type="time" id="tuesday-close" value="17:00" class="time-field">
-                      </div>
-                    </div>
-
-                    <!-- Wednesday -->
-                    <div class="hours-row">
-                      <div class="col-day">
-                        <span class="day-name">Wednesday</span>
-                      </div>
-                      <div class="col-status">
-                        <label class="toggle-switch">
-                          <input type="checkbox" id="wednesday-enabled" checked>
-                          <span class="toggle-slider"></span>
-                        </label>
-                      </div>
-                      <div class="col-times">
-                        <input type="time" id="wednesday-open" value="08:00" class="time-field">
-                        <span class="time-divider">–</span>
-                        <input type="time" id="wednesday-close" value="17:00" class="time-field">
-                      </div>
-                    </div>
-
-                    <!-- Thursday -->
-                    <div class="hours-row">
-                      <div class="col-day">
-                        <span class="day-name">Thursday</span>
-                      </div>
-                      <div class="col-status">
-                        <label class="toggle-switch">
-                          <input type="checkbox" id="thursday-enabled" checked>
-                          <span class="toggle-slider"></span>
-                        </label>
-                      </div>
-                      <div class="col-times">
-                        <input type="time" id="thursday-open" value="08:00" class="time-field">
-                        <span class="time-divider">–</span>
-                        <input type="time" id="thursday-close" value="17:00" class="time-field">
-                      </div>
-                    </div>
-
-                    <!-- Friday -->
-                    <div class="hours-row">
-                      <div class="col-day">
-                        <span class="day-name">Friday</span>
-                      </div>
-                      <div class="col-status">
-                        <label class="toggle-switch">
-                          <input type="checkbox" id="friday-enabled" checked>
-                          <span class="toggle-slider"></span>
-                        </label>
-                      </div>
-                      <div class="col-times">
-                        <input type="time" id="friday-open" value="08:00" class="time-field">
-                        <span class="time-divider">–</span>
-                        <input type="time" id="friday-close" value="17:00" class="time-field">
-                      </div>
-                    </div>
-
-                    <!-- Saturday -->
-                    <div class="hours-row weekend">
-                      <div class="col-day">
-                        <span class="day-name">Saturday</span>
-                      </div>
-                      <div class="col-status">
-                        <label class="toggle-switch">
-                          <input type="checkbox" id="saturday-enabled">
-                          <span class="toggle-slider"></span>
-                        </label>
-                      </div>
-                      <div class="col-times">
-                        <input type="time" id="saturday-open" value="09:00" class="time-field">
-                        <span class="time-divider">–</span>
-                        <input type="time" id="saturday-close" value="13:00" class="time-field">
-                      </div>
-                    </div>
-
-                    <!-- Sunday -->
-                    <div class="hours-row weekend">
-                      <div class="col-day">
-                        <span class="day-name">Sunday</span>
-                      </div>
-                      <div class="col-status">
-                        <label class="toggle-switch">
-                          <input type="checkbox" id="sunday-enabled">
-                          <span class="toggle-slider"></span>
-                        </label>
-                      </div>
-                      <div class="col-times">
-                        <input type="time" id="sunday-open" value="10:00" class="time-field">
-                        <span class="time-divider">–</span>
-                        <input type="time" id="sunday-close" value="14:00" class="time-field">
-                      </div>
-                    </div>
+                  <div id="searchResults" style="max-height: 400px; overflow-y: auto; background: var(--panel-bg);
+                                                 border-radius: 0 0 8px 8px; border: 1px solid var(--border-color);
+                                                 border-top: none;">
+                    <!-- Results will be inserted here -->
                   </div>
+                </div>
 
-                  <!-- Quick Actions -->
-                  <div class="hours-actions">
-                    <button type="button" class="action-btn" onclick="applyToAllDays()">
-                      <svg viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M8 5a1 1 0 100 2h5.586L4.293 16.293a1 1 0 101.414 1.414L15 8.414V14a1 1 0 102 0V6a1 1 0 00-1-1H8z"/>
-                      </svg>
-                      Copy Monday to All
-                    </button>
-                    <button type="button" class="action-btn secondary" onclick="clearAllHours()">
-                      <svg viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M4 3a1 1 0 00-1 1v12a1 1 0 001 1h12a1 1 0 001-1V8a1 1 0 00-1-1H9L7.707 5.707A1 1 0 007 5.414V4a1 1 0 00-1-1H4z"/>
-                      </svg>
-                      Reset Hours
+                <!-- Loading indicator -->
+                <div id="searchLoading" style="display: none; text-align: center; padding: 20px;">
+                  <div style="display: inline-block; width: 40px; height: 40px; border: 3px solid var(--glass);
+                              border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                  <p style="margin-top: 10px; color: var(--muted);">Searching NHS practices...</p>
+                </div>
+
+                <!-- Selected Practice Display -->
+                <div id="selectedPractice" style="display: none; margin-top: 20px; padding: 15px; background: var(--success);
+                                                  border-radius: 8px; color: white;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                      <strong>Selected Practice:</strong>
+                      <div id="selectedPracticeName" style="font-size: 16px; margin-top: 5px;"></div>
+                      <div id="selectedPracticeDetails" style="font-size: 13px; margin-top: 3px; opacity: 0.9;"></div>
+                    </div>
+                    <button id="changePractice" style="padding: 6px 12px; background: rgba(255,255,255,0.2);
+                                                       color: white; border: 1px solid rgba(255,255,255,0.3);
+                                                       border-radius: 6px; cursor: pointer; font-size: 13px;">
+                      Change
                     </button>
                   </div>
                 </div>
-
               </div>
 
-              <!-- Bottom Navigation -->
-              <div class="surgery-footer">
-                <button class="footer-btn back" onclick="previousStep()">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="m15 18-6-6 6-6"/>
-                  </svg>
-                  Back to Welcome
-                </button>
-                <div class="footer-middle">
-                  <span class="step-indicator">Step 2 of 7</span>
-                </div>
-                <button class="footer-btn continue" onclick="saveSurgerySetup()">
-                  Continue to Staff Setup
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="m9 18 6-6-6-6"/>
-                  </svg>
-                </button>
+              <div class="placeholder-content">
+                <!-- Intentionally left blank for custom inputs -->
               </div>
-
             </div>
           </div>
 
@@ -25648,10 +26949,16 @@ window.refreshStaffData = refreshStaffData;
 
 // Smart Setup Wizard Functions
 let currentSetupStep = 0;
-const totalSteps = 6;
+const totalSteps = 7;
 
 function startSmartSetup() {
-  navigateToStep(1);
+  // If user has a saved step, resume there; otherwise start at step 1
+  const saved = parseInt(localStorage.getItem('smartSetup.currentStep'), 10);
+  const to = (!isNaN(saved) && saved >= 0) ? saved : 1;
+  // Ensure Smart Setup section is active
+  document.querySelectorAll('section.view').forEach(s=>s.classList.remove('active'));
+  document.getElementById('view-smart-setup').classList.add('active');
+  navigateToStep(to);
 }
 
 function closeSmartSetup() {
@@ -25664,6 +26971,7 @@ function closeSmartSetup() {
   const navButtons = document.querySelectorAll('.nav button');
   navButtons.forEach(btn => btn.classList.remove('active'));
   document.querySelector('.nav button[onclick*="admin-dashboard.html"]').classList.add('active');
+  try { localStorage.removeItem('smartSetup.currentStep'); } catch(_) {}
 }
 
 function nextStep() {
@@ -25709,6 +27017,13 @@ function navigateToStep(stepIndex) {
     }
   });
 
+  // Persist current step so a page refresh can restore it
+  try {
+    localStorage.setItem('smartSetup.currentStep', String(stepIndex));
+  } catch (e) {
+    console.warn('Could not persist smart setup step', e);
+  }
+
   // Update navigation buttons
   const prevBtn = document.getElementById('prev-btn');
   const nextBtn = document.getElementById('next-btn');
@@ -25747,6 +27062,8 @@ function navigateToStep(stepIndex) {
 function completeSetup() {
   // Show completion animation and redirect
   alert('Setup completed! Your CheckLoops system is now ready to use.');
+  // Clear saved progress and close
+  try { localStorage.removeItem('smartSetup.currentStep'); } catch(_) {}
   closeSmartSetup();
 }
 
@@ -25759,6 +27076,23 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     step.style.cursor = 'pointer';
   });
+
+  // If a saved step exists, and the Smart Setup area is present, restore it
+  try {
+    const saved = parseInt(localStorage.getItem('smartSetup.currentStep'), 10);
+    if (!isNaN(saved) && saved >= 0) {
+      // Activate the Smart Setup view and restore the saved page
+      const smartView = document.getElementById('view-smart-setup');
+      if (smartView) {
+        document.querySelectorAll('section.view').forEach(s=>s.classList.remove('active'));
+        smartView.classList.add('active');
+        // Ensure pages exist before navigating
+        setTimeout(() => navigateToStep(saved), 30);
+      }
+    }
+  } catch (e) {
+    console.warn('Could not restore smart setup step', e);
+  }
 });
 
 // Staff Import Functions
