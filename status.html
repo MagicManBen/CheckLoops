@@ -6,36 +6,70 @@
     <title>CheckLoops Admin Status Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        :root {
-            --bg-primary: #0f172a;
-            --bg-secondary: #1e293b;
-            --bg-card: #334155;
-            --text-primary: #f1f5f9;
-            --text-secondary: #94a3b8;
-            --accent: #3b82f6;
-            --success: #10b981;
-            --warning: #f59e0b;
-            --danger: #ef4444;
-            --border: #475569;
+        :root{
+            --bg1:#0b4fb3; --bg2:#062b6f; --glass:#ffffff12; --glass-2:#ffffff1a;
+            --white:#e6f0ff; --muted:#b8c7e8; --ink:#eaf1ff;
+            --accent:#76a7ff; --accent-2:#5f96ff; --success:#2bd4a7; --danger:#ff6b6b;
+            --warning: #ffca28;
+            --shadow: 0 10px 30px rgba(6,43,111,.35);
+            --round:18px;
+            --panel-bg: linear-gradient(145deg, #133b8a, #0c275e);
+            --border-color: #ffffff1f;
         }
 
         * {
+            box-sizing: border-box;
             margin: 0;
             padding: 0;
-            box-sizing: border-box;
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
-            color: var(--text-primary);
+            font-family: Inter, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+            color: var(--ink);
+            background: #0b3a86;
+            overflow-x: hidden;
             min-height: 100vh;
-            padding: 20px;
+        }
+
+        /* Silky animated background */
+        .bg {
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            overflow: hidden;
+            background: radial-gradient(1200px 700px at 20% -10%, #6aa0ff33, transparent),
+                radial-gradient(900px 600px at 90% 10%, #3566ff2e, transparent),
+                linear-gradient(180deg, #0e3f93 0%, #082a69 100%);
+        }
+
+        .wave {
+            position: absolute;
+            width: 160%;
+            height: 160%;
+            left: -30%;
+            top: -30%;
+            background: conic-gradient(from 180deg at 50% 50%, #2c63ff22, #143a9622, #2c63ff22);
+            filter: blur(60px);
+            animation: drift 22s ease-in-out infinite alternate;
+            transform-origin: 50% 50%;
+        }
+
+        .wave2 {
+            animation-duration: 28s;
+            mix-blend-mode: screen;
+        }
+
+        @keyframes drift {
+            0% { transform: rotate(0deg) scale(1.0); }
+            100% { transform: rotate(25deg) scale(1.08); }
         }
 
         .container {
             max-width: 1400px;
             margin: 0 auto;
+            padding: 22px;
+            position: relative;
+            z-index: 1;
         }
 
         .header {
@@ -49,10 +83,12 @@
             background: linear-gradient(135deg, var(--accent), var(--success));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+            font-weight: 900;
+            letter-spacing: 0.2px;
         }
 
         .header p {
-            color: var(--text-secondary);
+            color: var(--muted);
             font-size: 1.1em;
         }
 
@@ -66,10 +102,10 @@
 
         .btn {
             padding: 12px 24px;
-            background: var(--accent);
-            color: white;
+            background: linear-gradient(135deg, #7db1ff, #4f89ff);
+            color: #fff;
             border: none;
-            border-radius: 8px;
+            border-radius: 12px;
             cursor: pointer;
             font-size: 1em;
             font-weight: 600;
@@ -91,11 +127,16 @@
         }
 
         .btn.success {
-            background: var(--success);
+            background: linear-gradient(135deg, #2bd4a7, #10b981);
         }
 
         .btn.danger {
-            background: var(--danger);
+            background: linear-gradient(135deg, #ff6b6b, #ef4444);
+        }
+
+        .btn.secondary {
+            background: #ffffff1e;
+            border: 1px solid #ffffff26;
         }
 
         .dashboard {
@@ -105,65 +146,102 @@
             margin-bottom: 30px;
         }
 
-        .card {
-            background: var(--bg-card);
-            border-radius: 12px;
-            padding: 20px;
-            border: 1px solid var(--border);
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 22px;
+            padding: 24px;
+            box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,0.1);
+            backdrop-filter: blur(12px);
             position: relative;
             overflow: hidden;
+            animation: panelGlow 4s ease-in-out infinite;
             cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
         }
 
-        .card:hover {
+        .panel:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255,255,255,0.1);
         }
 
-        .card::before {
+        @keyframes panelGlow {
+            0%, 100% { box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,0.1); }
+            50% { box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,0.1), 0 0 30px rgba(118, 167, 255, 0.3); }
+        }
+
+        .panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
+            animation: shimmer 8s ease-in-out infinite;
+        }
+
+        @keyframes shimmer {
+            0%, 100% { left: -100%; }
+            50% { left: 100%; }
+        }
+
+        .panel-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .panel-header svg {
+            width: 22px;
+            height: 22px;
+            color: var(--accent);
+        }
+
+        .panel-title {
+            font-weight: 700;
+            font-size: 18px;
+            color: var(--white);
+        }
+
+        .panel.success::after {
             content: '';
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 3px;
-            background: linear-gradient(90deg, var(--accent), var(--success));
-        }
-
-        .card.error::before {
-            background: var(--danger);
-        }
-
-        .card.warning::before {
-            background: var(--warning);
-        }
-
-        .card.success::before {
             background: var(--success);
         }
 
-        .card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
+        .panel.error::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: var(--danger);
         }
 
-        .card-title {
-            font-size: 1.2em;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+        .panel.warning::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: var(--warning);
         }
 
         .status-indicator {
             width: 12px;
             height: 12px;
             border-radius: 50%;
-            background: var(--text-secondary);
+            background: var(--muted);
             animation: pulse 2s infinite;
+            margin-left: auto;
         }
 
         .status-indicator.online {
@@ -184,10 +262,6 @@
             100% { opacity: 1; }
         }
 
-        .card-content {
-            color: var(--text-secondary);
-        }
-
         .stat-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -196,20 +270,20 @@
         }
 
         .stat-item {
-            background: var(--bg-secondary);
+            background: var(--glass);
             padding: 10px;
             border-radius: 8px;
         }
 
         .stat-label {
             font-size: 0.85em;
-            color: var(--text-secondary);
+            color: var(--muted);
         }
 
         .stat-value {
             font-size: 1.5em;
             font-weight: 700;
-            color: var(--text-primary);
+            color: var(--white);
         }
 
         .activity-list {
@@ -219,89 +293,10 @@
 
         .activity-item {
             padding: 8px;
-            background: var(--bg-secondary);
+            background: var(--glass);
             border-radius: 6px;
             margin-bottom: 8px;
             font-size: 0.9em;
-        }
-
-        .debug-log {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 20px;
-            position: relative;
-        }
-
-        .debug-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-
-        .debug-content {
-            background: var(--bg-primary);
-            border-radius: 8px;
-            padding: 15px;
-            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-            font-size: 0.85em;
-            max-height: 400px;
-            overflow-y: auto;
-            white-space: pre-wrap;
-            word-break: break-all;
-        }
-
-        .log-entry {
-            margin-bottom: 5px;
-            padding: 3px 0;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .log-timestamp {
-            color: var(--text-secondary);
-            font-size: 0.9em;
-        }
-
-        .log-level {
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-weight: 600;
-            margin-right: 8px;
-        }
-
-        .log-level.info {
-            background: var(--accent);
-            color: white;
-        }
-
-        .log-level.success {
-            background: var(--success);
-            color: white;
-        }
-
-        .log-level.error {
-            background: var(--danger);
-            color: white;
-        }
-
-        .log-level.warning {
-            background: var(--warning);
-            color: white;
-        }
-
-        .spinner {
-            width: 20px;
-            height: 20px;
-            border: 3px solid var(--border);
-            border-top: 3px solid var(--accent);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
         }
 
         .test-result {
@@ -309,7 +304,7 @@
             align-items: center;
             gap: 10px;
             padding: 8px;
-            background: var(--bg-secondary);
+            background: var(--glass);
             border-radius: 6px;
             margin-bottom: 8px;
         }
@@ -323,7 +318,7 @@
         }
 
         .github-commit {
-            background: var(--bg-secondary);
+            background: var(--glass);
             padding: 10px;
             border-radius: 8px;
             margin-bottom: 8px;
@@ -331,7 +326,7 @@
         }
 
         .commit-sha {
-            background: var(--bg-primary);
+            background: var(--bg2);
             padding: 2px 6px;
             border-radius: 4px;
             font-family: monospace;
@@ -339,7 +334,7 @@
         }
 
         .progress-item {
-            background: var(--bg-secondary);
+            background: var(--glass);
             padding: 10px;
             border-radius: 8px;
             margin-bottom: 8px;
@@ -365,6 +360,20 @@
             color: white;
         }
 
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 3px solid var(--border-color);
+            border-top: 3px solid var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
         /* Modal Styles */
         .modal {
             display: none;
@@ -384,10 +393,10 @@
         }
 
         .modal-content {
-            background-color: var(--bg-secondary);
+            background: var(--panel-bg);
             margin: 5% auto;
             padding: 30px;
-            border: 1px solid var(--border);
+            border: 1px solid var(--border-color);
             border-radius: 12px;
             width: 80%;
             max-width: 800px;
@@ -395,6 +404,7 @@
             overflow-y: auto;
             animation: slideIn 0.3s;
             position: relative;
+            backdrop-filter: blur(12px);
         }
 
         @keyframes slideIn {
@@ -414,20 +424,20 @@
             align-items: center;
             margin-bottom: 20px;
             padding-bottom: 15px;
-            border-bottom: 1px solid var(--border);
+            border-bottom: 1px solid var(--border-color);
         }
 
         .modal-title {
             font-size: 1.5em;
             font-weight: 600;
-            color: var(--text-primary);
+            color: var(--white);
             display: flex;
             align-items: center;
             gap: 10px;
         }
 
         .close {
-            color: var(--text-secondary);
+            color: var(--muted);
             font-size: 28px;
             font-weight: bold;
             cursor: pointer;
@@ -452,11 +462,11 @@
             align-items: center;
             margin-top: 20px;
             padding-top: 15px;
-            border-top: 1px solid var(--border);
+            border-top: 1px solid var(--border-color);
         }
 
         .detail-section {
-            background: var(--bg-primary);
+            background: var(--bg1);
             border-radius: 8px;
             padding: 15px;
             margin-bottom: 15px;
@@ -468,17 +478,9 @@
             margin-bottom: 10px;
         }
 
-        .detail-content {
-            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-            font-size: 0.9em;
-            color: var(--text-secondary);
-            white-space: pre-wrap;
-            word-break: break-all;
-        }
-
         .json-display {
-            background: var(--bg-primary);
-            border: 1px solid var(--border);
+            background: var(--bg1);
+            border: 1px solid var(--border-color);
             border-radius: 8px;
             padding: 15px;
             font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
@@ -486,10 +488,11 @@
             overflow-x: auto;
             white-space: pre-wrap;
             word-wrap: break-word;
+            color: var(--muted);
         }
 
         .timestamp-display {
-            color: var(--text-secondary);
+            color: var(--muted);
             font-size: 0.85em;
             margin-bottom: 10px;
         }
@@ -507,8 +510,7 @@
         }
 
         .copy-btn:hover {
-            background: var(--accent);
-            opacity: 0.9;
+            background: var(--accent-2);
         }
 
         .copy-btn.copied {
@@ -525,18 +527,18 @@
             justify-content: space-between;
             align-items: center;
             padding: 10px;
-            background: var(--bg-primary);
+            background: var(--bg1);
             border-radius: 6px;
         }
 
         .test-metric-label {
-            color: var(--text-secondary);
+            color: var(--muted);
             font-size: 0.9em;
         }
 
         .test-metric-value {
             font-weight: 600;
-            color: var(--text-primary);
+            color: var(--white);
         }
 
         .test-status-badge {
@@ -562,9 +564,128 @@
             background: var(--warning);
             color: white;
         }
+
+        /* Debug Log */
+        .debug-log {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 22px;
+            padding: 24px;
+            position: relative;
+            backdrop-filter: blur(12px);
+        }
+
+        .debug-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .debug-header h3 {
+            color: var(--white);
+            font-weight: 700;
+            font-size: 18px;
+        }
+
+        .debug-content {
+            background: var(--bg1);
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.85em;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            color: var(--muted);
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 3px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .log-timestamp {
+            color: var(--muted);
+            font-size: 0.9em;
+        }
+
+        .log-level {
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+            margin-right: 8px;
+            font-size: 0.8em;
+        }
+
+        .log-level.info {
+            background: var(--accent);
+            color: white;
+        }
+
+        .log-level.success {
+            background: var(--success);
+            color: white;
+        }
+
+        .log-level.error {
+            background: var(--danger);
+            color: white;
+        }
+
+        .log-level.warning {
+            background: var(--warning);
+            color: white;
+        }
+
+        /* Floating particles animation */
+        .particles {
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: rgba(118, 167, 255, 0.6);
+            border-radius: 50%;
+            animation: floatUp 15s linear infinite;
+        }
+
+        .particle:nth-child(odd) {
+            background: rgba(43, 212, 167, 0.6);
+            animation-duration: 18s;
+        }
+
+        .particle:nth-child(3n) {
+            background: rgba(255, 202, 40, 0.6);
+            animation-duration: 20s;
+        }
+
+        @keyframes floatUp {
+            0% { transform: translateY(100vh) scale(0); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateY(-100vh) scale(1.5); opacity: 0; }
+        }
     </style>
 </head>
 <body>
+    <!-- Animated background -->
+    <div class="bg">
+        <div class="wave"></div>
+        <div class="wave wave2"></div>
+    </div>
+
+    <!-- Floating particles -->
+    <div class="particles"></div>
+
     <div class="container">
         <div class="header">
             <h1>CheckLoops Admin Status Dashboard</h1>
@@ -573,161 +694,153 @@
 
         <div class="controls">
             <button class="btn success" onclick="runAllChecks()">
-                <span>=�</span> Run All Checks
+                <span>🚀</span> Run All Checks
             </button>
             <button class="btn" onclick="checkWebsite()">
-                <span><</span> Check Website
+                <span>🌐</span> Check Website
             </button>
             <button class="btn" onclick="checkSupabase()">
-                <span>=�</span> Check Supabase
+                <span>🗄️</span> Check Supabase
             </button>
             <button class="btn" onclick="getStatistics()">
-                <span>=�</span> Get Statistics
+                <span>📊</span> Get Statistics
             </button>
             <button class="btn" onclick="getRecentActivity()">
-                <span>=�</span> Recent Activity
+                <span>📈</span> Recent Activity
             </button>
             <button class="btn" onclick="testKeys()">
-                <span>=</span> Test API Keys
+                <span>🔑</span> Test API Keys
             </button>
             <button class="btn" onclick="checkGitHub()">
-                <span>=</span> GitHub Status
+                <span>🐙</span> GitHub Status
             </button>
             <button class="btn" onclick="getInProgress()">
-                <span>�</span> In Progress
+                <span>⏳</span> In Progress
             </button>
             <button class="btn danger" onclick="clearDebugLog()">
-                <span>=�</span> Clear Log
+                <span>🗑️</span> Clear Log
             </button>
         </div>
 
         <div class="dashboard">
             <!-- Website Status -->
-            <div class="card" id="website-card" onclick="showTestDetails('website')">
-                <div class="card-header">
-                    <div class="card-title">
-                        <span><</span> Website Status
-                        <div class="status-indicator" id="website-status"></div>
-                    </div>
-                    <button class="btn" onclick="event.stopPropagation(); checkWebsite()" style="padding: 6px 12px; font-size: 0.9em;">
-                        Test
-                    </button>
+            <div class="panel" id="website-card" onclick="showTestDetails('website')">
+                <div class="panel-header">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="2" y1="12" x2="6" y2="12"></line>
+                        <line x1="18" y1="12" x2="22" y2="12"></line>
+                        <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+                        <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+                        <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
+                        <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+                    </svg>
+                    <span class="panel-title">Website Status</span>
+                    <div class="status-indicator" id="website-status"></div>
                 </div>
-                <div class="card-content" id="website-content">
-                    <p>Click test to check checkloops.co.uk</p>
+                <div id="website-content">
+                    <p style="color: var(--muted);">Click to check checkloops.co.uk connectivity</p>
                 </div>
             </div>
 
             <!-- Supabase Status -->
-            <div class="card" id="supabase-card" onclick="showTestDetails('supabase')">
-                <div class="card-header">
-                    <div class="card-title">
-                        <span>=�</span> Supabase Connection
-                        <div class="status-indicator" id="supabase-status"></div>
-                    </div>
-                    <button class="btn" onclick="event.stopPropagation(); checkSupabase()" style="padding: 6px 12px; font-size: 0.9em;">
-                        Test
-                    </button>
+            <div class="panel" id="supabase-card" onclick="showTestDetails('supabase')">
+                <div class="panel-header">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                        <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+                        <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+                    </svg>
+                    <span class="panel-title">Supabase Connection</span>
+                    <div class="status-indicator" id="supabase-status"></div>
                 </div>
-                <div class="card-content" id="supabase-content">
-                    <p>Click test to check database connection</p>
+                <div id="supabase-content">
+                    <p style="color: var(--muted);">Click to check database connectivity</p>
                 </div>
             </div>
 
             <!-- System Statistics -->
-            <div class="card" id="statistics-card" onclick="showTestDetails('statistics')">
-                <div class="card-header">
-                    <div class="card-title">
-                        <span>=�</span> System Statistics
-                    </div>
-                    <button class="btn" onclick="event.stopPropagation(); getStatistics()" style="padding: 6px 12px; font-size: 0.9em;">
-                        Refresh
-                    </button>
+            <div class="panel" id="statistics-card" onclick="showTestDetails('statistics')">
+                <div class="panel-header">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="20" x2="12" y2="10"></line>
+                        <line x1="18" y1="20" x2="18" y2="4"></line>
+                        <line x1="6" y1="20" x2="6" y2="16"></line>
+                    </svg>
+                    <span class="panel-title">System Statistics</span>
                 </div>
-                <div class="card-content" id="statistics-content">
-                    <div class="stat-grid" id="stats-grid">
-                        <div class="stat-item">
-                            <div class="stat-label">Loading...</div>
-                            <div class="stat-value">-</div>
-                        </div>
+                <div class="stat-grid" id="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-label">Loading...</div>
+                        <div class="stat-value">-</div>
                     </div>
                 </div>
             </div>
 
             <!-- Recent Activity -->
-            <div class="card" id="activity-card" onclick="showTestDetails('activity')">
-                <div class="card-header">
-                    <div class="card-title">
-                        <span>=�</span> Recent Activity (24h)
-                    </div>
-                    <button class="btn" onclick="event.stopPropagation(); getRecentActivity()" style="padding: 6px 12px; font-size: 0.9em;">
-                        Refresh
-                    </button>
+            <div class="panel" id="activity-card" onclick="showTestDetails('activity')">
+                <div class="panel-header">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"></polyline>
+                    </svg>
+                    <span class="panel-title">Recent Activity (24h)</span>
                 </div>
-                <div class="card-content">
-                    <div class="activity-list" id="activity-content">
-                        <p>Click refresh to load recent activity</p>
-                    </div>
+                <div class="activity-list" id="activity-content">
+                    <p style="color: var(--muted);">Click to load recent activity</p>
                 </div>
             </div>
 
             <!-- API Keys Test -->
-            <div class="card" id="keys-card" onclick="showTestDetails('keys')">
-                <div class="card-header">
-                    <div class="card-title">
-                        <span>=</span> API Keys Status
-                    </div>
-                    <button class="btn" onclick="event.stopPropagation(); testKeys()" style="padding: 6px 12px; font-size: 0.9em;">
-                        Test
-                    </button>
+            <div class="panel" id="keys-card" onclick="showTestDetails('keys')">
+                <div class="panel-header">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path>
+                    </svg>
+                    <span class="panel-title">API Keys Status</span>
                 </div>
-                <div class="card-content" id="keys-content">
-                    <p>Click test to validate API keys</p>
+                <div id="keys-content">
+                    <p style="color: var(--muted);">Click to validate API keys</p>
                 </div>
             </div>
 
             <!-- GitHub Status -->
-            <div class="card" id="github-card" onclick="showTestDetails('github')">
-                <div class="card-header">
-                    <div class="card-title">
-                        <span>=</span> GitHub Repository
-                    </div>
-                    <button class="btn" onclick="event.stopPropagation(); checkGitHub()" style="padding: 6px 12px; font-size: 0.9em;">
-                        Check
-                    </button>
+            <div class="panel" id="github-card" onclick="showTestDetails('github')">
+                <div class="panel-header">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"></path>
+                        <path d="M9 18c-4.51 2-5-2-7-2"></path>
+                    </svg>
+                    <span class="panel-title">GitHub Repository</span>
                 </div>
-                <div class="card-content" id="github-content">
-                    <p>Click check to load GitHub status</p>
+                <div id="github-content">
+                    <p style="color: var(--muted);">Click to load GitHub status</p>
                 </div>
             </div>
 
             <!-- In Progress Items -->
-            <div class="card" id="progress-card" onclick="showTestDetails('progress')">
-                <div class="card-header">
-                    <div class="card-title">
-                        <span>�</span> In Progress Items
-                    </div>
-                    <button class="btn" onclick="event.stopPropagation(); getInProgress()" style="padding: 6px 12px; font-size: 0.9em;">
-                        Check
-                    </button>
+            <div class="panel" id="progress-card" onclick="showTestDetails('progress')">
+                <div class="panel-header">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12,6 12,12 16,14"></polyline>
+                    </svg>
+                    <span class="panel-title">In Progress Items</span>
                 </div>
-                <div class="card-content" id="progress-content">
-                    <p>Click check to load in-progress items</p>
+                <div id="progress-content">
+                    <p style="color: var(--muted);">Click to load in-progress items</p>
                 </div>
             </div>
 
             <!-- Supabase Functions -->
-            <div class="card" id="functions-card" onclick="showTestDetails('functions')">
-                <div class="card-header">
-                    <div class="card-title">
-                        <span>�</span> Edge Functions
-                    </div>
-                    <button class="btn" onclick="event.stopPropagation(); checkFunctions()" style="padding: 6px 12px; font-size: 0.9em;">
-                        Check
-                    </button>
+            <div class="panel" id="functions-card" onclick="showTestDetails('functions')">
+                <div class="panel-header">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                    </svg>
+                    <span class="panel-title">Edge Functions</span>
                 </div>
-                <div class="card-content" id="functions-content">
-                    <p>Click check to test edge functions</p>
+                <div id="functions-content">
+                    <p style="color: var(--muted);">Click to test edge functions</p>
                 </div>
             </div>
         </div>
@@ -735,9 +848,9 @@
         <!-- Debug Log -->
         <div class="debug-log">
             <div class="debug-header">
-                <h3>=� Debug Log</h3>
-                <button class="btn" onclick="copyDebugLog()">
-                    <span>=�</span> Copy Log
+                <h3>📝 Debug Log</h3>
+                <button class="btn secondary" onclick="copyDebugLog()">
+                    <span>📋</span> Copy Log
                 </button>
             </div>
             <div class="debug-content" id="debug-log"></div>
@@ -783,193 +896,6 @@
             github: { data: null, timestamp: null, logs: [] },
             progress: { data: null, timestamp: null, logs: [] },
             functions: { data: null, timestamp: null, logs: [] }
-        };
-
-        // Modal functionality
-        function showTestDetails(testName) {
-            const modal = document.getElementById('testModal');
-            const modalTitle = document.getElementById('modalTitleText');
-            const modalIcon = document.getElementById('modalIcon');
-            const modalBody = document.getElementById('modalBody');
-            const modalTimestamp = document.getElementById('modalTimestamp');
-
-            const testInfo = {
-                website: { title: 'Website Status Details', icon: '🌐' },
-                supabase: { title: 'Supabase Connection Details', icon: '🗄️' },
-                statistics: { title: 'System Statistics Details', icon: '📊' },
-                activity: { title: 'Recent Activity Details', icon: '📈' },
-                keys: { title: 'API Keys Test Details', icon: '🔑' },
-                github: { title: 'GitHub Repository Details', icon: '🐙' },
-                progress: { title: 'In Progress Items Details', icon: '⏳' },
-                functions: { title: 'Edge Functions Details', icon: '⚡' }
-            };
-
-            const test = testResults[testName];
-            const info = testInfo[testName];
-
-            modalTitle.textContent = info.title;
-            modalIcon.textContent = info.icon;
-            modalTimestamp.textContent = test.timestamp ?
-                `Last updated: ${new Date(test.timestamp).toLocaleString()}` :
-                'Last updated: Never';
-
-            // Build detailed content
-            let content = '';
-
-            if (!test.data && test.logs.length === 0) {
-                content = '<div class="detail-section"><p>No test data available. Run the test first.</p></div>';
-            } else {
-                // Test status
-                if (test.data) {
-                    const status = test.data.status || 'unknown';
-                    const statusClass = status === 'connected' || status === 'online' ? 'success' :
-                                       status === 'error' || status === 'offline' ? 'error' : 'warning';
-
-                    content += `
-                        <div class="detail-section">
-                            <div class="detail-title">
-                                Test Status
-                                <span class="test-status-badge ${statusClass}">${status.toUpperCase()}</span>
-                            </div>
-                        </div>
-                    `;
-                }
-
-                // Raw data
-                if (test.data) {
-                    content += `
-                        <div class="detail-section">
-                            <div class="detail-title">Response Data</div>
-                            <div class="json-display">${JSON.stringify(test.data, null, 2)}</div>
-                        </div>
-                    `;
-                }
-
-                // Test logs
-                if (test.logs.length > 0) {
-                    content += '<div class="detail-section"><div class="detail-title">Test Logs</div>';
-                    test.logs.forEach(log => {
-                        const levelClass = log.level === 'error' ? 'error' :
-                                          log.level === 'success' ? 'success' :
-                                          log.level === 'warning' ? 'warning' : 'info';
-                        content += `
-                            <div style="margin-bottom: 10px;">
-                                <span class="log-timestamp">${log.timestamp}</span>
-                                <span class="log-level ${levelClass}">${log.level.toUpperCase()}</span>
-                                ${log.message}
-                                ${log.data ? `<div class="json-display" style="margin-top: 5px;">${JSON.stringify(log.data, null, 2)}</div>` : ''}
-                            </div>
-                        `;
-                    });
-                    content += '</div>';
-                }
-
-                // Additional metrics based on test type
-                if (testName === 'statistics' && test.data) {
-                    content += '<div class="detail-section"><div class="detail-title">Detailed Statistics</div><div class="test-details-grid">';
-                    Object.entries(test.data).forEach(([key, value]) => {
-                        if (key !== 'status' && key !== 'error') {
-                            content += `
-                                <div class="test-metric">
-                                    <span class="test-metric-label">${key}</span>
-                                    <span class="test-metric-value">${value}</span>
-                                </div>
-                            `;
-                        }
-                    });
-                    content += '</div></div>';
-                }
-
-                if (testName === 'website' && test.data?.headers) {
-                    content += '<div class="detail-section"><div class="detail-title">Response Headers</div><div class="test-details-grid">';
-                    Object.entries(test.data.headers).slice(0, 10).forEach(([key, value]) => {
-                        content += `
-                            <div class="test-metric">
-                                <span class="test-metric-label">${key}</span>
-                                <span class="test-metric-value">${value}</span>
-                            </div>
-                        `;
-                    });
-                    content += '</div></div>';
-                }
-
-                if (testName === 'github' && test.data?.repository) {
-                    content += `
-                        <div class="detail-section">
-                            <div class="detail-title">Repository Details</div>
-                            <div class="test-details-grid">
-                                <div class="test-metric">
-                                    <span class="test-metric-label">Name</span>
-                                    <span class="test-metric-value">${test.data.repository.name}</span>
-                                </div>
-                                <div class="test-metric">
-                                    <span class="test-metric-label">Stars</span>
-                                    <span class="test-metric-value">${test.data.repository.stars}</span>
-                                </div>
-                                <div class="test-metric">
-                                    <span class="test-metric-label">Forks</span>
-                                    <span class="test-metric-value">${test.data.repository.forks}</span>
-                                </div>
-                                <div class="test-metric">
-                                    <span class="test-metric-label">Open Issues</span>
-                                    <span class="test-metric-value">${test.data.repository.openIssues}</span>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                }
-            }
-
-            modalBody.innerHTML = content;
-            modal.style.display = 'block';
-
-            // Store current test for copy function
-            window.currentTestDetails = testName;
-        }
-
-        function closeModal() {
-            document.getElementById('testModal').style.display = 'none';
-        }
-
-        function copyTestDetails() {
-            const testName = window.currentTestDetails;
-            if (!testName) return;
-
-            const test = testResults[testName];
-            let copyText = `=== ${testName.toUpperCase()} TEST DETAILS ===\n`;
-            copyText += `Timestamp: ${test.timestamp ? new Date(test.timestamp).toISOString() : 'Never'}\n\n`;
-
-            if (test.data) {
-                copyText += `Response Data:\n${JSON.stringify(test.data, null, 2)}\n\n`;
-            }
-
-            if (test.logs.length > 0) {
-                copyText += `Test Logs:\n`;
-                test.logs.forEach(log => {
-                    copyText += `[${log.timestamp}] [${log.level.toUpperCase()}] ${log.message}\n`;
-                    if (log.data) {
-                        copyText += `${JSON.stringify(log.data, null, 2)}\n`;
-                    }
-                });
-            }
-
-            navigator.clipboard.writeText(copyText).then(() => {
-                const btn = event.target.closest('.copy-btn');
-                btn.classList.add('copied');
-                btn.innerHTML = '<span>✅</span> Copied!';
-                setTimeout(() => {
-                    btn.classList.remove('copied');
-                    btn.innerHTML = '<span>📋</span> Copy Details';
-                }, 2000);
-            });
-        }
-
-        // Close modal when clicking outside
-        window.onclick = function(event) {
-            const modal = document.getElementById('testModal');
-            if (event.target === modal) {
-                modal.style.display = 'none';
-            }
         };
 
         // Debug log functionality
@@ -1076,88 +1002,84 @@
             }
         }
 
-        // Check website status
+        // Test functions
         async function checkWebsite() {
             const card = document.getElementById('website-card');
             const status = document.getElementById('website-status');
             const content = document.getElementById('website-content');
 
             try {
-                testResults.website.logs = []; // Clear previous logs
+                testResults.website.logs = [];
                 content.innerHTML = '<div class="spinner"></div>';
                 const result = await callEdgeFunction('checkWebsite', {}, 'website');
 
                 if (result.status === 'online') {
                     status.className = 'status-indicator online';
-                    card.className = 'card success';
+                    card.className = 'panel success';
                     content.innerHTML = `
                         <div class="test-result success">
-                             Website is online
+                            ✅ Website is online
                         </div>
-                        <div>Status Code: ${result.statusCode}</div>
-                        <div>Server: ${result.headers?.server || 'Unknown'}</div>
+                        <div style="color: var(--muted); font-size: 0.9em;">Status Code: ${result.statusCode}</div>
                     `;
                 } else {
                     status.className = 'status-indicator error';
-                    card.className = 'card error';
+                    card.className = 'panel error';
                     content.innerHTML = `
                         <div class="test-result error">
-                            L Website is ${result.status}
+                            ❌ Website is ${result.status}
                         </div>
-                        <div>Error: ${result.error || 'Unknown error'}</div>
+                        <div style="color: var(--muted); font-size: 0.9em;">Error: ${result.error || 'Unknown error'}</div>
                     `;
                 }
             } catch (error) {
                 status.className = 'status-indicator error';
-                card.className = 'card error';
-                content.innerHTML = `<div class="test-result error">L Check failed: ${error.message}</div>`;
+                card.className = 'panel error';
+                content.innerHTML = `<div class="test-result error">❌ Check failed: ${error.message}</div>`;
             }
         }
 
-        // Check Supabase connection
         async function checkSupabase() {
             const card = document.getElementById('supabase-card');
             const status = document.getElementById('supabase-status');
             const content = document.getElementById('supabase-content');
 
             try {
-                testResults.supabase.logs = []; // Clear previous logs
+                testResults.supabase.logs = [];
                 content.innerHTML = '<div class="spinner"></div>';
                 const result = await callEdgeFunction('checkSupabase', {}, 'supabase');
 
                 if (result.status === 'connected') {
                     status.className = 'status-indicator online';
-                    card.className = 'card success';
+                    card.className = 'panel success';
                     content.innerHTML = `
                         <div class="test-result success">
-                             Database connected
+                            ✅ Database connected
                         </div>
-                        <div>URL: ${result.url?.substring(0, 30)}...</div>
-                        <div>Status: ${result.database}</div>
+                        <div style="color: var(--muted); font-size: 0.9em;">Status: ${result.database}</div>
                     `;
                 } else {
                     status.className = 'status-indicator error';
-                    card.className = 'card error';
+                    card.className = 'panel error';
                     content.innerHTML = `
                         <div class="test-result error">
-                            L Database connection failed
+                            ❌ Database connection failed
                         </div>
-                        <div>Error: ${result.error}</div>
+                        <div style="color: var(--muted); font-size: 0.9em;">Error: ${result.error}</div>
                     `;
                 }
             } catch (error) {
                 status.className = 'status-indicator error';
-                card.className = 'card error';
-                content.innerHTML = `<div class="test-result error">L Check failed: ${error.message}</div>`;
+                card.className = 'panel error';
+                content.innerHTML = `<div class="test-result error">❌ Check failed: ${error.message}</div>`;
             }
         }
 
-        // Get system statistics
         async function getStatistics() {
             const content = document.getElementById('stats-grid');
 
             try {
-                testResults.statistics.logs = []; // Clear previous logs
+                testResults.statistics.logs = [];
                 content.innerHTML = '<div class="spinner"></div>';
                 const result = await callEdgeFunction('getStatistics', {}, 'statistics');
 
@@ -1196,12 +1118,11 @@
             }
         }
 
-        // Get recent activity
         async function getRecentActivity() {
             const content = document.getElementById('activity-content');
 
             try {
-                testResults.activity.logs = []; // Clear previous logs
+                testResults.activity.logs = [];
                 content.innerHTML = '<div class="spinner"></div>';
                 const result = await callEdgeFunction('getRecentActivity', {}, 'activity');
 
@@ -1209,27 +1130,27 @@
                     let html = '';
 
                     if (result.newUsers?.length) {
-                        html += '<strong>New Users:</strong>';
+                        html += '<strong style="color: var(--accent);">New Users:</strong>';
                         result.newUsers.forEach(user => {
-                            html += `<div class="activity-item">=d ${user.email}</div>`;
+                            html += `<div class="activity-item">👤 ${user.email}</div>`;
                         });
                     }
 
                     if (result.recentLogins?.length) {
-                        html += '<strong>Recent Logins:</strong>';
+                        html += '<strong style="color: var(--accent);">Recent Logins:</strong>';
                         result.recentLogins.forEach(login => {
-                            html += `<div class="activity-item">= ${login.email}</div>`;
+                            html += `<div class="activity-item">🔐 ${login.email}</div>`;
                         });
                     }
 
                     if (result.holidayRequests?.length) {
-                        html += '<strong>Holiday Requests:</strong>';
+                        html += '<strong style="color: var(--accent);">Holiday Requests:</strong>';
                         result.holidayRequests.forEach(req => {
-                            html += `<div class="activity-item">=� Request #${req.id} - ${req.status}</div>`;
+                            html += `<div class="activity-item">📅 Request #${req.id} - ${req.status}</div>`;
                         });
                     }
 
-                    content.innerHTML = html || '<p>No recent activity</p>';
+                    content.innerHTML = html || '<p style="color: var(--muted);">No recent activity</p>';
                 } else {
                     content.innerHTML = `<div class="test-result error">Error: ${result.error}</div>`;
                 }
@@ -1238,24 +1159,20 @@
             }
         }
 
-        // Test API keys
         async function testKeys() {
             const content = document.getElementById('keys-content');
 
             try {
-                testResults.keys.logs = []; // Clear previous logs
+                testResults.keys.logs = [];
                 content.innerHTML = '<div class="spinner"></div>';
                 const result = await callEdgeFunction('testKeys', {}, 'keys');
 
                 content.innerHTML = `
-                    <div class="test-result ${result.supabaseUrl ? 'success' : 'error'}">
-                        ${result.supabaseUrl ? '' : 'L'} Supabase URL
-                    </div>
                     <div class="test-result ${result.serviceKey ? 'success' : 'error'}">
-                        ${result.serviceKey ? '' : 'L'} Service Key
+                        ${result.serviceKey ? '✅' : '❌'} Service Key
                     </div>
                     <div class="test-result ${result.anonKey ? 'success' : 'error'}">
-                        ${result.anonKey ? '' : 'L'} Anon Key
+                        ${result.anonKey ? '✅' : '❌'} Anon Key
                     </div>
                 `;
             } catch (error) {
@@ -1263,14 +1180,12 @@
             }
         }
 
-        // Check GitHub status
         async function checkGitHub() {
             const content = document.getElementById('github-content');
 
             try {
-                testResults.github.logs = []; // Clear previous logs
+                testResults.github.logs = [];
                 content.innerHTML = '<div class="spinner"></div>';
-                // Modify these to match your GitHub repo
                 const result = await callEdgeFunction('checkGitHub', {
                     owner: 'MagicManBen',
                     repo: 'CheckLoops'
@@ -1278,13 +1193,13 @@
 
                 if (result.repository) {
                     let html = `
-                        <div><strong>${result.repository.name}</strong></div>
-                        <div>P ${result.repository.stars} | <t ${result.repository.forks} | = ${result.repository.openIssues} issues</div>
-                        <div>Last updated: ${new Date(result.repository.updatedAt).toLocaleDateString()}</div>
+                        <div><strong style="color: var(--accent);">${result.repository.name}</strong></div>
+                        <div style="color: var(--muted); font-size: 0.9em;">⭐ ${result.repository.stars} | 🍴 ${result.repository.forks} | 🐛 ${result.repository.openIssues} issues</div>
+                        <div style="color: var(--muted); font-size: 0.9em;">Last updated: ${new Date(result.repository.updatedAt).toLocaleDateString()}</div>
                     `;
 
                     if (result.commits?.length) {
-                        html += '<div style="margin-top: 10px;"><strong>Recent Commits:</strong></div>';
+                        html += '<div style="margin-top: 10px;"><strong style="color: var(--accent);">Recent Commits:</strong></div>';
                         result.commits.slice(0, 3).forEach(commit => {
                             html += `
                                 <div class="github-commit">
@@ -1304,12 +1219,11 @@
             }
         }
 
-        // Get in-progress items
         async function getInProgress() {
             const content = document.getElementById('progress-content');
 
             try {
-                testResults.progress.logs = []; // Clear previous logs
+                testResults.progress.logs = [];
                 content.innerHTML = '<div class="spinner"></div>';
                 const result = await callEdgeFunction('getInProgressItems', {}, 'progress');
 
@@ -1321,22 +1235,20 @@
                         </div>
                     `).join('');
                 } else {
-                    content.innerHTML = '<p>No items in progress</p>';
+                    content.innerHTML = '<p style="color: var(--muted);">No items in progress</p>';
                 }
             } catch (error) {
                 content.innerHTML = `<div class="test-result error">Failed: ${error.message}</div>`;
             }
         }
 
-        // Check edge functions
         async function checkFunctions() {
             const content = document.getElementById('functions-content');
 
             try {
-                testResults.functions.logs = []; // Clear previous logs
+                testResults.functions.logs = [];
                 content.innerHTML = '<div class="spinner"></div>';
 
-                // Test if the status-check function is working
                 const startTime = Date.now();
                 const testResult = await supabaseClient.functions.invoke('status-check', {
                     body: { action: 'checkSupabase' }
@@ -1344,18 +1256,43 @@
                 const responseTime = Date.now() - startTime;
 
                 if (!testResult.error) {
+                    testResults.functions.data = {
+                        status: 'operational',
+                        responseTime: responseTime,
+                        result: testResult.data
+                    };
+                    testResults.functions.timestamp = new Date().toISOString();
+                    testResults.functions.logs.push({
+                        timestamp: new Date().toISOString(),
+                        level: 'success',
+                        message: 'Edge function test completed',
+                        data: { responseTime, result: testResult.data }
+                    });
+
                     content.innerHTML = `
                         <div class="test-result success">
-                             status-check function is operational
+                            ✅ status-check function is operational
                         </div>
-                        <div>Response time: ${Date.now()}ms</div>
+                        <div style="color: var(--muted); font-size: 0.9em;">Response time: ${responseTime}ms</div>
                     `;
                 } else {
+                    testResults.functions.data = {
+                        status: 'error',
+                        error: testResult.error.message
+                    };
+                    testResults.functions.timestamp = new Date().toISOString();
+                    testResults.functions.logs.push({
+                        timestamp: new Date().toISOString(),
+                        level: 'error',
+                        message: 'Edge function test failed',
+                        data: testResult.error
+                    });
+
                     content.innerHTML = `
                         <div class="test-result error">
-                            L status-check function error
+                            ❌ status-check function error
                         </div>
-                        <div>Error: ${testResult.error.message}</div>
+                        <div style="color: var(--muted); font-size: 0.9em;">Error: ${testResult.error.message}</div>
                     `;
                 }
             } catch (error) {
@@ -1363,11 +1300,9 @@
             }
         }
 
-        // Run all checks
         async function runAllChecks() {
             addLog('info', 'Running all system checks...');
 
-            // Disable all buttons during check
             document.querySelectorAll('.btn').forEach(btn => btn.disabled = true);
 
             try {
@@ -1386,17 +1321,154 @@
             } catch (error) {
                 addLog('error', 'Some checks failed', error);
             } finally {
-                // Re-enable buttons
                 document.querySelectorAll('.btn').forEach(btn => btn.disabled = false);
             }
         }
 
-        // Initialize on load
+        // Modal functionality (same as before but with new styling)
+        function showTestDetails(testName) {
+            const modal = document.getElementById('testModal');
+            const modalTitle = document.getElementById('modalTitleText');
+            const modalIcon = document.getElementById('modalIcon');
+            const modalBody = document.getElementById('modalBody');
+            const modalTimestamp = document.getElementById('modalTimestamp');
+
+            const testInfo = {
+                website: { title: 'Website Status Details', icon: '🌐' },
+                supabase: { title: 'Supabase Connection Details', icon: '🗄️' },
+                statistics: { title: 'System Statistics Details', icon: '📊' },
+                activity: { title: 'Recent Activity Details', icon: '📈' },
+                keys: { title: 'API Keys Test Details', icon: '🔑' },
+                github: { title: 'GitHub Repository Details', icon: '🐙' },
+                progress: { title: 'In Progress Items Details', icon: '⏳' },
+                functions: { title: 'Edge Functions Details', icon: '⚡' }
+            };
+
+            const test = testResults[testName];
+            const info = testInfo[testName];
+
+            modalTitle.textContent = info.title;
+            modalIcon.textContent = info.icon;
+            modalTimestamp.textContent = test.timestamp ?
+                `Last updated: ${new Date(test.timestamp).toLocaleString()}` :
+                'Last updated: Never';
+
+            let content = '';
+
+            if (!test.data && test.logs.length === 0) {
+                content = '<div class="detail-section"><p>No test data available. Run the test first.</p></div>';
+            } else {
+                if (test.data) {
+                    const status = test.data.status || 'unknown';
+                    const statusClass = status === 'connected' || status === 'online' || status === 'operational' ? 'success' :
+                                       status === 'error' || status === 'offline' ? 'error' : 'warning';
+
+                    content += `
+                        <div class="detail-section">
+                            <div class="detail-title">
+                                Test Status
+                                <span class="test-status-badge ${statusClass}">${status.toUpperCase()}</span>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                if (test.data) {
+                    content += `
+                        <div class="detail-section">
+                            <div class="detail-title">Response Data</div>
+                            <div class="json-display">${JSON.stringify(test.data, null, 2)}</div>
+                        </div>
+                    `;
+                }
+
+                if (test.logs.length > 0) {
+                    content += '<div class="detail-section"><div class="detail-title">Test Logs</div>';
+                    test.logs.forEach(log => {
+                        const levelClass = log.level === 'error' ? 'error' :
+                                          log.level === 'success' ? 'success' :
+                                          log.level === 'warning' ? 'warning' : 'info';
+                        content += `
+                            <div style="margin-bottom: 10px;">
+                                <span class="log-timestamp">${log.timestamp}</span>
+                                <span class="log-level ${levelClass}">${log.level.toUpperCase()}</span>
+                                ${log.message}
+                                ${log.data ? `<div class="json-display" style="margin-top: 5px;">${JSON.stringify(log.data, null, 2)}</div>` : ''}
+                            </div>
+                        `;
+                    });
+                    content += '</div>';
+                }
+            }
+
+            modalBody.innerHTML = content;
+            modal.style.display = 'block';
+            window.currentTestDetails = testName;
+        }
+
+        function closeModal() {
+            document.getElementById('testModal').style.display = 'none';
+        }
+
+        function copyTestDetails() {
+            const testName = window.currentTestDetails;
+            if (!testName) return;
+
+            const test = testResults[testName];
+            let copyText = `=== ${testName.toUpperCase()} TEST DETAILS ===\n`;
+            copyText += `Timestamp: ${test.timestamp ? new Date(test.timestamp).toISOString() : 'Never'}\n\n`;
+
+            if (test.data) {
+                copyText += `Response Data:\n${JSON.stringify(test.data, null, 2)}\n\n`;
+            }
+
+            if (test.logs.length > 0) {
+                copyText += `Test Logs:\n`;
+                test.logs.forEach(log => {
+                    copyText += `[${log.timestamp}] [${log.level.toUpperCase()}] ${log.message}\n`;
+                    if (log.data) {
+                        copyText += `${JSON.stringify(log.data, null, 2)}\n`;
+                    }
+                });
+            }
+
+            navigator.clipboard.writeText(copyText).then(() => {
+                const btn = event.target.closest('.copy-btn');
+                btn.classList.add('copied');
+                btn.innerHTML = '<span>✅</span> Copied!';
+                setTimeout(() => {
+                    btn.classList.remove('copied');
+                    btn.innerHTML = '<span>📋</span> Copy Details';
+                }, 2000);
+            });
+        }
+
+        window.onclick = function(event) {
+            const modal = document.getElementById('testModal');
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        };
+
+        // Initialize particles
+        function createParticles() {
+            const particlesContainer = document.querySelector('.particles');
+            for (let i = 0; i < 50; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                particle.style.left = Math.random() * 100 + '%';
+                particle.style.animationDelay = Math.random() * 15 + 's';
+                particle.style.animationDuration = (15 + Math.random() * 10) + 's';
+                particlesContainer.appendChild(particle);
+            }
+        }
+
+        // Initialize
         window.addEventListener('DOMContentLoaded', () => {
             addLog('info', 'Status dashboard initialized');
             addLog('info', 'Supabase URL', supabaseUrl);
+            createParticles();
 
-            // Run basic checks on load
             setTimeout(() => {
                 checkSupabase();
                 getStatistics();
