@@ -25408,6 +25408,232 @@ window.refreshStaffData = refreshStaffData;
       alert('Note: Permission fix requires database admin access. Contact your system administrator if the issue persists.');
     }
   };
+  // Load staff entitlement cards
+  window.loadStaffEntitlementCards = async function() {
+    if (!window.supabase) return;
+
+    try {
+      // Get site_id from context
+      const siteId = window.ctx?.site_id;
+      if (!siteId) {
+        console.error('No site_id in context');
+        return;
+      }
+
+      // First sync holidays table to ensure it's up to date
+      await syncHolidaysTable();
+
+      // Get all users from master_users for this site
+      const { data: users, error } = await window.supabase
+        .from('master_users')
+        .select('*')
+        .eq('site_id', siteId)
+        .order('full_name');
+
+      if (error) {
+        console.error('Error loading users:', error);
+        return;
+      }
+
+      const container = document.getElementById('entitlements-cards-container');
+      if (!container) return;
+
+      if (!users || users.length === 0) {
+        container.innerHTML = '<div style="padding:20px; text-align:center; color:var(--muted);">No staff members found for this site.</div>';
+        return;
+      }
+
+      // Create cards for each user
+      const cardsHtml = users.map(user => {
+        const weeklyHours = user.weekly_hours ||
+          ((user.monday_hours || 0) +
+           (user.tuesday_hours || 0) +
+           (user.wednesday_hours || 0) +
+           (user.thursday_hours || 0) +
+           (user.friday_hours || 0) +
+           (user.saturday_hours || 0) +
+           (user.sunday_hours || 0));
+
+        const holidayMultiplier = user.holiday_multiplier || 6;
+        const calculatedHours = weeklyHours * holidayMultiplier;
+        const finalHours = user.override_hours || calculatedHours;
+
+        return `
+          <div class="staff-card" style="background: var(--glass); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 16px;">
+              <div style="width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent-2)); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 18px;">
+                ${user.full_name ? user.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2) : '??'}
+              </div>
+              <div style="flex: 1;">
+                <h3 style="margin: 0; color: var(--white); font-size: 16px;">${user.full_name || user.email || 'Unknown'}</h3>
+                <p style="margin: 4px 0 0; color: var(--muted); font-size: 14px;">${user.role_detail || user.access_type || 'Staff'}</p>
+              </div>
+              ${user.holiday_approved ? '<span style="background: var(--success); color: white; padding: 4px 8px; border-radius: 6px; font-size: 12px;">Approved</span>' : ''}
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+              <div>
+                <label style="color: var(--muted); font-size: 12px;">Working Pattern</label>
+                <div style="margin-top: 4px;">
+                  ${user.monday_hours ? `<div style="font-size: 13px; color: var(--white);">Mon: ${user.monday_hours}h</div>` : ''}
+                  ${user.tuesday_hours ? `<div style="font-size: 13px; color: var(--white);">Tue: ${user.tuesday_hours}h</div>` : ''}
+                  ${user.wednesday_hours ? `<div style="font-size: 13px; color: var(--white);">Wed: ${user.wednesday_hours}h</div>` : ''}
+                  ${user.thursday_hours ? `<div style="font-size: 13px; color: var(--white);">Thu: ${user.thursday_hours}h</div>` : ''}
+                  ${user.friday_hours ? `<div style="font-size: 13px; color: var(--white);">Fri: ${user.friday_hours}h</div>` : ''}
+                  ${user.saturday_hours ? `<div style="font-size: 13px; color: var(--white);">Sat: ${user.saturday_hours}h</div>` : ''}
+                  ${user.sunday_hours ? `<div style="font-size: 13px; color: var(--white);">Sun: ${user.sunday_hours}h</div>` : ''}
+                  <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-color); font-weight: 600; color: var(--accent);">Total: ${weeklyHours}h/week</div>
+                </div>
+              </div>
+
+              <div>
+                <label style="color: var(--muted); font-size: 12px;">Holiday Entitlement</label>
+                <div style="margin-top: 4px;">
+                  <div style="font-size: 13px; color: var(--white);">Multiplier: ${holidayMultiplier}x</div>
+                  <div style="font-size: 13px; color: var(--white);">Calculated: ${calculatedHours}h</div>
+                  ${user.manual_override && user.override_hours ? `<div style="font-size: 13px; color: var(--warning);">Override: ${user.override_hours}h</div>` : ''}
+                  <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-color); font-weight: 600; color: var(--success);">Annual: ${finalHours}h</div>
+                </div>
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+              <div style="text-align: center;">
+                <div style="font-size: 20px; font-weight: 700; color: var(--accent);">${user.holiday_entitlement || finalHours}h</div>
+                <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">Total</div>
+              </div>
+              <div style="text-align: center;">
+                <div style="font-size: 20px; font-weight: 700; color: var(--danger);">${user.holiday_taken || 0}h</div>
+                <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">Taken</div>
+              </div>
+              <div style="text-align: center;">
+                <div style="font-size: 20px; font-weight: 700; color: var(--success);">${user.holiday_remaining || finalHours}h</div>
+                <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">Remaining</div>
+              </div>
+            </div>
+
+            <div style="margin-top: 16px; display: flex; gap: 8px;">
+              <button class="btn secondary" style="flex: 1; padding: 8px; font-size: 13px;" onclick="editStaffHoliday('${user.id}')">
+                Edit Settings
+              </button>
+              <button class="btn" style="flex: 1; padding: 8px; font-size: 13px;" onclick="viewStaffRequests('${user.id}')">
+                View Requests
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      container.innerHTML = cardsHtml;
+      console.log(`Loaded ${users.length} staff holiday cards`);
+
+    } catch (error) {
+      console.error('Error loading staff entitlement cards:', error);
+      const container = document.getElementById('entitlements-cards-container');
+      if (container) {
+        container.innerHTML = `<div style="padding:20px; text-align:center; color:var(--danger);">Error loading staff cards: ${error.message}</div>`;
+      }
+    }
+  };
+
+  // Sync holidays table with master_users
+  window.syncHolidaysTable = async function() {
+    if (!window.supabase) return;
+
+    try {
+      const siteId = window.ctx?.site_id;
+      if (!siteId) return;
+
+      // Get all users from master_users
+      const { data: users, error: usersError } = await window.supabase
+        .from('master_users')
+        .select('*')
+        .eq('site_id', siteId);
+
+      if (usersError) {
+        console.error('Error fetching users:', usersError);
+        return;
+      }
+
+      let created = 0, updated = 0;
+
+      for (const user of users) {
+        // Check if holiday record exists
+        const { data: existingHoliday } = await window.supabase
+          .from('holidays')
+          .select('*')
+          .eq('auth_user_id', user.auth_user_id)
+          .single();
+
+        const weeklyHours = user.weekly_hours ||
+          ((user.monday_hours || 0) +
+           (user.tuesday_hours || 0) +
+           (user.wednesday_hours || 0) +
+           (user.thursday_hours || 0) +
+           (user.friday_hours || 0) +
+           (user.saturday_hours || 0) +
+           (user.sunday_hours || 0));
+
+        const entitlement = weeklyHours * (user.holiday_multiplier || 6);
+
+        if (!existingHoliday) {
+          // Create new holiday record
+          const { error: insertError } = await window.supabase
+            .from('holidays')
+            .insert({
+              auth_user_id: user.auth_user_id,
+              user_id: user.id,
+              email: user.email,
+              full_name: user.full_name,
+              site_id: user.site_id,
+              holiday_entitlement: entitlement,
+              holiday_taken: user.holiday_taken || 0,
+              holiday_remaining: entitlement - (user.holiday_taken || 0),
+              holiday_approved: user.holiday_approved || false,
+              holiday_year: new Date().getFullYear(),
+              total_holiday_entitlement: entitlement,
+              approved_holidays_used: user.approved_holidays_used || 0
+            });
+
+          if (!insertError) created++;
+        } else {
+          // Update existing record
+          const { error: updateError } = await window.supabase
+            .from('holidays')
+            .update({
+              email: user.email,
+              full_name: user.full_name,
+              site_id: user.site_id,
+              holiday_entitlement: entitlement,
+              holiday_remaining: entitlement - (existingHoliday.holiday_taken || 0),
+              total_holiday_entitlement: entitlement
+            })
+            .eq('auth_user_id', user.auth_user_id);
+
+          if (!updateError) updated++;
+        }
+      }
+
+      console.log(`Holidays sync complete: ${created} created, ${updated} updated`);
+      return { created, updated };
+    } catch (error) {
+      console.error('Error syncing holidays table:', error);
+    }
+  };
+
+  // Helper functions for staff holiday cards
+  window.editStaffHoliday = function(userId) {
+    console.log('Edit holiday settings for user:', userId);
+    // TODO: Open modal to edit holiday settings
+    alert('Edit holiday settings modal coming soon');
+  };
+
+  window.viewStaffRequests = function(userId) {
+    console.log('View holiday requests for user:', userId);
+    // TODO: Filter holiday requests view for this user
+    alert('View user requests coming soon');
+  };
+
   // Load entitlements when holidays section is shown (table view)
   async function loadHolidayEntitlements() {
     if (!window.supabase) return;
