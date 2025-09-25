@@ -163,95 +163,112 @@ document.addEventListener('DOMContentLoaded', () => {
       const labelEl = btn.querySelector('.menu-item-label');
       const text = (labelEl?.textContent || btn.textContent || '').trim().toLowerCase();
       if (labelsToRemove.includes(text)) {
-        btn.remove();
-      }
-    });
-  } catch (e) {
-    console.warn('Could not remove some sidebar buttons:', e);
-  }
-});
-</script>
-<script>
-// Populate the Invite User → Team dropdown. Minimal query: teams(id,name) by site_id.
-async function populateTeamsSelect() {
-  try {
-    if (typeof supabase === 'undefined') {
-      console.error('populateTeamsSelect: Supabase not available');
-      return;
-    }
+        const year = new Date().getFullYear();
+        const container = document.getElementById('entitlements-list');
+        if (!container) return;
 
-    const sel = document.getElementById('add-user-team');
-    if (!sel) { console.warn('populateTeamsSelect: #add-user-team not found'); return; }
-    sel.innerHTML = '<option value="" disabled selected>Loading teams…</option>';
+        // Fetch all staff (exclude deactivated if you have a flag; left generic)
+        const { data: users, error: muErr } = await window.supabase
+          .from('master_users')
+          .select('id, full_name, access_type, role, is_gp, weekly_hours, weekly_sessions')
+          .order('full_name');
+        if (muErr) throw muErr;
 
-    // Resolve siteId from existing context or session metadata
-    let siteId = (window.ctx && window.ctx.site_id) ? window.ctx.site_id : null;
-    if (!siteId) {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const u = session?.user;
-        siteId = u?.user_metadata?.site_id || u?.raw_user_meta_data?.site_id || null;
-      } catch (e) {
-        console.warn('populateTeamsSelect: getSession failed', e && (e.message || e));
-      }
-    }
+        if (!users || users.length === 0) {
+          container.innerHTML = '<div style="padding:20px; text-align:center; color:var(--muted);">No staff found.</div>';
+          return;
+        }
 
-    if (!siteId) {
-      console.warn('populateTeamsSelect: no site_id resolved');
-      sel.innerHTML = '<option value="" disabled selected>No teams available</option>';
-      return;
-    }
+        // Fetch entitlements separately
+        const { data: ents, error: entErr } = await window.supabase
+          .from('2_staff_entitlements')
+          .select('*')
+          .eq('year', year);
+        if (entErr) throw entErr;
 
-    console.log('Loading teams from teams table for site', siteId);
-    const { data: teams, error } = await supabase
-      .from('teams')
-      .select('id, name')
-      .eq('site_id', siteId)
-      .order('name');
+        const entMap = new Map();
+        (ents || []).forEach(e => entMap.set(e.staff_id, e));
 
-    if (error) {
-      console.error('populateTeamsSelect: teams query failed', error);
-      const msg = String(error.message || '').toLowerCase();
-      // Helpful hint if an RLS/policy references a non-existent column like auth_user_id
-      if (error.code === '42703' || msg.includes('auth_user_id') || msg.includes('column') ) {
-        sel.innerHTML = '<option value="" disabled selected>DB policy error – please fix RLS on teams</option>';
-      } else if (msg.includes('policy') || msg.includes('rls')) {
-        sel.innerHTML = '<option value="" disabled selected>Permission denied by RLS</option>';
-      } else {
-        sel.innerHTML = '<option value="" disabled selected>Error loading teams</option>';
-      }
-      return;
-    }
+        const formatValue = (val, isGP) => {
+          if (val == null) return '0';
+          if (isGP) return val;
+          const hours = Math.floor(val);
+          const minutes = Math.round((val - hours) * 60);
+          return `${hours}:${String(minutes).padStart(2, '0')}`;
+        };
 
-    if (!Array.isArray(teams) || teams.length === 0) {
-      sel.innerHTML = '<option value="" disabled selected>No teams found</option>';
-      return;
-    }
+        const rows = users.map(u => {
+          const ent = entMap.get(u.id) || null;
+          const isGP = !!u.is_gp;
+          const unit = isGP ? 'sessions' : 'hours';
+          const weekly = ent ? (isGP ? ent.weekly_sessions : ent.weekly_hours) : (isGP ? u.weekly_sessions : u.weekly_hours);
+          const multiplier = ent?.multiplier || 6;
+          const calculated = ent ? (isGP ? ent.calculated_sessions : ent.calculated_hours) : null;
+          const override = ent?.override || null;
+          const final = override || calculated || weekly || 0;
+          const entId = ent?.id;
+          const missing = !ent;
 
-    // Populate options
-    sel.innerHTML = '<option value="" disabled selected>Select a team…</option>';
-    teams.forEach(t => {
-      if (!t) return;
-      const opt = document.createElement('option');
-      opt.value = t.id;
-      opt.textContent = t.name;
-      sel.appendChild(opt);
-    });
-  } catch (e) {
-    console.error('populateTeamsSelect: fatal', e && (e.message || e));
-    const sel = document.getElementById('add-user-team');
-    if (sel) sel.innerHTML = '<option value="" disabled selected>Error loading teams</option>';
-  }
-}
+          return `
+            <tr class="${missing ? 'missing-entitlement' : ''}" style="${missing ? 'background:rgba(255,200,0,0.08);' : ''}">
+              <td>${u.full_name || 'Unknown'}${missing ? ' <span style="color:#d97706;font-size:11px;">(no entitlement row)</span>' : ''}</td>
+              <td>${u.access_type || u.role || 'N/A'}</td>
+              <td>${formatValue(weekly, isGP)} ${unit}/week</td>
+              <td>
+                ${entId ? `<input type="number" id="multiplier-${entId}" value="${multiplier}" min="1" max="52" style="width:60px; padding:6px 8px; border-radius:6px; background:var(--glass); border:1px solid var(--border-color);" onchange="updateMultiplier(${entId}, ${u.id}, ${isGP})">` : '<em style="color:#9ca3af;">—</em>'}
+              </td>
+              <td id="calculated-${entId || 'x-'+u.id}">${calculated != null ? formatValue(calculated, isGP) + ' ' + unit : '<em style="color:#9ca3af;">n/a</em>'}</td>
+              <td>
+                ${entId ? `<input type="${isGP ? 'number' : 'text'}" id="override-${entId}" value="${override ? (isGP ? override : formatValue(override, false)) : ''}" placeholder="${isGP ? 'Override' : 'HH:MM'}" pattern="${isGP ? '[0-9]*' : '[0-9]+:[0-5][0-9]'}" style="width:80px; padding:6px 8px; border-radius:6px; background:var(--glass); border:1px solid var(--border-color);" onchange="updateOverride(${entId}, ${isGP})">` : '<button class="btn secondary" style="padding:4px 8px;font-size:11px;" onclick="createEntitlementRow('+u.id+','+isGP+')">Create</button>'}
+              </td>
+              <td id="final-${entId || 'x-'+u.id}"><strong>${formatValue(final, isGP)} ${unit}</strong></td>
+              <td>
+                ${entId ? `<button class="btn secondary" style="padding:6px 12px; font-size:12px;" onclick="saveEntitlement(${entId}, ${isGP})">Save</button>` : '<em style="color:#9ca3af;">—</em>'}
+              </td>
+            </tr>
+          `;
+        }).join('');
 
-// Run when the page is ready (safe if the select exists), and also when opening the Invite modal
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => setTimeout(populateTeamsSelect, 0));
-} else {
+        container.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Staff Member</th>
+                <th>Role</th>
+                <th>Weekly</th>
+                <th>Multiplier</th>
+                <th>Calculated</th>
+                <th>Manual Override / Init</th>
+                <th>Final Entitlement</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>`;
   setTimeout(populateTeamsSelect, 0);
 }
 
 // Also repopulate when the Invite User modal is opened, so the dropdown stays fresh
+
+    // Create missing entitlement row for a staff member
+    window.createEntitlementRow = async function(staffId, isGP) {
+      try {
+        const year = new Date().getFullYear();
+        const base = { staff_id: staffId, year, multiplier: 6 };
+        if (isGP) {
+          base.weekly_sessions = 0;
+        } else {
+          base.weekly_hours = 0;
+        }
+        const { error } = await window.supabase.from('2_staff_entitlements').insert([base]);
+        if (error) { console.error('Insert entitlement error', error); showToast('Failed to create entitlement','error'); return; }
+        showToast('Entitlement created','success');
+        loadHolidayEntitlements();
+      } catch(e) {
+        console.error('createEntitlementRow failed', e);
+        showToast('Error creating entitlement','error');
+      }
+    };
 (document.getElementById('btn-invite-user') || {}).addEventListener?.('click', () => setTimeout(populateTeamsSelect, 0));
 </script>
 <script>
@@ -12328,14 +12345,19 @@ window.PIR_DEFINITIONS_DATA = [
         const data = XLSX.utils.sheet_to_json(sheet);
 
         // Validate and process data
-        fuzzyUploadData = data.map(row => ({
-          staff_name: row['Staff Name'] || row['Name'] || '',
-          start_date: parseExcelDate(row['Start Date']),
-          end_date: parseExcelDate(row['End Date']),
-          total_hours: parseFloat(row['Total Hours']) || null,
-          total_sessions: parseFloat(row['Total Sessions']) || null,
-          reason: row['Reason'] || ''
-        })).filter(row => row.staff_name && row.start_date && row.end_date);
+        fuzzyUploadData = data.map(row => {
+          const rawHours = getFirstPopulatedValue(row, ['Total Hours', 'Hours', 'Hours (HH:MM)', 'Hours (Hours)']);
+          const rawSessions = getFirstPopulatedValue(row, ['Total Sessions', 'Sessions']);
+
+          return {
+            staff_name: row['Staff Name'] || row['Name'] || '',
+            start_date: parseExcelDate(row['Start Date']),
+            end_date: parseExcelDate(row['End Date']),
+            total_hours: parseExcelHours(rawHours),
+            total_sessions: normalizeNumericValue(rawSessions),
+            reason: row['Reason'] || ''
+          };
+        }).filter(row => row.staff_name && row.start_date && row.end_date);
 
         if (fuzzyUploadData.length === 0) {
           errorMsg.textContent = 'No valid data found in the Excel file';
@@ -12372,6 +12394,108 @@ window.PIR_DEFINITIONS_DATA = [
     return isNaN(parsed) ? null : parsed.toISOString().split('T')[0];
   }
 
+  function getFirstPopulatedValue(row, keys) {
+    if (!row) return null;
+    for (const key of keys) {
+      if (Object.prototype.hasOwnProperty.call(row, key)) {
+        const value = row[key];
+        if (value === 0 || value === false) return value;
+        if (value !== undefined && value !== null) {
+          if (typeof value === 'string') {
+            if (value.trim() !== '') return value;
+          } else {
+            return value;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function normalizeNumericValue(value) {
+    if (value === null || value === undefined || value === '') return null;
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : null;
+    }
+    if (value instanceof Date) {
+      return null;
+    }
+    const normalized = String(value).replace(',', '.').trim();
+    if (!normalized) return null;
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function roundHours(value) {
+    return value === null ? null : Math.round(value * 1000) / 1000;
+  }
+
+  function parseExcelHours(rawValue) {
+    if (rawValue === null || rawValue === undefined || rawValue === '') return null;
+
+    if (typeof rawValue === 'number') {
+      if (!Number.isFinite(rawValue)) return null;
+      if (rawValue >= 1 || rawValue <= -1) {
+        return roundHours(rawValue);
+      }
+      // Treat numeric values between -1 and 1 as Excel time fractions of a day
+      return roundHours(rawValue * 24);
+    }
+
+    if (rawValue instanceof Date) {
+      return roundHours(rawValue.getHours() + rawValue.getMinutes() / 60 + rawValue.getSeconds() / 3600);
+    }
+
+    const value = String(rawValue).trim();
+    if (!value) return null;
+
+    if (/^\d{1,3}:\d{2}(:\d{2})?$/.test(value)) {
+      const [h, m, s] = value.split(':').map(part => Number(part));
+      if ([h, m, s].some(v => Number.isNaN(v))) return null;
+      return roundHours(h + (m || 0) / 60 + (s || 0) / 3600);
+    }
+
+    const numeric = Number(value.replace(',', '.'));
+    if (Number.isFinite(numeric)) {
+      if (numeric >= 1 || numeric <= -1) {
+        return roundHours(numeric);
+      }
+      // Ambiguous decimals less than 1 are treated as fractions of a day
+      return roundHours(numeric * 24);
+    }
+
+    return null;
+  }
+
+  function parseHoursInput(input) {
+    if (input === null || input === undefined) return null;
+    if (typeof input === 'number') {
+      return Number.isFinite(input) ? roundHours(input) : null;
+    }
+
+    const value = String(input).trim();
+    if (!value) return null;
+
+    if (/^\d{1,3}:\d{2}(:\d{2})?$/.test(value)) {
+      const [h, m, s] = value.split(':').map(part => Number(part));
+      if ([h, m, s].some(v => Number.isNaN(v))) return null;
+      return roundHours(h + (m || 0) / 60 + (s || 0) / 3600);
+    }
+
+    const numeric = Number(value.replace(',', '.'));
+    return Number.isFinite(numeric) ? roundHours(numeric) : null;
+  }
+
+  function formatHoursDisplay(hours) {
+    if (hours === null || hours === undefined || Number.isNaN(hours)) return '';
+    const totalMinutes = Math.round(hours * 60);
+    const absMinutes = Math.abs(totalMinutes);
+    const displayHours = Math.floor(absMinutes / 60);
+    const minutes = absMinutes % 60;
+    const prefix = totalMinutes < 0 ? '-' : '';
+    return `${prefix}${String(displayHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  }
+
   function showFuzzyPreview() {
     const preview = document.getElementById('fuzzy-data-preview');
     const tbody = document.getElementById('fuzzy-preview-tbody');
@@ -12383,19 +12507,21 @@ window.PIR_DEFINITIONS_DATA = [
         <td>${row.start_date}</td>
         <td>${row.end_date}</td>
         <td>
-          <input type="number" step="0.5" min="0"
+          <input type="text"
                  class="hours-input"
                  data-index="${index}"
-                 value="${row.total_hours || ''}"
-                 placeholder="-"
-                 style="width: 80px; padding: 4px; border: 1px solid #e2e8f0; border-radius: 4px;"
-                 onchange="updateHoursValue(${index}, this.value)">
+                 value="${formatHoursDisplay(row.total_hours)}"
+                 placeholder="HH:MM"
+                 style="width: 90px; padding: 4px; border: 1px solid #e2e8f0; border-radius: 4px;"
+                 inputmode="numeric"
+                 onchange="updateHoursValue(${index}, this)"
+                 onblur="updateHoursValue(${index}, this)">
         </td>
         <td>
           <input type="number" step="1" min="0"
                  class="sessions-input"
                  data-index="${index}"
-                 value="${row.total_sessions || ''}"
+                 value="${row.total_sessions ?? ''}"
                  placeholder="-"
                  style="width: 80px; padding: 4px; border: 1px solid #e2e8f0; border-radius: 4px;"
                  onchange="updateSessionsValue(${index}, this.value)">
@@ -13050,10 +13176,27 @@ window.PIR_DEFINITIONS_DATA = [
   }
 
   // New functions for auto-calculate functionality
-  function updateHoursValue(index, value) {
-    if (index < fuzzyUploadData.length) {
-      fuzzyUploadData[index].total_hours = value ? parseFloat(value) : null;
+  function updateHoursValue(index, inputEl) {
+    if (index >= fuzzyUploadData.length || !inputEl) return;
+
+    const rawValue = (inputEl.value || '').trim();
+    if (!rawValue) {
+      fuzzyUploadData[index].total_hours = null;
+      inputEl.style.borderColor = '#e2e8f0';
+      inputEl.value = '';
+      return;
     }
+
+    const parsed = parseHoursInput(rawValue);
+    if (parsed === null) {
+      fuzzyUploadData[index].total_hours = null;
+      inputEl.style.borderColor = '#f87171';
+      return;
+    }
+
+    fuzzyUploadData[index].total_hours = parsed;
+    inputEl.style.borderColor = '#e2e8f0';
+    inputEl.value = formatHoursDisplay(parsed);
   }
 
   function updateSessionsValue(index, value) {
@@ -13440,6 +13583,9 @@ window.PIR_DEFINITIONS_DATA = [
     let viewEl = document.getElementById("view-"+id);
     if(!viewEl) viewEl = document.getElementById(id);
     if(viewEl) viewEl.classList.add("active");
+
+  // Persist chosen section for refresh continuity
+  try { localStorage.setItem('cl_last_admin_section', id); } catch(_) {}
     
     // Load section data
     switch(id) {
@@ -15899,9 +16045,17 @@ ${JSON.stringify(fullLog, null, 2)}
       // initDebugToggle(); // Removed - debug window no longer exists
       initPageVisibilityToggles();
       
-      // Restore last active section
-      const saved = localStorage.getItem("cl_active_section") || "dashboard";
-      setActiveSection(saved);
+      // Restore last active section (fallback to smart-setup if none)
+      try {
+        const last = localStorage.getItem('cl_last_admin_section');
+        if (last && document.getElementById('view-' + last)) {
+          setActiveSection(last);
+        } else {
+          setActiveSection('smart-setup');
+        }
+      } catch(_) {
+        setActiveSection('smart-setup');
+      }
 
       // Preload some common data
       await Promise.all([
