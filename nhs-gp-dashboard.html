@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NHS GP Practice Dashboard - CQC & NHS Data</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #005EB8 0%, #003087 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            color: #005EB8;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+        }
+
+        .search-section {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .search-controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .search-input {
+            flex: 1;
+            padding: 15px;
+            font-size: 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            transition: border-color 0.3s;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #005EB8;
+        }
+
+        .btn {
+            padding: 15px 30px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+        }
+
+        .btn-primary {
+            background: #005EB8;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #004C99;
+        }
+
+        .btn-secondary {
+            background: #768692;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5F6C78;
+        }
+
+        .results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .surgery-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            cursor: pointer;
+            transition: transform 0.3s, box-shadow 0.3s;
+            position: relative;
+        }
+
+        .surgery-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+        }
+
+        .surgery-card h3 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .surgery-card p {
+            color: #666;
+            font-size: 14px;
+            margin: 5px 0;
+        }
+
+        .data-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 10px;
+        }
+
+        .data-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .badge-cqc {
+            background: #FFE4E1;
+            color: #8B0000;
+        }
+
+        .badge-nhs {
+            background: #E6F3FF;
+            color: #005EB8;
+        }
+
+        .badge-complete {
+            background: #D4EDDA;
+            color: #155724;
+        }
+
+        .rating-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+
+        .rating-outstanding {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .rating-good {
+            background: #8BC34A;
+            color: white;
+        }
+
+        .rating-requires-improvement {
+            background: #FF9800;
+            color: white;
+        }
+
+        .rating-inadequate {
+            background: #f44336;
+            color: white;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            overflow-y: auto;
+        }
+
+        .modal-content {
+            background: white;
+            margin: 20px auto;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 1200px;
+            position: relative;
+        }
+
+        .close {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            font-size: 28px;
+            cursor: pointer;
+            color: #666;
+        }
+
+        .close:hover {
+            color: #000;
+        }
+
+        .detail-section {
+            margin: 25px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .detail-section h3 {
+            margin-bottom: 15px;
+            color: #005EB8;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 15px;
+        }
+
+        .detail-item {
+            background: white;
+            padding: 12px;
+            border-radius: 6px;
+            border-left: 3px solid #005EB8;
+        }
+
+        .detail-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .detail-value {
+            font-size: 16px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            color: #666;
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .tab.active {
+            color: #005EB8;
+        }
+
+        .tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #005EB8;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+
+        .error {
+            background: #FFE4E1;
+            color: #8B0000;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+
+        .success {
+            background: #D4EDDA;
+            color: #155724;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin: 20px 0;
+        }
+
+        .admin-section {
+            background: #FFF9C4;
+            border: 2px dashed #F57C00;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .admin-section h3 {
+            color: #F57C00;
+            margin-bottom: 15px;
+        }
+
+        .file-upload {
+            margin: 15px 0;
+        }
+
+        .file-upload input[type="file"] {
+            margin: 10px 0;
+        }
+
+        .data-completeness {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 10px 0;
+        }
+
+        .completeness-bar {
+            flex: 1;
+            height: 20px;
+            background: #e0e0e0;
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .completeness-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50 0%, #8BC34A 100%);
+            transition: width 0.5s;
+        }
+
+        .completeness-text {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            min-width: 50px;
+        }
+
+        .data-source-status {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+            margin: 15px 0;
+        }
+
+        .source-status {
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .source-available {
+            background: #D4EDDA;
+            color: #155724;
+        }
+
+        .source-missing {
+            background: #F8D7DA;
+            color: #721C24;
+        }
+
+        .raw-data-viewer {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .raw-data-viewer pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 12px;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🏥 NHS GP Practice Dashboard</h1>
+            <p>Search and view comprehensive GP practice data from CQC inspections and NHS public datasets</p>
+        </div>
+
+        <!-- Search Section -->
+        <div class="search-section">
+            <div class="search-controls">
+                <input type="text"
+                       id="searchInput"
+                       class="search-input"
+                       placeholder="Search by practice name, postcode, or ODS code..."
+                       onkeyup="handleSearchInput(event)">
+                <button onclick="searchSurgeries()" class="btn btn-primary">Search</button>
+                <button onclick="showAdminPanel()" class="btn btn-secondary">Admin</button>
+            </div>
+
+            <div id="searchResults" class="results-grid"></div>
+        </div>
+
+        <!-- Admin Panel (Hidden by default) -->
+        <div id="adminPanel" class="admin-section" style="display: none;">
+            <h3>📊 Admin: Upload NHS CSV Data</h3>
+            <div class="file-upload">
+                <label for="dataType">Data Type:</label>
+                <select id="dataType">
+                    <option value="qof">QOF Data</option>
+                    <option value="patient_survey">Patient Survey</option>
+                    <option value="workforce">Workforce Statistics</option>
+                    <option value="appointments">Appointments</option>
+                    <option value="referrals">Referrals</option>
+                </select>
+
+                <label for="period">Period (e.g., 2024-25):</label>
+                <input type="text" id="period" placeholder="2024-25">
+
+                <label for="csvFile">CSV File:</label>
+                <input type="file" id="csvFile" accept=".csv">
+
+                <button onclick="uploadCSV()" class="btn btn-primary">Upload CSV</button>
+            </div>
+            <div id="uploadStatus"></div>
+        </div>
+
+        <!-- Detail Modal -->
+        <div id="detailModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeModal()">&times;</span>
+                <h2 id="modalTitle"></h2>
+
+                <!-- Data Completeness -->
+                <div class="data-completeness">
+                    <span>Data Completeness:</span>
+                    <div class="completeness-bar">
+                        <div id="completenessBar" class="completeness-fill"></div>
+                    </div>
+                    <span id="completenessText" class="completeness-text">0%</span>
+                </div>
+
+                <!-- Data Source Status -->
+                <div id="dataSourceStatus" class="data-source-status"></div>
+
+                <!-- Tabs -->
+                <div class="tabs">
+                    <button class="tab active" onclick="switchTab('cqc')">CQC Inspection</button>
+                    <button class="tab" onclick="switchTab('nhs')">NHS Data</button>
+                    <button class="tab" onclick="switchTab('charts')">Charts</button>
+                    <button class="tab" onclick="switchTab('raw')">Raw Data</button>
+                </div>
+
+                <!-- Tab Contents -->
+                <div id="cqcTab" class="tab-content active">
+                    <div id="cqcDetails"></div>
+                    <button onclick="fetchMoreDetails()" class="btn btn-primary" style="margin-top: 20px;">
+                        🔄 Fetch Latest CQC Data
+                    </button>
+                </div>
+
+                <div id="nhsTab" class="tab-content">
+                    <div id="nhsDetails"></div>
+                    <button onclick="fetchNHSData()" class="btn btn-primary" style="margin-top: 20px;">
+                        🔄 Fetch Latest NHS Data
+                    </button>
+                </div>
+
+                <div id="chartsTab" class="tab-content">
+                    <div class="chart-container">
+                        <canvas id="dataChart"></canvas>
+                    </div>
+                </div>
+
+                <div id="rawTab" class="tab-content">
+                    <div class="raw-data-viewer">
+                        <pre id="rawDataContent"></pre>
+                    </div>
+                    <button onclick="copyRawData()" class="btn btn-secondary">📋 Copy Raw Data</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Supabase configuration
+        const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjY1OTYzNzksImV4cCI6MjA0MjE3MjM3OX0.Ue9B90DL0FhLWHAH7E_PitD3LBWVGYwLvLMQDiPVKpE';
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        let currentSurgery = null;
+        let currentChart = null;
+
+        async function searchSurgeries() {
+            const searchTerm = document.getElementById('searchInput').value.trim();
+            const resultsDiv = document.getElementById('searchResults');
+
+            if (!searchTerm) {
+                resultsDiv.innerHTML = '<p style="color: white;">Please enter a search term</p>';
+                return;
+            }
+
+            resultsDiv.innerHTML = '<div class="loading">Searching...</div>';
+
+            try {
+                // Search in both CQC and NHS tables
+                const { data: cqcData, error: cqcError } = await supabase
+                    .from('CQC all GPs')
+                    .select('*')
+                    .or(`location_name.ilike.%${searchTerm}%,postal_code.ilike.%${searchTerm}%,ods_code.ilike.%${searchTerm}%`)
+                    .limit(20);
+
+                const { data: nhsData, error: nhsError } = await supabase
+                    .from('NHS_All_GPs')
+                    .select('*')
+                    .or(`practice_name.ilike.%${searchTerm}%,practice_ods_code.ilike.%${searchTerm}%`)
+                    .limit(20);
+
+                if (cqcError) throw cqcError;
+
+                // Merge and deduplicate results
+                const mergedResults = mergePracticeData(cqcData || [], nhsData || []);
+
+                if (mergedResults.length === 0) {
+                    resultsDiv.innerHTML = '<p style="color: #666;">No results found</p>';
+                    return;
+                }
+
+                resultsDiv.innerHTML = mergedResults.map(surgery => {
+                    const rating = surgery.current_rating || 'Not rated';
+                    const ratingClass = getRatingClass(rating);
+                    const completeness = calculateCompleteness(surgery);
+
+                    return `
+                        <div class="surgery-card" onclick="showSurgeryDetails(${surgery.id})">
+                            <h3>${surgery.location_name || surgery.practice_name}</h3>
+                            <p><strong>ODS Code:</strong> ${surgery.ods_code || surgery.practice_ods_code || 'N/A'}</p>
+                            <p><strong>Address:</strong> ${surgery.postal_address_line_1 || ''}, ${surgery.postal_code || ''}</p>
+                            <p><strong>CQC Rating:</strong>
+                                <span class="rating-badge ${ratingClass}">${rating}</span>
+                            </p>
+                            <div class="data-badges">
+                                ${surgery.has_cqc ? '<span class="data-badge badge-cqc">CQC</span>' : ''}
+                                ${surgery.has_nhs ? '<span class="data-badge badge-nhs">NHS</span>' : ''}
+                                ${completeness >= 70 ? '<span class="data-badge badge-complete">70%+ Complete</span>' : ''}
+                            </div>
+                            <div class="data-completeness">
+                                <div class="completeness-bar">
+                                    <div class="completeness-fill" style="width: ${completeness}%"></div>
+                                </div>
+                                <span class="completeness-text">${completeness}%</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        function mergePracticeData(cqcData, nhsData) {
+            const merged = [];
+            const processedOds = new Set();
+
+            // Process CQC data first
+            cqcData.forEach(cqc => {
+                const odsCode = cqc.ods_code;
+                if (odsCode) processedOds.add(odsCode);
+
+                // Find matching NHS data
+                const nhs = nhsData.find(n => n.practice_ods_code === odsCode);
+
+                merged.push({
+                    ...cqc,
+                    ...extractNHSFields(nhs),
+                    has_cqc: true,
+                    has_nhs: !!nhs
+                });
+            });
+
+            // Add NHS-only practices
+            nhsData.forEach(nhs => {
+                if (!processedOds.has(nhs.practice_ods_code)) {
+                    merged.push({
+                        ...convertNHSToCQCFormat(nhs),
+                        ...extractNHSFields(nhs),
+                        has_cqc: false,
+                        has_nhs: true
+                    });
+                }
+            });
+
+            return merged;
+        }
+
+        function extractNHSFields(nhsData) {
+            if (!nhsData) return {};
+            return {
+                nhs_data: {
+                    ods_data: nhsData.ods_data,
+                    qof_data: nhsData.qof_data,
+                    patient_survey_data: nhsData.patient_survey_data,
+                    workforce_data: nhsData.workforce_data,
+                    prescribing_data: nhsData.prescribing_data,
+                    appointments_data: nhsData.appointments_data,
+                    referrals_data: nhsData.referrals_data,
+                    data_quality_score: nhsData.data_quality_score,
+                    data_completeness: nhsData.data_completeness
+                }
+            };
+        }
+
+        function convertNHSToCQCFormat(nhsData) {
+            return {
+                id: nhsData.id,
+                location_name: nhsData.practice_name,
+                practice_name: nhsData.practice_name,
+                ods_code: nhsData.practice_ods_code,
+                practice_ods_code: nhsData.practice_ods_code,
+                postal_code: nhsData.ods_data?.addresses?.[0]?.postalCode || '',
+                postal_address_line_1: nhsData.ods_data?.addresses?.[0]?.addressLine1 || '',
+                current_rating: 'No CQC Rating'
+            };
+        }
+
+        function calculateCompleteness(surgery) {
+            let complete = 0;
+            let total = 8; // CQC + 7 NHS data sources
+
+            if (surgery.has_cqc) complete++;
+            if (surgery.nhs_data?.ods_data) complete++;
+            if (surgery.nhs_data?.qof_data) complete++;
+            if (surgery.nhs_data?.patient_survey_data) complete++;
+            if (surgery.nhs_data?.workforce_data) complete++;
+            if (surgery.nhs_data?.prescribing_data) complete++;
+            if (surgery.nhs_data?.appointments_data) complete++;
+            if (surgery.nhs_data?.referrals_data) complete++;
+
+            return Math.round((complete / total) * 100);
+        }
+
+        async function showSurgeryDetails(surgeryId) {
+            const modal = document.getElementById('detailModal');
+            const modalTitle = document.getElementById('modalTitle');
+
+            try {
+                // Fetch full details from database
+                const { data: surgery, error } = await supabase
+                    .from('CQC all GPs')
+                    .select('*')
+                    .eq('id', surgeryId)
+                    .single();
+
+                if (error) throw error;
+
+                currentSurgery = surgery;
+
+                // Also fetch NHS data
+                if (surgery.ods_code || surgery.practice_ods_code) {
+                    const { data: nhsData } = await supabase
+                        .from('NHS_All_GPs')
+                        .select('*')
+                        .eq('practice_ods_code', surgery.ods_code || surgery.practice_ods_code)
+                        .single();
+
+                    if (nhsData) {
+                        currentSurgery.nhs_data = nhsData;
+                    }
+                }
+
+                modalTitle.textContent = surgery.location_name || surgery.practice_name;
+
+                // Update data completeness
+                updateDataCompleteness();
+
+                // Show CQC details by default
+                switchTab('cqc');
+                displayCQCDetails();
+                displayNHSDetails();
+
+                modal.style.display = 'block';
+            } catch (error) {
+                alert('Error loading details: ' + error.message);
+            }
+        }
+
+        function updateDataCompleteness() {
+            if (!currentSurgery) return;
+
+            const completeness = calculateCompleteness({
+                has_cqc: true,
+                nhs_data: currentSurgery.nhs_data
+            });
+
+            document.getElementById('completenessBar').style.width = `${completeness}%`;
+            document.getElementById('completenessText').textContent = `${completeness}%`;
+
+            // Update data source status
+            const sources = [
+                { name: 'CQC Inspection', available: true },
+                { name: 'ODS Data', available: !!currentSurgery.nhs_data?.ods_data },
+                { name: 'QOF Data', available: !!currentSurgery.nhs_data?.qof_data },
+                { name: 'Patient Survey', available: !!currentSurgery.nhs_data?.patient_survey_data },
+                { name: 'Workforce', available: !!currentSurgery.nhs_data?.workforce_data },
+                { name: 'Prescribing', available: !!currentSurgery.nhs_data?.prescribing_data },
+                { name: 'Appointments', available: !!currentSurgery.nhs_data?.appointments_data },
+                { name: 'Referrals', available: !!currentSurgery.nhs_data?.referrals_data }
+            ];
+
+            document.getElementById('dataSourceStatus').innerHTML = sources.map(source =>
+                `<div class="source-status ${source.available ? 'source-available' : 'source-missing'}">
+                    ${source.available ? '✓' : '✗'} ${source.name}
+                </div>`
+            ).join('');
+        }
+
+        function displayCQCDetails() {
+            if (!currentSurgery) return;
+
+            const detailsDiv = document.getElementById('cqcDetails');
+            detailsDiv.innerHTML = `
+                <div class="detail-section">
+                    <h3>📍 Location Information</h3>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <div class="detail-label">Practice Name</div>
+                            <div class="detail-value">${currentSurgery.location_name || 'N/A'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">ODS Code</div>
+                            <div class="detail-value">${currentSurgery.ods_code || 'N/A'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Address</div>
+                            <div class="detail-value">${currentSurgery.postal_address_line_1 || 'N/A'}, ${currentSurgery.postal_code || ''}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Phone</div>
+                            <div class="detail-value">${currentSurgery.main_phone_number || 'N/A'}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="detail-section">
+                    <h3>⭐ CQC Ratings</h3>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <div class="detail-label">Overall Rating</div>
+                            <div class="detail-value">
+                                <span class="rating-badge ${getRatingClass(currentSurgery.current_rating)}">
+                                    ${currentSurgery.current_rating || 'Not Rated'}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Safe</div>
+                            <div class="detail-value">${currentSurgery.safe_rating || 'N/A'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Effective</div>
+                            <div class="detail-value">${currentSurgery.effective_rating || 'N/A'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Caring</div>
+                            <div class="detail-value">${currentSurgery.caring_rating || 'N/A'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Responsive</div>
+                            <div class="detail-value">${currentSurgery.responsive_rating || 'N/A'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Well Led</div>
+                            <div class="detail-value">${currentSurgery.well_led_rating || 'N/A'}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="detail-section">
+                    <h3>📅 Inspection Information</h3>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <div class="detail-label">Last Inspection</div>
+                            <div class="detail-value">${formatDate(currentSurgery.last_inspection_date) || 'N/A'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Report Published</div>
+                            <div class="detail-value">${formatDate(currentSurgery.report_publication_date) || 'N/A'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Provider</div>
+                            <div class="detail-value">${currentSurgery.provider_name || 'N/A'}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function displayNHSDetails() {
+            if (!currentSurgery || !currentSurgery.nhs_data) {
+                document.getElementById('nhsDetails').innerHTML = '<p>No NHS data available. Click "Fetch Latest NHS Data" to retrieve.</p>';
+                return;
+            }
+
+            const nhs = currentSurgery.nhs_data;
+            const detailsDiv = document.getElementById('nhsDetails');
+
+            let html = '';
+
+            // QOF Data
+            if (nhs.qof_data) {
+                html += `
+                    <div class="detail-section">
+                        <h3>📊 QOF Performance</h3>
+                        <div class="detail-grid">
+                            <div class="detail-item">
+                                <div class="detail-label">Achievement Points</div>
+                                <div class="detail-value">${nhs.qof_data['Achievement points'] || 'N/A'}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Exception Rate</div>
+                                <div class="detail-value">${nhs.qof_data['Exception rate'] || 'N/A'}%</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">List Size</div>
+                                <div class="detail-value">${nhs.qof_data['List size'] || 'N/A'}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Period</div>
+                                <div class="detail-value">${nhs.qof_data.period || 'N/A'}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Prescribing Data
+            if (nhs.prescribing_data) {
+                html += `
+                    <div class="detail-section">
+                        <h3>💊 Prescribing Data</h3>
+                        <div class="detail-grid">
+                            ${(nhs.prescribing_data.top_medications || []).slice(0, 4).map(med => `
+                                <div class="detail-item">
+                                    <div class="detail-label">${med.name}</div>
+                                    <div class="detail-value">£${med.actual_cost?.toFixed(2) || '0'}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Workforce Data
+            if (nhs.workforce_data) {
+                html += `
+                    <div class="detail-section">
+                        <h3>👥 Workforce Statistics</h3>
+                        <div class="detail-grid">
+                            <div class="detail-item">
+                                <div class="detail-label">Total GPs (FTE)</div>
+                                <div class="detail-value">${nhs.workforce_data.TOTAL_GP_FTE || 'N/A'}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Total Nurses (FTE)</div>
+                                <div class="detail-value">${nhs.workforce_data.TOTAL_NURSES_FTE || 'N/A'}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Admin Staff (FTE)</div>
+                                <div class="detail-value">${nhs.workforce_data.TOTAL_ADMIN_FTE || 'N/A'}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            detailsDiv.innerHTML = html || '<p>Limited NHS data available. Click "Fetch Latest NHS Data" to retrieve more.</p>';
+        }
+
+        async function fetchMoreDetails() {
+            if (!currentSurgery) return;
+
+            try {
+                const btn = event.target;
+                btn.disabled = true;
+                btn.textContent = '⏳ Fetching...';
+
+                const response = await supabase.functions.invoke('fetch-cqc-details', {
+                    body: { locationId: currentSurgery.location_id }
+                });
+
+                if (response.error) throw response.error;
+
+                alert('CQC data updated successfully!');
+                await showSurgeryDetails(currentSurgery.id); // Reload
+            } catch (error) {
+                alert('Error fetching CQC data: ' + error.message);
+            } finally {
+                event.target.disabled = false;
+                event.target.textContent = '🔄 Fetch Latest CQC Data';
+            }
+        }
+
+        async function fetchNHSData() {
+            if (!currentSurgery) return;
+
+            const odsCode = currentSurgery.ods_code || currentSurgery.practice_ods_code;
+            if (!odsCode) {
+                alert('No ODS code available for this practice');
+                return;
+            }
+
+            try {
+                const btn = event.target;
+                btn.disabled = true;
+                btn.textContent = '⏳ Fetching NHS Data...';
+
+                const response = await supabase.functions.invoke('fetch-nhs-data', {
+                    body: {
+                        practice_ods_code: odsCode,
+                        data_sources: ['ods', 'prescribing', 'qof', 'patient_survey', 'workforce', 'appointments', 'referrals']
+                    }
+                });
+
+                if (response.error) throw response.error;
+
+                alert('NHS data updated successfully!');
+                await showSurgeryDetails(currentSurgery.id); // Reload
+            } catch (error) {
+                alert('Error fetching NHS data: ' + error.message);
+            } finally {
+                event.target.disabled = false;
+                event.target.textContent = '🔄 Fetch Latest NHS Data';
+            }
+        }
+
+        function switchTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target?.classList.add('active');
+
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(`${tabName}Tab`).classList.add('active');
+
+            // Load charts if needed
+            if (tabName === 'charts') {
+                displayCharts();
+            } else if (tabName === 'raw') {
+                displayRawData();
+            }
+        }
+
+        function displayCharts() {
+            if (!currentSurgery) return;
+
+            const ctx = document.getElementById('dataChart').getContext('2d');
+
+            // Destroy existing chart
+            if (currentChart) {
+                currentChart.destroy();
+            }
+
+            // Prepare data for chart
+            const dataSources = [];
+            const dataValues = [];
+            const backgroundColors = [];
+
+            // Add data completeness scores
+            if (currentSurgery.has_cqc !== false) {
+                dataSources.push('CQC Data');
+                dataValues.push(100);
+                backgroundColors.push('#FF6B6B');
+            }
+
+            if (currentSurgery.nhs_data) {
+                const nhs = currentSurgery.nhs_data;
+
+                if (nhs.ods_data) {
+                    dataSources.push('ODS');
+                    dataValues.push(100);
+                    backgroundColors.push('#4ECDC4');
+                }
+
+                if (nhs.qof_data) {
+                    dataSources.push('QOF');
+                    dataValues.push(100);
+                    backgroundColors.push('#45B7D1');
+                }
+
+                if (nhs.patient_survey_data) {
+                    dataSources.push('Patient Survey');
+                    dataValues.push(100);
+                    backgroundColors.push('#96CEB4');
+                }
+
+                if (nhs.workforce_data) {
+                    dataSources.push('Workforce');
+                    dataValues.push(100);
+                    backgroundColors.push('#FFEAA7');
+                }
+
+                if (nhs.prescribing_data) {
+                    dataSources.push('Prescribing');
+                    dataValues.push(100);
+                    backgroundColors.push('#DDA0DD');
+                }
+            }
+
+            currentChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: dataSources,
+                    datasets: [{
+                        label: 'Data Availability (%)',
+                        data: dataValues,
+                        backgroundColor: backgroundColors,
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    }
+                }
+            });
+        }
+
+        function displayRawData() {
+            if (!currentSurgery) return;
+
+            const rawData = {
+                cqc_data: { ...currentSurgery },
+                nhs_data: currentSurgery.nhs_data || {}
+            };
+
+            delete rawData.cqc_data.nhs_data; // Remove duplicate
+
+            document.getElementById('rawDataContent').textContent = JSON.stringify(rawData, null, 2);
+        }
+
+        function copyRawData() {
+            const rawText = document.getElementById('rawDataContent').textContent;
+            navigator.clipboard.writeText(rawText);
+            alert('Raw data copied to clipboard!');
+        }
+
+        function showAdminPanel() {
+            const panel = document.getElementById('adminPanel');
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        }
+
+        async function uploadCSV() {
+            const fileInput = document.getElementById('csvFile');
+            const dataType = document.getElementById('dataType').value;
+            const period = document.getElementById('period').value;
+            const statusDiv = document.getElementById('uploadStatus');
+
+            if (!fileInput.files[0]) {
+                statusDiv.innerHTML = '<div class="error">Please select a CSV file</div>';
+                return;
+            }
+
+            if (!period) {
+                statusDiv.innerHTML = '<div class="error">Please enter the data period</div>';
+                return;
+            }
+
+            statusDiv.innerHTML = '<div class="loading">Uploading and processing CSV...</div>';
+
+            try {
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+                formData.append('data_type', dataType);
+                formData.append('period', period);
+                formData.append('imported_by', 'admin');
+
+                const response = await supabase.functions.invoke('import-nhs-csv', {
+                    body: formData
+                });
+
+                if (response.error) throw response.error;
+
+                const result = response.data;
+                statusDiv.innerHTML = `
+                    <div class="success">
+                        ✅ CSV uploaded successfully!<br>
+                        Processed: ${result.records_processed} rows<br>
+                        Imported: ${result.records_imported} records<br>
+                        Failed: ${result.records_failed} records
+                    </div>
+                `;
+
+                // Clear form
+                fileInput.value = '';
+                document.getElementById('period').value = '';
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="error">Upload failed: ${error.message}</div>`;
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('detailModal').style.display = 'none';
+            currentSurgery = null;
+            if (currentChart) {
+                currentChart.destroy();
+                currentChart = null;
+            }
+        }
+
+        function getRatingClass(rating) {
+            if (!rating) return '';
+            const lower = rating.toLowerCase();
+            if (lower.includes('outstanding')) return 'rating-outstanding';
+            if (lower.includes('good')) return 'rating-good';
+            if (lower.includes('requires improvement')) return 'rating-requires-improvement';
+            if (lower.includes('inadequate')) return 'rating-inadequate';
+            return '';
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return null;
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-GB', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+        }
+
+        function handleSearchInput(event) {
+            if (event.key === 'Enter') {
+                searchSurgeries();
+            }
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('detailModal');
+            if (event.target == modal) {
+                closeModal();
+            }
+        }
+    </script>
+</body>
+</html>

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CheckLoop — Weekly Knowledge Check</title>
+  <title>CheckLoops — Weekly Knowledge Check</title>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.supabase.co https://*.supabase.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.supabase.com wss://*.supabase.co wss://*.supabase.com https:;">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -639,6 +639,30 @@
       font-weight: 600;
     }
 
+    .quiz-result-avatar {
+      margin: 1.5rem auto 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .quiz-result-avatar img {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: #f8fafc;
+      box-shadow: 0 10px 25px rgba(15, 23, 42, 0.12);
+      border: 4px solid rgba(59, 130, 246, 0.1);
+    }
+
+    .quiz-result-avatar .caption {
+      font-size: 0.9rem;
+      color: #64748b;
+      text-align: center;
+    }
+
     .score-emoji {
       font-size: 4rem;
       margin-bottom: 1.25rem;
@@ -1062,6 +1086,10 @@
         <h2>Quiz Complete!</h2>
         <div class="score-display" id="score-display">0/10</div>
         <div class="score-message" id="score-message">Good effort!</div>
+        <div id="quiz-avatar-wrapper" class="quiz-result-avatar hidden">
+          <img id="quiz-avatar-image" alt="Quiz mood avatar" />
+          <div id="quiz-avatar-caption" class="caption"></div>
+        </div>
         <div id="result-mode-info" style="margin: 20px 0; color: #666;"></div>
         <div class="quiz-actions" style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
           <button id="btn-review-answers" class="quiz-btn quiz-btn-secondary">
@@ -1076,11 +1104,11 @@
     </main>
 
     <!-- Footer -->
-    <div class="footer">© CheckLoop • Weekly Knowledge Check</div>
+    <div class="footer">© CheckLoops • Weekly Knowledge Check</div>
   </div>
 
   <script type="module">
-  import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, clearAuthData, createAchievementClient, attachLogout } from './staff-common.js';
+  import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, clearAuthData, createAchievementClient, attachLogout, getSiteSettings } from './staff-common.js';
     
     // Initialize Supabase
   const supabase = await initSupabase();
@@ -1104,6 +1132,8 @@ let userAnswers = {};
 let quizStartTime = null;
 let reviewIndex = 0;
 let reviewResults = [];
+let avatarsEnabled = false;
+let avatarVariantUrls = {};
 
 async function refreshPracticeAchievements({ scorePercent, totalQuestions }) {
   if (!achievementClient) return;
@@ -1150,6 +1180,57 @@ async function refreshRequiredAchievements({ scorePercent, totalQuestions }) {
   } catch (err) {
     console.warn('Failed to refresh required-quiz achievements:', err);
   }
+}
+
+async function loadAvatarVariants(userId) {
+  if (!userId || !avatarsEnabled) return {};
+
+  try {
+    const { data, error } = await supabase
+      .from('avatar_variants')
+      .select('variant, image_url')
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Failed to load avatar variants:', error);
+      return {};
+    }
+
+    const map = {};
+    for (const row of data || []) {
+      if (row?.variant && row?.image_url) {
+        map[row.variant] = row.image_url;
+      }
+    }
+    return map;
+  } catch (err) {
+    console.error('Unexpected avatar variants error:', err);
+    return {};
+  }
+}
+
+function updateResultAvatar(scorePercent) {
+  const wrapper = document.getElementById('quiz-avatar-wrapper');
+  const img = document.getElementById('quiz-avatar-image');
+  const caption = document.getElementById('quiz-avatar-caption');
+
+  if (!wrapper || !img || !caption || !avatarsEnabled) {
+    if (wrapper) wrapper.classList.add('hidden');
+    return;
+  }
+
+  const variant = scorePercent >= 80 ? 'happy' : 'sad';
+  const fallbackVariant = scorePercent >= 80 ? 'excited' : 'neutral';
+  const avatarUrl = avatarVariantUrls[variant] || avatarVariantUrls[fallbackVariant] || currentProfile?.avatar_url || null;
+
+  if (!avatarUrl) {
+    wrapper.classList.add('hidden');
+    return;
+  }
+
+  img.src = avatarUrl;
+  caption.textContent = scorePercent >= 80 ? 'Feeling on top of the world!' : 'Let\'s turn that score around next time!';
+  wrapper.classList.remove('hidden');
 }
     
     // Get start of current week (Sunday at 00:00:00)
@@ -1845,6 +1926,8 @@ async function refreshRequiredAchievements({ scorePercent, totalQuestions }) {
         emojiImg.alt = 'Study more';
         messageEl.textContent = 'Review and Try Again!';
       }
+
+      updateResultAvatar(percentage);
       
       // Re-wire the icon after changing the data-i8 attribute
       setIcon(emojiImg);
@@ -1905,6 +1988,17 @@ async function refreshRequiredAchievements({ scorePercent, totalQuestions }) {
     requireStaffSession(supabase).then(async ({ session, profileRow }) => {
       currentUser = session.user;
       currentProfile = profileRow;
+
+      try {
+        const siteSettings = await getSiteSettings(supabase, profileRow?.site_id || session.user?.raw_user_meta_data?.site_id);
+        avatarsEnabled = siteSettings?.enable_avatars !== false;
+        avatarVariantUrls = avatarsEnabled ? await loadAvatarVariants(session.user.id) : {};
+        console.log('Quiz avatars enabled:', avatarsEnabled, avatarVariantUrls);
+      } catch (settingsError) {
+        console.warn('Could not load site settings or avatar variants:', settingsError);
+        avatarsEnabled = false;
+        avatarVariantUrls = {};
+      }
 
       try {
         achievementClient = await createAchievementClient({
@@ -2028,5 +2122,7 @@ async function refreshRequiredAchievements({ scorePercent, totalQuestions }) {
     <!-- Debug Console - Persistent across all pages -->
     <script src="debug-console.js"></script>
     <script src="supabase-debug.js"></script>
+<!-- Staff Profile Fix -->
+<script src="staff-profile-fix.js"></script>
 </body>
 </html>
