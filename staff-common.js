@@ -441,20 +441,45 @@ export function invalidateSiteCache(siteId) {
 }
 
 // Simple, explicit: session -> master_users.site_id -> sites.name
-export async function getCurrentUserSiteText(supabase) {
-  const { data: { session }, error: sessErr } = await supabase.auth.getSession();
-  if (sessErr) throw sessErr;
-  const userId = session?.user?.id;
-  if (!userId) throw new Error('NO_SESSION');
-
-  const { data: profile, error: profErr } = await supabase
-    .from('master_users')
-    .select('site_id')
-    .eq('auth_user_id', userId)
-    .maybeSingle();
-  if (profErr) throw profErr;
-  const siteId = profile?.site_id;
-  if (!siteId) return null;
+export async function getCurrentUserSiteText(supabase, user, profileRow) {
+  console.log('[getCurrentUserSiteText] Called with:', { user, profileRow });
+  
+  // Use passed profile if available, otherwise fetch it
+  let siteId = profileRow?.site_id;
+  let userId = user?.id;
+  
+  // If no profile data was passed, fetch it
+  if (!siteId && userId) {
+    try {
+      console.log('[getCurrentUserSiteText] No profile passed, fetching from DB for userId:', userId);
+      const { data: profile, error: profErr } = await supabase
+        .from('master_users')
+        .select('site_id')
+        .eq('auth_user_id', userId)
+        .maybeSingle();
+        
+      if (profErr) {
+        console.error('[getCurrentUserSiteText] Error fetching profile:', profErr);
+      } else if (profile) {
+        siteId = profile.site_id;
+        console.log('[getCurrentUserSiteText] Retrieved siteId from DB:', siteId);
+      }
+    } catch (e) {
+      console.error('[getCurrentUserSiteText] Exception fetching profile:', e);
+    }
+  }
+  
+  // If we still don't have a siteId, check session metadata
+  if (!siteId && user?.raw_user_meta_data?.site_id) {
+    siteId = user.raw_user_meta_data.site_id;
+    console.log('[getCurrentUserSiteText] Using siteId from user metadata:', siteId);
+  }
+  
+  // If we don't have a user ID or site ID, we can't continue
+  if (!siteId) {
+    console.log('[getCurrentUserSiteText] No siteId available, returning null');
+    return null;
+  }
   
   // Try a direct SQL query to bypass any dependencies on other tables
   try {
@@ -486,9 +511,29 @@ export async function getCurrentUserSiteText(supabase) {
 // Site pill has been removed per request
 export async function setTopbarSiteForCurrentUser(supabase){
   try {
-    // Skip site text resolution since we no longer display it
-    setTopbar({ siteText: null }); 
-    return null;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      console.warn('[setTopbarSiteForCurrentUser] No session');
+      setTopbar({ siteText: null });
+      return null;
+    }
+    
+    // Get user profile
+    const { data: profileRow } = await supabase
+      .from('master_users')
+      .select('access_type, role, email')
+      .eq('auth_user_id', session.user.id)
+      .maybeSingle();
+      
+    // Set topbar with available information
+    setTopbar({ 
+      siteText: null, // Site text no longer displayed
+      email: session.user.email,
+      role: profileRow?.role,
+      access_type: profileRow?.access_type
+    });
+    
+    return profileRow;
   } catch (e) {
     console.warn('[setTopbarSiteForCurrentUser] Failed to set up topbar:', e?.message || e);
     return null;

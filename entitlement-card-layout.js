@@ -373,13 +373,18 @@ async function showStaffDetailModal(staffId, userId, isGP) {
     const calculated = isGPStaff ? entitlement?.calculated_sessions : entitlement?.calculated_hours;
     const final = override !== null ? override : (calculated || 0);
 
-    // Format hours as HH:MM for display
+    // Format hours as HH:MM for display with precise handling of decimal values
     const formatHours = (val) => {
       if (!val || val === '0:00') return '0:00';
       if (typeof val === 'string' && val.includes(':')) return val;
+      
+      // Ensure proper rounding for values like 37.5 hours (should be 37:30)
       const hours = Math.floor(val);
-      const minutes = Math.round((val - hours) * 60);
-      return `${hours}:${String(minutes).padStart(2, '0')}`;
+      // Use precise rounding to handle floating point issues
+      const minutes = Math.round((val - hours) * 60 * 1000) / 1000;
+      
+      // Round to nearest minute
+      return `${hours}:${String(Math.round(minutes)).padStart(2, '0')}`;
     };
 
     // For parsing HH:MM inputs back to decimal
@@ -569,12 +574,26 @@ async function showStaffDetailModal(staffId, userId, isGP) {
       }
     });
     
-    // Add listener for multiplier input to update calculated value in real-time
-    document.getElementById('multiplier-input').addEventListener('input', function() {
-      if (!document.getElementById('override-checkbox').checked) {
-        updateWeeklyTotalInModal();
-      }
-    });
+    // Add stronger listener for multiplier input to update calculated value in real-time
+    const multiplierInput = document.getElementById('multiplier-input');
+    if (multiplierInput) {
+      // Remove any existing listeners to avoid duplicates
+      const newMultiplierInput = multiplierInput.cloneNode(true);
+      multiplierInput.parentNode.replaceChild(newMultiplierInput, multiplierInput);
+      
+      // Add the input and change events to ensure updates happen immediately
+      newMultiplierInput.addEventListener('input', function() {
+        if (!document.getElementById('override-checkbox').checked) {
+          updateWeeklyTotalInModal();
+        }
+      });
+      
+      newMultiplierInput.addEventListener('change', function() {
+        if (!document.getElementById('override-checkbox').checked) {
+          updateWeeklyTotalInModal();
+        }
+      });
+    }
 
   } catch (error) {
     console.error('Error loading staff details:', error);
@@ -629,10 +648,11 @@ function updateWeeklyTotalInModal() {
     if (isGP) {
       totalEl.textContent = `${total} sessions`;
     } else {
-      // Format as HH:MM
+      // Format as HH:MM with precise rounding for 37.5 hours to show as 37:30
       const hours = Math.floor(total);
-      const minutes = Math.round((total - hours) * 60);
-      totalEl.textContent = `${hours}:${String(minutes).padStart(2, '0')} hrs`;
+      // Use Math.round with a multiplier for precision with floating point
+      const minutes = Math.round((total - hours) * 60 * 1000) / 1000;
+      totalEl.textContent = `${hours}:${String(Math.round(minutes)).padStart(2, '0')} hrs`;
     }
   }
   
@@ -641,21 +661,28 @@ function updateWeeklyTotalInModal() {
   const calculatedEl = document.getElementById('calculated-entitlement');
   const overrideCheckbox = document.getElementById('override-checkbox');
   
-  if (calculatedEl && multiplierInput && !overrideCheckbox.checked) {
+  // Always update the calculation when this function is called
+  if (calculatedEl && multiplierInput) {
+    // Don't update if override is checked
+    if (overrideCheckbox && overrideCheckbox.checked) {
+      return;
+    }
+    
     const multiplier = parseFloat(multiplierInput.value) || 10;
     const calculated = total * multiplier;
     const unit = isGP ? 'sessions' : 'hrs';
     
     // Format hours as HH:MM for display if needed
     if (isGP) {
-      calculatedEl.textContent = `${calculated} ${unit}`;
+      calculatedEl.textContent = `${calculated.toFixed(1)} ${unit}`;
     } else {
       const hours = Math.floor(calculated);
-      const minutes = Math.round((calculated - hours) * 60);
-      calculatedEl.textContent = `${hours}:${String(minutes).padStart(2, '0')} ${unit}`;
+      // Use precise rounding to handle 0.5 hours correctly (30 minutes)
+      const minutes = Math.round((calculated - hours) * 60 * 1000) / 1000;
+      calculatedEl.textContent = `${hours}:${String(Math.round(minutes)).padStart(2, '0')} ${unit}`;
     }
     
-    // Highlight with animation
+    // Highlight with animation to make the change more visible
     calculatedEl.style.transition = 'color 0.3s';
     calculatedEl.style.color = 'var(--warning)';
     setTimeout(() => {
@@ -906,7 +933,7 @@ async function saveEntitlementFromModal(staffId, isGP) {
     // Get weekly values from master_users
     const { data: currentUser } = await supabase
       .from('master_users')
-      .select('weekly_hours, weekly_sessions, auth_auth_auth_user_id')
+      .select('weekly_hours, weekly_sessions, auth_user_id')
       .eq('id', staffId)
       .single();
       
@@ -1144,7 +1171,6 @@ async function approveHolidaysFromModal(userId, staffName) {
       approveBtn.style.opacity = '1';
     }
   }
-}
 }
 
 // Approve holidays for a staff member

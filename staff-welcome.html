@@ -999,11 +999,11 @@
                 <div class="group-grid">
                   <label>
                     <span>✂️ Hairstyle</span>
-                    <select id="opt-hair"></select>
+                    <select id="opt-hair" onchange="updateAvatarPreview()"></select>
                   </label>
                   <label>
                     <span>🎨 Hair Color</span>
-                    <select id="opt-hairColor"></select>
+                    <select id="opt-hairColor" onchange="updateAvatarPreview()"></select>
                   </label>
                   <label style="display: none;">
                     <span>📊 Hair Chance</span>
@@ -1115,6 +1115,73 @@
     const supabase = await initSupabase();
     window.supabase = supabase;
 
+    function buildAvatarVariantRecords(userId, baseUrl) {
+      if (!userId || !baseUrl) return [];
+
+      let parsedUrl;
+      try {
+        parsedUrl = new URL(baseUrl, window.location.origin);
+      } catch (err) {
+        console.warn('Invalid avatar URL for variants:', baseUrl, err);
+        return [];
+      }
+
+      const moods = [
+        { variant: 'happy', overrides: { eyes: 'variant11', mouth: 'variant26', eyebrows: 'variant06' } },
+        { variant: 'sad', overrides: { eyes: 'variant15', mouth: 'variant11', eyebrows: 'variant08' } },
+        { variant: 'confused', overrides: { eyes: 'variant23', mouth: 'variant03', eyebrows: 'variant05' } },
+        { variant: 'angry', overrides: { eyes: 'variant14', mouth: 'variant11', eyebrows: 'variant02' } },
+        { variant: 'surprised', overrides: { eyes: 'variant08', mouth: 'variant18', eyebrows: 'variant06' } },
+        { variant: 'relaxed', overrides: { eyes: 'variant19', mouth: 'variant21', eyebrows: 'variant03' } },
+        { variant: 'excited', overrides: { eyes: 'variant21', mouth: 'variant28', eyebrows: 'variant06' } },
+        { variant: 'tired', overrides: { eyes: 'variant16', mouth: 'variant09', eyebrows: 'variant11' } },
+        { variant: 'determined', overrides: { eyes: 'variant10', mouth: 'variant04', eyebrows: 'variant01' } },
+        { variant: 'neutral', overrides: { eyes: 'variant24', mouth: 'variant08', eyebrows: 'variant10' } }
+      ];
+
+      const isDicebear = parsedUrl.href.includes('api.dicebear.com/7.x/adventurer/svg');
+      if (!isDicebear || parsedUrl.protocol === 'data:') {
+        return moods.map(mood => ({
+          user_id: userId,
+          variant: mood.variant,
+          image_url: baseUrl,
+          source_avatar_url: baseUrl
+        }));
+      }
+
+      const baseParams = new URLSearchParams(parsedUrl.search || '');
+      const basePath = `${parsedUrl.origin}${parsedUrl.pathname}`;
+
+      return moods.map(mood => {
+        const params = new URLSearchParams(baseParams);
+        Object.entries(mood.overrides).forEach(([key, value]) => {
+          if (value === null || value === undefined || value === '') {
+            params.delete(key);
+          } else {
+            params.set(key, value);
+          }
+        });
+        const query = params.toString();
+        return {
+          user_id: userId,
+          variant: mood.variant,
+          image_url: query ? `${basePath}?${query}` : basePath,
+          source_avatar_url: baseUrl
+        };
+      });
+    }
+
+    async function upsertAvatarVariants(userId, baseUrl) {
+      const records = buildAvatarVariantRecords(userId, baseUrl);
+      if (!records.length) return;
+      const { error } = await supabase
+        .from('avatar_variants')
+        .upsert(records, { onConflict: 'user_id,variant', returning: 'minimal' });
+      if (error) {
+        throw error;
+      }
+    }
+
     // Handle authentication state
     handleAuthState(supabase);
     if (typeof window.renderStandardStaffNav === 'function') {
@@ -1187,7 +1254,22 @@
         const target = document.querySelector(sel);
         if (!target) return;
         sync(btn, target);
-        btn.addEventListener('click', () => { target.classList.toggle('collapsed'); sync(btn, target); });
+        btn.addEventListener('click', function() { 
+          target.classList.toggle('collapsed'); 
+          sync(btn, target);
+          
+          // If this is the hair section and we're expanding it, update the avatar
+          // This ensures the hair controls work when first accessed
+          if (sel === '#group-hair' && !target.classList.contains('collapsed')) {
+            console.log('Hair section expanded, ensuring controls are ready');
+            setTimeout(() => {
+              // Ensure controls are properly initialized
+              if (typeof updateAvatarPreview === 'function') {
+                updateAvatarPreview();
+              }
+            }, 100);
+          }
+        });
       });
     })();
 
@@ -1453,6 +1535,14 @@
             throw profileError;
           }
 
+          try {
+            await upsertAvatarVariants(session.user.id, avatarUrl);
+            console.log('Avatar variants saved for moods: happy, sad, confused');
+          } catch (variantError) {
+            console.error('Avatar variant upsert error:', variantError);
+            throw new Error(variantError?.message || 'Unable to save avatar variants');
+          }
+
           console.log('Avatar saved successfully:', data);
           if (msg) msg.textContent = '✅ Avatar saved successfully!';
 
@@ -1631,22 +1721,46 @@
           featureVals.forEach(v => params.append('features', v));
           if (updatedFeaturesProb) params.set('featuresProbability', updatedFeaturesProb);
         }
+        
+        // Special handling for hair to ensure it works properly
+        console.log('Hair settings before applying:', { hair, hairColor, hairProbability: updatedHairProb });
+        
+        // Always set hair if it exists
         if (hair) {
           params.set('hair', hair);
-          if (hairColor) params.set('hairColor', hairColor);
-          if (updatedHairProb) params.set('hairProbability', updatedHairProb);
+          console.log('Applied hair style:', hair);
+          
+          // Always set hairProbability when hair is set
+          params.set('hairProbability', updatedHairProb || '100');
+          console.log('Applied hair probability:', updatedHairProb || '100');
+        }
+        
+        // Set hairColor separately as it should work even without hair style
+        if (hairColor) {
+          params.set('hairColor', hairColor);
+          console.log('Applied hair color:', hairColor);
         }
         if (skinColor) params.set('skinColor', skinColor);
         
         return `${base}?${params.toString()}`;
       }
-      
+
       function updateAvatarPreview() {
+        console.log('Updating avatar preview...');
+        
+        // Double check hair settings before building URL
+        const hair = document.getElementById('opt-hair')?.value;
+        const hairColor = document.getElementById('opt-hairColor')?.value;
+        console.log('Hair settings check:', { hair, hairColor });
+        
         const url = buildAvatarUrlFromControls();
+        console.log('Built avatar URL:', url);
+        
         window.currentAvatarUrl = url;
         const img = document.getElementById('avatarPreview');
         if (img) img.src = url;
-        // Minimal debug to verify accessories are applied during manual testing
+        
+        // Verify that all key settings are applied
         try {
           const g = document.getElementById('opt-glasses')?.value;
           const gp = document.getElementById('opt-glassesProbability')?.value;
@@ -1655,8 +1769,18 @@
           const fEl = document.getElementById('opt-features');
           const f = fEl ? Array.from(fEl.selectedOptions).map(o=>o.value) : [];
           const fp = document.getElementById('opt-featuresProbability')?.value;
-          console.debug('Accessories apply check →', { g, gp, e, ep, f, fp });
-        } catch {}
+          const h = document.getElementById('opt-hair')?.value;
+          const hc = document.getElementById('opt-hairColor')?.value;
+          const hp = document.getElementById('opt-hairProbability')?.value;
+          console.debug('Settings applied:', { 
+            glasses: g, glassesProbability: gp, 
+            earrings: e, earringsProbability: ep, 
+            features: f, featuresProbability: fp,
+            hair: h, hairColor: hc, hairProbability: hp
+          });
+        } catch (e) {
+          console.error('Debug check error:', e);
+        }
       }
       
       // Fill option dropdowns with appropriate values
@@ -1997,7 +2121,16 @@
   window.updateAvatarPreview = updateAvatarPreview;
 
   // Initialize preview URL immediately so Continue works without Randomize
-  try { updateAvatarPreview(); } catch {}
+  try { 
+    console.log('Initial avatar preview initialization');
+    // Give dropdowns time to populate before initializing preview
+    setTimeout(() => {
+      updateAvatarPreview();
+      console.log('Initial avatar preview complete');
+    }, 300);
+  } catch (e) {
+    console.error('Error initializing avatar preview:', e);
+  }
       
       // ---------- New: render friendly option buttons for several selects ----------
       const makeOptionButtons = (selectId, opts, renderFn, hideSelect = false) => {
@@ -2074,11 +2207,30 @@
         return span;
       };
 
-      // Render hair color as swatch buttons
+      // Render hair color as swatch buttons with special handling
       try {
-        const hairColorOpts = Array.from(document.getElementById('opt-hairColor')?.options||[]).map(o=> ({ v:o.value, t:o.text }));
-        makeOptionButtons('opt-hairColor', hairColorOpts, swatchRenderer, true);
-      } catch (e) { console.warn('hair color option button render failed', e); }
+        const hairColorSelect = document.getElementById('opt-hairColor');
+        if (hairColorSelect) {
+          const hairColorOpts = Array.from(hairColorSelect.options||[]).map(o=> ({ v:o.value, t:o.text }));
+          const container = makeOptionButtons('opt-hairColor', hairColorOpts, swatchRenderer, true);
+          
+          if (container) {
+            // Add extra handling to ensure hair color changes update the preview
+            container.querySelectorAll('.option-btn').forEach(btn => {
+              btn.addEventListener('click', function() {
+                const colorValue = this.dataset.value;
+                console.log('Hair color swatch clicked:', colorValue);
+                
+                // Wait briefly to ensure the value is set in the select
+                setTimeout(() => {
+                  console.log('Verifying hair color was applied:', hairColorSelect.value);
+                  updateAvatarPreview();
+                }, 50);
+              });
+            });
+          }
+        }
+      } catch (e) { console.warn('Hair color option button render failed:', e); }
 
       // ---- Skin tone swatches (like hair) ----
       const SKIN_SWATCH_MAP = {
@@ -2637,5 +2789,7 @@
       }
     }
   </script>
+<!-- Staff Profile Fix -->
+<script src="staff-profile-fix.js"></script>
 </body>
 </html>
