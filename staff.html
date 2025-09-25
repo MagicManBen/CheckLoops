@@ -1132,7 +1132,7 @@
 
   <!-- Scripts -->
   <script type="module">
-    import { initSupabase, requireStaffSession, getCurrentUserSiteText, setTopbar, handleAuthState, navActivate, setRing, fmtDate, clearAuthData, computeCompliance, createAchievementClient } from './staff-common.js';
+    import { initSupabase, requireStaffSession, getCurrentUserSiteText, setTopbar, handleAuthState, navActivate, setRing, fmtDate, clearAuthData, computeCompliance, createAchievementClient, getSiteSettings } from './staff-common.js';
 
     // Global function to handle holidays click
     window.handleHolidaysClick = async function() {
@@ -1177,8 +1177,7 @@
     window.supabase = supabase;
 
     handleAuthState(supabase);
-    // Navigation will be handled by staff-common.js
-    navActivate('home');
+    // Navigation will be rendered after settings are loaded
 
   document.getElementById('logout-btn')?.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); window.signOut && window.signOut(); });
 
@@ -1186,31 +1185,13 @@
     let siteSettings = {};
 
     requireStaffSession(supabase, { forceRefresh: true }).then(async ({ session, profileRow }) => {
-      // Load site settings first
-      try {
-        const { data: settings, error } = await supabase
-          .from('site_settings')
-          .select('*')
-          .eq('site_id', profileRow?.site_id || localStorage.getItem('site_id'))
-          .single();
+      // Load site settings using the shared function (which also caches them)
+      siteSettings = await getSiteSettings(supabase, profileRow?.site_id || localStorage.getItem('site_id'));
+      console.log('Site settings loaded:', siteSettings);
 
-        if (settings && !error) {
-          siteSettings = settings;
-          console.log('Site settings loaded:', siteSettings);
-
-          // Control achievements menu visibility
-          const achievementsMenuItem = document.querySelector('a[href="achievements.html"]');
-          if (achievementsMenuItem) {
-            if (siteSettings.enable_achievements === false) {
-              achievementsMenuItem.style.display = 'none';
-            } else {
-              achievementsMenuItem.style.display = '';
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Error loading site settings:', err);
-      }
+      // The navigation will automatically use the cached settings
+      // Force re-render of navigation to apply settings
+      navActivate('home');
 
       await loadDashboard(session.user, profileRow);
       await loadPersonalDashboard(session.user, profileRow);
