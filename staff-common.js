@@ -995,12 +995,16 @@ export async function getSiteSettings(supabase, siteId) {
       };
     }
 
-    // Cache the settings
-    if (data) {
-      localStorage.setItem(cacheKey, JSON.stringify(data));
-    }
+    // Process the settings with defaults for missing fields
+    const processedSettings = {
+      enable_achievements: data?.enable_achievements !== false,
+      enable_avatars: data?.enable_avatars !== false
+    };
 
-    return data;
+    // Cache the processed settings
+    localStorage.setItem(cacheKey, JSON.stringify(processedSettings));
+
+    return processedSettings;
   } catch (error) {
     console.error('Failed to get site settings:', error);
     return {
