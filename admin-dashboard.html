@@ -20,6 +20,10 @@
 <script src="supabase-js.js"></script>
 <link href="entitlement-card-styles.css" rel="stylesheet">
 <script src="entitlement-card-layout.js" defer></script>
+<script src="init-holiday-cards.js" defer></script>
+<script src="holiday-cards-debug.js" defer></script>
+<script src="holiday_system_diagnostic.js" defer></script>
+<script src="holiday_approval_fix.js" defer></script>
 <script type="module">
   const { createClient } = supabase;
   window.supabaseCreateClient = createClient;
@@ -25418,133 +25422,7 @@ window.refreshStaffData = refreshStaffData;
       alert('Note: Permission fix requires database admin access. Contact your system administrator if the issue persists.');
     }
   };
-  // Load staff entitlement cards
-  window.loadStaffEntitlementCards = async function() {
-    if (!window.supabase) return;
-
-    try {
-      // Get site_id from context
-      const siteId = window.ctx?.site_id;
-      if (!siteId) {
-        console.error('No site_id in context');
-        return;
-      }
-
-      // First sync holidays table to ensure it's up to date
-      await syncHolidaysTable();
-
-      // Get all users from master_users for this site
-      const { data: users, error } = await window.supabase
-        .from('master_users')
-        .select('*')
-        .eq('site_id', siteId)
-        .order('full_name');
-
-      if (error) {
-        console.error('Error loading users:', error);
-        return;
-      }
-
-      const container = document.getElementById('entitlements-cards-container');
-      if (!container) return;
-
-      if (!users || users.length === 0) {
-        container.innerHTML = '<div style="padding:20px; text-align:center; color:var(--muted);">No staff members found for this site.</div>';
-        return;
-      }
-
-      // Create cards for each user
-      const cardsHtml = users.map(user => {
-        const weeklyHours = user.weekly_hours ||
-          ((user.monday_hours || 0) +
-           (user.tuesday_hours || 0) +
-           (user.wednesday_hours || 0) +
-           (user.thursday_hours || 0) +
-           (user.friday_hours || 0) +
-           (user.saturday_hours || 0) +
-           (user.sunday_hours || 0));
-
-        const holidayMultiplier = user.holiday_multiplier || 6;
-        const calculatedHours = weeklyHours * holidayMultiplier;
-        const finalHours = user.override_hours || calculatedHours;
-
-        return `
-          <div class="staff-card" style="background: var(--glass); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; margin-bottom: 16px;">
-            <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 16px;">
-              <div style="width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent-2)); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 18px;">
-                ${user.full_name ? user.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2) : '??'}
-              </div>
-              <div style="flex: 1;">
-                <h3 style="margin: 0; color: var(--white); font-size: 16px;">${user.full_name || user.email || 'Unknown'}</h3>
-                <p style="margin: 4px 0 0; color: var(--muted); font-size: 14px;">${user.role_detail || user.access_type || 'Staff'}</p>
-              </div>
-              ${user.holiday_approved ? '<span style="background: var(--success); color: white; padding: 4px 8px; border-radius: 6px; font-size: 12px;">Approved</span>' : ''}
-            </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
-              <div>
-                <label style="color: var(--muted); font-size: 12px;">Working Pattern</label>
-                <div style="margin-top: 4px;">
-                  ${user.monday_hours ? `<div style="font-size: 13px; color: var(--white);">Mon: ${user.monday_hours}h</div>` : ''}
-                  ${user.tuesday_hours ? `<div style="font-size: 13px; color: var(--white);">Tue: ${user.tuesday_hours}h</div>` : ''}
-                  ${user.wednesday_hours ? `<div style="font-size: 13px; color: var(--white);">Wed: ${user.wednesday_hours}h</div>` : ''}
-                  ${user.thursday_hours ? `<div style="font-size: 13px; color: var(--white);">Thu: ${user.thursday_hours}h</div>` : ''}
-                  ${user.friday_hours ? `<div style="font-size: 13px; color: var(--white);">Fri: ${user.friday_hours}h</div>` : ''}
-                  ${user.saturday_hours ? `<div style="font-size: 13px; color: var(--white);">Sat: ${user.saturday_hours}h</div>` : ''}
-                  ${user.sunday_hours ? `<div style="font-size: 13px; color: var(--white);">Sun: ${user.sunday_hours}h</div>` : ''}
-                  <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-color); font-weight: 600; color: var(--accent);">Total: ${weeklyHours}h/week</div>
-                </div>
-              </div>
-
-              <div>
-                <label style="color: var(--muted); font-size: 12px;">Holiday Entitlement</label>
-                <div style="margin-top: 4px;">
-                  <div style="font-size: 13px; color: var(--white);">Multiplier: ${holidayMultiplier}x</div>
-                  <div style="font-size: 13px; color: var(--white);">Calculated: ${calculatedHours}h</div>
-                  ${user.manual_override && user.override_hours ? `<div style="font-size: 13px; color: var(--warning);">Override: ${user.override_hours}h</div>` : ''}
-                  <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-color); font-weight: 600; color: var(--success);">Annual: ${finalHours}h</div>
-                </div>
-              </div>
-            </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px;">
-              <div style="text-align: center;">
-                <div style="font-size: 20px; font-weight: 700; color: var(--accent);">${user.holiday_entitlement || finalHours}h</div>
-                <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">Total</div>
-              </div>
-              <div style="text-align: center;">
-                <div style="font-size: 20px; font-weight: 700; color: var(--danger);">${user.holiday_taken || 0}h</div>
-                <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">Taken</div>
-              </div>
-              <div style="text-align: center;">
-                <div style="font-size: 20px; font-weight: 700; color: var(--success);">${user.holiday_remaining || finalHours}h</div>
-                <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">Remaining</div>
-              </div>
-            </div>
-
-            <div style="margin-top: 16px; display: flex; gap: 8px;">
-              <button class="btn secondary" style="flex: 1; padding: 8px; font-size: 13px;" onclick="editStaffHoliday('${user.id}')">
-                Edit Settings
-              </button>
-              <button class="btn" style="flex: 1; padding: 8px; font-size: 13px;" onclick="viewStaffRequests('${user.id}')">
-                View Requests
-              </button>
-            </div>
-          </div>
-        `;
-      }).join('');
-
-      container.innerHTML = cardsHtml;
-      console.log(`Loaded ${users.length} staff holiday cards`);
-
-    } catch (error) {
-      console.error('Error loading staff entitlement cards:', error);
-      const container = document.getElementById('entitlements-cards-container');
-      if (container) {
-        container.innerHTML = `<div style="padding:20px; text-align:center; color:var(--danger);">Error loading staff cards: ${error.message}</div>`;
-      }
-    }
-  };
+  // Using loadStaffEntitlementCards from the entitlement-card-layout.js script
 
   // Sync holidays table with master_users
   window.syncHolidaysTable = async function() {
@@ -28413,5 +28291,7 @@ window.showStatusDashboard = function() {
     <!-- Debug Console - Persistent across all pages -->
     <script src="debug-console.js"></script>
     <script src="supabase-debug.js"></script>
+    <!-- Staff Holiday Cards Implementation -->
+    <script src="entitlement-card-layout.js"></script>
 </body>
 </html>

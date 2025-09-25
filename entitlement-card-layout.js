@@ -56,18 +56,18 @@ async function loadStaffEntitlementCards() {
     // Add site filtering based on current user context if available
     let query = window.supabase
       .from('master_users')
-      .select('*')
-      .eq('active', true);  // Only active users
+      .select('*');
+      // Not filtering by active status since all users currently have active=false
     
     // Apply site filtering if context is available
     if (window.ctx && window.ctx.site_id) {
       console.log('Filtering by site_id:', window.ctx.site_id);
       query = query.eq('site_id', window.ctx.site_id);
     } else {
-      console.log('No site context found, loading all active users');
+      console.log('No site context found, loading all users');
     }
     
-    const { data: profiles, error: profileError } = await query.order('full_name');
+    let { data: profiles, error: profileError } = await query.order('full_name');
 
     if (profileError) {
       console.error('Error loading master_users:', profileError);
@@ -76,8 +76,21 @@ async function loadStaffEntitlementCards() {
     }
 
     if (!profiles || profiles.length === 0) {
-      container.innerHTML = '<div class="empty-state">No staff holiday profiles found.</div>';
-      return;
+      console.log('No master_users profiles found, trying holidays table as fallback');
+      
+      // Try to get data from holidays table as a fallback
+      const { data: holidayProfiles, error: holidayError } = await window.supabase
+        .from('holidays')
+        .select('*');
+      
+      if (holidayError || !holidayProfiles || holidayProfiles.length === 0) {
+        console.log('No profiles found in holidays table either');
+        container.innerHTML = '<div class="empty-state">No staff holiday profiles found.</div>';
+        return;
+      }
+      
+      console.log(`Found ${holidayProfiles.length} profiles in holidays table instead`);
+      profiles = holidayProfiles;
     }
 
     console.log('=== DEBUGGING: Loaded profiles ===');
@@ -89,7 +102,9 @@ async function loadStaffEntitlementCards() {
         email: profile.email,
         site_id: profile.site_id,
         active: profile.active,
-        access_type: profile.access_type
+        access_type: profile.access_type,
+        auth_user_id: profile.auth_user_id,
+        holiday_approved: profile.holiday_approved
       });
     });
     console.log('=== END DEBUGGING ===');
@@ -652,7 +667,7 @@ function updateWeeklyTotalInModal() {
 // Save working pattern from modal
 async function saveWorkingPatternFromModal(userId, isGP) {
   const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-  const payload = { user_id: userId, updated_at: new Date().toISOString() };
+  const payload = { auth_user_id: userId, updated_at: new Date().toISOString() };
   
   let total = 0;
   let staffId = null;
@@ -749,17 +764,29 @@ async function saveWorkingPatternFromModal(userId, isGP) {
       }
       
       // Keep existing multiplier and override if present
-      entitlementPayload.holiday_multiplier = currentUser.holiday_multiplier || 10;
-      if (currentUser.manual_override !== null) {
-        entitlementPayload.manual_override = currentUser.manual_override;
+      entitlementPayload.holiday_multiplier = currentUser.holiday_multiplier || 6;
+      
+      // Only copy override value if manual_override is true
+      if (currentUser.manual_override === true) {
+        entitlementPayload.manual_override = true;
+        if (isGP && currentUser.override_sessions !== null) {
+          entitlementPayload.override_sessions = currentUser.override_sessions;
+        } else if (!isGP && currentUser.override_hours !== null) {
+          entitlementPayload.override_hours = currentUser.override_hours;
+        }
       }
       
       // Calculate the new entitlement if there's no override
-      const multiplier = entitlementPayload.holiday_multiplier || 10;
+      const multiplier = entitlementPayload.holiday_multiplier || 6;
+      
+      console.log('Calculating entitlement with:', { total, multiplier });
+      
       if (isGP) {
         entitlementPayload.calculated_sessions = total * multiplier;
+        console.log('New calculated sessions:', entitlementPayload.calculated_sessions);
       } else {
         entitlementPayload.calculated_hours = total * multiplier;
+        console.log('New calculated hours:', entitlementPayload.calculated_hours);
       }
       
       console.log('Updating master_users with entitlement payload:', entitlementPayload);
@@ -885,23 +912,63 @@ async function saveEntitlementFromModal(staffId, isGP) {
       
     const entitlementData = {
       holiday_multiplier: multiplier,
-      manual_override: override,
+      manual_override: override !== null ? true : false,
       updated_at: new Date().toISOString()
     };
     
+    // Set the appropriate override field based on type
+    if (override !== null) {
+      if (isGP) {
+        entitlementData.override_sessions = override;
+      } else {
+        entitlementData.override_hours = override;
+      }
+    }
+    
     // Keep existing weekly values and calculate new entitlement
     if (currentUser) {
-      if (isGP && currentUser.weekly_sessions !== null) {
-        entitlementData.weekly_sessions = currentUser.weekly_sessions;
-        // Calculate new value if no override
-        if (override === null) {
-          entitlementData.calculated_sessions = currentUser.weekly_sessions * multiplier;
+      // Calculate total from daily values
+      let weeklyTotal = 0;
+      
+      // First try to get the total from weekly values
+      if (isGP && currentUser.weekly_sessions !== null && currentUser.weekly_sessions !== undefined) {
+        weeklyTotal = parseFloat(currentUser.weekly_sessions || 0);
+      } else if (!isGP && currentUser.weekly_hours !== null && currentUser.weekly_hours !== undefined) {
+        weeklyTotal = parseFloat(currentUser.weekly_hours || 0);
+      }
+      
+      // If we don't have a weekly total, calculate it from daily values
+      if (weeklyTotal === 0) {
+        days.forEach(day => {
+          const fieldName = isGP ? `${day}_sessions` : `${day}_hours`;
+          weeklyTotal += parseFloat(currentUser[fieldName] || 0);
+        });
+      }
+      
+      console.log('Weekly total for calculation:', weeklyTotal);
+      
+      // Store the weekly value
+      if (isGP) {
+        entitlementData.weekly_sessions = weeklyTotal;
+      } else {
+        entitlementData.weekly_hours = weeklyTotal;
+      }
+      
+      // Calculate new value if no override
+      if (override === null) {
+        if (isGP) {
+          entitlementData.calculated_sessions = weeklyTotal * multiplier;
+          console.log('Calculated sessions:', entitlementData.calculated_sessions);
+        } else {
+          entitlementData.calculated_hours = weeklyTotal * multiplier;
+          console.log('Calculated hours:', entitlementData.calculated_hours);
         }
-      } else if (!isGP && currentUser.weekly_hours !== null) {
-        entitlementData.weekly_hours = currentUser.weekly_hours;
-        // Calculate new value if no override
-        if (override === null) {
-          entitlementData.calculated_hours = currentUser.weekly_hours * multiplier;
+      } else {
+        // Store the override value in the appropriate field
+        if (isGP) {
+          entitlementData.override_sessions = override;
+        } else {
+          entitlementData.override_hours = override;
         }
       }
     }
@@ -1004,42 +1071,32 @@ async function approveHolidaysFromModal(userId, staffName) {
       approveBtn.style.opacity = '0.7';
     }
 
-    // Use service role key for this update
-    const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
-    const SERVICE_ROLE_KEY = (typeof process !== 'undefined' && process.env?.SUPABASE_SERVICE_ROLE_KEY) || '';
-    if (!SERVICE_ROLE_KEY) {
-      console.warn('SUPABASE_SERVICE_ROLE_KEY not set; skipping entitlement approval update.');
-      alert('Service role key not configured. Approve/deny actions require running this tool locally with SUPABASE_SERVICE_ROLE_KEY set via environment.');
-      return;
-    }
+    // First check if the user exists in master_users and if holiday_approved column exists
+    try {
+      const { data: testData, error: testError } = await window.supabase
+        .from('master_users')
+        .select('holiday_approved')
+        .eq('auth_user_id', userId)
+        .maybeSingle();
 
-    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
-    const serviceSupabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
-
-    // First check if the user exists in master_users
-    const { data: testData, error: testError } = await serviceSupabase
-      .from('master_users')
-      .select('holiday_approved')
-      .eq('auth_user_id', userId)
-      .maybeSingle();
-
-    if (testError && testError.message.includes('column')) {
-      // Column doesn't exist, try to add it
-      console.log('Holiday approval column not found, adding it...');
-
-      // Since we can't alter table directly, we'll update the data differently
-      alert('The holiday approval feature is not yet enabled in the database. Please contact your system administrator to add the "holiday_approved" column to the master_users table.');
-      
-      if (approveBtn) {
-        approveBtn.textContent = originalText;
-        approveBtn.disabled = false;
-        approveBtn.style.opacity = '1';
+      if (testError && testError.message.includes('column')) {
+        console.log('Holiday approval column not found:', testError);
+        alert('The holiday approval feature is not yet enabled in the database. Please contact your system administrator to add the "holiday_approved" column to the master_users table.');
+        
+        if (approveBtn) {
+          approveBtn.textContent = originalText;
+          approveBtn.disabled = false;
+          approveBtn.style.opacity = '1';
+        }
+        return;
       }
-      return;
+    } catch (checkError) {
+      console.error('Error checking holiday_approved column:', checkError);
     }
 
-    // Update the approval status in master_users
-    const { data, error } = await serviceSupabase
+    // Update the approval status in master_users using the standard client
+    console.log('Updating holiday_approved for user:', userId);
+    const { data, error } = await window.supabase
       .from('master_users')
       .update({ holiday_approved: true })
       .eq('auth_user_id', userId);
@@ -1088,6 +1145,7 @@ async function approveHolidaysFromModal(userId, staffName) {
     }
   }
 }
+}
 
 // Approve holidays for a staff member
 async function approveHolidays(userId, staffName) {
@@ -1101,36 +1159,26 @@ async function approveHolidays(userId, staffName) {
   }
 
   try {
-    // Use service role key for this update
-    const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
-    const SERVICE_ROLE_KEY = (typeof process !== 'undefined' && process.env?.SUPABASE_SERVICE_ROLE_KEY) || '';
-    if (!SERVICE_ROLE_KEY) {
-      console.warn('SUPABASE_SERVICE_ROLE_KEY not set; skipping entitlement sync.');
-      alert('Service role key not configured. Refresh requires SUPABASE_SERVICE_ROLE_KEY set in the environment.');
-      return;
+    // First check if the user exists in master_users and if holiday_approved column exists
+    try {
+      const { data: testData, error: testError } = await window.supabase
+        .from('master_users')
+        .select('holiday_approved')
+        .eq('auth_user_id', userId)
+        .maybeSingle();
+
+      if (testError && testError.message.includes('column')) {
+        console.log('Holiday approval column not found:', testError);
+        alert('The holiday approval feature is not yet enabled in the database. Please contact your system administrator to add the "holiday_approved" column to the master_users table.');
+        return;
+      }
+    } catch (checkError) {
+      console.error('Error checking holiday_approved column:', checkError);
     }
 
-    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
-    const serviceSupabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
-
-    // First check if the user exists in master_users
-    const { data: testData, error: testError } = await serviceSupabase
-      .from('master_users')
-      .select('holiday_approved')
-      .eq('auth_user_id', userId)
-      .maybeSingle();
-
-    if (testError && testError.message.includes('column')) {
-      // Column doesn't exist, try to add it
-      console.log('Holiday approval column not found, adding it...');
-
-      // Since we can't alter table directly, we'll update the data differently
-      alert('The holiday approval feature is not yet enabled in the database. Please contact your system administrator to add the "holiday_approved" column to the master_users table.');
-      return;
-    }
-
-    // Update the approval status in master_users
-    const { data, error } = await serviceSupabase
+    // Update the approval status in master_users using the standard client
+    console.log('Updating holiday_approved for user:', userId);
+    const { data, error } = await window.supabase
       .from('master_users')
       .update({ holiday_approved: true })
       .eq('auth_user_id', userId);
@@ -1166,7 +1214,19 @@ window.saveEntitlementFromModal = saveEntitlementFromModal;
 // Auto-load if we're already on the holidays section
 document.addEventListener('DOMContentLoaded', () => {
   const activeSection = document.querySelector('.view.active');
-  if (activeSection && activeSection.id === 'holidays') {
+  if (activeSection && (activeSection.id === 'holidays' || activeSection.id === 'entitlement-management')) {
+    console.log('Holiday section detected, initializing cards...');
     setTimeout(() => loadStaffEntitlementCards(), 500);
+  } else {
+    console.log('Holiday section not active yet, waiting for navigation...');
   }
+
+  // Also listen for section changes to initialize when user navigates to holidays
+  window.addEventListener('sectionChanged', (event) => {
+    const sectionId = event.detail?.sectionId;
+    if (sectionId === 'entitlement-management') {
+      console.log('Navigated to holiday section, initializing cards...');
+      setTimeout(() => loadStaffEntitlementCards(), 500);
+    }
+  });
 });

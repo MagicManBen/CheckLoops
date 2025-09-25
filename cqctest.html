@@ -1,402 +1,318 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>CQC Sync — Progress Monitor</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    :root { --bg:#0b0f14; --card:#121824; --ink:#e8eef9; --muted:#9fb2cc; --accent:#5fd4ff; --bad:#ff6b6b; --good:#4cd97b; }
-    html,body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial; background:var(--bg); color:var(--ink); }
-    .wrap { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
-    h1 { font-size: 22px; font-weight: 700; margin: 0 0 12px; letter-spacing: .2px; }
-    .sub { color: var(--muted); margin: 0 0 24px; }
-    .grid { display:grid; grid-template-columns: repeat(12,1fr); gap:12px; }
-    .card { grid-column: span 12; background: var(--card); border: 1px solid rgba(255,255,255,.06); border-radius: 12px; padding: 14px; }
-    .kpis { display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px; }
-    .kpi { background: rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.06); border-radius:12px; padding:14px; }
-    .kpi h3 { margin:0 0 6px; font-size:13px; color:var(--muted); font-weight:600; letter-spacing:.2px; }
-    .kpi .n { font-size: 28px; font-weight: 800; }
-    .bar { height: 8px; border-radius: 6px; background: rgba(255,255,255,.08); overflow: hidden; }
-    .bar > div { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), #7bffb8); transition: width .4s ease; }
-    .row { display:flex; gap:10px; align-items:center; margin: 8px 0; flex-wrap: wrap; }
-    input,button,select { font: inherit; }
-    .btn { padding:10px 14px; border-radius:10px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.06); color: var(--ink); cursor: pointer; }
-    .btn:hover { background: rgba(255,255,255,.1); }
-    .btn.good { border-color: rgba(76,217,123,.3); }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 12px; }
-    .muted { color: var(--muted); }
-    .warn { color: var(--bad); }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { border-bottom: 1px solid rgba(255,255,255,.06); padding: 8px 6px; font-size: 13px; text-align: left; }
-    th { color: var(--muted); font-weight: 600; }
-    tbody tr { cursor: pointer; }
-    tbody tr:hover { background: rgba(255,255,255,.03); }
-    tr.active { outline: 2px solid rgba(95,212,255,.35); }
-    .pill { display:inline-block; padding:4px 8px; border-radius:999px; background: rgba(255,255,255,.08); font-size:12px; border: 1px solid rgba(255,255,255,.08); }
-    .ok { color: var(--good); }
-  </style>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CQC Search & Enrich</title>
+<link rel="preconnect" href="https://unpkg.com" />
+<script src="https://unpkg.com/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<style>
+  :root { --bg:#0b1020; --panel:#121a33; --muted:#7b8aa5; --text:#e7eefb; --brand:#4cc9f0; --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444; --chip:#1f2a4a; --diff:#113b25; }
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Segoe UI,Roboto,Helvetica,Arial}
+  .wrap{max-width:1100px;margin:24px auto;padding:0 16px}
+  .card{background:var(--panel);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.22);padding:16px;border:1px solid rgba(255,255,255,.05)}
+  h1{font-size:20px;margin:0 0 12px;display:flex;gap:10px;align-items:center}
+  .muted{color:var(--muted)}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  input,button,select{border-radius:10px;border:1px solid rgba(255,255,255,.08);background:#0f1630;color:var(--text);padding:10px 12px}
+  input{flex:1;min-width:240px}
+  button{cursor:pointer}
+  .split{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}
+  .list{max-height:420px;overflow:auto}
+  .item{padding:10px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;justify-content:space-between;gap:10px}
+  .item:hover{background:#0f1733}
+  .tag{background:var(--chip);border:1px solid rgba(255,255,255,.06);padding:2px 8px;border-radius:999px;font-size:12px}
+  .btn{background:linear-gradient(135deg, #3a86ff, #4cc9f0);border:none}
+  .btn.warn{background:linear-gradient(135deg, #f59e0b, #f97316)}
+  .btn.good{background:linear-gradient(135deg, #22c55e, #10b981)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .kv{display:grid;grid-template-columns:180px 1fr;gap:6px;align-items:center}
+  .code{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; background:#0e162d;border:1px solid rgba(255,255,255,.06); padding:10px;border-radius:10px}
+  .changed{background:var(--diff);border:1px solid rgba(34,197,94,.35);}
+  .hint{font-size:12px;color:var(--muted)}
+</style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>CQC GP Locations — Progress</h1>
-    <p class="muted">If you see a “schema cache” error, run <span class="mono">NOTIFY pgrst, 'reload schema';</span> in the Supabase SQL editor, then hard‑refresh this page.</p>
-    <p class="sub">Live, read‑only view of <span class="mono">public."CQC All GPs"</span>. Shows total vs. detailed rows, plus recently updated items. Uses anon key by default. (Service role key is <span class="warn">unsafe in a browser</span>; toggle at your own risk.)</p>
-
-    <div class="card">
-      <div class="row" style="justify-content: space-between">
-        <div class="row">
-          <label class="pill"><input id="useService" type="checkbox" /> Use service role key (unsafe)</label>
-          <button id="refresh" class="btn">🔄 Refresh</button>
-          <button id="copy" class="btn good">📋 Copy snapshot</button>
-          <label class="pill">Auto‑refresh
-            <select id="autoint">
-              <option value="0">Off</option>
-              <option value="5">5s</option>
-              <option value="10" selected>10s</option>
-              <option value="30">30s</option>
-              <option value="60">60s</option>
-            </select>
-          </label>
-          <label class="pill">Expected/min
-            <input id="expected" type="number" min="1" value="250" style="width:80px; background: transparent; border: none; color: var(--ink); text-align:center" />
-          </label>
-        </div>
-        <div class="row muted mono">
-          <span id="lastRun">—</span>
-        </div>
-      </div>
-
-      <div class="kpis" style="margin: 10px 0 12px">
-        <div class="kpi"><h3>Total rows</h3><div class="n" id="kTotal">—</div></div>
-        <div class="kpi"><h3>Detailed rows</h3><div class="n" id="kDetailed">—</div></div>
-        <div class="kpi"><h3>Progress</h3><div class="n" id="kPct">—</div></div>
-        <div class="kpi"><h3>Updated in last 10 min</h3><div class="n" id="kRecent">—</div></div>
-        <div class="kpi"><h3>Rows/min (10‑min avg)</h3><div class="n" id="kRpm">—</div></div>
-        <div class="kpi"><h3>Seconds / row</h3><div class="n" id="kSpr">—</div></div>
-        <div class="kpi"><h3>ETA</h3><div class="n" id="kEta">—</div></div>
-        <div class="kpi"><h3>Success vs expected</h3><div class="n" id="kSucc">—</div></div>
-      </div>
-
-      <div class="bar"><div id="bar"></div></div>
-      <p class="muted" style="margin:10px 0 0">“Detailed” = rows where <span class="mono">reports</span> column is not null (enrichment writes it). This avoids any write operations.</p>
-    </div>
-
-    <div class="grid" style="margin-top:12px">
-      <div class="card">
-        <div class="row" style="justify-content: space-between">
-          <h3 style="margin:0">Recently enriched (latest 20)</h3>
-          <span class="muted">sorted by <span class="mono">updated_at</span></span>
-        </div>
-        <div style="overflow:auto">
-          <table id="recentTbl">
-            <thead><tr>
-              <th>Location</th><th>Postcode</th><th>Overall</th><th>Reports</th><th>Updated</th>
-            </tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="card" id="detailsCard">
-        <div class="row" style="justify-content: space-between">
-          <h3 style="margin:0">Selected practice details</h3>
-          <button id="copyDetails" class="btn">📋 Copy details</button>
-        </div>
-        <pre id="details" class="mono" style="white-space:pre-wrap; margin:0; max-height:360px; overflow:auto; background:rgba(0,0,0,.25); padding:10px; border-radius:8px;">Click a row above…</pre>
-      </div>
-
-      <div class="card">
-        <h3 style="margin:0 0 8px">Debug log</h3>
-        <pre id="log" class="mono" style="white-space:pre-wrap; margin:0; max-height:260px; overflow:auto; background:rgba(0,0,0,.25); padding:10px; border-radius:8px;"></pre>
-      </div>
+<div class="wrap">
+  <div class="card">
+    <h1>🔎 CQC Search & Enrich <span class="tag" id="status">idle</span></h1>
+    <div class="row">
+      <input id="q" placeholder="Search name, postcode or ODS code (e.g. M83076, 'Springview', 'BL3 1HQ')" />
+      <select id="limit">
+        <option value="25">25</option>
+        <option value="50" selected>50</option>
+        <option value="100">100</option>
+      </select>
+      <button class="btn" id="btnSearch">Search</button>
+      <button class="btn warn" id="btnClear">Clear</button>
     </div>
   </div>
 
-  <script>
-    // === CONFIG (provided by you; rotate later) ===
-    const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
-    const ANON_KEY     = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME';
-    const SERVICE_KEY  = 'sb_secret_nV3xSrLVHL50Zqp_DeZsgA_lLAYAaQs'; // ⚠️ do not use in production browsers
+  <div class="split" style="margin-top:14px">
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div class="muted">Results</div>
+        <div id="count" class="tag">0</div>
+      </div>
+      <div id="list" class="list"></div>
+    </div>
 
-    // Table name with space must be quoted
-    const TABLE = '"CQC All GPs"';
-    const TABLE_FALLBACK = 'CQC All GPs'; // unquoted fallback for PostgREST schema-cache oddities
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div class="muted">Details</div>
+        <div class="row">
+          <button class="btn good" id="btnEnrich" disabled>Pull remaining data</button>
+        </div>
+      </div>
+      <div id="detail" class="grid2"></div>
+      <div id="diffNote" class="hint" style="margin-top:8px;display:none">Green highlights indicate fields updated from the API just now.</div>
+      <div id="log" class="code" style="margin-top:10px;white-space:pre-wrap;max-height:160px;overflow:auto"></div>
+    </div>
+  </div>
+</div>
 
-    let supabase = null;
-    const $ = (sel) => document.querySelector(sel);
-    const log = (msg) => {
-      const ts = new Date().toLocaleTimeString();
-      $('#log').textContent = `[${ts}] ${msg}\n` + $('#log').textContent;
+<script>
+/** === CONFIG (replace later if you rotate) === */
+const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME';
+const CQC_KEY = '5b91c30763b4466e89727c0c555e47a6'; // primary key (test); rotates later
+const TABLE = 'CQC All GPs'; // quoted on the server
+
+/** Supabase client (anon) */
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+/** UI helpers */
+const el = id => document.getElementById(id);
+const log = (m) => { const L=el('log'); L.textContent += (L.textContent?'\n':'') + m; L.scrollTop=L.scrollHeight; };
+const setStatus = (t) => el('status').textContent = t;
+
+/** Search */
+el('btnSearch').onclick = async () => {
+  setStatus('searching…');
+  el('list').innerHTML = '';
+  el('detail').innerHTML = '';
+  el('btnEnrich').disabled = true;
+  el('diffNote').style.display = 'none';
+  el('log').textContent = '';
+
+  const q = el('q').value.trim();
+  const lim = parseInt(el('limit').value, 10);
+
+  // Simple OR filter: name / postcode / ODS (odsCode is inside location_source JSON from CSV)
+  let req = sb.from(TABLE)
+    .select(`
+      location_id, location_name, postcode, provider_id,
+      overall_rating, last_inspection_date,
+      location_source
+    `)
+    .limit(lim);
+
+  if (q) {
+    const like = `%${q}%`;
+    req = req.or([
+      `location_name.ilike.${like}`,
+      `postcode.ilike.${like}`,
+      `location_source->>odsCode.ilike.${like}`
+    ].join(','));
+  }
+
+  const { data, error } = await req;
+  if (error) { setStatus('error'); log('Search error: '+error.message); return; }
+
+  el('count').textContent = data.length;
+  setStatus('ready');
+
+  data.forEach(row => {
+    const div = document.createElement('div');
+    div.className = 'item';
+    div.innerHTML = `
+      <div>
+        <div><strong>${row.location_name || '(no name)'}</strong></div>
+        <div class="muted">${row.postcode || ''}</div>
+      </div>
+      <div class="row">
+        ${row.overall_rating ? `<span class="tag">${row.overall_rating}</span>` : ''}
+        <button class="btn" data-id="${row.location_id}">Open</button>
+      </div>
+    `;
+    div.querySelector('button').onclick = () => showDetails(row.location_id);
+    el('list').appendChild(div);
+  });
+};
+
+/** Load & render details */
+async function showDetails(locationId){
+  setStatus('loading…');
+  el('diffNote').style.display = 'none';
+  el('log').textContent = '';
+
+  const { data, error } = await sb.from(TABLE)
+    .select('*')
+    .eq('location_id', locationId)
+    .maybeSingle();
+  if (error || !data) { setStatus('error'); log('Load error: '+(error?.message||'not found')); return; }
+
+  renderDetails(data);
+  el('btnEnrich').disabled = false;
+  el('btnEnrich').onclick = () => enrichNow(data);
+  setStatus('ready');
+}
+
+/** Render with optional change highlighting */
+function renderDetails(row, before=null){
+  const d = el('detail');
+  d.innerHTML = '';
+
+  const pairs = [
+    ['Location ID', row.location_id],
+    ['Name', row.location_name],
+    ['Postcode', row.postcode],
+    ['Town/City', row.town_city],
+    ['County', row.county],
+    ['Region', row.region],
+    ['Provider ID', row.provider_id],
+    ['Overall rating', row.overall_rating],
+    ['Last inspection', row.last_inspection_date],
+    ['Reg. status', row.registration_status],
+    ['Reg. date', row.registration_date],
+    ['De-reg. date', row.deregistration_date],
+    ['Latitude', row.latitude],
+    ['Longitude', row.longitude]
+  ];
+
+  for (const [k,v] of pairs){
+    const wrap = document.createElement('div');
+    wrap.className = 'kv';
+    const left = document.createElement('div'); left.className='muted'; left.textContent = k;
+    const right = document.createElement('div'); right.textContent = v ?? '';
+    if (before && (before[k] !== String(v ?? ''))) {
+      right.classList.add('changed');
+    }
+    wrap.append(left, right);
+    d.appendChild(wrap);
+  }
+
+  // Small JSON views (collapsed to top level info)
+  const jsonBlocks = [
+    ['location_source', row.location_source],
+    ['provider_source', row.provider_source],
+    ['reports', row.reports],
+    ['ratings', row.ratings],
+    ['regulated_activities', row.regulated_activities],
+    ['inspection_areas', row.inspection_areas],
+    ['contacts', row.contacts]
+  ];
+
+  for (const [label, js] of jsonBlocks){
+    const wrap = document.createElement('div');
+    wrap.className = 'kv';
+    const left = document.createElement('div'); left.className='muted'; left.textContent = label;
+    const right = document.createElement('pre'); right.className='code';
+    try { right.textContent = JSON.stringify(js, null, 2); } catch { right.textContent = String(js ?? ''); }
+    wrap.append(left, right);
+    d.appendChild(wrap);
+  }
+}
+
+/** Enrichment: fetch CQC API → RPC merge → reload & diff */
+async function enrichNow(currentRow){
+  try{
+    setStatus('enriching…');
+    log('Calling CQC API…');
+
+    // 1) location
+    const locUrl = `https://api.service.cqc.org.uk/public/v1/locations/${encodeURIComponent(currentRow.location_id)}`;
+    const locRes = await fetch(locUrl, {
+      headers: {
+        'Accept':'application/json',
+        'Ocp-Apim-Subscription-Key': CQC_KEY
+      }
+    });
+    if (!locRes.ok) {
+      const txt = await locRes.text();
+      log(`Location fetch failed ${locRes.status}: ${txt}`);
+      setStatus('error'); return;
+    }
+    const location = await locRes.json();
+
+    // 2) provider (optional but nice)
+    let provider = null;
+    const providerId = location?.providerId || currentRow.provider_id;
+    if (providerId){
+      const provUrl = `https://api.service.cqc.org.uk/public/v1/providers/${encodeURIComponent(providerId)}`;
+      const provRes = await fetch(provUrl, {
+        headers: {
+          'Accept':'application/json',
+          'Ocp-Apim-Subscription-Key': CQC_KEY
+        }
+      });
+      if (provRes.ok) provider = await provRes.json();
+      else log(`Provider fetch failed ${provRes.status} (continuing)`);
+    }
+
+    // 3) reports metadata (optional quick pass from location.reports)
+    let reports = Array.isArray(location?.reports) ? location.reports : [];
+
+    // Snapshot "before" for change highlighting
+    const beforeMap = {
+      'Location ID': currentRow.location_id,
+      'Name': currentRow.location_name ?? '',
+      'Postcode': currentRow.postcode ?? '',
+      'Town/City': currentRow.town_city ?? '',
+      'County': currentRow.county ?? '',
+      'Region': currentRow.region ?? '',
+      'Provider ID': currentRow.provider_id ?? '',
+      'Overall rating': currentRow.overall_rating ?? '',
+      'Last inspection': currentRow.last_inspection_date ?? '',
+      'Reg. status': currentRow.registration_status ?? '',
+      'Reg. date': currentRow.registration_date ?? '',
+      'De-reg. date': currentRow.deregistration_date ?? '',
+      'Latitude': currentRow.latitude ?? '',
+      'Longitude': currentRow.longitude ?? ''
     };
 
-    function makeClient() {
-      const useService = $('#useService').checked;
-      const key = useService ? SERVICE_KEY : ANON_KEY;
-      supabase = window.supabase.createClient(SUPABASE_URL, key, {
-        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-        global: { headers: { 'x-client-info': 'CheckLoops-Progress/1.0' } },
-        db: { schema: 'public' }
+    log('Merging into Supabase via RPC…');
+
+    // 4) Merge into the row using SECURITY DEFINER RPC
+    const { data: rpcData, error: rpcErr } = await sb
+      .rpc('cqc_merge_location_json', {
+        _location_id: currentRow.location_id,
+        _location: location,
+        _provider: provider,
+        _reports: reports
       });
-      log(`Supabase client ready (key=${useService?'service':'anon'})`);
-    }
 
-    function isSchemaCacheError(err) {
-      return !!(err && (String(err.message || err).includes('schema cache') || String(err.message || err).includes('Could not find the table')));
-    }
+    if (rpcErr) { log('Merge error: '+rpcErr.message); setStatus('error'); return; }
 
-    async function countWithFallback(applyFilter /* function or null */) {
-      // Try quoted table first
-      let q = supabase.from(TABLE).select('location_id', { count: 'exact', head: false }).limit(0);
-      if (typeof applyFilter === 'function') q = applyFilter(q);
-      let res = await q;
+    // 5) Reload the row and show diffs
+    const { data: fresh, error: reloadErr } = await sb.from(TABLE).select('*')
+      .eq('location_id', currentRow.location_id).maybeSingle();
 
-      // If schema cache complains, retry unquoted
-      if (res.error && isSchemaCacheError(res.error)) {
-        log('Schema cache miss during count; retrying unquoted …');
-        let q2 = supabase.from(TABLE_FALLBACK).select('location_id', { count: 'exact', head: false }).limit(0);
-        if (typeof applyFilter === 'function') q2 = applyFilter(q2);
-        res = await q2;
-      }
-      return res;
-    }
+    if (reloadErr || !fresh){ log('Reload error: '+(reloadErr?.message || 'not found')); setStatus('error'); return; }
 
-    async function fetchCounts() {
-      // total
-      let totalRes = await countWithFallback(null);
-      let total = totalRes.count ?? 0;
-      if (totalRes.error) log('Total error: ' + totalRes.error.message);
+    renderDetails(fresh, beforeMap);
+    el('diffNote').style.display = 'block';
+    setStatus('ready');
+    log('Done ✅');
+  }catch(e){
+    log('Unexpected error: '+e.message);
+    setStatus('error');
+  }
+}
 
-      // detailed = reports is NOT NULL
-      let detailedRes = await countWithFallback(q => q.not('reports','is', null));
-      let detailed = detailedRes.count ?? 0;
-      if (detailedRes.error) log('Detailed error: ' + detailedRes.error.message);
+/** Minor extras */
+el('btnClear').onclick = () => {
+  el('q').value = '';
+  el('list').innerHTML = '';
+  el('detail').innerHTML = '';
+  el('btnEnrich').disabled = true;
+  el('diffNote').style.display = 'none';
+  el('log').textContent = '';
+  setStatus('idle');
+};
 
-      // recent updates (last 10 min)
-      const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-      let recentRes = await countWithFallback(q => q.gte('updated_at', tenMinAgo));
-      let recent = recentRes.count ?? 0;
-      if (recentRes.error) log('Recent error: ' + recentRes.error.message);
-
-      // fill KPIs
-      $('#kTotal').textContent = String(total);
-      $('#kDetailed').textContent = String(detailed);
-      const pct = total ? Math.round((detailed / total) * 100) : 0;
-      $('#kPct').textContent = `${pct}%`;
-      $('#bar').style.width = `${pct}%`;
-      $('#kRecent').textContent = String(recent);
-      $('#lastRun').textContent = 'Last refresh: ' + new Date().toLocaleTimeString();
-
-      // Throughput & ETA
-      const rpm10   = recent / 10;                                // rows per minute averaged over last 10 min
-      const spr     = rpm10 > 0 ? 60 / rpm10 : null;              // seconds per row
-      const remain  = Math.max(0, (total || 0) - (detailed || 0));
-      const minsRem = rpm10 > 0 ? remain / rpm10 : null;
-      const etaDate = (minsRem != null) ? new Date(Date.now() + minsRem * 60000) : null;
-
-      // Success vs expected (user can change expected/min)
-      const expectedPerMin = parseInt(document.getElementById('expected').value || '250', 10);
-      const expectedIn10   = expectedPerMin * 10;
-      const succPct        = expectedIn10 > 0 ? Math.min(100, Math.round((recent / expectedIn10) * 100)) : null;
-
-      // Fill KPI values
-      document.getElementById('kRpm').textContent = isFinite(rpm10) ? Math.round(rpm10).toString() : '—';
-      document.getElementById('kSpr').textContent = isFinite(spr) ? Math.round(spr) + 's' : '—';
-      document.getElementById('kEta').textContent = etaDate ? etaDate.toLocaleTimeString() + ' (' + humanizeDuration(minsRem) + ')' : '—';
-      document.getElementById('kSucc').textContent = (succPct != null && isFinite(succPct)) ? succPct + '%' : '—';
-
-      return { total, detailed, recent, rpm10, spr, minsRem, eta: etaDate, expectedPerMin, successPct: succPct };
-    }
-
-    async function fetchRecent() {
-      let res = await supabase.from(TABLE)
-        .select('location_id, location_name, postcode, overall_rating, reports, updated_at')
-        .order('updated_at', { ascending: false })
-        .limit(20);
-
-      if (res.error && isSchemaCacheError(res.error)) {
-        log('Schema cache miss on quoted name; retrying unquoted …');
-        res = await supabase.from(TABLE_FALLBACK)
-          .select('location_id, location_name, postcode, overall_rating, reports, updated_at')
-          .order('updated_at', { ascending: false })
-          .limit(20);
-      }
-
-      const { data, error } = res;
-      const tbody = $('#recentTbl tbody');
-      tbody.innerHTML = '';
-      if (error) {
-        log('Recent table error: ' + error.message);
-        return;
-      }
-
-      for (const row of (data || [])) {
-        const reportsLen = Array.isArray(row.reports) ? row.reports.length
-                         : (row.reports && row.reports.type === 'json') ? (row.reports.length || 0)
-                         : (row.reports ? 1 : 0);
-        const tr = document.createElement('tr');
-        tr.dataset.locationId = row.location_id || '';
-        tr.innerHTML = `
-          <td>${escapeHtml(row.location_name || '')}</td>
-          <td class="mono">${escapeHtml(row.postcode || '')}</td>
-          <td>${escapeHtml(row.overall_rating || '')}</td>
-          <td class="mono">${reportsLen}</td>
-          <td class="mono">${row.updated_at ? new Date(row.updated_at).toLocaleString() : ''}</td>
-        `;
-        tbody.appendChild(tr);
-      }
-    }
-    async function fetchOneWithFallback(locationId) {
-      let res = await supabase.from(TABLE).select('*').eq('location_id', locationId).single();
-      if (res.error && isSchemaCacheError(res.error)) {
-        log('Schema cache miss on details; retrying unquoted …');
-        res = await supabase.from(TABLE_FALLBACK).select('*').eq('location_id', locationId).single();
-      }
-      return res;
-    }
-
-    let selectedDetails = null;
-
-    async function showDetails(locationId, trEl) {
-      if (!locationId) { log('No location_id on clicked row'); return; }
-      // Highlight row
-      document.querySelectorAll('#recentTbl tbody tr.active').forEach(x => x.classList.remove('active'));
-      if (trEl) trEl.classList.add('active');
-
-      const { data, error } = await fetchOneWithFallback(locationId);
-      if (error) {
-        log('Details error: ' + error.message);
-        document.getElementById('details').textContent = 'Error: ' + error.message;
-        selectedDetails = null;
-        return;
-      }
-      selectedDetails = data;
-      document.getElementById('details').textContent = JSON.stringify(data, null, 2);
-      // Scroll the details card into view if it’s below the fold
-      document.getElementById('detailsCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-
-    async function copyDetails() {
-      try {
-        const txt = selectedDetails ? JSON.stringify(selectedDetails, null, 2) : document.getElementById('details').textContent || '';
-        await navigator.clipboard.writeText(txt);
-        log('Copied practice details to clipboard.');
-      } catch (e) {
-        log('Copy details failed: ' + (e?.message || e));
-      }
-    }
-
-    function escapeHtml(s){ return (s??'').toString().replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-
-    function humanizeDuration(mins) {
-      if (!isFinite(mins)) return '';
-      const totalMinutes = Math.max(0, Math.round(mins));
-      const h = Math.floor(totalMinutes / 60);
-      const m = totalMinutes % 60;
-      if (h > 0) return `${h}h ${m}m`;
-      return `${m}m`;
-    }
-
-    function buildSnapshot() {
-      const snapshot = {
-        timestamp: new Date().toISOString(),
-        supabase_url: SUPABASE_URL,
-        auth_mode: $('#useService').checked ? 'service' : 'anon',
-        kpis: {
-          total: $('#kTotal').textContent.trim(),
-          detailed: $('#kDetailed').textContent.trim(),
-          progress_percent: $('#kPct').textContent.trim(),
-          updated_last_10m: $('#kRecent').textContent.trim(),
-          rows_per_min_10m: $('#kRpm').textContent.trim(),
-          seconds_per_row:  $('#kSpr').textContent.trim(),
-          eta:              $('#kEta').textContent.trim(),
-          success_vs_expected: $('#kSucc').textContent.trim(),
-          expected_per_min: document.getElementById('expected').value
-        },
-        recent: Array.from(document.querySelectorAll('#recentTbl tbody tr')).map(tr => {
-          const tds = tr.querySelectorAll('td');
-          return {
-            location_name: (tds[0]?.textContent || '').trim(),
-            postcode: (tds[1]?.textContent || '').trim(),
-            overall_rating: (tds[2]?.textContent || '').trim(),
-            reports_count: (tds[3]?.textContent || '').trim(),
-            updated_at: (tds[4]?.textContent || '').trim()
-          };
-        }),
-        debug_log: $('#log').textContent
-      };
-      return JSON.stringify(snapshot, null, 2);
-    }
-
-    async function copySnapshot() {
-      const text = buildSnapshot();
-      try {
-        await navigator.clipboard.writeText(text);
-        log('Copied snapshot to clipboard (' + (JSON.parse(text).recent.length) + ' recent rows).');
-      } catch (e) {
-        // Fallback for older browsers
-        try {
-          const ta = document.createElement('textarea');
-          ta.value = text;
-          document.body.appendChild(ta);
-          ta.select();
-          document.execCommand('copy');
-          document.body.removeChild(ta);
-          log('Copied snapshot via fallback.');
-        } catch (err) {
-          log('Copy failed: ' + (err?.message || err));
-        }
-      }
-    }
-
-    async function refreshAll() {
-      try {
-        $('#refresh').disabled = true;
-        const { total, detailed } = await fetchCounts();
-        await fetchRecent();
-        log(`Refresh ok — detailed ${detailed}/${total}`);
-      } catch (e) {
-        log('Refresh failed: ' + (e?.message || JSON.stringify(e)));
-      } finally {
-        $('#refresh').disabled = false;
-      }
-    }
-
-    // Auto refresh
-    let autoh = null;
-    function applyAuto() {
-      if (autoh) { clearInterval(autoh); autoh = null; }
-      const sec = parseInt($('#autoint').value, 10);
-      if (sec > 0) {
-        autoh = setInterval(refreshAll, sec * 1000);
-        log('Auto-refresh set to ' + sec + 's');
-      } else {
-        log('Auto-refresh disabled');
-      }
-    }
-
-    // Wire up
-    document.addEventListener('DOMContentLoaded', () => {
-      makeClient();
-      refreshAll();
-      $('#refresh').addEventListener('click', refreshAll);
-      $('#autoint').addEventListener('change', applyAuto);
-      $('#useService').addEventListener('change', () => { makeClient(); refreshAll(); });
-      $('#copy').addEventListener('click', copySnapshot);
-      document.getElementById('expected').addEventListener('change', refreshAll);
-
-      // Click a recent row to load details
-      document.querySelector('#recentTbl tbody').addEventListener('click', (ev) => {
-        const tr = ev.target.closest('tr');
-        if (!tr) return;
-        const id = tr.dataset.locationId;
-        showDetails(id, tr);
-      });
-      document.getElementById('copyDetails').addEventListener('click', copyDetails);
-
-      // start auto (10s by default)
-      applyAuto();
-    });
-  </script>
+// Auto-focus search
+el('q').focus();
+</script>
 </body>
 </html>
