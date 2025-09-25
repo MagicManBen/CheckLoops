@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>CQC GP Practice Search</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --bg:#0b0f14; --panel:#0f1521; --card:#121824; --ink:#e8eef9; --muted:#9fb2cc; --accent:#5fd4ff; --accent2:#7bffb8; --bad:#ff6b6b; --ok:#4cd97b; }
+    html,body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial; background:var(--bg); color:var(--ink); }
+    .wrap { max-width: 1200px; margin: 24px auto; padding: 0 16px; }
+    h1 { font-size: 22px; font-weight: 800; margin: 0 0 8px; letter-spacing: .2px; }
+    .sub { color: var(--muted); margin: 0 0 16px; }
+    .search { background: var(--panel); border: 1px solid rgba(255,255,255,.06); border-radius: 14px; padding: 14px; }
+    .row { display:flex; gap:10px; align-items:center; flex-wrap: wrap; }
+    .pill { display:inline-flex; align-items:center; gap:8px; padding:8px 10px; border-radius:12px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); }
+    .i { padding:10px 12px; border-radius:10px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.06); color: var(--ink); outline:none; }
+    .i::placeholder{ color:var(--muted); }
+    .btn { padding:10px 14px; border-radius:10px; border:1px solid rgba(255,255,255,.12); background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02)); color: var(--ink); cursor: pointer; }
+    .btn:hover { background: rgba(255,255,255,.12); }
+    .btn.ghost { background: rgba(255,255,255,.04); }
+    .btn.bad { border-color: rgba(255,107,107,.3); }
+    .btn.ok { border-color: rgba(76,217,123,.3); }
+    .grid { display:grid; grid-template-columns: 1.2fr .8fr; gap:14px; margin-top:14px; }
+    .card { background: var(--card); border: 1px solid rgba(255,255,255,.06); border-radius: 12px; padding: 12px; min-height: 120px; }
+    .list { max-height: calc(85vh - 220px); overflow:auto; }
+    .result { padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,.06); margin:8px 0; cursor:pointer; background: rgba(255,255,255,.02); }
+    .result:hover { background: rgba(255,255,255,.05); }
+    .result.active { outline: 2px solid rgba(95,212,255,.35); }
+    .muted { color:var(--muted); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 12px; }
+    .tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom: 10px; }
+    .tab { padding:8px 10px; border-radius:10px; border:1px solid rgba(255,255,255,.09); background: rgba(255,255,255,.04); cursor:pointer; }
+    .tab.active { background: rgba(95,212,255,.15); border-color: rgba(95,212,255,.35); }
+    .section { display:none; }
+    .section.active { display:block; }
+    dl { display:grid; grid-template-columns: max(160px) 1fr; gap:6px 12px; margin: 0; }
+    dt { color: var(--muted); }
+    dd { margin: 0; }
+    .kv { display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:10px; }
+    .kv > div { border:1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03); border-radius:10px; padding:10px; min-height:56px; }
+    .kv h4 { margin:0 0 4px; color:var(--muted); font-size:12px; font-weight:600; letter-spacing:.2px; }
+    .kv .v { font-size: 14px; font-weight: 600; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .warn { color: var(--bad); }
+    .okc { color: var(--ok); }
+    .righthead { display:flex; justify-content: space-between; align-items:center; gap:8px; }
+    pre { background: rgba(0,0,0,.25); border-radius: 8px; padding: 10px; overflow:auto; max-height: 50vh; }
+    .empty { color:var(--muted); text-align:center; padding: 40px 10px; }
+    .dot { width:8px; height:8px; border-radius:50%; display:inline-block; background: var(--ok); margin-right: 6px; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <div class="wrap">
+    <h1>CQC GP Practice Search</h1>
+    <p class="sub">Search <span class="mono">public."CQC All GPs"</span> by <strong>ODS code (e.g. M83076)</strong>, practice name (full/partial), postcode, or CQC IDs. Click a result to view full details.</p>
+
+    <div class="search">
+      <div class="row">
+        <input id="q" class="i" type="search" placeholder="Try: M83076  ·  St Johns  ·  RM14 3DH  ·  1-10006311414" style="flex:1; min-width: 260px" />
+        <button id="go" class="btn">🔎 Search</button>
+        <button id="clear" class="btn ghost">✖︎ Clear</button>
+        <label class="pill"><input id="useService" type="checkbox" /> Use service key (unsafe)</label>
+      </div>
+      <div class="row" style="justify-content: space-between; margin-top:8px">
+        <div class="row muted mono" style="gap:16px">
+          <span>Rows: <span id="nrows">—</span></span>
+          <span>Latency: <span id="lat">—</span> ms</span>
+          <span>Filter: <span id="flt">—</span></span>
+        </div>
+        <div class="row">
+          <button id="copy" class="btn ok">📋 Copy results</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h3 style="margin:0 0 6px">Results</h3>
+        <div id="results" class="list"></div>
+      </div>
+
+      <div class="card">
+        <div class="righthead">
+          <h3 style="margin:0">Details</h3>
+          <div class="row">
+            <button id="copyDetails" class="btn">📋 Copy details</button>
+            <a id="cqcLink" class="btn ghost" target="_blank" rel="noopener">Open on CQC ↗</a>
+            <a id="mapsLink" class="btn ghost" target="_blank" rel="noopener">Open in Maps ↗</a>
+          </div>
+        </div>
+
+        <div class="tabs" id="tabs">
+          <div class="tab active" data-tab="overview">Overview</div>
+          <div class="tab" data-tab="ratings">Ratings</div>
+          <div class="tab" data-tab="activities">Regulated activities</div>
+          <div class="tab" data-tab="areas">Inspection areas</div>
+          <div class="tab" data-tab="reports">Reports</div>
+          <div class="tab" data-tab="contacts">Contacts</div>
+          <div class="tab" data-tab="raw">Raw JSON</div>
+        </div>
+
+        <div class="section active" id="overview"></div>
+        <div class="section" id="ratings"></div>
+        <div class="section" id="activities"></div>
+        <div class="section" id="areas"></div>
+        <div class="section" id="reports"></div>
+        <div class="section" id="contacts"></div>
+        <div class="section" id="raw"><pre id="rawpre" class="mono"></pre></div>
+
+        <div id="empty" class="empty">No practice selected.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // === CONFIG (provided by you; rotate later) ===
+    const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
+    const ANON_KEY     = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME';
+    const SERVICE_KEY  = 'sb_secret_nV3xSrLVHL50Zqp_DeZsgA_lLAYAaQs'; // ⚠️ do not use in production browsers
+
+    // Table name with space must be quoted
+    const TABLE = '"CQC All GPs"';
+    const TABLE_FALLBACK = 'CQC All GPs'; // unquoted fallback
+
+    let supabase = null;
+    const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+    let lastResults = [];
+    let selectedRow = null;
+
+    function makeClient() {
+      const useService = $('#useService').checked;
+      const key = useService ? SERVICE_KEY : ANON_KEY;
+      supabase = window.supabase.createClient(SUPABASE_URL, key, {
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+        global: { headers: { 'x-client-info': 'CheckLoops-Search/1.0' } },
+        db: { schema: 'public' }
+      });
+    }
+
+    function escapeHtml(s){ return (s??'').toString().replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+    function isSchemaCacheError(err) {
+      return !!(err && (String(err.message || err).includes('schema cache') || String(err.message || err).includes('Could not find the table')));
+    }
+
+    function buildOrFilter(q) {
+      const pat = '%' + q + '%';
+      // OR over popular columns + JSON ODS code
+      return [
+        `location_name.ilike.${pat}`,
+        `postcode.ilike.${pat}`,
+        `provider_id.ilike.${pat}`,
+        `location_id.ilike.${pat}`,
+        `location_source->>odsCode.ilike.${pat}`
+      ].join(',');
+    }
+
+    async function search() {
+      const q = ($('#q').value || '').trim();
+      const t0 = performance.now();
+      let res;
+
+      const cols = [
+        'location_id','location_name','postcode','region','town_city','county',
+        'provider_id','overall_rating','last_inspection_date','registration_status',
+        'latitude','longitude','location_source','provider_source','ratings','regulated_activities',
+        'inspection_areas','reports','updated_at'
+      ].join(',');
+
+      let query1 = supabase.from(TABLE).select(cols).limit(50).order('location_name', { ascending: true });
+      if (q) query1 = query1.or(buildOrFilter(q));
+      res = await query1;
+
+      if (res.error && isSchemaCacheError(res.error)) {
+        let query2 = supabase.from(TABLE_FALLBACK).select(cols).limit(50).order('location_name', { ascending: true });
+        if (q) query2 = query2.or(buildOrFilter(q));
+        res = await query2;
+      }
+
+      const ms = Math.round(performance.now() - t0);
+      $('#lat').textContent = ms;
+      $('#flt').textContent = q ? q : '(none)';
+
+      if (res.error) {
+        $('#results').innerHTML = `<div class="empty">Error: ${escapeHtml(res.error.message)}</div>`;
+        $('#nrows').textContent = '0';
+        lastResults = [];
+        return;
+      }
+
+      lastResults = res.data || [];
+      $('#nrows').textContent = String(lastResults.length);
+
+      if (!lastResults.length) {
+        $('#results').innerHTML = `<div class="empty">No matches.</div>`;
+        return;
+      }
+
+      // Render list
+      $('#results').innerHTML = lastResults.map(r => {
+        const ods = (r.location_source && r.location_source.odsCode) ? r.location_source.odsCode : '';
+        const rating = r.overall_rating || (r.ratings?.current?.overall?.rating) || '';
+        const addr = [r.town_city, r.county, r.postcode].filter(Boolean).join(', ');
+        return `
+          <div class="result" data-id="${escapeHtml(r.location_id)}">
+            <div style="display:flex; justify-content:space-between; gap:8px; align-items:center">
+              <div>
+                <div style="font-weight:800">${escapeHtml(r.location_name || '')}</div>
+                <div class="mono muted">${escapeHtml(addr)}</div>
+                <div class="mono muted">ODS: ${escapeHtml(ods)} · CQC: ${escapeHtml(r.location_id)}</div>
+              </div>
+              <div class="mono">${escapeHtml(rating)}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Attach click handlers
+      $$('#results .result').forEach(el => {
+        el.addEventListener('click', () => {
+          $$('#results .result').forEach(x => x.classList.remove('active'));
+          el.classList.add('active');
+          const id = el.getAttribute('data-id');
+          const row = lastResults.find(x => x.location_id === id);
+          if (row) showDetails(row);
+        });
+      });
+    }
+
+    function setActiveTab(name) {
+      $$('#tabs .tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+      $$('.section').forEach(s => s.classList.toggle('active', s.id === name));
+    }
+
+    function linkCqcLocation(id) {
+      return `https://www.cqc.org.uk/location/${encodeURIComponent(id)}`;
+    }
+
+    function linkMaps(postcode, lat, lon, name) {
+      if (lat && lon) {
+        return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lat+','+lon)}%20(${encodeURIComponent(name||'Practice')})`;
+      }
+      if (postcode) {
+        return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(postcode)}%20${encodeURIComponent(name||'Practice')}`;
+      }
+      return '#';
+    }
+
+    function pill(label, value) {
+      return `<div class="kv"><div><h4>${escapeHtml(label)}</h4><div class="v">${escapeHtml(value ?? '')}</div></div></div>`;
+    }
+
+    function renderOverview(r) {
+      const L = r.location_source || {};
+      const name = r.location_name || L.name;
+      const addr1 = L.postalAddressLine1 || r.address_line_1 || '';
+      const addr2 = L.postalAddressLine2 || r.address_line_2 || '';
+      const town = L.postalAddressTownCity || r.town_city || '';
+      const county = L.postalAddressCounty || r.county || '';
+      const pc = L.postalCode || r.postcode || '';
+      const phone = L.mainPhoneNumber || '';
+      const ods = L.odsCode || '';
+      const web = L.website ? (L.website.startsWith('http') ? L.website : 'https://' + L.website) : '';
+      const regStatus = r.registration_status || L.registrationStatus || '';
+      const regDate = r.registration_date || L.registrationDate || '';
+      const deregDate = r.deregistration_date || L.deregistrationDate || '';
+      const lastInsp = r.last_inspection_date || L?.lastInspection?.date || '';
+      const rating = r.overall_rating || r.ratings?.current?.overall?.rating || L?.currentRatings?.overall?.rating || '';
+
+      $('#overview').innerHTML = `
+        <div class="kv" style="margin-bottom:10px">
+          <div><h4>Name</h4><div class="v">${escapeHtml(name)}</div></div>
+          <div><h4>ODS code</h4><div class="v mono">${escapeHtml(ods)}</div></div>
+          <div><h4>Overall rating</h4><div class="v">${escapeHtml(rating)}</div></div>
+          <div><h4>Last inspection</h4><div class="v mono">${escapeHtml(lastInsp || '')}</div></div>
+        </div>
+        <div class="kv" style="margin-bottom:10px">
+          <div><h4>Address</h4><div class="v">${[addr1, addr2, town, county, pc].filter(Boolean).join(', ')}</div></div>
+          <div><h4>Phone</h4><div class="v mono">${escapeHtml(phone)}</div></div>
+          <div><h4>Website</h4><div class="v">${web ? `<a href="${escapeHtml(web)}" target="_blank" rel="noopener">${escapeHtml(web)}</a>` : ''}</div></div>
+        </div>
+        <div class="kv">
+          <div><h4>Provider ID</h4><div class="v mono">${escapeHtml(r.provider_id || L.providerId || '')}</div></div>
+          <div><h4>Region</h4><div class="v">${escapeHtml(r.region || L.region || '')}</div></div>
+          <div><h4>Town/City</h4><div class="v">${escapeHtml(r.town_city || L.postalAddressTownCity || '')}</div></div>
+          <div><h4>Postcode</h4><div class="v mono">${escapeHtml(pc)}</div></div>
+        </div>
+      `;
+    }
+
+    function renderRatings(r) {
+      const current = r.ratings?.current || (r.location_source?.currentRatings) || null;
+      const historic = r.ratings?.historic || (r.location_source?.historicRatings) || [];
+      const curOverall = current?.overall?.rating || '';
+      const curDate = current?.overall?.reportDate || '';
+      const kqs = (current?.overall?.keyQuestionRatings || current?.keyQuestionRatings || []).map(k => `<li>${escapeHtml(k.name)} — <strong>${escapeHtml(k.rating)}</strong></li>`).join('');
+
+      $('#ratings').innerHTML = `
+        <div class="kv" style="margin-bottom:10px">
+          <div><h4>Overall</h4><div class="v">${escapeHtml(curOverall)}</div></div>
+          <div><h4>Report date</h4><div class="v mono">${escapeHtml(curDate)}</div></div>
+        </div>
+        <h4 class="muted" style="margin:8px 0 4px">Key questions</h4>
+        <ul>${kqs || '<li class="muted">—</li>'}</ul>
+        <h4 class="muted" style="margin:8px 0 4px">Historic ratings</h4>
+        <ul>
+          ${historic.map(h => `<li>${escapeHtml(h.reportDate || '')}: <strong>${escapeHtml(h?.overall?.rating || '')}</strong></li>`).join('') || '<li class="muted">—</li>'}
+        </ul>
+      `;
+    }
+
+    function renderActivities(r) {
+      const acts = r.regulated_activities || r.location_source?.regulatedActivities || [];
+      if (!Array.isArray(acts) || acts.length === 0) {
+        $('#activities').innerHTML = '<div class="muted">No regulated activities recorded.</div>';
+        return;
+      }
+      $('#activities').innerHTML = acts.map(a => {
+        const contacts = (a.contacts || []).map(c => {
+          const name = [c.personTitle, c.personGivenName, c.personFamilyName].filter(Boolean).join(' ');
+          const roles = (c.personRoles || []).join(', ');
+          return `<div class="mono">${escapeHtml(name)} — ${escapeHtml(roles)}</div>`;
+        }).join('');
+        return `
+          <div class="kv" style="margin-bottom:8px">
+            <div><h4>Code</h4><div class="v mono">${escapeHtml(a.code || '')}</div></div>
+            <div><h4>Name</h4><div class="v">${escapeHtml(a.name || '')}</div></div>
+            <div><h4>Contacts</h4><div class="v">${contacts || '<span class="muted">—</span>'}</div></div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderAreas(r) {
+      const areas = r.inspection_areas || r.location_source?.inspectionAreas || [];
+      if (!Array.isArray(areas) || areas.length === 0) {
+        $('#areas').innerHTML = '<div class="muted">No inspection areas recorded.</div>';
+        return;
+      }
+      $('#areas').innerHTML = `
+        <table style="width:100%; border-collapse:collapse">
+          <thead><tr><th style="text-align:left; padding:6px 4px;">Name</th><th style="text-align:left; padding:6px 4px;">Status</th></tr></thead>
+          <tbody>
+            ${areas.map(a => `<tr><td style="padding:6px 4px">${escapeHtml(a.inspectionAreaName || a.name || '')}</td><td style="padding:6px 4px" class="mono">${escapeHtml(a.status || '')}</td></tr>`).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderReports(r) {
+      const reps = r.reports || r.location_source?.reports || [];
+      if (!Array.isArray(reps) || reps.length === 0) {
+        $('#reports').innerHTML = '<div class="muted">No reports found.</div>';
+        return;
+      }
+      const base = 'https://api.service.cqc.org.uk/public/v1'; // API reportUri base (may require key for direct download)
+      $('#reports').innerHTML = `
+        <table style="width:100%; border-collapse:collapse">
+          <thead><tr><th style="text-align:left; padding:6px 4px;">Date</th><th style="text-align:left; padding:6px 4px;">Type</th><th style="text-align:left; padding:6px 4px;">Link</th></tr></thead>
+          <tbody>
+            ${reps.map(x => {
+              const uri = x.reportUri || '';
+              const href = uri.startsWith('http') ? uri : (uri ? base + uri : '');
+              return `<tr>
+                <td style="padding:6px 4px" class="mono">${escapeHtml(x.reportDate || '')}</td>
+                <td style="padding:6px 4px">${escapeHtml(x.reportType || '')}</td>
+                <td style="padding:6px 4px">${href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">Open ↗</a>` : '<span class="muted">—</span>'}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderContacts(r) {
+      const contacts = r.contacts || r.location_source?.contacts || [];
+      if (!Array.isArray(contacts) || contacts.length === 0) {
+        $('#contacts').innerHTML = '<div class="muted">No contacts recorded.</div>';
+        return;
+      }
+      $('#contacts').innerHTML = contacts.map(c => {
+        const name = [c.personTitle, c.personGivenName, c.personFamilyName].filter(Boolean).join(' ');
+        const roles = (c.personRoles || []).join(', ');
+        const email = c.email || '';
+        const phone = c.phone || '';
+        return `
+          <div class="kv" style="margin-bottom:8px">
+            <div><h4>Name</h4><div class="v">${escapeHtml(name)}</div></div>
+            <div><h4>Roles</h4><div class="v">${escapeHtml(roles)}</div></div>
+            <div><h4>Email</h4><div class="v">${email ? `<a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a>` : '<span class="muted">—</span>'}</div></div>
+            <div><h4>Phone</h4><div class="v">${escapeHtml(phone || '')}</div></div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function showDetails(row) {
+      selectedRow = row;
+      $('#empty').style.display = 'none';
+      setActiveTab('overview');
+
+      renderOverview(row);
+      renderRatings(row);
+      renderActivities(row);
+      renderAreas(row);
+      renderReports(row);
+      renderContacts(row);
+
+      // raw JSON (both sources)
+      const raw = {
+        row_columns: row,
+        location_source: row.location_source || null,
+        provider_source: row.provider_source || null
+      };
+      $('#rawpre').textContent = JSON.stringify(raw, null, 2);
+
+      // external links
+      $('#cqcLink').href = linkCqcLocation(row.location_id);
+      $('#mapsLink').href = linkMaps(row.postcode, row.latitude, row.longitude, row.location_name);
+    }
+
+    async function copyList() {
+      const txt = JSON.stringify(lastResults, null, 2);
+      try { await navigator.clipboard.writeText(txt); } catch(e) {}
+    }
+
+    async function copyDetails() {
+      if (!selectedRow) return;
+      try { await navigator.clipboard.writeText(JSON.stringify(selectedRow, null, 2)); } catch(e) {}
+    }
+
+    // Wire up tabs
+    document.addEventListener('DOMContentLoaded', () => {
+      makeClient();
+      $('#go').addEventListener('click', search);
+      $('#clear').addEventListener('click', () => { $('#q').value=''; search(); });
+      $('#q').addEventListener('keydown', (e) => { if (e.key === 'Enter') search(); });
+      $('#useService').addEventListener('change', () => { makeClient(); search(); });
+      $('#copy').addEventListener('click', copyList);
+      $('#copyDetails').addEventListener('click', copyDetails);
+
+      $$('#tabs .tab').forEach(t => t.addEventListener('click', () => setActiveTab(t.dataset.tab)));
+
+      // initial load
+      search();
+    });
+  </script>
+</body>
+</html>
