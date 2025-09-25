@@ -19,7 +19,6 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-    const githubToken = Deno.env.get('GITHUB_TOKEN') ?? ''
 
     // Create service role client for admin operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
@@ -176,86 +175,6 @@ serve(async (req) => {
         }
 
         result = results
-        break
-      }
-
-      case 'checkGitHub': {
-        if (!params?.owner || !params?.repo) {
-          result = { error: 'Missing GitHub owner/repo parameters' }
-          break
-        }
-
-        try {
-          const headers: HeadersInit = {
-            'Accept': 'application/vnd.github.v3+json',
-            'User-Agent': 'CheckLoops-Status-Dashboard'
-          }
-          if (githubToken) {
-            headers['Authorization'] = `token ${githubToken}`
-          }
-
-          // Get repository info
-          const repoResponse = await fetch(
-            `https://api.github.com/repos/${params.owner}/${params.repo}`,
-            { headers }
-          )
-
-          if (!repoResponse.ok) {
-            result = {
-              status: 'error',
-              error: `GitHub repository not found: ${params.owner}/${params.repo}`,
-              statusCode: repoResponse.status
-            }
-            break
-          }
-
-          const repoData = await repoResponse.json()
-
-          // Get latest commits
-          const commitsResponse = await fetch(
-            `https://api.github.com/repos/${params.owner}/${params.repo}/commits?per_page=5`,
-            { headers }
-          )
-          const commits = await commitsResponse.json()
-
-          // Get open pull requests
-          const prsResponse = await fetch(
-            `https://api.github.com/repos/${params.owner}/${params.repo}/pulls?state=open&per_page=5`,
-            { headers }
-          )
-          const prs = await prsResponse.json()
-
-          result = {
-            repository: {
-              name: repoData.name || 'Unknown',
-              description: repoData.description || 'No description',
-              stars: repoData.stargazers_count || 0,
-              forks: repoData.forks_count || 0,
-              openIssues: repoData.open_issues_count || 0,
-              defaultBranch: repoData.default_branch || 'main',
-              updatedAt: repoData.updated_at || new Date().toISOString(),
-              language: repoData.language || 'Unknown'
-            },
-            commits: Array.isArray(commits) ? commits.map((c: any) => ({
-              sha: c.sha?.substring(0, 7) || 'unknown',
-              message: c.commit?.message || 'No message',
-              author: c.commit?.author?.name || 'Unknown',
-              date: c.commit?.author?.date || new Date().toISOString()
-            })) : [],
-            pullRequests: Array.isArray(prs) ? prs.map((pr: any) => ({
-              number: pr.number || 0,
-              title: pr.title || 'No title',
-              author: pr.user?.login || 'Unknown',
-              createdAt: pr.created_at || new Date().toISOString(),
-              state: pr.state || 'unknown'
-            })) : []
-          }
-        } catch (error) {
-          result = {
-            status: 'error',
-            error: error.message
-          }
-        }
         break
       }
 
