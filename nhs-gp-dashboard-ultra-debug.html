@@ -622,6 +622,283 @@
             return 'EXTERNAL';
         }
 
+        // Extract ODS code from a variety of possible CQC response shapes
+        function extractOdsCodeFromCqc(result) {
+            try {
+                // Normalise to the CQC payload object (sometimes nested, sometimes flat)
+                const d = result?.data?.cqc_data ?? result?.data ?? null;
+                if (!d) return '';
+
+                // Try nested first, then flat, and both camelCase / snake_case variants
+                const candidates = [
+                    d?.location?.odsCode,
+                    d?.provider?.odsCode,
+                    d?.odsCode,
+                    d?.location?.ods_code,
+                    d?.provider?.ods_code,
+                    d?.ods_code
+                ].filter(Boolean).map(String);
+
+                for (const raw of candidates) {
+                    const normalized = normalizeOdsCode(raw);
+                    if (normalized) return normalized;
+                }
+            } catch (_) { /* ignore */ }
+            return '';
+        }
+
+        // Best-effort normalizer/validator for ODS codes (e.g., M83079, Y03664)
+        function normalizeOdsCode(code) {
+            if (!code) return '';
+            const c = String(code).trim().toUpperCase();
+            // Accept typical practice/organisation codes: letters+digits, 3–8 chars
+            if (/^[A-Z0-9]{3,8}$/.test(c)) return c;
+            return '';
+        }
+
+        // === Helper wait ===
+        function delay(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+        // === Shallow compactor to drop only undefined (keeps nulls/strings/nums) ===
+        function compact(obj){
+            const out = {};
+            Object.keys(obj || {}).forEach(k => {
+                const v = obj[k];
+                if (v !== undefined) out[k] = v;
+            });
+            return out;
+        }
+
+        // === Build an UPDATE payload from CQC JSON and persist as a safety net ===
+        async function ensureRawCqcSavedToDb(locationId, phase1Result){
+            try{
+                const cqc = phase1Result?.data?.cqc_data || phase1Result?.data || null;
+                if(!cqc || !locationId) return;
+
+                const update = buildCqcUpdateFromJson(cqc);
+                if(Object.keys(update).length === 0) return;
+
+                ultraDebugLog('Persisting CQC JSON directly to DB (safety save)', 'database', { locationId, keys: Object.keys(update) }, { step: 'PHASE1-SAVE-CLIENT' });
+
+                const { data, error } = await supabase
+                    .from('CQC All GPs')
+                    .update(update)
+                    .eq('location_id', locationId)
+                    .select('*');
+
+                if(error){
+                    ultraDebugLog('Client-side CQC save failed: ' + error.message, 'warning', { error });
+                }else{
+                    apiResponses.supabase_row = (Array.isArray(data) ? data[0] : data) || apiResponses.supabase_row;
+                    ultraDebugLog('Client-side CQC save complete', 'success', { savedKeys: Object.keys(update) });
+                }
+            }catch(e){
+                ultraDebugLog('Exception in ensureRawCqcSavedToDb: ' + (e?.message || e), 'warning');
+            }
+        }
+
+        function buildCqcUpdateFromJson(cqc){
+            // The edge function can return either:
+            //   1) { location: {...}, provider: {...} }
+            //   2) a flat Location-shaped object (no "location"/"provider" wrappers)
+            // Handle both robustly.
+            let loc = null, prov = null;
+
+            const hasNested = !!(cqc?.location || cqc?.Location || cqc?.provider || cqc?.Provider);
+            if (hasNested) {
+                loc  = cqc?.location || cqc?.Location || null;
+                prov = cqc?.provider || cqc?.Provider || null;
+            } else {
+                // Treat the top-level object as the Location
+                loc  = cqc || null;
+                prov = null;
+            }
+
+            // Pick up commonly nested sections, with flat fallbacks
+            const ratingObj  = (loc?.currentRatings ?? cqc?.currentRatings) ?? null;
+            const regulated  = (loc?.regulatedActivities ?? cqc?.regulatedActivities) ?? null;
+            const inspAreas  = (loc?.inspectionAreas   ?? cqc?.inspectionAreas)   ?? null;
+            const reports    = (loc?.reports            ?? cqc?.reports)           ?? null;
+
+            // Try typical identifier shapes for the ODS code
+            const odsCandidate = normalizeOdsCode(
+                (loc?.odsCode || prov?.odsCode || cqc?.odsCode || loc?.ods_code || prov?.ods_code || cqc?.ods_code)
+            ) || '';
+
+            // Helper: prefer value from loc, then provider, then flat cqc
+            const pick = (a, b, c) => (a !== undefined ? a : (b !== undefined ? b : c));
+
+            const u = compact({
+                // Raw JSON dumps (full-fidelity so we never lose information)
+                location_source:        (loc  ? JSON.stringify(loc)  : (cqc ? JSON.stringify(cqc) : undefined)),
+                provider_source:        (prov ? JSON.stringify(prov) : undefined),
+                ratings:                ratingObj ? JSON.stringify(ratingObj) : undefined,
+                regulated_activities:   regulated ? JSON.stringify(regulated) : undefined,
+                inspection_areas:       inspAreas ? JSON.stringify(inspAreas) : undefined,
+                reports:                reports ? JSON.stringify(reports) : undefined,
+
+                // Key denormalised fields when safely available (loc → prov → flat)
+                location_name:          pick(loc?.name,            prov?.name,            cqc?.name),
+                provider_name:          pick(prov?.name,           null,                   cqc?.providerName),
+                provider_id:            pick(loc?.providerId,      prov?.providerId,      cqc?.providerId),
+                organisation_type:      pick(loc?.organisationType,loc?.type,             (cqc?.organisationType ?? cqc?.type)),
+                location_type:          pick(loc?.type,            null,                   cqc?.type),
+                region:                 pick(loc?.region,          null,                   cqc?.region),
+
+                address_line_1:         pick(loc?.postalAddressLine1, null,                cqc?.postalAddressLine1),
+                address_line_2:         pick(loc?.postalAddressLine2, null,                cqc?.postalAddressLine2),
+                town_city:              pick(loc?.postalAddressTownCity, null,             cqc?.postalAddressTownCity),
+                county:                 pick(loc?.postalAddressCounty, null,               cqc?.postalAddressCounty),
+                postcode:               pick(loc?.postalCode,      null,                   cqc?.postalCode),
+                uprn:                   pick(loc?.uprn,            null,                   cqc?.uprn),
+
+                latitude:               (pick(loc?.onspdLatitude,  null, cqc?.onspdLatitude)  != null) ? String(pick(loc?.onspdLatitude, null, cqc?.onspdLatitude))  : undefined,
+                longitude:              (pick(loc?.onspdLongitude, null, cqc?.onspdLongitude) != null) ? String(pick(loc?.onspdLongitude, null, cqc?.onspdLongitude)) : undefined,
+
+                main_phone_number:      pick(loc?.mainPhoneNumber, null,                   cqc?.mainPhoneNumber),
+                website:                pick(loc?.website,         null,                   cqc?.website),
+                number_of_beds:         (typeof pick(loc?.numberOfBeds, null, cqc?.numberOfBeds) === 'number') ? pick(loc?.numberOfBeds, null, cqc?.numberOfBeds) : undefined,
+                constituency:           pick(loc?.constituency,    null,                   cqc?.constituency),
+                local_authority:        pick(loc?.localAuthority,  null,                   cqc?.localAuthority),
+                inspection_directorate: pick(loc?.inspectionDirectorate, null,             cqc?.inspectionDirectorate),
+
+                overall_rating:         ratingObj?.overall?.rating ?? undefined,
+                last_inspection_date:   pick(loc?.lastInspection?.date, null,              cqc?.lastInspection?.date),
+                last_report_date:       pick(loc?.lastReport?.publicationDate, null,       cqc?.lastReport?.publicationDate),
+
+                location_types:         loc?.locationTypes        ? JSON.stringify(loc.locationTypes)        : (cqc?.locationTypes ? JSON.stringify(cqc.locationTypes) : undefined),
+                gac_service_types:      loc?.gacServiceTypes      ? JSON.stringify(loc.gacServiceTypes)      : (cqc?.gacServiceTypes ? JSON.stringify(cqc.gacServiceTypes) : undefined),
+                specialisms:            loc?.specialisms          ? JSON.stringify(loc.specialisms)          : (cqc?.specialisms ? JSON.stringify(cqc.specialisms) : undefined),
+                inspection_categories:  loc?.inspectionCategories ? JSON.stringify(loc.inspectionCategories) : (cqc?.inspectionCategories ? JSON.stringify(cqc.inspectionCategories) : undefined),
+
+                onspd_ccg_code:         pick(loc?.onspdCcgCode,    null,                  cqc?.onspdCcgCode),
+                onspd_ccg_name:         pick(loc?.onspdCcgName,    null,                  cqc?.onspdCcgName),
+                ods_ccg_code:           pick(loc?.odsCcgCode,      null,                  cqc?.odsCcgCode),
+                ods_ccg_name:           pick(loc?.odsCcgName,      null,                  cqc?.odsCcgName),
+                onspd_icb_code:         pick(loc?.onspdIcbCode,    null,                  cqc?.onspdIcbCode),
+                onspd_icb_name:         pick(loc?.onspdIcbName,    null,                  cqc?.onspdIcbName),
+
+                // Ensure ODS is captured if present anywhere in the CQC response
+                ods_code:               odsCandidate || undefined,
+
+                // Provider mirrored fields
+                provider_region:                prov?.region ?? undefined,
+                provider_website:               prov?.website ?? undefined,
+                provider_main_phone_number:     prov?.mainPhoneNumber ?? undefined,
+                provider_registration_status:   prov?.registrationStatus ?? undefined,
+                provider_registration_date:     prov?.registrationDate ?? undefined,
+                provider_type:                  prov?.type ?? undefined,
+                ownership_type:                 prov?.ownershipType ?? undefined,
+                provider_uprn:                  prov?.uprn ?? undefined,
+                provider_latitude:              (prov?.onspdLatitude  != null) ? String(prov.onspdLatitude)  : undefined,
+                provider_longitude:             (prov?.onspdLongitude != null) ? String(prov.onspdLongitude) : undefined,
+                provider_constituency:          prov?.constituency ?? undefined,
+                provider_local_authority:       prov?.localAuthority ?? undefined,
+                provider_inspection_directorate:prov?.inspectionDirectorate ?? undefined,
+                provider_address_line_1:        prov?.postalAddressLine1 ?? undefined,
+                provider_address_line_2:        prov?.postalAddressLine2 ?? undefined,
+                provider_town_city:             prov?.postalAddressTownCity ?? undefined,
+                provider_county:                prov?.postalAddressCounty ?? undefined,
+                provider_postcode:              prov?.postalCode ?? undefined,
+                provider_region:                prov?.region ?? undefined,
+                provider_location_ids:          prov?.locationIds ? JSON.stringify(prov.locationIds) : undefined,
+                provider_inspection_areas:      prov?.inspectionAreas ? JSON.stringify(prov.inspectionAreas) : undefined,
+
+                updated_at: new Date().toISOString()
+            });
+
+            return u;
+        }
+
+        // === Build an UPDATE payload from ODS JSON and persist as a safety net ===
+        async function ensureRawOdsSavedToDb(locationId, phase2Result){
+            try{
+                const ods = phase2Result?.data?.ods_data || phase2Result?.data || null;
+                if(!ods || !locationId) return;
+
+                const update = buildOdsUpdateFromJson(ods);
+                if(Object.keys(update).length === 0) return;
+
+                ultraDebugLog('Persisting ODS JSON directly to DB (safety save)', 'database', { locationId, keys: Object.keys(update) }, { step: 'PHASE2-SAVE-CLIENT' });
+
+                const { data, error } = await supabase
+                    .from('CQC All GPs')
+                    .update(update)
+                    .eq('location_id', locationId)
+                    .select('*');
+
+                if(error){
+                    ultraDebugLog('Client-side ODS save failed: ' + error.message, 'warning', { error });
+                }else{
+                    apiResponses.supabase_row = (Array.isArray(data) ? data[0] : data) || apiResponses.supabase_row;
+                    ultraDebugLog('Client-side ODS save complete', 'success', { savedKeys: Object.keys(update) });
+                }
+            }catch(e){
+                ultraDebugLog('Exception in ensureRawOdsSavedToDb: ' + (e?.message || e), 'warning');
+            }
+        }
+
+        function buildOdsUpdateFromJson(ods){
+            // Robustly extract the ODS code from various possible shapes
+            // identifier can be an object, string, code field, or an array of identifiers
+            let identVal = '';
+            if (ods?.identifier?.value) {
+                identVal = ods.identifier.value;
+            } else if (Array.isArray(ods?.identifier)) {
+                // find the NHS ODS organization code entry
+                const match = ods.identifier.find(i => {
+                    const sys = String(i?.system || '').toLowerCase();
+                    return sys.includes('ods-organization-code') || sys.includes('ods-organisation-code') || sys.includes('ods');
+                });
+                identVal = match?.value || '';
+            } else if (typeof ods?.identifier === 'string') {
+                identVal = ods.identifier;
+            } else if (ods?.code) {
+                identVal = ods.code;
+            }
+            const odsNorm = normalizeOdsCode(identVal);
+
+            // Extract telecom details (phone, url)
+            const telecom = Array.isArray(ods?.telecom) ? ods.telecom : [];
+            const phone = telecom.find(t => String(t?.system || '').toLowerCase() === 'phone')?.value || null;
+            const websiteViaTelecom = telecom.find(t => String(t?.system || '').toLowerCase() === 'url')?.value || null;
+            const website = ods?.website || websiteViaTelecom || null;
+
+            // Extract address best-effort (FHIR style)
+            const addr = Array.isArray(ods?.address) ? ods.address[0] : (ods?.address || null);
+            const lineArr = Array.isArray(addr?.line) ? addr.line : [];
+            const address_line_1 = addr?.line1 || lineArr[0] || addr?.addressLine1 || null;
+            const address_line_2 = addr?.line2 || lineArr[1] || addr?.addressLine2 || null;
+            const town_city = addr?.city || addr?.town || addr?.postalAddressTownCity || null;
+            const postcode = addr?.postalCode || addr?.postcode || null;
+            const county = addr?.county || null;
+            const region = ods?.region || null;
+
+            // Also capture the practice name if provided by ODS (will only be used by update() – we are not forcing overwrites here)
+            const odsName = ods?.name || null;
+
+            // Build update payload:
+            // - Always persist full raw ODS JSON for completeness
+            // - Flattened fields included for practical querying
+            const u = compact({
+                nhs_ods_data: JSON.stringify(ods),
+                last_nhs_update: new Date().toISOString(),
+                // Flattened fields (safe to set; if you prefer not to overwrite existing, add a pre-fetch guard before update)
+                ods_code: odsNorm || undefined,
+                main_phone_number: phone || undefined,
+                website: website || undefined,
+                address_line_1: address_line_1 || undefined,
+                address_line_2: address_line_2 || undefined,
+                town_city: town_city || undefined,
+                postcode: postcode || undefined,
+                county: county || undefined,
+                region: region || undefined,
+                location_name: odsName || undefined
+            });
+
+            return u;
+        }
+
         // Track all button clicks
         document.addEventListener('click', function(e) {
             if (e.target.tagName === 'BUTTON' || e.target.classList.contains('surgery-card')) {
@@ -697,17 +974,6 @@
 
         let apiResponses = { supabase_row: null, edge_response: null, cqc_data: null, ods_data: null };
 
-        function updateApiResponsePre(id, obj) {
-            const el = document.getElementById(id);
-            if (el) el.textContent = JSON.stringify(obj ?? {}, null, 2);
-        }
-
-        function renderStoredApiResponses() {
-            updateApiResponsePre('supabaseRaw', apiResponses.supabase_row);
-            updateApiResponsePre('edgeRaw', apiResponses.edge_response);
-            updateApiResponsePre('cqcRaw', apiResponses.cqc_data);
-            updateApiResponsePre('odsRaw', apiResponses.ods_data);
-        }
 
         // Update API status with progress
         function updateApiStatus(apiId, status, message = '', progress = null) {
@@ -997,46 +1263,31 @@
                 });
 
                 document.getElementById('modalContent').innerHTML = `
-                    <h2>${data.location_name}</h2>
-                    <button class="fetch-btn" onclick="fetchAllData()">🔄 Fetch All NHS Data</button>
+  <h2>${data.location_name}</h2>
+  <div class="api-toolbar" style="margin: 10px 0; display: flex; gap: 10px; flex-wrap: wrap;">
+      <button class="fetch-btn" id="fetchAllBtn" onclick="fetchAllData()">🔄 Fetch &amp; Save NHS + CQC</button>
+      <button class="fetch-btn" style="background:#333" onclick="toggleRawJson(this)">Show raw JSON</button>
+      <button class="fetch-btn" style="background:#2196f3" id="copyRawBtn" onclick="copyRawResponse()">Copy JSON</button>
+  </div>
 
-                    <div style="margin-top: 20px;">
-                        <h3>CQC Information</h3>
-                        <p><strong>Location ID:</strong> ${data.location_id}</p>
-                        <p><strong>ODS Code:</strong> ${data.ods_code || 'Not available'}</p>
-                        <p><strong>CCG Code:</strong> ${data.ods_ccg_code || 'N/A'}</p>
-                        <p><strong>Phone:</strong> ${data.phone_number || 'N/A'}</p>
-                        <p><strong>Website:</strong> ${data.website || 'N/A'}</p>
-                        <p><strong>Region:</strong> ${data.region || 'N/A'}</p>
-                    </div>
+  <div id="summaryBlock" style="margin-top: 12px;"></div>
 
-                    <div class="api-responses" style="margin-top: 24px;">
-                        <h3>API Responses</h3>
+  <div id="apiResult" style="margin-top: 12px;"></div>
 
-                        <details open>
-                            <summary>Supabase Row</summary>
-                            <pre id="supabaseRaw"></pre>
-                        </details>
-
-                        <details>
-                            <summary>Edge Function Response (fetch-nhs-data-complete)</summary>
-                            <pre id="edgeRaw"></pre>
-                        </details>
-
-                        <details>
-                            <summary>CQC API Response</summary>
-                            <pre id="cqcRaw"></pre>
-                        </details>
-
-                        <details>
-                            <summary>ODS API Response</summary>
-                            <pre id="odsRaw"></pre>
-                        </details>
-                    </div>
+  <div id="rawApiResponse" style="display:none; margin-top: 12px;">
+      <pre id="rawResponseContent"></pre>
+  </div>
                 `;
-                apiResponses.supabase_row = data;
-                updateApiResponsePre('supabaseRaw', apiResponses.supabase_row);
 
+                // Seed summary and initial raw JSON with current Supabase row
+                apiResponses.supabase_row = data;
+                const summaryEl = document.getElementById('summaryBlock');
+                if (summaryEl) summaryEl.innerHTML = renderQuickSummary(data, null);
+
+                // Seed "raw JSON" with the current saved row so the button shows something even before fetching
+                window.currentRawApiResponse = { saved_row: data };
+                const rawPreInit = document.getElementById('rawResponseContent');
+                if (rawPreInit) rawPreInit.textContent = JSON.stringify(window.currentRawApiResponse, null, 2);
             } catch (error) {
                 ultraDebugLog(`Failed to load details: ${error.message}`, 'error', {
                     error: error
@@ -1048,7 +1299,7 @@
         async function fetchAllData() {
             if (!currentSurgery) return;
 
-            ultraDebugLog(`=== STARTING FULL NHS DATA FETCH ===`, 'progress', {
+            ultraDebugLog(`=== STARTING TWO-PHASE NHS FETCH (CQC → SAVE → ODS) ===`, 'progress', {
                 surgery: currentSurgery
             }, {
                 step: 'FETCH-START'
@@ -1056,93 +1307,283 @@
 
             systemStatus = 'FETCHING';
 
-            // Update all API checkboxes to checking
-            ['cqc', 'ods'].forEach(api => {
-                updateApiStatus(api, 'checking', 'Calling...', 10);
-                ultraDebugLog(`Setting ${api.toUpperCase()} to checking state`, 'progress');
-            });
+            // Initialize API statuses for two-phase flow
+            updateApiStatus('cqc', 'checking', 'Calling...', 10);
+            updateApiStatus('ods', 'checking', 'Waiting for CQC…', 0);
+
+            let resultCqc = null;
+            let resultOds = null;
 
             try {
-                const requestBody = {
+                // ============================
+                // PHASE 1: CQC ONLY
+                // ============================
+                const payload1 = {
                     location_id: currentSurgery.location_id,
                     ods_code: currentSurgery.ods_code,
                     ods_ccg_code: currentSurgery.ods_ccg_code || null,
-                    data_sources: ['cqc', 'ods']
+                    data_sources: ['cqc']
                 };
 
-                ultraDebugLog(`Calling edge function with payload`, 'api-send', requestBody, {
+                ultraDebugLog(`Calling edge function (phase 1: CQC only)`, 'api-send', payload1, {
                     apiName: 'EDGE-FUNCTION',
-                    method: 'POST'
+                    method: 'POST',
+                    step: 'PHASE1-SEND'
                 });
 
-                const response = await supabase.functions.invoke('fetch-nhs-data-complete', {
-                    body: requestBody
+                const resp1 = await supabase.functions.invoke('fetch-nhs-data-complete', {
+                    body: payload1
                 });
 
-                ultraDebugLog(`Edge function response received`, 'api-receive', {
-                    status: response.data?.status,
-                    sources: response.data?.data_sources_fetched
+                resultCqc = resp1.data;
+
+                ultraDebugLog(`Edge function response (phase 1)`, 'api-receive', {
+                    status: resultCqc?.status,
+                    sources: resultCqc?.data_sources_fetched
+                }, {
+                    apiName: 'EDGE-FUNCTION',
+                    step: 'PHASE1-RECV'
                 });
 
-                const result = response.data;
-
-                apiResponses.edge_response = result;
-                apiResponses.cqc_data = result?.data?.cqc_data ?? null;
-                apiResponses.ods_data = result?.data?.ods_data ?? null;
-
-                updateApiResponsePre('edgeRaw', apiResponses.edge_response);
-                updateApiResponsePre('cqcRaw', apiResponses.cqc_data);
-                updateApiResponsePre('odsRaw', apiResponses.ods_data);
-
-                // Process CQC data
-                if (result.data?.cqc_data) {
+                if (resultCqc?.data?.cqc_data) {
                     updateApiStatus('cqc', 'success', 'Data received', 100);
-                    ultraDebugLog('CQC data fetched successfully', 'success', {
-                        dataSize: JSON.stringify(result.data.cqc_data).length
+                    ultraDebugLog('CQC data fetched successfully (phase 1)', 'success', {
+                        dataSize: JSON.stringify(resultCqc.data.cqc_data).length
                     });
                 } else {
-                    updateApiStatus('cqc', 'error', result.errors?.cqc || 'No data', 0);
-                    ultraDebugLog('CQC data fetch failed', 'error', {
-                        error: result.errors?.cqc
+                    updateApiStatus('cqc', 'error', resultCqc?.errors?.cqc || 'No data', 0);
+                    ultraDebugLog('CQC data fetch failed (phase 1)', 'error', {
+                        error: resultCqc?.errors?.cqc
                     });
                 }
 
-                // Process ODS data
-                if (result.data?.ods_data) {
+                if (resultCqc?.database_updated) {
+                    ultraDebugLog('Database updated by CQC phase. Reloading row to capture new ODS/fields…', 'database');
+                } else {
+                    ultraDebugLog('CQC phase did not indicate database update. Reloading row anyway for safety…', 'database');
+                }
+
+                // Reload row after CQC save to get any newly derived fields (e.g., ODS)
+                try {
+                    const { data: row1, error: row1Err } = await supabase
+                        .from('CQC All GPs')
+                        .select('*')
+                        .eq('location_id', currentSurgery.location_id)
+                        .single();
+
+                    if (row1Err) {
+                        ultraDebugLog('Failed to reload saved row after CQC: ' + row1Err.message, 'warning', { error: row1Err });
+                    } else {
+                        apiResponses.supabase_row = row1;
+
+                        // Refresh currentSurgery with any new ODS info saved from CQC phase
+                        currentSurgery.ods_code = row1.ods_code || currentSurgery.ods_code || '';
+                        currentSurgery.ods_ccg_code = row1.ods_ccg_code || currentSurgery.ods_ccg_code || '';
+
+                        ultraDebugLog('Row reloaded after CQC save', 'database', {
+                            ods_code: currentSurgery.ods_code,
+                            ods_ccg_code: currentSurgery.ods_ccg_code
+                        });
+                    }
+                } catch (e) {
+                    ultraDebugLog('Exception while reloading row after CQC: ' + (e?.message || e), 'warning');
+                }
+
+                // Persist full CQC JSON to DB as a safety net (in case the edge function didn't)
+                await ensureRawCqcSavedToDb(currentSurgery.location_id, resultCqc);
+
+                // Small pause to allow DB triggers/replication to settle before ODS
+                await delay(850);
+
+                // If ODS code is still missing, try to extract it directly from the CQC response (in-memory handoff)
+                if (!currentSurgery.ods_code) {
+                    const extractedOds = extractOdsCodeFromCqc(resultCqc);
+                    if (extractedOds) {
+                        currentSurgery.ods_code = extractedOds;
+                        ultraDebugLog('Using ODS code from CQC response (in-memory handoff)', 'info', { ods_code: currentSurgery.ods_code }, { step: 'PHASE1-ODS-HANDOFF' });
+                    } else {
+                        ultraDebugLog('No ODS code available after CQC phase (not in DB and not in response)', 'warning', null, { step: 'PHASE1-NO-ODS' });
+                    }
+                }
+
+                // If we still have no ODS code at this point, skip phase 2 cleanly
+                if (!currentSurgery.ods_code) {
+                    updateApiStatus('ods', 'error', 'No ODS code – skipping', 0);
+                    ultraDebugLog('Skipping ODS phase: no ODS code available after CQC/DB reload', 'warning', {
+                        location_id: currentSurgery.location_id
+                    }, { step: 'PHASE2-SKIPPED' });
+
+                    // Final reload to ensure latest CQC-saved state is reflected
+                    try {
+                        const { data: updatedRow, error: rowErr } = await supabase
+                            .from('CQC All GPs')
+                            .select('*')
+                            .eq('location_id', currentSurgery.location_id)
+                            .single();
+                        if (!rowErr) {
+                            apiResponses.supabase_row = updatedRow;
+                        }
+                    } catch (_) { /* ignore */ }
+
+                    // Build and show the single combined RAW JSON object for the one-box viewer
+                    apiResponses.edge_response = { phase1: resultCqc, phase2: null };
+                    apiResponses.cqc_data = resultCqc?.data?.cqc_data ?? null;
+                    apiResponses.ods_data = null;
+
+                    window.currentRawApiResponse = {
+                        phase1_cqc: resultCqc,
+                        phase2_ods: null,
+                        cqc: apiResponses.cqc_data,
+                        ods: null,
+                        saved_row: apiResponses.supabase_row || null
+                    };
+
+                    const rawPre = document.getElementById('rawResponseContent');
+                    if (rawPre) rawPre.textContent = JSON.stringify(window.currentRawApiResponse, null, 2);
+
+                    // Update summary block (will show ODS as "—")
+                    const summaryEl = document.getElementById('summaryBlock');
+                    if (summaryEl) {
+                        summaryEl.innerHTML = renderQuickSummary(apiResponses.supabase_row || {}, null);
+                    }
+
+                    systemStatus = 'IDLE';
+                    return; // do not proceed to phase 2
+                }
+
+                // ============================
+                // PHASE 2: ODS ONLY
+                // ============================
+                updateApiStatus('ods', 'checking', 'Calling...', 30);
+
+                const payload2 = {
+                    location_id: currentSurgery.location_id,
+                    ods_code: currentSurgery.ods_code,              // now potentially populated by the CQC phase
+                    ods_ccg_code: currentSurgery.ods_ccg_code || null,
+                    data_sources: ['ods']
+                };
+
+                ultraDebugLog(`Calling edge function (phase 2: ODS only)`, 'api-send', payload2, {
+                    apiName: 'EDGE-FUNCTION',
+                    method: 'POST',
+                    step: 'PHASE2-SEND'
+                });
+
+                const resp2 = await supabase.functions.invoke('fetch-nhs-data-complete', {
+                    body: payload2
+                });
+
+                resultOds = resp2.data;
+
+                ultraDebugLog(`Edge function response (phase 2)`, 'api-receive', {
+                    status: resultOds?.status,
+                    sources: resultOds?.data_sources_fetched
+                }, {
+                    apiName: 'EDGE-FUNCTION',
+                    step: 'PHASE2-RECV'
+                });
+
+                // Persist full ODS JSON to DB as a safety net
+                await ensureRawOdsSavedToDb(currentSurgery.location_id, resultOds);
+
+                if (resultOds?.data?.ods_data) {
                     updateApiStatus('ods', 'success', 'Data received', 100);
-                    ultraDebugLog(`ODS data fetched: ${result.data.ods_data.name}`, 'success', {
-                        practiceName: result.data.ods_data.name,
-                        address: result.data.ods_data.address
+                    ultraDebugLog('ODS data fetched successfully (phase 2)', 'success', {
+                        practiceName: resultOds.data.ods_data?.name,
+                        address: resultOds.data.ods_data?.address
                     });
                 } else {
-                    updateApiStatus('ods', 'error', result.errors?.ods || 'No data', 0);
-                    ultraDebugLog('ODS data fetch failed', 'error', {
-                        error: result.errors?.ods
+                    updateApiStatus('ods', 'error', resultOds?.errors?.ods || 'No data', 0);
+                    ultraDebugLog('ODS data fetch failed (phase 2)', 'error', {
+                        error: resultOds?.errors?.ods
                     });
                 }
 
-                if (result.database_updated) {
-                    ultraDebugLog('Database successfully updated with new data', 'success', null, {
-                        step: 'DATABASE-UPDATE-SUCCESS'
-                    });
+                // Final reload of the saved row to reflect any ODS saves
+                try {
+                    const { data: updatedRow, error: rowErr } = await supabase
+                        .from('CQC All GPs')
+                        .select('*')
+                        .eq('location_id', currentSurgery.location_id)
+                        .single();
+
+                    if (rowErr) {
+                        ultraDebugLog('Failed to reload saved row at end: ' + rowErr.message, 'warning', { error: rowErr });
+                    } else {
+                        apiResponses.supabase_row = updatedRow;
+                    }
+                } catch (e) {
+                    ultraDebugLog('Exception while final reload: ' + (e?.message || e), 'warning');
                 }
 
-                ultraDebugLog(`=== NHS DATA FETCH COMPLETE ===`, 'success', {
-                    sourcesSuccess: result.data_sources_fetched,
-                    databaseUpdated: result.database_updated
+                // Stash separate phase responses and convenient shortcuts
+                apiResponses.edge_response = { phase1: resultCqc, phase2: resultOds };
+                apiResponses.cqc_data = resultCqc?.data?.cqc_data ?? null;
+                apiResponses.ods_data = resultOds?.data?.ods_data ?? null;
+
+                // Build the single combined RAW JSON object for the one-box viewer
+                const combinedRaw = {
+                    phase1_cqc: resultCqc,
+                    phase2_ods: resultOds,
+                    cqc: apiResponses.cqc_data,
+                    ods: apiResponses.ods_data,
+                    saved_row: apiResponses.supabase_row || null
+                };
+                window.currentRawApiResponse = combinedRaw;
+
+                // Update summary and raw JSON UI
+                const summaryEl = document.getElementById('summaryBlock');
+                if (summaryEl) {
+                    // Pass edge-like object so renderQuickSummary can show ODS/CQC if present
+                    summaryEl.innerHTML = renderQuickSummary(apiResponses.supabase_row || {}, { data: { ods_data: apiResponses.ods_data, cqc_data: apiResponses.cqc_data } });
+                }
+
+                const rawPre = document.getElementById('rawResponseContent');
+                if (rawPre) rawPre.textContent = JSON.stringify(window.currentRawApiResponse, null, 2);
+
+                ultraDebugLog(`=== TWO-PHASE FETCH COMPLETE ===`, 'success', {
+                    databaseUpdated: !!(resultCqc?.database_updated || resultOds?.database_updated),
+                    ods_code_after: currentSurgery.ods_code || '(empty)'
                 }, {
                     step: 'FETCH-COMPLETE'
                 });
 
-                // Refresh the modal with new data
-                showDetails(currentSurgery.location_id, currentSurgery.ods_code);
-                renderStoredApiResponses();
-                systemStatus = 'IDLE';
+                // Safety-persist any flattened fields missing in DB (ODS code, phone, website)
+                try {
+                    const phoneFromOds = Array.isArray(apiResponses.ods_data?.telecom)
+                        ? apiResponses.ods_data.telecom.find(t => String(t?.system || '').toLowerCase() === 'phone')?.value
+                        : null;
+                    const phoneFromCqc = apiResponses.cqc_data?.mainPhoneNumber || null;
+                    const phoneMaybe = phoneFromOds || phoneFromCqc || null;
 
+                    const patch = {};
+                    if (!apiResponses.supabase_row?.ods_code && currentSurgery.ods_code) patch.ods_code = currentSurgery.ods_code;
+                    if (!apiResponses.supabase_row?.main_phone_number && phoneMaybe) patch.main_phone_number = phoneMaybe;
+                    if (!apiResponses.supabase_row?.website && (apiResponses.cqc_data?.website)) patch.website = apiResponses.cqc_data.website;
+
+                    if (Object.keys(patch).length) {
+                        ultraDebugLog('Safety-persisting flattened fields missing in DB', 'database', patch, { step: 'FINAL-PATCH' });
+                        const { data: patched, error: patchErr } = await supabase
+                            .from('CQC All GPs')
+                            .update(patch)
+                            .eq('location_id', currentSurgery.location_id)
+                            .select('*');
+
+                        if (patchErr) {
+                            ultraDebugLog('Final patch update failed: ' + patchErr.message, 'warning', { error: patchErr });
+                        } else if (patched && patched[0]) {
+                            apiResponses.supabase_row = patched[0];
+                        }
+                    }
+                } catch (e) {
+                    ultraDebugLog('Safety persist step exception: ' + (e?.message || e), 'warning');
+                }
+
+                systemStatus = 'IDLE';
             } catch (error) {
-                ultraDebugLog(`Full data fetch failed: ${error.message}`, 'error', {
+                ultraDebugLog(`Two-phase fetch failed: ${error?.message || error}`, 'error', {
                     error: error,
-                    stack: error.stack
+                    stack: error?.stack
                 }, {
                     step: 'FETCH-FAILED'
                 });
@@ -1221,6 +1662,73 @@
             ultraDebugLog('FULL INTEGRATION TEST COMPLETE', 'success');
             ultraDebugLog('========================================', 'system');
             systemStatus = 'IDLE';
+        }
+
+        // === Modal helpers for summary, raw JSON, copy ===
+        function renderQuickSummary(row, edge) {
+            if (!row) return '<div class="error">No data</div>';
+
+            const name = row.location_name || row.provider_name || 'Unknown';
+            const addressParts = [
+                row.address_line_1,
+                row.address_line_2,
+                row.town_city,
+                row.postcode
+            ].filter(Boolean);
+            const address = addressParts.join(', ') || 'No address on file';
+
+            // Try to derive a rating from columns (overall_rating or JSON in current_ratings)
+            let rating = row.overall_rating || '—';
+            try {
+                if (!rating && row.current_ratings) {
+                    const cr = typeof row.current_ratings === 'string' ? JSON.parse(row.current_ratings) : row.current_ratings;
+                    rating = cr?.overall?.rating || rating;
+                }
+            } catch (_) { /* ignore */ }
+
+            const lastInspection = row.last_inspection_date
+                ? ('' + row.last_inspection_date).split('T')[0]
+                : '—';
+
+            const ods = row.ods_code
+                || (edge?.data?.ods_data?.identifier?.value)
+                || '—';
+
+            const phone = row.main_phone_number || row.phone_number || '—';
+            const website = row.website || row.provider_website || '—';
+
+            return `
+      <div style="padding:12px; background:#f7fbff; border:1px solid #dde7f3; border-radius:8px;">
+          <div style="font-size:18px; font-weight:600; color:#003087;">${name}</div>
+          <div style="margin-top:6px">${address}</div>
+          <div style="margin-top:6px; display:flex; gap:16px; flex-wrap:wrap;">
+              <div><strong>Location ID:</strong> ${row.location_id || '—'}</div>
+              <div><strong>ODS:</strong> ${ods}</div>
+              <div><strong>Phone:</strong> ${phone}</div>
+              <div><strong>Website:</strong> ${website}</div>
+              <div><strong>Rating:</strong> ${rating}</div>
+              <div><strong>Last inspection:</strong> ${lastInspection}</div>
+          </div>
+      </div>`;
+        }
+
+        function toggleRawJson(btn) {
+            const box = document.getElementById('rawApiResponse');
+            if (!box) return;
+            const show = box.style.display !== 'block';
+            box.style.display = show ? 'block' : 'none';
+            if (btn) btn.textContent = show ? 'Hide raw JSON' : 'Show raw JSON';
+            ultraDebugLog(`Raw JSON ${show ? 'shown' : 'hidden'}`, 'action');
+        }
+
+        function copyRawResponse() {
+            try {
+                const text = JSON.stringify(window.currentRawApiResponse ?? {}, null, 2);
+                navigator.clipboard.writeText(text);
+                ultraDebugLog('Raw JSON copied to clipboard', 'success');
+            } catch (e) {
+                ultraDebugLog('Failed to copy raw JSON: ' + (e?.message || e), 'error');
+            }
         }
 
         // Initialize on page load

@@ -272,8 +272,17 @@
       const modalBody = document.getElementById('modalBody');
       const modalTitle = document.getElementById('modalTitle');
       modal.style.display = 'block';
-      modalBody.innerHTML = '<div class="spinner"></div>';
-
+      modalBody.innerHTML = `
+  <div style="text-align:center;margin-bottom:20px;">
+    <button id="fetchDetailsBtn" class="fetch-details-btn" onclick="fetchCQCDetails()">Fetch &amp; Save NHS + CQC</button>
+    <button class="btn" id="showRawBtn" onclick="showRawJsonOnly()">Show raw JSON</button>
+    <button class="btn" onclick="copyRawJson()">Copy JSON</button>
+  </div>
+  <div id="apiResult" class="section-body" style="display:none;"></div>
+  <div id="rawApiResponse" class="section-body" style="display:none;">
+    <pre id="rawResponseContent" style="white-space:pre-wrap; word-wrap:break-word; margin:0;"></pre>
+  </div>
+`;
       try {
         const { data, error } = await supabase
           .from('CQC All GPs')
@@ -285,16 +294,6 @@
 
         currentSurgery = data;
         modalTitle.textContent = data.location_name || 'Surgery Details';
-        modalBody.innerHTML = `
-  <div style="text-align:center;margin-bottom:20px;">
-    <button id="fetchDetailsBtn" class="fetch-details-btn" onclick="fetchCQCDetails()">Fetch Raw CQC JSON</button>
-    <button class="btn" id="showRawBtn" onclick="showRawJsonOnly()">Show raw JSON</button>
-  </div>
-  <div id="apiResult" style="display:none;"></div>
-  <div id="rawApiResponse" class="section-body" style="display:none;">
-    <pre id="rawResponseContent" style="white-space:pre-wrap; word-wrap:break-word; margin:0;"></pre>
-  </div>
-`;
       } catch (err) {
         modalBody.innerHTML = `<div class="error">${err.message}</div>`;
       }
@@ -302,33 +301,130 @@
 
 
     async function fetchCQCDetails() {
-      const btn = document.getElementById('fetchDetailsBtn');
-      const resultDiv = document.getElementById('apiResult');
-      btn.disabled = true; btn.textContent = 'Fetching from CQC...';
-      resultDiv.innerHTML = '<div class="loading"><div class="spinner"></div>Fetching from CQC API...</div>';
-      try {
-  const { data, error } = await supabase.functions.invoke('fetch-cqc-details', {
-    body: { location_id: currentSurgery.location_id, provider_id: currentSurgery.provider_id }
-  });
-  if (error) throw error;
-  window.currentRawApiResponse = data;
+      {
+        const btn = document.getElementById('fetchDetailsBtn');
+        const resultDiv = document.getElementById('apiResult');
+        const rawDiv = document.getElementById('rawApiResponse');
+        const rawPre = document.getElementById('rawResponseContent');
 
-  const rawDiv = document.getElementById('rawApiResponse');
-  const rawPre = document.getElementById('rawResponseContent');
-  const resultDiv = document.getElementById('apiResult');
+        btn.disabled = true;
+        btn.textContent = 'Fetching CQC…';
+        if (resultDiv) {
+          resultDiv.style.display = 'block';
+          resultDiv.innerHTML = '<div class="loading"><div class="spinner"></div>Fetching CQC (phase 1)…</div>';
+        }
 
-  if (resultDiv) { resultDiv.style.display = 'none'; resultDiv.innerHTML = ''; }
-  rawPre.textContent = JSON.stringify(data, null, 2);
-  rawDiv.style.display = 'block';
-} catch (err) {
-  window.currentRawApiResponse = { error: err.message || String(err) };
-  const rawDiv = document.getElementById('rawApiResponse');
-  const rawPre = document.getElementById('rawResponseContent');
-  rawPre.textContent = JSON.stringify(window.currentRawApiResponse, null, 2);
-  rawDiv.style.display = 'block';
-} finally {
-  btn.disabled = false; btn.textContent = 'Fetch Raw CQC JSON';
-}
+        const combined = {};
+
+        // ===== PHASE 1: CQC (existing behaviour) =====
+        try {
+          const { data: cqcResp, error: cqcErr } = await supabase.functions.invoke('fetch-cqc-details', {
+            body: { location_id: currentSurgery.location_id, provider_id: currentSurgery.provider_id }
+          });
+          if (cqcErr) throw cqcErr;
+
+          combined.phase1_cqc = cqcResp || null;
+
+          // Reflect phase 1 response immediately
+          window.currentRawApiResponse = combined;
+          if (rawPre && rawDiv) {
+            rawPre.textContent = JSON.stringify(combined, null, 2);
+            rawDiv.style.display = 'block';
+          }
+        } catch (err) {
+          const e = err && err.message ? err.message : String(err);
+          combined.phase1_cqc_error = e;
+          window.currentRawApiResponse = combined;
+          if (rawPre && rawDiv) {
+            rawPre.textContent = JSON.stringify(combined, null, 2);
+            rawDiv.style.display = 'block';
+          }
+          if (resultDiv) resultDiv.innerHTML = '<div class="error">CQC phase failed: ' + e + '</div>';
+          btn.disabled = false;
+          btn.textContent = 'Fetch &amp; Save NHS + CQC';
+          return;
+        }
+
+        // Reload the saved row to capture any derived fields (e.g. ODS) saved by the edge function
+        try {
+          const { data: row1 } = await supabase
+            .from('CQC All GPs')
+            .select('*')
+            .eq('location_id', currentSurgery.location_id)
+            .single();
+
+          if (row1) {
+            combined.saved_row_after_cqc = row1;
+            // refresh currentSurgery with any new values now present in DB
+            currentSurgery = Object.assign({}, currentSurgery, {
+              ods_code: row1.ods_code || currentSurgery.ods_code || '',
+              ods_ccg_code: row1.ods_ccg_code || currentSurgery.ods_ccg_code || ''
+            });
+          }
+        } catch (_) {
+          // ignore row reload errors, continue
+        }
+
+        // Work out the best ODS code we can find
+        const odsFromPhase1 = combined.phase1_cqc?.data?.cqc_data?.odsCode
+                           || combined.phase1_cqc?.cqc?.odsCode
+                           || currentSurgery.ods_code
+                           || '';
+
+        // ===== PHASE 2: NHS (ODS) =====
+        btn.textContent = 'Fetching NHS (ODS)…';
+        try {
+          const payload2 = {
+            location_id: currentSurgery.location_id,
+            ods_code: odsFromPhase1 || '',
+            ods_ccg_code: currentSurgery.ods_ccg_code || null,
+            data_sources: ['ods']
+          };
+
+          const { data: odsResp, error: odsErr } = await supabase.functions.invoke('fetch-nhs-data-complete', {
+            body: payload2
+          });
+          if (odsErr) throw odsErr;
+
+          combined.phase2_ods = odsResp || null;
+
+          // Reload final row after NHS save so we can show everything that landed in the table
+          try {
+            const { data: row2 } = await supabase
+              .from('CQC All GPs')
+              .select('*')
+              .eq('location_id', currentSurgery.location_id)
+              .single();
+            if (row2) {
+              combined.saved_row = row2;
+            }
+          } catch (_) {
+            // ignore
+          }
+
+          window.currentRawApiResponse = combined;
+          if (rawPre && rawDiv) {
+            rawPre.textContent = JSON.stringify(combined, null, 2);
+            rawDiv.style.display = 'block';
+          }
+          if (resultDiv) {
+            resultDiv.style.display = 'none';
+            resultDiv.innerHTML = '';
+          }
+        } catch (err) {
+          const e = err && err.message ? err.message : String(err);
+          combined.phase2_ods_error = e;
+          window.currentRawApiResponse = combined;
+          if (rawPre && rawDiv) {
+            rawPre.textContent = JSON.stringify(combined, null, 2);
+            rawDiv.style.display = 'block';
+          }
+          if (resultDiv) resultDiv.innerHTML = '<div class="error">NHS phase failed: ' + e + '</div>';
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Fetch &amp; Save NHS + CQC';
+        }
+      }
     }
 
     function showRawJsonOnly(){
@@ -343,6 +439,25 @@
         rawPre.textContent = JSON.stringify(payload, null, 2);
       }
       rawDiv.style.display = 'block';
+    }
+
+    function copyRawJson(){
+      const payload = window.currentRawApiResponse;
+      const text = payload ? JSON.stringify(payload, null, 2) : '';
+      if (!text) { alert('No API response yet. Click "Fetch &amp; Save NHS + CQC" first.'); return; }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+          const resultDiv = document.getElementById('apiResult');
+          if (resultDiv) {
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '<div class="info">Raw JSON copied to clipboard.</div>';
+            setTimeout(() => { resultDiv.style.display = 'none'; }, 1800);
+          }
+        }).catch(() => alert('Copy failed. Your browser may block clipboard access.'));
+      } else {
+        // Fallback
+        alert('Clipboard not available in this browser.');
+      }
     }
 
     function closeModal(){ document.getElementById('detailsModal').style.display = 'none'; }
