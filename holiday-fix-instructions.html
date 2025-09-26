@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fix Holiday Dashboard</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 { color: #0b4fb3; }
+        h2 { color: #0b4fb3; margin-top: 25px; }
+        pre {
+            background: #f8f8f8;
+            border-left: 4px solid #0b4fb3;
+            padding: 15px;
+            overflow: auto;
+        }
+        .step {
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        .button {
+            background: #0b4fb3;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 0;
+        }
+        code { font-family: 'Courier New', monospace; padding: 2px 4px; background: #f0f0f0; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>CheckLoops Holiday Data Fix</h1>
+        <p>This page provides instructions for fixing the holiday data display issue in the admin dashboard.</p>
+        
+        <div class="step">
+            <h2>Step 1: Fix Database Values</h2>
+            <p>First, we need to update the <code>holiday_taken</code> and <code>approved_holidays_used</code> values in the database:</p>
+            <pre>
+-- SQL Fix for holiday_taken and approved_holidays_used columns
+WITH holiday_totals AS (
+  SELECT 
+    hr.user_id,
+    SUM(hr.total_days) as total_days
+  FROM 
+    "4_holiday_requests" hr
+  WHERE 
+    hr.status = 'approved'
+  GROUP BY 
+    hr.user_id
+)
+UPDATE 
+  master_users mu
+SET 
+  holiday_taken = COALESCE(ht.total_days, 0),
+  approved_holidays_used = COALESCE(ht.total_days, 0)
+FROM 
+  holiday_totals ht
+WHERE 
+  mu.auth_user_id = ht.user_id;</pre>
+            <p>You can run this SQL directly in the Supabase dashboard SQL editor.</p>
+        </div>
+        
+        <div class="step">
+            <h2>Step 2: Add Fix to Admin Dashboard</h2>
+            <p>Add the following script tag to your <code>admin-dashboard.html</code> file right before the closing <code>&lt;/body&gt;</code> tag:</p>
+            <pre>&lt;script src="admin-dashboard-holiday-fix.js"&gt;&lt;/script&gt;</pre>
+        </div>
+        
+        <div class="step">
+            <h2>Step 3: Browser Console Method (Quick Fix)</h2>
+            <p>If you don't want to modify the HTML file, you can apply the fix temporarily using the browser console:</p>
+            <ol>
+                <li>Open the admin dashboard in your browser</li>
+                <li>Open the developer console (F12 or right-click > Inspect > Console)</li>
+                <li>Copy and paste the following code:</li>
+            </ol>
+            <pre>
+// Load the holiday fix scripts
+const script1 = document.createElement('script');
+script1.src = 'admin-dashboard-holiday-fix.js';
+document.body.appendChild(script1);
+
+// Wait for the first script to load
+script1.onload = function() {
+  const script2 = document.createElement('script');
+  script2.src = 'admin-dashboard-holiday-inject.js';
+  document.body.appendChild(script2);
+  
+  // Add notification
+  const notification = document.createElement('div');
+  notification.style.position = 'fixed';
+  notification.style.bottom = '20px';
+  notification.style.right = '20px';
+  notification.style.backgroundColor = 'rgba(0, 150, 0, 0.8)';
+  notification.style.color = 'white';
+  notification.style.padding = '10px 15px';
+  notification.style.borderRadius = '5px';
+  notification.style.zIndex = '9999';
+  notification.textContent = 'Holiday data fix applied! ✓';
+  document.body.appendChild(notification);
+  
+  // Remove notification after 5 seconds
+  setTimeout(() => notification.remove(), 5000);
+};</pre>
+        </div>
+        
+        <div class="step">
+            <h2>Notes About the Fix</h2>
+            <p>The fix does the following:</p>
+            <ul>
+                <li>Ensures the <code>holiday_taken</code> and <code>approved_holidays_used</code> columns in the database have the correct values</li>
+                <li>Overrides the <code>loadStaffEntitlementCards</code> function to fetch the latest data directly from the database</li>
+                <li>Adds a refresh button to the holiday management view to reload data</li>
+                <li>Formats time values correctly in the display</li>
+                <li>Handles both GP and non-GP staff display formats properly</li>
+            </ul>
+        </div>
+        
+        <div class="step">
+            <h2>Issue Summary</h2>
+            <p>The issue occurred because:</p>
+            <ul>
+                <li>The <code>holiday_taken</code> and <code>approved_holidays_used</code> columns in the <code>master_users</code> table weren't being updated when holiday requests were approved</li>
+                <li>The admin dashboard was showing the outdated values from these columns</li>
+                <li>The SQL fix updates these columns with the correct totals from approved holiday requests</li>
+                <li>The JavaScript fix ensures the UI displays the latest values from the database</li>
+            </ul>
+        </div>
+        
+        <button class="button" onclick="window.location.href='admin-dashboard.html'">Go to Admin Dashboard</button>
+    </div>
+</body>
+</html>

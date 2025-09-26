@@ -439,6 +439,10 @@
                        onkeyup="handleSearchInput(event)">
                 <button onclick="searchSurgeries()" class="btn btn-primary">Search</button>
                 <button onclick="showAdminPanel()" class="btn btn-secondary">Admin</button>
+                <label style="display:flex;align-items:center;gap:8px;">
+                    <input type="checkbox" id="onlyWithOds" onchange="searchSurgeries()">
+                    Only show practices with an ODS code
+                </label>
             </div>
 
             <div id="searchResults" class="results-grid"></div>
@@ -528,7 +532,7 @@
     <script>
         // Supabase configuration
         const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjY1OTYzNzksImV4cCI6MjA0MjE3MjM3OX0.Ue9B90DL0FhLWHAH7E_PitD3LBWVGYwLvLMQDiPVKpE';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME';
         const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         let currentSurgery = null;
@@ -537,6 +541,7 @@
         async function searchSurgeries() {
             const searchTerm = document.getElementById('searchInput').value.trim();
             const resultsDiv = document.getElementById('searchResults');
+            const onlyWithOds = document.getElementById('onlyWithOds')?.checked === true;
 
             if (!searchTerm) {
                 resultsDiv.innerHTML = '<p style="color: white;">Please enter a search term</p>';
@@ -546,18 +551,27 @@
             resultsDiv.innerHTML = '<div class="loading">Searching...</div>';
 
             try {
-                // Search in both CQC and NHS tables
-                const { data: cqcData, error: cqcError } = await supabase
+                // Build CQC query
+                let cqcQuery = supabase
                     .from('CQC all GPs')
                     .select('*')
                     .or(`location_name.ilike.%${searchTerm}%,postal_code.ilike.%${searchTerm}%,ods_code.ilike.%${searchTerm}%`)
                     .limit(20);
+                if (onlyWithOds) {
+                    cqcQuery = cqcQuery.not('ods_code', 'is', null);
+                }
+                const { data: cqcData, error: cqcError } = await cqcQuery;
 
-                const { data: nhsData, error: nhsError } = await supabase
+                // Build NHS query
+                let nhsQuery = supabase
                     .from('NHS_All_GPs')
                     .select('*')
                     .or(`practice_name.ilike.%${searchTerm}%,practice_ods_code.ilike.%${searchTerm}%`)
                     .limit(20);
+                if (onlyWithOds) {
+                    nhsQuery = nhsQuery.not('practice_ods_code', 'is', null);
+                }
+                const { data: nhsData, error: nhsError } = await nhsQuery;
 
                 if (cqcError) throw cqcError;
 
@@ -957,10 +971,10 @@
                 btn.disabled = true;
                 btn.textContent = '⏳ Fetching NHS Data...';
 
-                const response = await supabase.functions.invoke('fetch-nhs-data', {
+                const response = await supabase.functions.invoke('fetch-nhs-data-v2', {
                     body: {
                         practice_ods_code: odsCode,
-                        data_sources: ['ods', 'prescribing', 'qof', 'patient_survey', 'workforce', 'appointments', 'referrals']
+                        data_sources: ['ods', 'prescribing']
                     }
                 });
 
