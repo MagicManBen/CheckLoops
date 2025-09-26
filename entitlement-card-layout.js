@@ -199,7 +199,7 @@ async function loadStaffEntitlementCards() {
           const calculated = isGP ? profile.calculated_sessions : profile.calculated_hours;
           const override = profile.manual_override ? (isGP ? profile.override_sessions : profile.override_hours) : null;
           const final = override !== null ? override : (calculated || 0);
-          
+
           // Get usage and remaining from master_users
           const booked = isGP ? profile.holidays_used_sessions || 0 : profile.holidays_used_hours || 0;
           const remaining = final - booked;

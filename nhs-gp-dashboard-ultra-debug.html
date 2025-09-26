@@ -1,0 +1,1268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NHS GP Dashboard - ULTRA DEBUG MODE</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #005EB8 0%, #003087 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container { max-width: 1400px; margin: 0 auto; }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            color: #005EB8;
+            margin-bottom: 10px;
+        }
+
+        /* Ultra Debug Console */
+        .ultra-debug-panel {
+            background: #0a0a0a;
+            color: #00ff00;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            border: 2px solid #00ff00;
+            position: relative;
+            font-family: 'Courier New', monospace;
+        }
+
+        .ultra-debug-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #00ff00;
+        }
+
+        .ultra-debug-title {
+            color: #00ff00;
+            font-size: 18px;
+            font-weight: bold;
+            text-transform: uppercase;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .debug-stats {
+            display: flex;
+            gap: 20px;
+            font-size: 12px;
+        }
+
+        .debug-stat {
+            color: #ffff00;
+        }
+
+        #ultraDebugLog {
+            background: #000;
+            border: 1px solid #00ff00;
+            padding: 15px;
+            height: 500px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            line-height: 1.4;
+        }
+
+        .debug-line {
+            margin: 2px 0;
+            padding: 2px 5px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .debug-line.system { color: #00ffff; }
+        .debug-line.info { color: #ffffff; }
+        .debug-line.action { color: #ffff00; background: rgba(255,255,0,0.1); }
+        .debug-line.api-send { color: #ff9800; background: rgba(255,152,0,0.1); }
+        .debug-line.api-receive { color: #4caf50; background: rgba(76,175,80,0.1); }
+        .debug-line.error { color: #ff0000; background: rgba(255,0,0,0.1); }
+        .debug-line.success { color: #00ff00; background: rgba(0,255,0,0.1); }
+        .debug-line.warning { color: #ffa500; }
+        .debug-line.button { color: #ff00ff; background: rgba(255,0,255,0.1); }
+        .debug-line.progress { color: #00ffff; border-left: 3px solid #00ffff; padding-left: 10px; }
+        .debug-line.network { color: #9c27b0; }
+        .debug-line.database { color: #2196f3; }
+
+        .debug-controls {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .debug-controls button {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 12px;
+        }
+
+        .debug-controls button:hover {
+            background: #00dd00;
+        }
+
+        /* API Status Panel with Progress */
+        .api-status-panel {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+        }
+
+        .api-status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .api-check {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .api-check.checking {
+            background: #FFF3E0;
+            border: 2px solid #FFB74D;
+            animation: checking-pulse 1s infinite;
+        }
+
+        @keyframes checking-pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+
+        .api-check.success {
+            background: #E8F5E9;
+            border: 2px solid #4CAF50;
+        }
+
+        .api-check.error {
+            background: #FFEBEE;
+            border: 2px solid #f44336;
+        }
+
+        .api-check input[type="checkbox"] {
+            width: 24px;
+            height: 24px;
+            margin-right: 12px;
+            cursor: not-allowed;
+        }
+
+        .api-check label {
+            flex: 1;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .api-check .status {
+            font-size: 11px;
+            color: #666;
+            position: absolute;
+            bottom: 3px;
+            right: 10px;
+            font-style: italic;
+        }
+
+        .api-check .progress-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 3px;
+            background: #2196f3;
+            transition: width 0.3s;
+        }
+
+        /* Search Section */
+        .search-section {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+        }
+
+        .search-box {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        #searchInput {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+
+        #searchBtn, #testBtn {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        #searchBtn {
+            background: #005EB8;
+            color: white;
+        }
+
+        #searchBtn:hover {
+            background: #003087;
+            transform: translateY(-2px);
+        }
+
+        #testBtn {
+            background: #ff9800;
+            color: white;
+        }
+
+        #testBtn:hover {
+            background: #f57c00;
+            transform: translateY(-2px);
+        }
+
+        /* ODS filter toggle */
+        .search-box .filter-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 0 8px;
+            font-size: 14px;
+            color: #333;
+            user-select: none;
+        }
+
+        /* Results Grid */
+        #searchResults {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .surgery-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .surgery-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: white;
+            margin: 50px auto;
+            padding: 30px;
+            width: 90%;
+            max-width: 1200px;
+            border-radius: 12px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .close-btn {
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            color: #999;
+        }
+
+        .close-btn:hover { color: #333; }
+
+        .fetch-btn {
+            background: #4CAF50;
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            margin-top: 20px;
+        }
+
+        .fetch-btn:hover {
+            background: #45a049;
+        }
+
+        .loading { text-align: center; padding: 20px; color: #666; }
+        .error { color: #f44336; padding: 20px; text-align: center; }
+        .api-responses details { margin: 10px 0; }
+        .api-responses summary { cursor: pointer; font-weight: 600; }
+        .api-responses pre {
+            background: #0b1020;
+            color: #d6e4ff;
+            padding: 12px;
+            border-radius: 8px;
+            overflow: auto;
+            max-height: 300px;
+            border: 1px solid #223344;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏥 NHS GP Dashboard - ULTRA DEBUG MODE</h1>
+            <p style="color: #666;">Complete Integration with Extensive Debugging</p>
+        </div>
+
+        <!-- Ultra Debug Console -->
+        <div class="ultra-debug-panel">
+            <div class="ultra-debug-header">
+                <div class="ultra-debug-title">🔍 ULTRA DEBUG CONSOLE</div>
+                <div class="debug-stats">
+                    <div class="debug-stat">Requests: <span id="requestCount">0</span></div>
+                    <div class="debug-stat">Errors: <span id="errorCount">0</span></div>
+                    <div class="debug-stat">Time: <span id="elapsedTime">0.000s</span></div>
+                    <div class="debug-stat">Status: <span id="systemStatus">IDLE</span></div>
+                </div>
+            </div>
+            <div id="ultraDebugLog"></div>
+            <div class="debug-controls">
+                <button onclick="clearDebugLog()">Clear Log</button>
+                <button onclick="copyDebugLog()">Copy All</button>
+                <button onclick="downloadDebugLog()">Download Log</button>
+                <button onclick="toggleVerbosity()">Verbosity: <span id="verbosityLevel">MAX</span></button>
+            </div>
+        </div>
+
+        <!-- API Status Checkboxes -->
+        <div class="api-status-panel">
+            <h3 style="margin-bottom: 10px;">API Status & Progress</h3>
+            <div class="api-status-grid">
+                <div class="api-check" id="check-supabase">
+                    <input type="checkbox" id="cb-supabase" disabled>
+                    <label for="cb-supabase">Supabase Connection</label>
+                    <span class="status"></span>
+                    <div class="progress-bar"></div>
+                </div>
+                <div class="api-check" id="check-database">
+                    <input type="checkbox" id="cb-database" disabled>
+                    <label for="cb-database">Database Tables</label>
+                    <span class="status"></span>
+                    <div class="progress-bar"></div>
+                </div>
+                <div class="api-check" id="check-edge">
+                    <input type="checkbox" id="cb-edge" disabled>
+                    <label for="cb-edge">Edge Functions</label>
+                    <span class="status"></span>
+                    <div class="progress-bar"></div>
+                </div>
+                <div class="api-check" id="check-cqc">
+                    <input type="checkbox" id="cb-cqc" disabled>
+                    <label for="cb-cqc">CQC API</label>
+                    <span class="status"></span>
+                    <div class="progress-bar"></div>
+                </div>
+                <div class="api-check" id="check-ods">
+                    <input type="checkbox" id="cb-ods" disabled>
+                    <label for="cb-ods">NHS ODS API</label>
+                    <span class="status"></span>
+                    <div class="progress-bar"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search Section -->
+        <div class="search-section">
+            <h2 style="margin-bottom: 20px;">Search GP Practices</h2>
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Enter surgery name or location...">
+                <label class="filter-toggle" title="Only show results that already have an ODS code">
+                    <input type="checkbox" id="filterOdsOnly">
+                    Only show with ODS code
+                </label>
+                <button id="searchBtn" onclick="searchSurgeries()">Search</button>
+                <button id="testBtn" onclick="testFullCycle()">Run Full Test</button>
+            </div>
+            <div id="searchResults"></div>
+        </div>
+    </div>
+
+    <!-- Detail Modal -->
+    <div id="detailModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeModal()">&times;</span>
+            <div id="modalContent"></div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // ULTRA DEBUG SYSTEM
+        // ============================================
+        let requestCounter = 0;
+        let errorCounter = 0;
+        let startTime = Date.now();
+        let debugLines = [];
+        let verbosityLevel = 'MAX';
+        let systemStatus = 'IDLE';
+        let activeRequests = new Map();
+
+        function ultraDebugLog(message, type = 'info', data = null, metadata = {}) {
+            const now = new Date();
+            const timestamp = now.toLocaleTimeString('en-GB', {
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                fractionalSecondDigits: 3
+            }).replace(/:/g, ':');
+
+            const elapsed = ((now.getTime() - startTime) / 1000).toFixed(3);
+            requestCounter++;
+
+            if (type === 'error') errorCounter++;
+
+            // Build detailed log line
+            let logLine = `[${timestamp}] [#${String(requestCounter).padStart(4, '0')}] [${elapsed}s]`;
+
+            // Add type indicator
+            const typeIndicators = {
+                'system': '⚙️ SYSTEM',
+                'action': '👆 ACTION',
+                'button': '🔘 BUTTON',
+                'api-send': '📤 API-SEND',
+                'api-receive': '📥 API-RECV',
+                'network': '🌐 NETWORK',
+                'database': '💾 DATABASE',
+                'error': '❌ ERROR',
+                'success': '✅ SUCCESS',
+                'warning': '⚠️ WARNING',
+                'progress': '📊 PROGRESS',
+                'info': 'ℹ️ INFO'
+            };
+
+            logLine += ` [${typeIndicators[type] || type.toUpperCase()}]`;
+
+            // Add metadata if present
+            if (metadata.apiName) logLine += ` [${metadata.apiName}]`;
+            if (metadata.method) logLine += ` [${metadata.method}]`;
+            if (metadata.status) logLine += ` [STATUS:${metadata.status}]`;
+            if (metadata.duration) logLine += ` [${metadata.duration}ms]`;
+            if (metadata.step) logLine += ` [STEP:${metadata.step}]`;
+
+            logLine += ` ${message}`;
+
+            // Add data preview if present
+            if (data) {
+                if (typeof data === 'object') {
+                    logLine += `\n    DATA: ${JSON.stringify(data, null, 2).split('\n').join('\n    ')}`;
+                } else {
+                    logLine += `\n    DATA: ${data}`;
+                }
+            }
+
+            // Store debug line
+            debugLines.push({
+                timestamp: now,
+                type: type,
+                message: logLine,
+                raw: message,
+                data: data,
+                metadata: metadata
+            });
+
+            // Update UI
+            const debugLog = document.getElementById('ultraDebugLog');
+            const debugLine = document.createElement('div');
+            debugLine.className = `debug-line ${type}`;
+            debugLine.textContent = logLine;
+            debugLog.appendChild(debugLine);
+
+            // Auto-scroll to bottom
+            debugLog.scrollTop = debugLog.scrollHeight;
+
+            // Update stats
+            document.getElementById('requestCount').textContent = requestCounter;
+            document.getElementById('errorCount').textContent = errorCounter;
+            document.getElementById('elapsedTime').textContent = elapsed + 's';
+            document.getElementById('systemStatus').textContent = systemStatus;
+
+            // Keep only last 1000 lines for performance
+            if (debugLines.length > 1000) {
+                debugLines.shift();
+                if (debugLog.firstChild) {
+                    debugLog.removeChild(debugLog.firstChild);
+                }
+            }
+        }
+
+        // Intercept all network requests
+        const originalFetch = window.fetch;
+        window.fetch = async function(...args) {
+            const requestId = `REQ-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const url = args[0];
+            const options = args[1] || {};
+            const startTime = Date.now();
+
+            ultraDebugLog(`Request initiated: ${url}`, 'api-send', {
+                url: url,
+                method: options.method || 'GET',
+                headers: options.headers,
+                body: options.body ? (typeof options.body === 'string' ? options.body : 'Binary data') : null
+            }, {
+                apiName: extractApiName(url),
+                method: options.method || 'GET',
+                step: 'INIT'
+            });
+
+            activeRequests.set(requestId, { url, startTime, status: 'pending' });
+            systemStatus = 'ACTIVE';
+
+            try {
+                const response = await originalFetch.apply(this, args);
+                const duration = Date.now() - startTime;
+
+                let bodyText = '';
+                try {
+                    bodyText = await response.clone().text();
+                } catch (e) {
+                    bodyText = `[unreadable body: ${e.message}]`;
+                }
+
+                ultraDebugLog(`Response received: ${url}`, 'api-receive', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    headers: Object.fromEntries(response.headers.entries()),
+                    body: bodyText
+                }, {
+                    apiName: extractApiName(url),
+                    status: response.status,
+                    duration: duration,
+                    step: 'COMPLETE'
+                });
+
+                activeRequests.delete(requestId);
+                if (activeRequests.size === 0) systemStatus = 'IDLE';
+
+                return response;
+            } catch (error) {
+                const duration = Date.now() - startTime;
+
+                ultraDebugLog(`Request failed: ${url} - ${error.message}`, 'error', {
+                    error: error.message,
+                    stack: error.stack
+                }, {
+                    apiName: extractApiName(url),
+                    duration: duration,
+                    step: 'FAILED'
+                });
+
+                activeRequests.delete(requestId);
+                if (activeRequests.size === 0) systemStatus = 'ERROR';
+
+                throw error;
+            }
+        };
+
+        function extractApiName(url) {
+            if (url.includes('/functions/v1/')) return 'EDGE-FUNCTION';
+            if (url.includes('supabase.co')) return 'SUPABASE';
+            if (url.includes('api.cqc.org.uk')) return 'CQC';
+            if (url.includes('directory.spineservices.nhs.uk')) return 'NHS-ODS';
+            return 'EXTERNAL';
+        }
+
+        // Track all button clicks
+        document.addEventListener('click', function(e) {
+            if (e.target.tagName === 'BUTTON' || e.target.classList.contains('surgery-card')) {
+                ultraDebugLog(`Button/element clicked: ${e.target.textContent || e.target.id || 'Unknown'}`, 'button', {
+                    id: e.target.id,
+                    className: e.target.className,
+                    tagName: e.target.tagName,
+                    position: { x: e.clientX, y: e.clientY }
+                }, {
+                    step: 'USER-INTERACTION'
+                });
+            }
+        });
+
+        // Track input changes
+        document.addEventListener('input', function(e) {
+            if (e.target.tagName === 'INPUT') {
+                ultraDebugLog(`Input changed: ${e.target.id || 'Unknown'} = "${e.target.value}"`, 'action', {
+                    id: e.target.id,
+                    value: e.target.value,
+                    type: e.target.type
+                }, {
+                    step: 'USER-INPUT'
+                });
+            }
+        });
+
+        function clearDebugLog() {
+            ultraDebugLog('Debug log cleared by user', 'system');
+            document.getElementById('ultraDebugLog').innerHTML = '';
+            debugLines = [];
+            requestCounter = 0;
+            errorCounter = 0;
+            startTime = Date.now();
+        }
+
+        function copyDebugLog() {
+            const text = debugLines.map(l => l.message).join('\n');
+            navigator.clipboard.writeText(text);
+            ultraDebugLog('Debug log copied to clipboard', 'success');
+        }
+
+        function downloadDebugLog() {
+            const text = debugLines.map(l => l.message).join('\n');
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `ultra-debug-log-${new Date().toISOString()}.txt`;
+            a.click();
+            ultraDebugLog('Debug log downloaded', 'success');
+        }
+
+        function toggleVerbosity() {
+            verbosityLevel = verbosityLevel === 'MAX' ? 'NORMAL' : 'MAX';
+            document.getElementById('verbosityLevel').textContent = verbosityLevel;
+            ultraDebugLog(`Verbosity level changed to: ${verbosityLevel}`, 'system');
+        }
+
+        // ============================================
+        // SUPABASE & API CONFIGURATION
+        // ============================================
+        const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME';
+
+        ultraDebugLog('Initializing Supabase client', 'system', {
+            url: SUPABASE_URL,
+            keyLength: SUPABASE_ANON_KEY.length
+        });
+
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        let currentSurgery = null;
+
+        let apiResponses = { supabase_row: null, edge_response: null, cqc_data: null, ods_data: null };
+
+        function updateApiResponsePre(id, obj) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = JSON.stringify(obj ?? {}, null, 2);
+        }
+
+        function renderStoredApiResponses() {
+            updateApiResponsePre('supabaseRaw', apiResponses.supabase_row);
+            updateApiResponsePre('edgeRaw', apiResponses.edge_response);
+            updateApiResponsePre('cqcRaw', apiResponses.cqc_data);
+            updateApiResponsePre('odsRaw', apiResponses.ods_data);
+        }
+
+        // Update API status with progress
+        function updateApiStatus(apiId, status, message = '', progress = null) {
+            ultraDebugLog(`API status update: ${apiId} -> ${status}`, 'progress', {
+                api: apiId,
+                status: status,
+                message: message,
+                progress: progress
+            }, {
+                apiName: apiId.toUpperCase(),
+                status: status,
+                step: 'STATUS-UPDATE'
+            });
+
+            const container = document.getElementById(`check-${apiId}`);
+            const checkbox = document.getElementById(`cb-${apiId}`);
+            const statusSpan = container.querySelector('.status');
+            const progressBar = container.querySelector('.progress-bar');
+
+            container.className = `api-check ${status}`;
+            checkbox.checked = status === 'success';
+            statusSpan.textContent = message;
+
+            if (progress !== null) {
+                progressBar.style.width = `${progress}%`;
+            }
+        }
+
+        // Connection checks
+        async function checkSupabaseConnection() {
+            ultraDebugLog('Starting Supabase connection check', 'api-send', null, {
+                apiName: 'SUPABASE',
+                step: 'CONNECTION-TEST-START'
+            });
+
+            updateApiStatus('supabase', 'checking', 'Connecting...', 20);
+
+            try {
+                ultraDebugLog('Sending health check query to Supabase', 'database');
+
+                const { data, error } = await supabase
+                    .from('CQC All GPs')
+                    .select('location_id')
+                    .limit(1);
+
+                if (error) {
+                    throw error;
+                }
+
+                updateApiStatus('supabase', 'success', 'Connected', 100);
+                ultraDebugLog('Supabase connection successful', 'success', {
+                    tablesAccessible: true
+                }, {
+                    apiName: 'SUPABASE',
+                    step: 'CONNECTION-SUCCESS'
+                });
+                return true;
+            } catch (error) {
+                updateApiStatus('supabase', 'error', 'Failed', 0);
+                ultraDebugLog(`Supabase connection failed: ${error.message}`, 'error', {
+                    error: error.message,
+                    code: error.code,
+                    details: error.details
+                }, {
+                    apiName: 'SUPABASE',
+                    step: 'CONNECTION-FAILED'
+                });
+                return false;
+            }
+        }
+
+        async function checkDatabaseTables() {
+            ultraDebugLog('Starting database table check', 'database', null, {
+                step: 'TABLE-CHECK-START'
+            });
+
+            updateApiStatus('database', 'checking', 'Checking...', 30);
+
+            try {
+                ultraDebugLog('Querying CQC All GPs table structure', 'database');
+
+                // Check CQC table
+                const { data: cqcData, error: cqcError } = await supabase
+                    .from('CQC All GPs')
+                    .select('*')
+                    .limit(1);
+
+                ultraDebugLog('CQC table query result', 'database', {
+                    hasData: !!cqcData,
+                    error: cqcError,
+                    columns: cqcData && cqcData[0] ? Object.keys(cqcData[0]) : []
+                });
+
+                // Check for NHS columns
+                const hasNHSColumns = cqcData && cqcData[0] && (
+                    'nhs_ods_data' in cqcData[0]
+                );
+
+                ultraDebugLog('NHS column check', 'database', {
+                    hasNHSColumns: hasNHSColumns,
+                    availableColumns: cqcData && cqcData[0] ? Object.keys(cqcData[0]).filter(k => k.includes('nhs')) : []
+                });
+
+                if (!cqcError) {
+                    const status = hasNHSColumns ? 'CQC + NHS Ready' : 'CQC Only';
+                    updateApiStatus('database', hasNHSColumns ? 'success' : 'warning', status, 100);
+                    ultraDebugLog(`Database tables available: ${status}`, hasNHSColumns ? 'success' : 'warning', null, {
+                        step: 'TABLE-CHECK-COMPLETE'
+                    });
+                } else {
+                    throw cqcError;
+                }
+            } catch (error) {
+                updateApiStatus('database', 'error', 'No tables', 0);
+                ultraDebugLog(`Table check failed: ${error.message}`, 'error', {
+                    error: error
+                }, {
+                    step: 'TABLE-CHECK-FAILED'
+                });
+            }
+        }
+
+        async function checkEdgeFunctions() {
+            ultraDebugLog('Starting edge function check', 'network', null, {
+                apiName: 'EDGE-FUNCTION',
+                step: 'EDGE-CHECK-START'
+            });
+
+            updateApiStatus('edge', 'checking', 'Testing...', 40);
+
+            try {
+                const testUrl = `${SUPABASE_URL}/functions/v1/fetch-nhs-data-complete`;
+                ultraDebugLog(`Testing edge function at: ${testUrl}`, 'api-send');
+
+                const response = await fetch(testUrl, {
+                    method: 'GET',
+                    headers: {
+                        // Using anon key proves the function exists without invoking it
+                        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                        'apikey': SUPABASE_ANON_KEY
+                    }
+                });
+
+                ultraDebugLog(`Edge function response: ${response.status}`, 'api-receive', {
+                    status: response.status,
+                    ok: response.ok
+                });
+
+                if (response.ok || response.status === 404 || response.status === 405 || response.status === 401) {
+                    updateApiStatus('edge', 'success', 'Deployed', 100);
+                    ultraDebugLog('Edge functions ready', 'success', null, {
+                        apiName: 'EDGE-FUNCTION',
+                        step: 'EDGE-CHECK-SUCCESS'
+                    });
+                } else {
+                    throw new Error(`Status ${response.status}`);
+                }
+            } catch (error) {
+                updateApiStatus('edge', 'warning', 'Check pending', 50);
+                ultraDebugLog(`Edge function check warning: ${error.message}`, 'warning', {
+                    error: error.message
+                }, {
+                    apiName: 'EDGE-FUNCTION',
+                    step: 'EDGE-CHECK-WARNING'
+                });
+            }
+        }
+
+        // Search functionality
+        async function searchSurgeries() {
+            const searchTerm = document.getElementById('searchInput').value.trim();
+
+            ultraDebugLog(`Search initiated with term: "${searchTerm}"`, 'action', {
+                searchTerm: searchTerm,
+                termLength: searchTerm.length
+            }, {
+                step: 'SEARCH-START'
+            });
+
+            if (!searchTerm) {
+                ultraDebugLog('Search aborted: No search term provided', 'warning');
+                return;
+            }
+
+            systemStatus = 'SEARCHING';
+            document.getElementById('searchResults').innerHTML = '<div class="loading">Searching...</div>';
+
+            try {
+                const filterOds = document.getElementById('filterOdsOnly')?.checked === true;
+
+                ultraDebugLog(`Executing database query for: "${searchTerm}"`, 'database', {
+                    table: 'CQC All GPs',
+                    filter: `location_name.ilike.%${searchTerm}%`,
+                    odsFilterApplied: filterOds
+                });
+
+                // Build the Supabase query, optionally restricting to rows with a real ODS code
+                let query = supabase
+                    .from('CQC All GPs')
+                    .select('*')
+                    .ilike('location_name', `%${searchTerm}%`)
+                    .limit(12);
+
+                if (filterOds) {
+                    // exclude null and empty-string ODS codes at the database level
+                    query = query.not('ods_code', 'is', null).neq('ods_code', '');
+                }
+
+                const { data, error } = await query;
+
+                if (error) throw error;
+
+                ultraDebugLog(`Search completed: Found ${data?.length || 0} results`, 'success', {
+                    resultCount: data?.length || 0,
+                    results: (data || []).map(d => ({ id: d.location_id, name: d.location_name }))
+                }, {
+                    step: 'SEARCH-COMPLETE'
+                });
+
+                displayResults(data || []);
+                systemStatus = 'IDLE';
+
+            } catch (error) {
+                ultraDebugLog(`Search failed: ${error.message}`, 'error', {
+                    error: error
+                }, {
+                    step: 'SEARCH-FAILED'
+                });
+                document.getElementById('searchResults').innerHTML = `<div class="error">Search failed: ${error.message}</div>`;
+                systemStatus = 'ERROR';
+            }
+        }
+
+        function displayResults(results) {
+            ultraDebugLog(`Displaying ${results.length} search results`, 'info', null, {
+                step: 'RENDER-RESULTS'
+            });
+
+            const html = results.map(surgery => `
+                <div class="surgery-card" onclick="showDetails('${surgery.location_id}', '${surgery.ods_code || ''}')" data-id="${surgery.location_id}" data-ods-code="${surgery.ods_code || ''}">
+                    <h3>${surgery.location_name}</h3>
+                    <p><strong>Location ID:</strong> ${surgery.location_id}</p>
+                    ${surgery.ods_code ? `<p><strong>ODS Code:</strong> ${surgery.ods_code}</p>` : ''}
+                    <p><strong>Type:</strong> ${surgery.gac_service_types || 'N/A'}</p>
+                    <p><strong>Region:</strong> ${surgery.region || 'N/A'}</p>
+                </div>
+            `).join('');
+
+            document.getElementById('searchResults').innerHTML = html || '<p>No results found</p>';
+        }
+
+        async function showDetails(locationId, odsCode) {
+            currentSurgery = { location_id: locationId, ods_code: odsCode };
+
+            ultraDebugLog(`Opening details modal`, 'action', {
+                locationId: locationId,
+                odsCode: odsCode
+            }, {
+                step: 'MODAL-OPEN'
+            });
+
+            const modal = document.getElementById('detailModal');
+            modal.style.display = 'block';
+            document.getElementById('modalContent').innerHTML = '<div class="loading">Loading details...</div>';
+
+            try {
+                ultraDebugLog(`Fetching full details for ${locationId}`, 'database');
+
+                const { data, error } = await supabase
+                    .from('CQC All GPs')
+                    .select('*')
+                    .eq('location_id', locationId)
+                    .single();
+
+                if (error) throw error;
+
+                // Enrich currentSurgery with CCG code from fetched row
+                currentSurgery = {
+                    location_id: data.location_id,
+                    ods_code: data.ods_code || '',
+                    ods_ccg_code: data.ods_ccg_code || ''
+                };
+
+                ultraDebugLog(`Details loaded for ${data.location_name}`, 'success', {
+                    hasNHSData: !!(data.nhs_ods_data || data.nhs_prescribing_data),
+                    dataKeys: Object.keys(data).filter(k => data[k] !== null)
+                });
+
+                document.getElementById('modalContent').innerHTML = `
+                    <h2>${data.location_name}</h2>
+                    <button class="fetch-btn" onclick="fetchAllData()">🔄 Fetch All NHS Data</button>
+
+                    <div style="margin-top: 20px;">
+                        <h3>CQC Information</h3>
+                        <p><strong>Location ID:</strong> ${data.location_id}</p>
+                        <p><strong>ODS Code:</strong> ${data.ods_code || 'Not available'}</p>
+                        <p><strong>CCG Code:</strong> ${data.ods_ccg_code || 'N/A'}</p>
+                        <p><strong>Phone:</strong> ${data.phone_number || 'N/A'}</p>
+                        <p><strong>Website:</strong> ${data.website || 'N/A'}</p>
+                        <p><strong>Region:</strong> ${data.region || 'N/A'}</p>
+                    </div>
+
+                    <div class="api-responses" style="margin-top: 24px;">
+                        <h3>API Responses</h3>
+
+                        <details open>
+                            <summary>Supabase Row</summary>
+                            <pre id="supabaseRaw"></pre>
+                        </details>
+
+                        <details>
+                            <summary>Edge Function Response (fetch-nhs-data-complete)</summary>
+                            <pre id="edgeRaw"></pre>
+                        </details>
+
+                        <details>
+                            <summary>CQC API Response</summary>
+                            <pre id="cqcRaw"></pre>
+                        </details>
+
+                        <details>
+                            <summary>ODS API Response</summary>
+                            <pre id="odsRaw"></pre>
+                        </details>
+                    </div>
+                `;
+                apiResponses.supabase_row = data;
+                updateApiResponsePre('supabaseRaw', apiResponses.supabase_row);
+
+            } catch (error) {
+                ultraDebugLog(`Failed to load details: ${error.message}`, 'error', {
+                    error: error
+                });
+                document.getElementById('modalContent').innerHTML = `<div class="error">Failed to load details: ${error.message}</div>`;
+            }
+        }
+
+        async function fetchAllData() {
+            if (!currentSurgery) return;
+
+            ultraDebugLog(`=== STARTING FULL NHS DATA FETCH ===`, 'progress', {
+                surgery: currentSurgery
+            }, {
+                step: 'FETCH-START'
+            });
+
+            systemStatus = 'FETCHING';
+
+            // Update all API checkboxes to checking
+            ['cqc', 'ods'].forEach(api => {
+                updateApiStatus(api, 'checking', 'Calling...', 10);
+                ultraDebugLog(`Setting ${api.toUpperCase()} to checking state`, 'progress');
+            });
+
+            try {
+                const requestBody = {
+                    location_id: currentSurgery.location_id,
+                    ods_code: currentSurgery.ods_code,
+                    ods_ccg_code: currentSurgery.ods_ccg_code || null,
+                    data_sources: ['cqc', 'ods']
+                };
+
+                ultraDebugLog(`Calling edge function with payload`, 'api-send', requestBody, {
+                    apiName: 'EDGE-FUNCTION',
+                    method: 'POST'
+                });
+
+                const response = await supabase.functions.invoke('fetch-nhs-data-complete', {
+                    body: requestBody
+                });
+
+                ultraDebugLog(`Edge function response received`, 'api-receive', {
+                    status: response.data?.status,
+                    sources: response.data?.data_sources_fetched
+                });
+
+                const result = response.data;
+
+                apiResponses.edge_response = result;
+                apiResponses.cqc_data = result?.data?.cqc_data ?? null;
+                apiResponses.ods_data = result?.data?.ods_data ?? null;
+
+                updateApiResponsePre('edgeRaw', apiResponses.edge_response);
+                updateApiResponsePre('cqcRaw', apiResponses.cqc_data);
+                updateApiResponsePre('odsRaw', apiResponses.ods_data);
+
+                // Process CQC data
+                if (result.data?.cqc_data) {
+                    updateApiStatus('cqc', 'success', 'Data received', 100);
+                    ultraDebugLog('CQC data fetched successfully', 'success', {
+                        dataSize: JSON.stringify(result.data.cqc_data).length
+                    });
+                } else {
+                    updateApiStatus('cqc', 'error', result.errors?.cqc || 'No data', 0);
+                    ultraDebugLog('CQC data fetch failed', 'error', {
+                        error: result.errors?.cqc
+                    });
+                }
+
+                // Process ODS data
+                if (result.data?.ods_data) {
+                    updateApiStatus('ods', 'success', 'Data received', 100);
+                    ultraDebugLog(`ODS data fetched: ${result.data.ods_data.name}`, 'success', {
+                        practiceName: result.data.ods_data.name,
+                        address: result.data.ods_data.address
+                    });
+                } else {
+                    updateApiStatus('ods', 'error', result.errors?.ods || 'No data', 0);
+                    ultraDebugLog('ODS data fetch failed', 'error', {
+                        error: result.errors?.ods
+                    });
+                }
+
+                if (result.database_updated) {
+                    ultraDebugLog('Database successfully updated with new data', 'success', null, {
+                        step: 'DATABASE-UPDATE-SUCCESS'
+                    });
+                }
+
+                ultraDebugLog(`=== NHS DATA FETCH COMPLETE ===`, 'success', {
+                    sourcesSuccess: result.data_sources_fetched,
+                    databaseUpdated: result.database_updated
+                }, {
+                    step: 'FETCH-COMPLETE'
+                });
+
+                // Refresh the modal with new data
+                showDetails(currentSurgery.location_id, currentSurgery.ods_code);
+                renderStoredApiResponses();
+                systemStatus = 'IDLE';
+
+            } catch (error) {
+                ultraDebugLog(`Full data fetch failed: ${error.message}`, 'error', {
+                    error: error,
+                    stack: error.stack
+                }, {
+                    step: 'FETCH-FAILED'
+                });
+
+                ['cqc', 'ods'].forEach(api => {
+                    updateApiStatus(api, 'error', 'Failed', 0);
+                });
+
+                systemStatus = 'ERROR';
+            }
+        }
+
+        function closeModal() {
+            ultraDebugLog('Modal closed by user', 'action', null, {
+                step: 'MODAL-CLOSE'
+            });
+            document.getElementById('detailModal').style.display = 'none';
+        }
+
+        async function testFullCycle() {
+            ultraDebugLog('========================================', 'system');
+            ultraDebugLog('STARTING FULL INTEGRATION TEST', 'system');
+            ultraDebugLog('========================================', 'system');
+
+            systemStatus = 'TESTING';
+            let testStep = 1;
+
+            // Step 1: Check Supabase
+            ultraDebugLog(`[TEST STEP ${testStep++}] Checking Supabase connection`, 'progress', null, {
+                step: `TEST-${testStep-1}`
+            });
+            await checkSupabaseConnection();
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // Step 2: Check Database
+            ultraDebugLog(`[TEST STEP ${testStep++}] Checking database tables`, 'progress', null, {
+                step: `TEST-${testStep-1}`
+            });
+            await checkDatabaseTables();
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // Step 3: Check Edge Functions
+            ultraDebugLog(`[TEST STEP ${testStep++}] Checking edge functions`, 'progress', null, {
+                step: `TEST-${testStep-1}`
+            });
+            await checkEdgeFunctions();
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // Step 4: Search
+            ultraDebugLog(`[TEST STEP ${testStep++}] Performing test search for "Manchester"`, 'progress', null, {
+                step: `TEST-${testStep-1}`
+            });
+            document.getElementById('searchInput').value = 'Manchester';
+            await searchSurgeries();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            // Step 5: Open first result
+            let firstCard = document.querySelector('.surgery-card[data-ods-code]:not([data-ods-code=""])') || document.querySelector('.surgery-card');
+            if (firstCard) {
+                ultraDebugLog(`[TEST STEP ${testStep++}] Opening first search result`, 'progress', null, {
+                    step: `TEST-${testStep-1}`
+                });
+                firstCard.click();
+
+                // Step 6: Fetch all data
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                ultraDebugLog(`[TEST STEP ${testStep++}] Fetching all NHS data`, 'progress', null, {
+                    step: `TEST-${testStep-1}`
+                });
+                await fetchAllData();
+            } else {
+                ultraDebugLog('No search results to test', 'warning');
+            }
+
+            ultraDebugLog('========================================', 'system');
+            ultraDebugLog('FULL INTEGRATION TEST COMPLETE', 'success');
+            ultraDebugLog('========================================', 'system');
+            systemStatus = 'IDLE';
+        }
+
+        // Initialize on page load
+        window.onload = async () => {
+            ultraDebugLog('========================================', 'system');
+            ultraDebugLog('NHS GP DASHBOARD - ULTRA DEBUG MODE', 'system');
+            ultraDebugLog('Version: 2.0.0', 'system');
+            ultraDebugLog(`Timestamp: ${new Date().toISOString()}`, 'system');
+            ultraDebugLog(`User Agent: ${navigator.userAgent}`, 'system');
+            ultraDebugLog('========================================', 'system');
+
+            ultraDebugLog('Dashboard initialization started', 'system');
+            ultraDebugLog('Checking window.supabase availability', 'system', {
+                available: !!window.supabase,
+                version: window.supabase?.version
+            });
+
+            ultraDebugLog('Setting up event listeners', 'system');
+            ultraDebugLog('Ready for user interaction', 'success');
+
+            // Initial connection checks
+            ultraDebugLog('Running initial system checks', 'progress');
+            await checkSupabaseConnection();
+            await checkDatabaseTables();
+            await checkEdgeFunctions();
+
+            ultraDebugLog('System ready - All checks complete', 'success');
+
+            // Re-run search when ODS filter is toggled
+            const odsFilterEl = document.getElementById('filterOdsOnly');
+            if (odsFilterEl) {
+                odsFilterEl.addEventListener('change', () => {
+                    ultraDebugLog(`ODS filter toggled: ${odsFilterEl.checked ? 'ON' : 'OFF'}`, 'action', { checked: odsFilterEl.checked });
+                    // If there's already text in the search box, re-run search to apply filter
+                    if (document.getElementById('searchInput').value.trim()) {
+                        searchSurgeries();
+                    }
+                });
+            }
+
+            systemStatus = 'READY';
+        };
+    </script>
+</body>
+</html>

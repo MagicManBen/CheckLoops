@@ -286,163 +286,20 @@
         currentSurgery = data;
         modalTitle.textContent = data.location_name || 'Surgery Details';
         modalBody.innerHTML = `
-          <div style="text-align:center;margin-bottom:20px;">
-            <button id="fetchDetailsBtn" class="fetch-details-btn" onclick="fetchCQCDetails()">Fetch More Details from CQC API</button>
-          </div>
-          <div id="apiResult"></div>
-          <div id="rawApiResponse" class="section-body" style="display:none;">
-            <div class="api-toolbar">
-              <button class="btn" onclick="toggleRawJson(this)">Hide raw JSON</button>
-              <button class="btn primary" id="copyRawBtn" onclick="copyRawResponse()">Copy JSON</button>
-            </div>
-            <div class="api-response-content"><pre id="rawResponseContent"></pre></div>
-          </div>
-        `;
+  <div style="text-align:center;margin-bottom:20px;">
+    <button id="fetchDetailsBtn" class="fetch-details-btn" onclick="fetchCQCDetails()">Fetch Raw CQC JSON</button>
+    <button class="btn" id="showRawBtn" onclick="showRawJsonOnly()">Show raw JSON</button>
+  </div>
+  <div id="apiResult" style="display:none;"></div>
+  <div id="rawApiResponse" class="section-body" style="display:none;">
+    <pre id="rawResponseContent" style="white-space:pre-wrap; word-wrap:break-word; margin:0;"></pre>
+  </div>
+`;
       } catch (err) {
         modalBody.innerHTML = `<div class="error">${err.message}</div>`;
       }
     }
 
-    // ===== 100% coverage tree renderer =====
-    const esc = (v) => String(v).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-    const isUrl = (s) => typeof s === 'string' && /^https?:\/\//i.test(s);
-    function typeOf(v){ if(v===null) return 'null'; if(Array.isArray(v)) return 'array'; return typeof v; }
-    function renderPrimitive(value) {
-      const t = typeOf(value);
-      if (value === null) return '<span class="node-value null">null</span>';
-      if (t === 'string') {
-        const safe = esc(value);
-        return isUrl(value) ? `<span class="node-value string"><a href="${safe}" target="_blank" rel="noopener">${safe}</a></span>`
-                            : `<span class="node-value string">"${safe}"</span>`;
-      }
-      if (t === 'number') return `<span class="node-value number">${value}</span>`;
-      if (t === 'boolean') return `<span class="node-value boolean">${value}</span>`;
-      return `<span class="node-value">${esc(String(value))}</span>`;
-    }
-    function renderNode(key, value, path) {
-      const t = typeOf(value);
-      const kHtml = key !== null ? `<span class="node-key">${esc(key)}</span>` : '';
-      const typeBadge = `<span class="node-type">${t}</span>`;
-      if (t === 'object') {
-        const keys = Object.keys(value);
-        const children = keys.map(k => renderNode(k, value[k], path.concat(k))).join('');
-        return `
-          <details class="node" open data-path="${esc(path.join('.'))}" data-type="object">
-            <summary class="node-header">${kHtml} ${typeBadge} <span class="small">(${keys.length} key${keys.length===1?'':'s'})</span></summary>
-            <div class="section-body tree">${children}</div>
-          </details>`;
-      } else if (t === 'array') {
-        const children = value.map((v, i) => renderNode(String(i), v, path.concat(i)));
-        return `
-          <details class="node" open data-path="${esc(path.join('.'))}" data-type="array">
-            <summary class="node-header">${kHtml} ${typeBadge} <span class="small">(${value.length} item${value.length===1?'':'s'})</span></summary>
-            <div class="section-body tree">${children.join('')}</div>
-          </details>`;
-      } else {
-        return `
-          <div class="node" data-path="${esc(path.join('.'))}" data-type="${t}">
-            <div class="node-header">${kHtml} ${typeBadge}</div>
-            <div class="node-value-wrap">${renderPrimitive(value)}</div>
-          </div>`;
-      }
-    }
-    function renderFullTree(payload) {
-      const root = renderNode('(root)', payload, ['(root)']);
-      return `
-        <div class="api-toolbar">
-          <div class="controls">
-            <button class="btn" onclick="expandAll()">Expand all</button>
-            <button class="btn" onclick="collapseAll()">Collapse all</button>
-            <button class="btn" onclick="toggleRawJson(this)">Show raw JSON</button>
-          </div>
-          <div class="filter-wrap">
-            <input id="treeFilter" class="filter-input" placeholder="Filter key/value..." oninput="filterTree(this.value)" />
-          </div>
-        </div>
-        <div class="tree" id="fullTree">${root}</div>`;
-    }
-    function expandAll(){ document.querySelectorAll('#fullTree details').forEach(d => d.open = true); }
-    function collapseAll(){ document.querySelectorAll('#fullTree details').forEach(d => d.open = false); }
-    function toggleRawJson(btn){
-      const raw = document.getElementById('rawApiResponse');
-      if (!raw) return;
-      const visible = raw.style.display !== 'none';
-      raw.style.display = visible ? 'none' : 'block';
-      if (btn) btn.textContent = visible ? 'Show raw JSON' : 'Hide raw JSON';
-    }
-    function copyRawResponse(){
-      try {
-        const jsonString = JSON.stringify(window.currentRawApiResponse || {}, null, 2);
-        navigator.clipboard.writeText(jsonString).then(() => {
-          const btn = document.getElementById('copyRawBtn'); if (!btn) return;
-          const t = btn.textContent; btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = t, 1500);
-        });
-      } catch (e) { console.error(e); }
-    }
-    function highlight(text, q){
-      if (!q) return esc(text);
-      const re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'ig');
-      return esc(text).replace(re, '<mark>$1</mark>');
-    }
-    function filterTree(query){
-      const q = (query || '').trim();
-      const root = document.getElementById('fullTree');
-      if (!root) return;
-      root.querySelectorAll('.node').forEach(n => { n.style.display = ''; });
-      root.querySelectorAll('.node-key').forEach(k => { k.innerHTML = esc(k.textContent); });
-      root.querySelectorAll('.node-value').forEach(v => { v.innerHTML = esc(v.textContent); });
-      if (!q) return;
-      const nodes = Array.from(root.querySelectorAll('.node'));
-      const matches = new Set();
-      nodes.forEach(n => {
-        const text = n.textContent || '';
-        if (text.toLowerCase().includes(q.toLowerCase())) {
-          matches.add(n);
-          let p = n.parentElement;
-          while (p && p !== root) {
-            if (p.classList && p.classList.contains('node')) matches.add(p);
-            p = p.parentElement;
-          }
-        }
-      });
-      nodes.forEach(n => { if (!matches.has(n)) n.style.display = 'none'; });
-      root.querySelectorAll('details').forEach(d => { if (matches.has(d)) d.open = true; });
-      root.querySelectorAll('.node-key').forEach(k => k.innerHTML = highlight(k.textContent, q));
-      root.querySelectorAll('.node-value').forEach(v => v.innerHTML = highlight(v.textContent, q));
-    }
-
-    function renderSummary(api) {
-      const success = !!api?.success;
-      const msg = api?.message || '';
-      const updateType = api?.updateType || '';
-      const loc = api?.data?.location;
-      const prov = api?.data?.provider;
-      let top = '<div class="grid-2">';
-      top += `<div class="detail-item"><strong>Status</strong><div>${success ? '✅ Success' : '⚠️'}</div></div>`;
-      top += `<div class="detail-item"><strong>Update Type</strong><div>${esc(updateType) || '—'}</div></div>`;
-      top += `<div class="detail-item" style="grid-column:1/-1;"><strong>Message</strong><div>${esc(msg) || '—'}</div></div>`;
-      top += '</div>';
-      let locBlock = '';
-      if (loc) {
-        const overall = loc?.currentRatings?.overall;
-        locBlock += '<div class="detail-item"><strong>Location</strong><div>' + esc(loc.name || '—') + '</div>';
-        if (overall?.rating) locBlock += `<div style="margin-top:6px;">Overall: <span class="rating-badge rating-${String(overall.rating).toLowerCase().replace(/\s+/g,'-')}">${esc(overall.rating)}</span></div>`;
-        locBlock += '</div>';
-      }
-      let provBlock = '';
-      if (prov) { provBlock += '<div class="detail-item"><strong>Provider</strong><div>' + esc(prov.name || '—') + '</div></div>'; }
-      return `
-        <details open>
-          <summary>Summary</summary>
-          <div class="section-body">
-            ${top}
-            <div class="grid-2" style="margin-top:10px;">
-              ${locBlock}
-              ${provBlock}
-            </div>
-          </div>
-        </details>`;
-    }
 
     async function fetchCQCDetails() {
       const btn = document.getElementById('fetchDetailsBtn');
@@ -450,28 +307,42 @@
       btn.disabled = true; btn.textContent = 'Fetching from CQC...';
       resultDiv.innerHTML = '<div class="loading"><div class="spinner"></div>Fetching from CQC API...</div>';
       try {
-        const { data, error } = await supabase.functions.invoke('fetch-cqc-details', {
-          body: { location_id: currentSurgery.location_id, provider_id: currentSurgery.provider_id }
-        });
-        if (error) throw error;
-        window.currentRawApiResponse = data;
-        const rawDiv = document.getElementById('rawApiResponse');
-        const rawPre = document.getElementById('rawResponseContent');
-        rawPre.textContent = JSON.stringify(data, null, 2);
-        rawDiv.style.display = 'none';
-        const summaryHtml = renderSummary(data);
-        const fullHtml = renderFullTree(data);
-        resultDiv.innerHTML = summaryHtml + fullHtml;
-      } catch (err) {
-        window.currentRawApiResponse = { error: err.message, stack: err.stack };
-        const rawDiv = document.getElementById('rawApiResponse');
-        const rawPre = document.getElementById('rawResponseContent');
-        rawPre.textContent = JSON.stringify(window.currentRawApiResponse, null, 2);
-        rawDiv.style.display = 'block';
-        resultDiv.innerHTML = '<div class="error">' + (err.message || String(err)) + '</div>';
-      } finally {
-        btn.disabled = false; btn.textContent = 'Fetch More Details from CQC API';
+  const { data, error } = await supabase.functions.invoke('fetch-cqc-details', {
+    body: { location_id: currentSurgery.location_id, provider_id: currentSurgery.provider_id }
+  });
+  if (error) throw error;
+  window.currentRawApiResponse = data;
+
+  const rawDiv = document.getElementById('rawApiResponse');
+  const rawPre = document.getElementById('rawResponseContent');
+  const resultDiv = document.getElementById('apiResult');
+
+  if (resultDiv) { resultDiv.style.display = 'none'; resultDiv.innerHTML = ''; }
+  rawPre.textContent = JSON.stringify(data, null, 2);
+  rawDiv.style.display = 'block';
+} catch (err) {
+  window.currentRawApiResponse = { error: err.message || String(err) };
+  const rawDiv = document.getElementById('rawApiResponse');
+  const rawPre = document.getElementById('rawResponseContent');
+  rawPre.textContent = JSON.stringify(window.currentRawApiResponse, null, 2);
+  rawDiv.style.display = 'block';
+} finally {
+  btn.disabled = false; btn.textContent = 'Fetch Raw CQC JSON';
+}
+    }
+
+    function showRawJsonOnly(){
+      const rawDiv = document.getElementById('rawApiResponse');
+      const rawPre = document.getElementById('rawResponseContent');
+      const resultDiv = document.getElementById('apiResult');
+      if (resultDiv) { resultDiv.style.display = 'none'; resultDiv.innerHTML = ''; }
+      const payload = window.currentRawApiResponse;
+      if (!payload) {
+        rawPre.textContent = 'No API response yet. Click "Fetch Raw CQC JSON" first.';
+      } else {
+        rawPre.textContent = JSON.stringify(payload, null, 2);
       }
+      rawDiv.style.display = 'block';
     }
 
     function closeModal(){ document.getElementById('detailsModal').style.display = 'none'; }
