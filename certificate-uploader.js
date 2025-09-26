@@ -265,23 +265,36 @@ function initCertificateUploader() {
         processingIndicator.innerHTML = '<div class="spinner"></div><span>Processing certificate with AI...</span>';
       }
       
-      // First, extract text from the file
+      // First, try to extract text from the file client-side
       let textContent = '';
-      
+      let needsServerProcessing = false;
+
       if (file.type === 'application/pdf') {
-        debug.info('Extracting text from PDF file');
-        
+        debug.info('PDF file detected');
+
         // Check if PDF.js is loaded
-        if (typeof pdfjsLib === 'undefined') {
-          debug.error('PDF.js library not loaded');
-          throw new Error('PDF.js not loaded. Please refresh the page and try again.');
+        if (typeof pdfjsLib !== 'undefined') {
+          debug.info('PDF.js is available, extracting text client-side');
+          try {
+            textContent = await extractTextFromPDF(file);
+            debug.info(`Extracted ${textContent.length} characters from PDF`);
+          } catch (pdfError) {
+            debug.warn('PDF text extraction failed, will use server-side processing:', pdfError.message);
+            needsServerProcessing = true;
+          }
+        } else {
+          debug.info('PDF.js not available, will use server-side processing');
+          needsServerProcessing = true;
         }
-        
-        textContent = await extractTextFromPDF(file);
-        debug.info(`Extracted ${textContent.length} characters from PDF`);
       } else if (file.type === 'image/png' || file.type === 'image/jpeg') {
         debug.info('Image file detected. Text extraction will be performed server-side.');
-        textContent = "This is an image file. AI extraction will be performed after upload.";
+        needsServerProcessing = true;
+      }
+
+      // If we couldn't extract text client-side, mark for server processing
+      if (needsServerProcessing) {
+        textContent = ''; // Empty text will signal server to process the file
+        debug.info('File will be processed server-side using signed URL');
       }
       
       // Get session for authentication
@@ -300,11 +313,14 @@ function initCertificateUploader() {
       const fileExt = file.name.split('.').pop();
       const fileName = `cert_${Date.now()}.${fileExt}`;
       const filePath = `${window.currentUser.siteId}/training_certificates/${fileName}`;
-      
+
+      debug.info(`Upload bucket: training_certificates`);
       debug.info(`Upload path: ${filePath}`);
-      
+      debug.info(`File size: ${formatFileSize(file.size)}`);
+      debug.info(`File type: ${file.type}`);
+
       const { data: uploadData, error: uploadError } = await window.supabase.storage
-        .from('training-certificates')
+        .from('training_certificates')
         .upload(filePath, file, {
           cacheControl: '3600',
           upsert: false
@@ -323,7 +339,7 @@ function initCertificateUploader() {
       // Create a signed URL for the file
       debug.info('Creating signed URL for the uploaded file');
       const { data: signedUrlData, error: signedUrlError } = await window.supabase.storage
-        .from('training-certificates')
+        .from('training_certificates')
         .createSignedUrl(filePath, 60); // 60 seconds expiry
       
       if (signedUrlError || !signedUrlData) {
@@ -335,20 +351,56 @@ function initCertificateUploader() {
       debug.info('Signed URL created successfully');
       
       // Call the Edge Function
-      const apiEndpoint = `${window.supabaseUrl}/functions/v1/extract-certificate`;
+      const supabaseUrl = window.supabaseUrl || window.CONFIG?.SUPABASE_URL || 'https://unveoqnlqnobufhublyw.supabase.co';
+
+      // Try v2 endpoint first (handles server-side processing), fallback to v1
+      let apiEndpoint = `${supabaseUrl}/functions/v1/extract-certificate-v2`;
+      let useV2 = true;
+
       debug.info(`Calling Edge Function at: ${apiEndpoint}`);
-      
-      const response = await fetch(apiEndpoint, {
+      debug.info(`Text content length: ${textContent.length} characters`);
+      debug.info(`Needs server processing: ${needsServerProcessing}`);
+      debug.info(`Signed URL provided: ${!!signedUrl}`);
+      debug.info(`Authorization token length: ${session.access_token?.length || 0}`);
+
+      const requestBody = {
+        text: textContent || '',  // Send empty string if we need server processing
+        signedUrl: needsServerProcessing ? signedUrl : undefined  // Only send URL if needed
+      };
+
+      debug.info('Request body:', JSON.stringify(requestBody).substring(0, 200) + '...');
+
+      let response = await fetch(apiEndpoint, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
-          text: textContent,
-          signedUrl: signedUrl
-        })
+        body: JSON.stringify(requestBody)
       });
+
+      // If v2 endpoint not found, fallback to v1 (but it won't handle server-side PDF processing)
+      if (response.status === 404 && useV2) {
+        debug.warn('V2 endpoint not found, falling back to V1');
+        apiEndpoint = `${supabaseUrl}/functions/v1/extract-certificate`;
+
+        // For v1, we must have text content
+        if (!textContent) {
+          throw new Error('Cannot process file server-side with V1 endpoint. Please deploy V2 endpoint or ensure PDF.js is loaded.');
+        }
+
+        response = await fetch(apiEndpoint, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            text: textContent,
+            signedUrl: signedUrl
+          })
+        });
+      }
       
       // Log the response status
       debug.info(`Edge Function response status: ${response.status}`);

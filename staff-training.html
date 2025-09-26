@@ -11,8 +11,15 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="config.js"></script>
   <script src="supabase-js.js"></script>
-  <!-- PDF.js for PDF text extraction -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
+  <!-- PDF.js for PDF text extraction - Load synchronously to ensure it's available -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    // Set PDF.js worker immediately after library loads
+    if (typeof pdfjsLib !== 'undefined') {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      console.log('[DEBUG] PDF.js initialized with worker');
+    }
+  </script>
   <!-- Standardized Staff Navigation -->
   <link rel="stylesheet" href="staff-nav.css">
   <link rel="stylesheet" href="improved-training-modal.css">
@@ -678,6 +685,14 @@
                 roleDetail
               };
 
+              // Make currentUser globally available for certificate uploader
+              window.currentUser = currentUser;
+              console.log('[DEBUG] CurrentUser created and set globally:', currentUser);
+              console.log('[DEBUG] User ID:', currentUser.id);
+              console.log('[DEBUG] Site ID:', currentUser.siteId);
+              console.log('[DEBUG] Display Name:', currentUser.displayName);
+              console.log('[DEBUG] Role Detail:', currentUser.roleDetail);
+
               let required = [];
               let myRecords = [];
 
@@ -791,15 +806,21 @@
 
               // Load training types for dropdown
               if (siteId) {
+                console.log('[DEBUG] Loading training types for site:', siteId);
                 const ttResult = await supabase
                   .from('training_types')
                   .select('id,name,validity_months,is_clinical_required,is_non_clinical_required,active')
                   .eq('site_id', siteId)
                   .eq('active', true)
                   .order('name');
-                
+
                 if (!ttResult.error && ttResult.data) {
                   trainingTypes = ttResult.data;
+                  // Make training types globally available for certificate uploader
+                  window.trainingTypes = trainingTypes;
+                  console.log('[DEBUG] Training types loaded:', trainingTypes.length, 'types');
+                  console.log('[DEBUG] Training types:', trainingTypes);
+
                   const select = document.getElementById('training-type-select');
                   trainingTypes.forEach(type => {
                     const option = document.createElement('option');
@@ -807,7 +828,11 @@
                     option.textContent = type.name;
                     select.appendChild(option);
                   });
+                } else {
+                  console.error('[DEBUG] Failed to load training types:', ttResult.error);
                 }
+              } else {
+                console.warn('[DEBUG] No site ID - cannot load training types');
               }
 
               // Modal event handlers
@@ -1619,47 +1644,104 @@
 
 <!-- Initialize training modal functionality -->
 <script>
+  // Add extensive debugging for certificate uploader
+  console.log('[DEBUG] Staff Training Page Loading');
+  console.log('[DEBUG] Supabase URL:', window.supabaseUrl || CONFIG?.SUPABASE_URL);
+  console.log('[DEBUG] Current location:', window.location.href);
+
   document.addEventListener('DOMContentLoaded', function() {
+    console.log('[DEBUG] DOM Content Loaded - Initializing training features');
+
     // Initialize training modal with custom save handler
-    window.trainingModal = new TrainingModal({
-      onSave: saveTrainingRecord,
-      onClose: function() {
-        document.getElementById('training-upload-form').reset();
-        document.getElementById('training-upload-error').style.display = 'none';
-        window.uploadedFile = null;
-      }
-    });
+    if (typeof TrainingModal !== 'undefined') {
+      console.log('[DEBUG] TrainingModal found, initializing');
+      window.trainingModal = new TrainingModal({
+        onSave: saveTrainingRecord,
+        onClose: function() {
+          document.getElementById('training-upload-form').reset();
+          document.getElementById('training-upload-error').style.display = 'none';
+          window.uploadedFile = null;
+        }
+      });
+    } else {
+      console.warn('[DEBUG] TrainingModal not found');
+    }
 
     // Attach click handler to upload button
-    document.getElementById('upload-training-btn').addEventListener('click', function() {
-      window.trainingModal.open();
-    });
+    const uploadBtn = document.getElementById('upload-training-btn');
+    if (uploadBtn) {
+      console.log('[DEBUG] Upload button found, attaching click handler');
+      uploadBtn.addEventListener('click', function() {
+        if (window.trainingModal) {
+          window.trainingModal.open();
+        } else {
+          console.error('[DEBUG] trainingModal not initialized');
+        }
+      });
+    } else {
+      console.error('[DEBUG] Upload button not found');
+    }
 
     // Listen for save events to handle the data
     document.addEventListener('trainingModalSave', function(event) {
       const data = event.detail;
-      console.log('Training data to save:', data);
+      console.log('[DEBUG] Training modal save event received:', data);
       saveTrainingRecord();
     });
-    
+
     // Make trainingTypes available globally for certificate uploader
-    window.trainingTypes = trainingTypes || [];
-    
+    window.trainingTypes = window.trainingTypes || [];
+    console.log('[DEBUG] Training types available:', window.trainingTypes.length);
+
     // Certificate AI Processing
+    console.log('[DEBUG] Checking for certificate uploader function');
     if (typeof initCertificateUploader === 'function') {
-      console.log('Initializing certificate uploader with', window.trainingTypes.length, 'training types');
+      console.log('[DEBUG] Certificate uploader function found, initializing');
+      console.log('[DEBUG] Training types count:', window.trainingTypes?.length || 0);
+      console.log('[DEBUG] Current user:', window.currentUser);
+      console.log('[DEBUG] Supabase client:', !!window.supabase);
+
+      // Initialize certificate uploader from external script
       window.certificateUploaderAPI = initCertificateUploader();
+      console.log('[DEBUG] Certificate uploader API initialized:', !!window.certificateUploaderAPI);
     } else {
-      console.error('Certificate uploader function not found. Script might not be loaded.');
+      console.error('[DEBUG] Certificate uploader function not found. Script might not be loaded.');
+      console.log('[DEBUG] Available functions:', Object.keys(window).filter(k => k.includes('certificate')));
+    }
+
+    // Set global supabase URL for certificate uploader
+    if (CONFIG && CONFIG.SUPABASE_URL) {
+      window.supabaseUrl = CONFIG.SUPABASE_URL;
+      console.log('[DEBUG] Supabase URL set from CONFIG:', window.supabaseUrl);
     }
   });
   
   // Initialize PDF.js worker
   if (typeof pdfjsLib !== 'undefined') {
+    console.log('[DEBUG] PDF.js library found, setting worker');
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  } else {
+    console.warn('[DEBUG] PDF.js library not loaded');
   }
-  
-  // Certificate processing functionality
+
+  // Debug helper for monitoring certificate uploads
+  window.debugCertificateUpload = function() {
+    console.log('=== Certificate Upload Debug Info ===');
+    console.log('Supabase client:', !!window.supabase);
+    console.log('Current user:', window.currentUser);
+    console.log('Training types:', window.trainingTypes);
+    console.log('Certificate file:', window.certificateFile);
+    console.log('Certificate URL:', window.certificateUrl);
+    console.log('Certificate data:', window.certificateData);
+    console.log('Supabase URL:', window.supabaseUrl);
+    console.log('CONFIG:', window.CONFIG);
+    console.log('=====================================');
+  };
+
+  // THIS FUNCTION IS REMOVED - Using the external certificate-uploader.js instead
+  // The duplicate initCertificateUploader function has been removed to avoid conflicts
+  // The functionality is now provided by the certificate-uploader.js script
+  /*
   function initCertificateUploader() {
     const dropzone = document.getElementById('certificate-dropzone');
     const fileInput = document.getElementById('certificate-upload');
@@ -1853,7 +1935,7 @@
         const filePath = `${currentUser.siteId}/training_certificates/${fileName}`;
         
         const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('training-certificates')
+          .from('training_certificates')
           .upload(filePath, file, {
             cacheControl: '3600',
             upsert: false
@@ -1870,7 +1952,7 @@
         // For PDF, call Edge Function with extracted text
         // For images, we'd need OCR service, but for now just call the Edge Function with the signed URL
         const { data: signedURL } = await supabase.storage
-          .from('training-certificates')
+          .from('training_certificates')
           .createSignedUrl(filePath, 60); // 60 seconds expiry
         
         // Call the Edge Function
@@ -2040,7 +2122,7 @@
         alert('Failed to save training record: ' + error.message);
       }
     }
-  }
+  } */
 </script>
 </body>
 </html>

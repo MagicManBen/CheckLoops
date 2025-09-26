@@ -656,6 +656,32 @@
             return '';
         }
 
+        // Parse JSON that might be a string or already an object
+        function parseJsonMaybe(val) {
+            try {
+                if (!val) return null;
+                if (typeof val === 'object') return val;
+                return JSON.parse(val);
+            } catch (_) { return null; }
+        }
+
+        // Derive an ODS code from the saved DB row JSON (location_source/provider_source)
+        function extractOdsFromDbRow(row) {
+            try {
+                const loc = parseJsonMaybe(row?.location_source);
+                const prov = parseJsonMaybe(row?.provider_source);
+                const candidates = [
+                    loc?.odsCode, prov?.odsCode,
+                    loc?.ods_code, prov?.ods_code
+                ].filter(Boolean);
+                for (const raw of candidates) {
+                    const normalized = normalizeOdsCode(raw);
+                    if (normalized) return normalized;
+                }
+            } catch (_) { /* ignore */ }
+            return '';
+        }
+
         // === Helper wait ===
         function delay(ms){ return new Promise(r => setTimeout(r, ms)); }
 
@@ -818,6 +844,21 @@
 
                 const update = buildOdsUpdateFromJson(ods);
                 if(Object.keys(update).length === 0) return;
+
+                // Do not overwrite existing flattened fields if already present in the DB row we loaded earlier
+                try {
+                    const rowNow = apiResponses?.supabase_row || null;
+                    if (rowNow) {
+                        const dontOverwriteIfPresent = [
+                            'ods_code','main_phone_number','website',
+                            'address_line_1','address_line_2','town_city','postcode','county','region',
+                            'location_name'
+                        ];
+                        for (const k of dontOverwriteIfPresent) {
+                            if (rowNow[k]) delete update[k];
+                        }
+                    }
+                } catch (_) { /* best effort guard */ }
 
                 ultraDebugLog('Persisting ODS JSON directly to DB (safety save)', 'database', { locationId, keys: Object.keys(update) }, { step: 'PHASE2-SAVE-CLIENT' });
 
@@ -1389,6 +1430,24 @@
                     ultraDebugLog('Exception while reloading row after CQC: ' + (e?.message || e), 'warning');
                 }
 
+                // If ODS code is still missing, try deriving it from the saved CQC JSON in the DB row
+                try {
+                    if (!currentSurgery.ods_code && apiResponses?.supabase_row) {
+                        const derivedFromRow = extractOdsFromDbRow(apiResponses.supabase_row);
+                        if (derivedFromRow) {
+                            currentSurgery.ods_code = derivedFromRow;
+                            ultraDebugLog('ODS derived from saved CQC JSON in DB', 'info', { ods_code: derivedFromRow }, { step: 'PHASE1-ODS-DERIVE-ROW' });
+                            // Also persist ods_code if the column is empty
+                            try {
+                                await supabase
+                                    .from('CQC All GPs')
+                                    .update({ ods_code: derivedFromRow })
+                                    .eq('location_id', currentSurgery.location_id);
+                            } catch (_) { /* non-fatal */ }
+                        }
+                    }
+                } catch (_) { /* best effort */ }
+
                 // Persist full CQC JSON to DB as a safety net (in case the edge function didn't)
                 await ensureRawCqcSavedToDb(currentSurgery.location_id, resultCqc);
 
@@ -1690,6 +1749,10 @@
                 ? ('' + row.last_inspection_date).split('T')[0]
                 : '—';
 
+            const lastNhsUpdate = row.last_nhs_update
+                ? ('' + row.last_nhs_update).split('.')[0].replace('T',' ')
+                : '—';
+
             const ods = row.ods_code
                 || (edge?.data?.ods_data?.identifier?.value)
                 || '—';
@@ -1708,6 +1771,7 @@
               <div><strong>Website:</strong> ${website}</div>
               <div><strong>Rating:</strong> ${rating}</div>
               <div><strong>Last inspection:</strong> ${lastInspection}</div>
+              <div><strong>NHS updated:</strong> ${lastNhsUpdate}</div>
           </div>
       </div>`;
         }
