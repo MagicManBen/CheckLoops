@@ -274,9 +274,13 @@
       modal.style.display = 'block';
       modalBody.innerHTML = `
   <div style="text-align:center;margin-bottom:20px;">
-    <button id="fetchDetailsBtn" class="fetch-details-btn" onclick="fetchCQCDetails()">Fetch &amp; Save NHS + CQC</button>
-    <button class="btn" id="showRawBtn" onclick="showRawJsonOnly()">Show raw JSON</button>
-    <button class="btn" onclick="copyRawJson()">Copy JSON</button>
+    <button id="fetchDetailsBtn" class="fetch-details-btn" onclick="fetchCQCDetails()">Run CQC → NHS (Sequential)</button>
+    <div style="margin-top:10px;">
+      <button class="btn primary" onclick="runCQCPhase()">Run CQC Phase Only</button>
+      <button class="btn primary" onclick="runODSPhase()">Run ODS Phase Only</button>
+      <button class="btn" id="showRawBtn" onclick="showRawJsonOnly()">Show raw JSON</button>
+      <button class="btn" onclick="copyRawJson()">Copy JSON</button>
+    </div>
   </div>
   <div id="apiResult" class="section-body" style="display:none;"></div>
   <div id="rawApiResponse" class="section-body" style="display:none;">
@@ -316,10 +320,13 @@
 
         const combined = {};
 
-        // ===== PHASE 1: CQC (existing behaviour) =====
+        // ===== PHASE 1: CQC (using fetch-nhs-data-complete) =====
         try {
-          const { data: cqcResp, error: cqcErr } = await supabase.functions.invoke('fetch-cqc-details', {
-            body: { location_id: currentSurgery.location_id, provider_id: currentSurgery.provider_id }
+          const { data: cqcResp, error: cqcErr } = await supabase.functions.invoke('fetch-nhs-data-complete', {
+            body: {
+              location_id: currentSurgery.location_id,
+              data_sources: ['cqc']
+            }
           });
           if (cqcErr) throw cqcErr;
 
@@ -341,7 +348,7 @@
           }
           if (resultDiv) resultDiv.innerHTML = '<div class="error">CQC phase failed: ' + e + '</div>';
           btn.disabled = false;
-          btn.textContent = 'Fetch &amp; Save NHS + CQC';
+          btn.textContent = 'Run CQC → NHS (Sequential)';
           return;
         }
 
@@ -366,8 +373,8 @@
         }
 
         // Work out the best ODS code we can find
-        const odsFromPhase1 = combined.phase1_cqc?.data?.cqc_data?.odsCode
-                           || combined.phase1_cqc?.cqc?.odsCode
+        const odsFromPhase1 = combined.phase1_cqc?.ods_code
+                           || combined.phase1_cqc?.data?.cqc_location?.odsCode
                            || currentSurgery.ods_code
                            || '';
 
@@ -422,7 +429,7 @@
           if (resultDiv) resultDiv.innerHTML = '<div class="error">NHS phase failed: ' + e + '</div>';
         } finally {
           btn.disabled = false;
-          btn.textContent = 'Fetch &amp; Save NHS + CQC';
+          btn.textContent = 'Run CQC → NHS (Sequential)';
         }
       }
     }
@@ -457,6 +464,110 @@
       } else {
         // Fallback
         alert('Clipboard not available in this browser.');
+      }
+    }
+
+    async function runCQCPhase() {
+      const resultDiv = document.getElementById('apiResult');
+      const rawDiv = document.getElementById('rawApiResponse');
+      const rawPre = document.getElementById('rawResponseContent');
+
+      if (resultDiv) {
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = '<div class="loading"><div class="spinner"></div>Running CQC phase only...</div>';
+      }
+
+      try {
+        const { data: cqcResp, error: cqcErr } = await supabase.functions.invoke('fetch-nhs-data-complete', {
+          body: {
+            location_id: currentSurgery.location_id,
+            data_sources: ['cqc']
+          }
+        });
+
+        if (cqcErr) throw cqcErr;
+
+        window.currentRawApiResponse = { cqc_phase_only: cqcResp };
+        if (rawPre && rawDiv) {
+          rawPre.textContent = JSON.stringify(window.currentRawApiResponse, null, 2);
+          rawDiv.style.display = 'block';
+        }
+
+        if (resultDiv) {
+          const updated = cqcResp?.database_updated ? 'Database updated successfully' : 'No database update';
+          resultDiv.innerHTML = `<div class="info">CQC phase complete. ${updated}. ODS Code: ${cqcResp?.ods_code || 'not found'}</div>`;
+        }
+
+        // Reload the row to see updated data
+        const { data: row } = await supabase
+          .from('CQC All GPs')
+          .select('*')
+          .eq('location_id', currentSurgery.location_id)
+          .single();
+
+        if (row && window.currentRawApiResponse) {
+          window.currentRawApiResponse.updated_row = row;
+          if (rawPre) rawPre.textContent = JSON.stringify(window.currentRawApiResponse, null, 2);
+        }
+      } catch (err) {
+        const e = err && err.message ? err.message : String(err);
+        if (resultDiv) resultDiv.innerHTML = '<div class="error">CQC phase failed: ' + e + '</div>';
+      }
+    }
+
+    async function runODSPhase() {
+      const resultDiv = document.getElementById('apiResult');
+      const rawDiv = document.getElementById('rawApiResponse');
+      const rawPre = document.getElementById('rawResponseContent');
+
+      // Get ODS code from current surgery or ask user
+      const odsCode = currentSurgery.ods_code || prompt('Enter ODS code:');
+      if (!odsCode) {
+        if (resultDiv) resultDiv.innerHTML = '<div class="error">ODS code is required</div>';
+        return;
+      }
+
+      if (resultDiv) {
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = '<div class="loading"><div class="spinner"></div>Running ODS phase only...</div>';
+      }
+
+      try {
+        const { data: odsResp, error: odsErr } = await supabase.functions.invoke('fetch-nhs-data-complete', {
+          body: {
+            location_id: currentSurgery.location_id,
+            ods_code: odsCode,
+            data_sources: ['ods']
+          }
+        });
+
+        if (odsErr) throw odsErr;
+
+        window.currentRawApiResponse = { ods_phase_only: odsResp };
+        if (rawPre && rawDiv) {
+          rawPre.textContent = JSON.stringify(window.currentRawApiResponse, null, 2);
+          rawDiv.style.display = 'block';
+        }
+
+        if (resultDiv) {
+          const updated = odsResp?.database_updated ? 'Database updated successfully' : 'No database update';
+          resultDiv.innerHTML = `<div class="info">ODS phase complete. ${updated}</div>`;
+        }
+
+        // Reload the row to see updated data
+        const { data: row } = await supabase
+          .from('CQC All GPs')
+          .select('*')
+          .eq('location_id', currentSurgery.location_id)
+          .single();
+
+        if (row && window.currentRawApiResponse) {
+          window.currentRawApiResponse.updated_row = row;
+          if (rawPre) rawPre.textContent = JSON.stringify(window.currentRawApiResponse, null, 2);
+        }
+      } catch (err) {
+        const e = err && err.message ? err.message : String(err);
+        if (resultDiv) resultDiv.innerHTML = '<div class="error">ODS phase failed: ' + e + '</div>';
       }
     }
 
