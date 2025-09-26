@@ -11,9 +11,17 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="config.js"></script>
   <script src="supabase-js.js"></script>
+  <!-- PDF.js for PDF text extraction -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
   <!-- Standardized Staff Navigation -->
   <link rel="stylesheet" href="staff-nav.css">
+  <link rel="stylesheet" href="improved-training-modal.css">
+  <link rel="stylesheet" href="toast-notifications.css">
+  <link rel="stylesheet" href="certificate-uploader.css">
   <script src="staff-nav.js"></script>
+  <script src="toast-notifications.js"></script>
+  <script src="certificate-uploader-debug.js"></script>
+  <script src="certificate-uploader.js"></script>
   <style>
     :root {
       /* Primary color palette - matching homepage */
@@ -1029,8 +1037,12 @@
                     return;
                   }
                   
-                  // Success - close modal and reload page
-                  closeTrainingModal();
+                  // Success - close modal
+                  if (window.trainingModal) {
+                    window.trainingModal.close();
+                  } else {
+                    closeTrainingModal();
+                  }
 
                   if (achievementClient) {
                     try {
@@ -1051,14 +1063,20 @@
                     }
                   }
 
-                  // Show success message
-                  const successDiv = document.createElement('div');
-                  successDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; background: var(--success); color: white; padding: 0.75rem 1.25rem; border-radius: var(--radius); box-shadow: var(--shadow-lg); z-index: 10000; font-weight: 600;';
-                  successDiv.textContent = 'Training record saved successfully!';
-                  document.body.appendChild(successDiv);
+                  // Show success message with enhanced toast notification
+                  if (typeof showToast === 'function') {
+                    showToast('Training record saved successfully!', 'success', 3000);
+                  } else {
+                    // Fallback to basic notification
+                    const successDiv = document.createElement('div');
+                    successDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; background: var(--success); color: white; padding: 0.75rem 1.25rem; border-radius: var(--radius); box-shadow: var(--shadow-lg); z-index: 10000; font-weight: 600;';
+                    successDiv.textContent = 'Training record saved successfully!';
+                    document.body.appendChild(successDiv);
+                    setTimeout(() => successDiv.remove(), 2000);
+                  }
                   
+                  // Refresh training data
                   setTimeout(() => {
-                    successDiv.remove();
                     // Refresh training data instead of reloading page to prevent debugger interference
                     if (typeof loadTrainingData === 'function') {
                       loadTrainingData();
@@ -1067,7 +1085,7 @@
                     } else if (typeof initializeTraining === 'function') {
                       initializeTraining();
                     }
-                  }, 2000);
+                  }, 500);
                   
                 } catch (error) {
                   console.error('Save error:', error);
@@ -1286,6 +1304,57 @@
             Upload Training
           </button>
         </div>
+        
+        <!-- AI Certificate Upload Zone -->
+        <div class="certificate-dropzone" id="certificate-dropzone">
+          <div class="certificate-dropzone-inner">
+            <div class="dropzone-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="12" y1="18" x2="12" y2="12"></line>
+                <line x1="9" y1="15" x2="15" y2="15"></line>
+              </svg>
+            </div>
+            <div class="dropzone-text">
+              <h3>Upload training certificate</h3>
+              <p>Drag & drop your training certificate here or click to browse</p>
+              <p style="font-size: 0.75rem; color: var(--gray-400);">Supports PDF, PNG, JPG (max 10MB)</p>
+            </div>
+          </div>
+          <input type="file" class="certificate-upload-input" id="certificate-upload" accept=".pdf,.png,.jpg,.jpeg" />
+          
+          <div class="certificate-preview" id="certificate-preview">
+            <div class="preview-header">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+              </svg>
+              <div class="preview-file-details">
+                <div class="preview-filename" id="preview-filename">document.pdf</div>
+                <div class="preview-filesize" id="preview-filesize">0 KB</div>
+              </div>
+              <div class="preview-actions">
+                <button class="preview-btn" id="view-certificate-btn" title="View">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                </button>
+                <button class="preview-btn remove" id="remove-certificate-btn" title="Remove">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div id="processing-indicator" class="processing-indicator">
+              <div class="spinner"></div>
+              <span>Processing certificate with AI...</span>
+            </div>
+          </div>
+        </div>
 
         <!-- Training Progress Bar -->
         <div class="progress-wrap">
@@ -1321,29 +1390,69 @@
     <div class="footer">© CheckLoop • Staff Portal</div>
   </div>
 
-  <!-- Training Upload Modal -->
-  <div id="training-upload-modal" class="modal" style="display: none;">
-    <div class="modal-content" style="max-width: 500px;">
-      <div class="modal-header">
-        <h3>Add Training Record</h3>
-        <button class="close-btn" id="training-modal-close">&times;</button>
+  <!-- Improved Training Upload Modal -->
+  <div id="training-upload-modal" class="training-modal" style="display: none;">
+    <div class="training-modal-content">
+      <div class="training-modal-header">
+        <h3>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+          Add Training Record
+        </h3>
+        <button class="training-close-btn" id="training-modal-close">&times;</button>
       </div>
-      <div class="modal-body">
+      
+      <div class="training-modal-body">
+        <!-- Step indicator for visual progress -->
+        <div class="step-indicator">
+          <div class="step active">
+            <div class="step-circle">1</div>
+            <div class="step-label">Select Training</div>
+          </div>
+          <div class="step">
+            <div class="step-circle">2</div>
+            <div class="step-label">Set Date</div>
+          </div>
+          <div class="step">
+            <div class="step-circle">3</div>
+            <div class="step-label">Add Details</div>
+          </div>
+        </div>
+        
+        <div id="training-upload-error" class="training-upload-error"></div>
+        
         <form id="training-upload-form">
-          <div class="form-group">
-            <label for="training-type-select">Training Type *</label>
+          <div class="training-form-group">
+            <label for="training-type-select">
+              Training Type 
+              <span class="required-star">*</span>
+              <span class="info-tooltip" data-tooltip="Select the specific training course or qualification">ⓘ</span>
+            </label>
             <select id="training-type-select" required>
               <option value="">Select training type...</option>
             </select>
+            <small>Choose the training course or qualification you completed</small>
           </div>
           
-          <div class="form-group">
-            <label for="training-completion-date">Completion Date *</label>
+          <div class="training-form-group">
+            <label for="training-completion-date">
+              Completion Date 
+              <span class="required-star">*</span>
+            </label>
             <input type="date" id="training-completion-date" required>
+            <small>The date when you completed this training</small>
           </div>
           
-          <div class="form-group">
-            <label for="training-expiry-period">Expiry Period *</label>
+          <div class="training-form-group">
+            <label for="training-expiry-period">
+              Expiry Period 
+              <span class="required-star">*</span>
+              <span class="info-tooltip" data-tooltip="How long this training is valid for">ⓘ</span>
+            </label>
             <select id="training-expiry-period" required>
               <option value="1week">1 Week</option>
               <option value="1month">1 Month</option>
@@ -1354,39 +1463,584 @@
               <option value="3years">3 Years</option>
               <option value="never">No Expiry</option>
             </select>
-            <small>Calculated expiry: <span id="calculated-expiry">-</span></small>
           </div>
           
-          <div class="form-group">
-            <label>Certificate File (Optional)</label>
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <input type="file" id="training-certificate" accept=".pdf,.jpg,.jpeg,.png" style="flex: 1;">
-              <span id="file-name" style="color: var(--gray-500); font-size: 0.875rem;"></span>
+          <!-- Expiry calculation display -->
+          <div class="training-expiry-info">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <div class="expiry-details">
+              <div class="expiry-label">Calculated Expiry Date</div>
+              <div class="expiry-date" id="calculated-expiry">-</div>
+              <div class="expiry-info">Your training record will be marked as expired after this date.</div>
             </div>
-            <small>PDF, JPG, PNG (max 10MB)</small>
           </div>
           
-          <div class="form-group">
+          <div class="training-form-group">
+            <label for="training-certificate">
+              Certificate File
+              <span class="info-tooltip" data-tooltip="Optional: Upload a copy of your training certificate">ⓘ</span>
+            </label>
+            <div class="file-upload-container">
+              <input type="file" id="training-certificate" class="file-input" accept=".pdf,.jpg,.jpeg,.png">
+              <label for="training-certificate" class="file-upload-button" id="file-upload-button">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="17,8 12,3 7,8"></polyline>
+                  <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                Choose file...
+              </label>
+              <div class="file-name" id="file-name" style="display: none;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                  <polyline points="13 2 13 9 20 9"></polyline>
+                </svg>
+                <span id="file-name-text">No file selected</span>
+              </div>
+              <small>PDF, JPG, PNG (max 10MB). Adding your certificate helps verify your training.</small>
+            </div>
+          </div>
+          
+          <div class="training-form-group">
             <label for="training-notes">Notes</label>
-            <textarea id="training-notes" rows="3" placeholder="Additional notes (optional)"></textarea>
+            <textarea id="training-notes" rows="3" placeholder="Any additional information about this training (optional)"></textarea>
+            <small>Optionally add details about the training provider, course content, or other relevant information.</small>
           </div>
         </form>
-        
-        <div id="training-upload-error" style="color: var(--danger); margin-top: 1rem; display: none; padding: 0.75rem; background: var(--danger-light); border: 1px solid var(--danger); border-radius: var(--radius);"></div>
       </div>
       
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" id="training-cancel-btn">Cancel</button>
-        <button type="submit" class="btn btn-primary" id="training-save-btn">Save Training Record</button>
+      <div class="training-modal-footer">
+        <button type="button" class="training-btn training-btn-secondary" id="training-cancel-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+          Cancel
+        </button>
+        <button type="submit" class="training-btn training-btn-primary" id="training-save-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+            <polyline points="17 21 17 13 7 13 7 21"></polyline>
+            <polyline points="7 3 7 8 15 8"></polyline>
+          </svg>
+          Save Training Record
+        </button>
       </div>
     </div>
   </div>
 
 
-    <!-- Debug Console - Persistent across all pages -->
+    <!-- Certificate Confirmation Modal -->
+  <div id="cert-confirmation-modal" class="cert-confirmation-modal">
+    <div class="cert-modal-content">
+      <div class="cert-modal-header">
+        <h3>Confirm Certificate Details</h3>
+        <button class="cert-close-btn" id="cert-modal-close">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="cert-modal-body">
+        <p>We've extracted the following information from your certificate. Please review and edit if necessary.</p>
+        
+        <div class="cert-extracted-data">
+          <div class="cert-data-row">
+            <div class="cert-data-label">Name</div>
+            <div class="cert-data-value">
+              <input type="text" id="cert-person-name" placeholder="Person name not detected">
+            </div>
+          </div>
+          
+          <div class="cert-data-row">
+            <div class="cert-data-label">Training Type</div>
+            <div class="cert-data-value">
+              <select id="cert-training-type">
+                <option value="">Select training type...</option>
+                <!-- Options will be populated from the database -->
+              </select>
+            </div>
+          </div>
+          
+          <div class="cert-data-row">
+            <div class="cert-data-label">Completion Date</div>
+            <div class="cert-data-value">
+              <input type="date" id="cert-completion-date">
+            </div>
+          </div>
+          
+          <div class="cert-data-row">
+            <div class="cert-data-label">Expiry Date</div>
+            <div class="cert-data-value">
+              <input type="date" id="cert-expiry-date">
+            </div>
+          </div>
+          
+          <div class="cert-data-row">
+            <div class="cert-data-label">Provider</div>
+            <div class="cert-data-value">
+              <input type="text" id="cert-provider" placeholder="Provider not detected">
+            </div>
+          </div>
+          
+          <div class="cert-data-row">
+            <div class="cert-data-label">Certificate ID</div>
+            <div class="cert-data-value">
+              <input type="text" id="cert-id" placeholder="Certificate ID not detected">
+            </div>
+          </div>
+          
+          <div class="cert-data-row">
+            <div class="cert-data-label">Notes</div>
+            <div class="cert-data-value">
+              <textarea id="cert-notes" rows="3" placeholder="Add any additional notes here..."></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="cert-modal-footer">
+        <button class="cert-btn cert-btn-secondary" id="cert-cancel-btn">Cancel</button>
+        <button class="cert-btn cert-btn-primary" id="cert-save-btn">Save Training Record</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Debug Console - Persistent across all pages -->
     <script src="debug-console.js"></script>
     <script src="supabase-debug.js"></script>
+    <script src="training-modal.js"></script>
 <!-- Staff Profile Fix -->
 <script src="staff-profile-fix.js"></script>
+
+<!-- Initialize training modal functionality -->
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // Initialize training modal with custom save handler
+    window.trainingModal = new TrainingModal({
+      onSave: saveTrainingRecord,
+      onClose: function() {
+        document.getElementById('training-upload-form').reset();
+        document.getElementById('training-upload-error').style.display = 'none';
+        window.uploadedFile = null;
+      }
+    });
+
+    // Attach click handler to upload button
+    document.getElementById('upload-training-btn').addEventListener('click', function() {
+      window.trainingModal.open();
+    });
+
+    // Listen for save events to handle the data
+    document.addEventListener('trainingModalSave', function(event) {
+      const data = event.detail;
+      console.log('Training data to save:', data);
+      saveTrainingRecord();
+    });
+    
+    // Make trainingTypes available globally for certificate uploader
+    window.trainingTypes = trainingTypes || [];
+    
+    // Certificate AI Processing
+    if (typeof initCertificateUploader === 'function') {
+      console.log('Initializing certificate uploader with', window.trainingTypes.length, 'training types');
+      window.certificateUploaderAPI = initCertificateUploader();
+    } else {
+      console.error('Certificate uploader function not found. Script might not be loaded.');
+    }
+  });
+  
+  // Initialize PDF.js worker
+  if (typeof pdfjsLib !== 'undefined') {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+  
+  // Certificate processing functionality
+  function initCertificateUploader() {
+    const dropzone = document.getElementById('certificate-dropzone');
+    const fileInput = document.getElementById('certificate-upload');
+    const preview = document.getElementById('certificate-preview');
+    const filenameEl = document.getElementById('preview-filename');
+    const filesizeEl = document.getElementById('preview-filesize');
+    const processingIndicator = document.getElementById('processing-indicator');
+    const removeBtn = document.getElementById('remove-certificate-btn');
+    const viewBtn = document.getElementById('view-certificate-btn');
+    
+    // Certificate confirmation modal elements
+    const confirmModal = document.getElementById('cert-confirmation-modal');
+    const closeBtn = document.getElementById('cert-modal-close');
+    const cancelBtn = document.getElementById('cert-cancel-btn');
+    const saveBtn = document.getElementById('cert-save-btn');
+    
+    // Certificate form fields
+    const personNameInput = document.getElementById('cert-person-name');
+    const trainingTypeSelect = document.getElementById('cert-training-type');
+    const completionDateInput = document.getElementById('cert-completion-date');
+    const expiryDateInput = document.getElementById('cert-expiry-date');
+    const providerInput = document.getElementById('cert-provider');
+    const certIdInput = document.getElementById('cert-id');
+    const notesInput = document.getElementById('cert-notes');
+    
+    // Drag and drop events
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+      dropzone.addEventListener(eventName, preventDefaults, false);
+    });
+    
+    function preventDefaults(e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    ['dragenter', 'dragover'].forEach(eventName => {
+      dropzone.addEventListener(eventName, highlight, false);
+    });
+    
+    ['dragleave', 'drop'].forEach(eventName => {
+      dropzone.addEventListener(eventName, unhighlight, false);
+    });
+    
+    function highlight() {
+      dropzone.classList.add('dragover');
+    }
+    
+    function unhighlight() {
+      dropzone.classList.remove('dragover');
+    }
+    
+    // Handle file drop
+    dropzone.addEventListener('drop', handleDrop, false);
+    
+    function handleDrop(e) {
+      const dt = e.dataTransfer;
+      const files = dt.files;
+      
+      if (files.length) {
+        fileInput.files = files;
+        handleFiles(files);
+      }
+    }
+    
+    // Handle file selection
+    fileInput.addEventListener('change', function() {
+      if (this.files.length) {
+        handleFiles(this.files);
+      }
+    });
+    
+    // Remove button functionality
+    removeBtn.addEventListener('click', function() {
+      resetUploader();
+    });
+    
+    // View button functionality
+    viewBtn.addEventListener('click', function() {
+      if (window.certificateFile) {
+        const url = URL.createObjectURL(window.certificateFile);
+        window.open(url, '_blank');
+      }
+    });
+    
+    // Modal close buttons
+    closeBtn.addEventListener('click', closeConfirmModal);
+    cancelBtn.addEventListener('click', closeConfirmModal);
+    
+    // Save button functionality
+    saveBtn.addEventListener('click', saveFromConfirmationModal);
+    
+    function closeConfirmModal() {
+      confirmModal.classList.remove('active');
+    }
+    
+    function formatFileSize(bytes) {
+      if (bytes < 1024) return bytes + ' bytes';
+      else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+      else return (bytes / 1048576).toFixed(1) + ' MB';
+    }
+    
+    function resetUploader() {
+      fileInput.value = '';
+      preview.classList.remove('active');
+      processingIndicator.classList.remove('error', 'success');
+      processingIndicator.innerHTML = '<div class="spinner"></div><span>Processing certificate with AI...</span>';
+      window.certificateFile = null;
+      window.certificateUrl = null;
+      window.certificateData = null;
+    }
+    
+    function handleFiles(files) {
+      const file = files[0];
+      
+      // Validate file
+      if (!file) return;
+      
+      if (file.size > 10 * 1024 * 1024) {
+        showError('File size must be less than 10MB');
+        return;
+      }
+      
+      const validTypes = ['application/pdf', 'image/png', 'image/jpeg'];
+      if (!validTypes.includes(file.type)) {
+        showError('Only PDF, PNG and JPG files are supported');
+        return;
+      }
+      
+      // Save file for later use
+      window.certificateFile = file;
+      
+      // Update preview
+      filenameEl.textContent = file.name;
+      filesizeEl.textContent = formatFileSize(file.size);
+      preview.classList.add('active');
+      
+      // Process file
+      processCertificate(file);
+    }
+    
+    function showError(message) {
+      processingIndicator.classList.add('error');
+      processingIndicator.innerHTML = `
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        <span>${message}</span>
+      `;
+      preview.classList.add('active');
+    }
+    
+    function showSuccess(message) {
+      processingIndicator.classList.add('success');
+      processingIndicator.innerHTML = `
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+          <polyline points="22 4 12 14.01 9 11.01"></polyline>
+        </svg>
+        <span>${message}</span>
+      `;
+    }
+    
+    // Process certificate with AI
+    async function processCertificate(file) {
+      try {
+        // Show processing state
+        processingIndicator.classList.remove('error', 'success');
+        processingIndicator.innerHTML = '<div class="spinner"></div><span>Processing certificate with AI...</span>';
+        
+        // First, extract text from the file
+        let textContent = '';
+        
+        if (file.type === 'application/pdf') {
+          textContent = await extractTextFromPDF(file);
+        } else if (file.type === 'image/png' || file.type === 'image/jpeg') {
+          // For images, we'll need to first upload to Supabase
+          // and then call the Edge Function with the URL
+          textContent = "This is an image file. AI extraction will be performed after upload.";
+        }
+        
+        // Upload file to Supabase
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          throw new Error('Not authenticated');
+        }
+        
+        const fileExt = file.name.split('.').pop();
+        const fileName = `cert_${Date.now()}.${fileExt}`;
+        const filePath = `${currentUser.siteId}/training_certificates/${fileName}`;
+        
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('training-certificates')
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+          });
+        
+        if (uploadError) {
+          console.error('Upload error:', uploadError);
+          throw new Error('Failed to upload certificate: ' + uploadError.message);
+        }
+        
+        // Save the URL for later reference
+        window.certificateUrl = filePath;
+        
+        // For PDF, call Edge Function with extracted text
+        // For images, we'd need OCR service, but for now just call the Edge Function with the signed URL
+        const { data: signedURL } = await supabase.storage
+          .from('training-certificates')
+          .createSignedUrl(filePath, 60); // 60 seconds expiry
+        
+        // Call the Edge Function
+        const response = await fetch(`${window.supabaseUrl}/functions/v1/extract-certificate`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            text: textContent,
+            signedUrl: signedURL.signedUrl // Pass signed URL for server-side processing if needed
+          })
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+          throw new Error(result.error || 'AI extraction failed');
+        }
+        
+        // Save extracted data for confirmation
+        window.certificateData = result.data || {};
+        
+        // Show success message
+        showSuccess('Certificate processed successfully! Click to confirm details.');
+        
+        // Wait a moment for user to see the success message
+        setTimeout(() => {
+          // Open confirmation modal
+          openConfirmationModal(window.certificateData);
+        }, 1500);
+        
+      } catch (error) {
+        console.error('Certificate processing error:', error);
+        showError(error.message || 'Failed to process certificate');
+      }
+    }
+    
+    // Extract text from PDF
+    async function extractTextFromPDF(file) {
+      if (typeof pdfjsLib === 'undefined') {
+        throw new Error('PDF.js not loaded. Please refresh the page and try again.');
+      }
+
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = '';
+
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map(item => item.str).join(' ');
+        fullText += pageText + '\n';
+      }
+
+      return fullText.trim();
+    }
+    
+    // Open confirmation modal with extracted data
+    function openConfirmationModal(data) {
+      // Fill form fields with extracted data
+      if (data.person_name) personNameInput.value = data.person_name;
+      
+      // Match training name to training type
+      if (data.training_name) {
+        const trainingOptions = Array.from(trainingTypeSelect.options);
+        const matchedOption = trainingOptions.find(option => 
+          option.text.toLowerCase().includes(data.training_name.toLowerCase())
+        );
+        
+        if (matchedOption) trainingTypeSelect.value = matchedOption.value;
+      }
+      
+      if (data.completion_date) completionDateInput.value = data.completion_date;
+      if (data.expiry_date) expiryDateInput.value = data.expiry_date;
+      if (data.provider) providerInput.value = data.provider;
+      if (data.certificate_id) certIdInput.value = data.certificate_id;
+      
+      // Set default notes with additional details
+      let notes = '';
+      if (data.additional_details) notes += data.additional_details;
+      if (data.provider) notes += `\nProvider: ${data.provider}`;
+      notesInput.value = notes.trim();
+      
+      // Populate training type dropdown
+      while (trainingTypeSelect.options.length > 1) {
+        trainingTypeSelect.remove(1);
+      }
+      
+      trainingTypes.forEach(type => {
+        const option = document.createElement('option');
+        option.value = type.id;
+        option.textContent = type.name;
+        trainingTypeSelect.appendChild(option);
+      });
+      
+      // Open modal
+      confirmModal.classList.add('active');
+    }
+    
+    // Save from confirmation modal
+    async function saveFromConfirmationModal() {
+      try {
+        // Validate required fields
+        const trainingTypeId = trainingTypeSelect.value;
+        const completionDate = completionDateInput.value;
+        
+        if (!trainingTypeId || !completionDate) {
+          alert('Please select a training type and completion date');
+          return;
+        }
+        
+        // Prepare record data
+        const recordData = {
+          site_id: currentUser.siteId,
+          user_id: currentUser.id,
+          training_type_id: parseInt(trainingTypeId),
+          completion_date: completionDate,
+          expiry_date: expiryDateInput.value || null,
+          notes: notesInput.value || null,
+          certificate_url: window.certificateUrl
+        };
+        
+        // Save to database
+        const { data, error } = await supabase
+          .from('training_records')
+          .insert(recordData);
+        
+        if (error) {
+          throw error;
+        }
+        
+        // Close modal
+        closeConfirmModal();
+        
+        // Reset uploader
+        resetUploader();
+        
+        // Show success notification
+        if (typeof showToast === 'function') {
+          showToast('Training record saved successfully!', 'success', 3000);
+        } else {
+          alert('Training record saved successfully!');
+        }
+        
+        // Refresh training data
+        setTimeout(() => {
+          if (typeof loadTrainingData === 'function') {
+            loadTrainingData();
+          } else if (typeof refreshTraining === 'function') {
+            refreshTraining();
+          } else if (typeof initializeTraining === 'function') {
+            initializeTraining();
+          } else {
+            window.location.reload();
+          }
+        }, 500);
+        
+      } catch (error) {
+        console.error('Save error:', error);
+        alert('Failed to save training record: ' + error.message);
+      }
+    }
+  }
+</script>
 </body>
 </html>

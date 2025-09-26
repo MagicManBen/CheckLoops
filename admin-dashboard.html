@@ -22531,14 +22531,12 @@ window.refreshStaffData = refreshStaffData;
     if (!window.supabase) return;
 
     try {
-      // Get site_id from context - or use site_id 2 as fallback since that's what's in the holidays table
+      // Get site_id from context
       const siteId = window.ctx?.site_id || 2;
       console.log('Loading staff cards for site_id:', siteId);
 
-      // Get all users from holidays table
-      // Since master_users is empty, we'll use the holidays table which has the staff data
-      // If site_id is provided, filter by it; otherwise get all
-      let query = window.supabase.from('holidays').select('*');
+      // Get all users from master_users table which has approved_holidays_used field
+      let query = window.supabase.from('master_users').select('*');
 
       if (siteId) {
         query = query.eq('site_id', siteId);
@@ -22547,8 +22545,80 @@ window.refreshStaffData = refreshStaffData;
       const { data: users, error } = await query.order('full_name');
 
       if (error) {
-        console.error('Error loading users from holidays table:', error);
+        console.error('Error loading users from master_users table:', error);
         return;
+      }
+
+      // Also fetch approved holiday requests to calculate actual hours used
+      // First try without year filter to see if there's any data
+      const { data: approvedRequests, error: requestsError } = await window.supabase
+        .from('holiday_requests')
+        .select('*')
+        .eq('site_id', siteId)
+        .eq('status', 'approved');
+
+      console.log(`Fetching ALL approved requests for site ${siteId}`);
+
+      if (!requestsError && approvedRequests) {
+        console.log('Found approved holiday requests:', approvedRequests);
+
+        // Calculate total approved hours per user
+        // First by email, then by auth_user_id as fallback
+        const approvedHoursByEmail = {};
+        const approvedHoursById = {};
+
+        approvedRequests.forEach(request => {
+          // Log each request for debugging
+          console.log('Processing request:', {
+            id: request.id,
+            user_email: request.user_email,
+            auth_user_id: request.auth_user_id,
+            user_id: request.user_id,
+            total_hours: request.total_hours,
+            hours: request.hours,
+            start_date: request.start_date,
+            end_date: request.end_date
+          });
+
+          const hours = request.total_hours || request.hours || 0;
+
+          // Map by email if available
+          if (request.user_email) {
+            if (!approvedHoursByEmail[request.user_email]) {
+              approvedHoursByEmail[request.user_email] = 0;
+            }
+            approvedHoursByEmail[request.user_email] += hours;
+          }
+
+          // Also map by user ID
+          const userId = request.auth_user_id || request.user_id;
+          if (userId) {
+            if (!approvedHoursById[userId]) {
+              approvedHoursById[userId] = 0;
+            }
+            approvedHoursById[userId] += hours;
+          }
+        });
+
+        console.log('Approved hours by email:', approvedHoursByEmail);
+        console.log('Approved hours by ID:', approvedHoursById);
+
+        // Merge the approved hours into user data
+        users.forEach(user => {
+          // Try to match by email first, then by ID
+          const hoursByEmail = user.email ? approvedHoursByEmail[user.email] : 0;
+          const hoursById = approvedHoursById[user.auth_user_id] || approvedHoursById[user.id] || 0;
+
+          user.calculated_approved_hours = hoursByEmail || hoursById || 0;
+
+          if (user.full_name && user.full_name.toLowerCase().includes('gemma')) {
+            console.log(`GEMMA KEELING: email=${user.email}, hoursByEmail=${hoursByEmail}, hoursById=${hoursById}, final=${user.calculated_approved_hours}`);
+          }
+
+          console.log(`User ${user.full_name} (email: ${user.email}, id: ${user.auth_user_id || user.id}) has ${user.calculated_approved_hours} approved hours`);
+        });
+      } else {
+        console.log('No approved requests found or error:', requestsError);
       }
 
       const container = document.getElementById('entitlements-cards-container');
@@ -22562,14 +22632,34 @@ window.refreshStaffData = refreshStaffData;
         return;
       }
 
-      console.log(`Found ${users.length} staff members in holidays table`);
+      console.log(`Found ${users.length} staff members in master_users table`);
+
+      // Log data for debugging - especially for Gemma Keeling
+      users.forEach(user => {
+        if (user.full_name && user.full_name.toLowerCase().includes('gemma')) {
+          console.log('Gemma Keeling data from master_users:', {
+            full_name: user.full_name,
+            approved_holidays_used: user.approved_holidays_used,
+            holiday_taken: user.holiday_taken,
+            total_holiday_entitlement: user.total_holiday_entitlement,
+            holiday_entitlement: user.holiday_entitlement,
+            all_fields: user
+          });
+        }
+      });
 
       // Create cards for each user
       const cardsHtml = users.map(user => {
-        // Using fields from the holidays table
+        // Using fields from the master_users table OR calculated from holiday_requests
         const totalEntitlement = user.total_holiday_entitlement || user.holiday_entitlement || 25;
-        const holidayTaken = user.approved_holidays_used || user.holiday_taken || 0;
-        const holidayRemaining = user.holiday_remaining || (totalEntitlement - holidayTaken);
+
+        // Use calculated approved hours from holiday_requests if available, otherwise fall back to fields in master_users
+        const holidayTaken = user.calculated_approved_hours || user.approved_holidays_used || user.holiday_taken || 0;
+
+        const holidayRemaining = totalEntitlement - holidayTaken;
+
+        // Log calculation for each user
+        console.log(`Holiday calc for ${user.full_name}: Entitlement=${totalEntitlement}, Used=${holidayTaken} (calculated=${user.calculated_approved_hours}, approved_holidays_used=${user.approved_holidays_used}), Remaining=${holidayRemaining}`);
 
         return `
           <div class="staff-card" style="background: var(--glass); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; margin-bottom: 16px;">
@@ -22608,6 +22698,15 @@ window.refreshStaffData = refreshStaffData;
                 <label style="color: var(--muted); font-size: 12px;">Site</label>
                 <div style="margin-top: 4px; font-size: 14px; color: var(--white);">Site ${user.site_id}</div>
               </div>
+            </div>
+
+            <!-- Debug info - remove after testing -->
+            <div style="background: rgba(255,255,0,0.1); padding: 8px; border-radius: 4px; font-size: 11px; color: var(--muted); margin-bottom: 12px;">
+              <div>Debug: approved_holidays_used=${user.approved_holidays_used || 'null'}</div>
+              <div>Debug: calculated_approved_hours=${user.calculated_approved_hours || 'null'}</div>
+              <div>Debug: holiday_taken=${user.holiday_taken || 'null'}</div>
+              <div>Debug: email=${user.email || 'null'}</div>
+              <div>Debug: auth_user_id=${user.auth_user_id || 'null'}</div>
             </div>
 
             <div style="margin-top: 16px; display: flex; gap: 8px;">

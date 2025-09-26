@@ -142,7 +142,7 @@ function setupUserAvatar() {
       avatar.classList.remove('animate-glow');
     });
     
-    // Add click animation effect (removed confetti)
+    // Add click bounce effect (without confetti)
     avatar.addEventListener('click', () => {
       avatar.classList.add('animate-bounce');
       setTimeout(() => {
@@ -162,7 +162,8 @@ function setupHeroEffects() {
   }
   
   if (siteSubtitle) {
-    typingEffect(siteSubtitle, getCQCQuote(), 50);
+    // Use the specific text requested
+    typingEffect(siteSubtitle, "Leadership that inspires quality improvement.", 50);
   }
 }
 
@@ -425,14 +426,7 @@ function celebrateAchievement(targetElement) {
     }, 2000);
   }
   
-  // Fire confetti if available
-  if (typeof fireConfetti === 'function') {
-    fireConfetti({
-      particleCount: 100,
-      spread: 70,
-      origin: { y: 0.6 }
-    });
-  }
+  // Confetti removed as per user request
   
   // Add celebration notification
   const isUser = Math.random() > 0.5; // Random for demo purposes

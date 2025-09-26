@@ -1474,8 +1474,18 @@
       }
     }
 
+    function positionAvatarMenu() {
+      if (!avatarMenuEl || !avatarTriggerEl) return;
+      const rect = avatarTriggerEl.getBoundingClientRect();
+      const scrollY = window.scrollY || window.pageYOffset;
+      const scrollX = window.scrollX || window.pageXOffset;
+      avatarMenuEl.style.top = `${rect.bottom + scrollY + 12}px`;
+      avatarMenuEl.style.left = `${rect.left + scrollX + rect.width / 2}px`;
+    }
+
     function showAvatarMenu() {
       if (!avatarMenuEl) return;
+      positionAvatarMenu();
       const activeKey = getActiveAvatarKey(currentProfile?.avatar_url, currentVariantMap);
       markActiveAvatarOption(activeKey);
       avatarMenuEl.classList.remove('hidden');
@@ -1621,6 +1631,16 @@
       avatarMenuEl.appendChild(header);
 
       const list = document.createElement('div');
+
+      if (options.length <= 1 && !Object.keys(variantMap).length) {
+        const emptyState = document.createElement('div');
+        emptyState.style.padding = '0.75rem 0.5rem';
+        emptyState.style.fontSize = '0.85rem';
+        emptyState.style.color = 'var(--gray-500)';
+        emptyState.textContent = 'Your mood variants will appear here once the avatar step saves them.';
+        list.appendChild(emptyState);
+      }
+
       options.forEach(option => {
         const button = document.createElement('button');
         button.type = 'button';
@@ -1683,6 +1703,10 @@
 
       const activeKey = getActiveAvatarKey(currentProfile?.avatar_url, variantMap);
       markActiveAvatarOption(activeKey);
+
+      if (avatarMenuVisible) {
+        positionAvatarMenu();
+      }
     }
 
     function attachAvatarMenuListeners(trigger) {
@@ -1696,6 +1720,12 @@
       trigger.addEventListener('keydown', onAvatarTriggerKeydown);
       document.addEventListener('click', onDocumentClick);
       document.addEventListener('keydown', onDocumentKeydown);
+      window.addEventListener('resize', () => {
+        if (avatarMenuVisible) positionAvatarMenu();
+      });
+      window.addEventListener('scroll', () => {
+        if (avatarMenuVisible) positionAvatarMenu();
+      }, { passive: true });
       avatarMenuInitialized = true;
     }
 
@@ -1718,14 +1748,6 @@
         originalAvatarUrl = null;
       }
 
-      trigger.setAttribute('role', 'button');
-      trigger.setAttribute('tabindex', '0');
-      trigger.setAttribute('aria-haspopup', 'true');
-      if (!avatarMenuVisible) {
-        trigger.setAttribute('aria-expanded', 'false');
-      }
-      trigger.setAttribute('aria-disabled', 'false');
-
       const cache = await ensureAvatarVariantCache(user.id);
       const variantMap = cache?.map || {};
       const source = cache?.source || null;
@@ -1736,13 +1758,21 @@
         originalAvatarUrl = profileRow?.avatar_url || null;
       }
 
+      trigger.setAttribute('role', 'button');
+      trigger.setAttribute('tabindex', '0');
+      trigger.setAttribute('aria-haspopup', 'true');
+      if (!avatarMenuVisible) {
+        trigger.setAttribute('aria-expanded', 'false');
+      }
+      trigger.setAttribute('aria-disabled', 'false');
+
       if (!avatarMenuEl) {
         avatarMenuEl = document.createElement('div');
         avatarMenuEl.id = 'avatar-mood-menu';
         avatarMenuEl.className = 'avatar-menu hidden';
         avatarMenuEl.setAttribute('role', 'menu');
         avatarMenuEl.setAttribute('aria-label', 'Select avatar mood');
-        trigger.appendChild(avatarMenuEl);
+        document.body.appendChild(avatarMenuEl);
         avatarMenuEl.addEventListener('click', event => event.stopPropagation());
       }
 
