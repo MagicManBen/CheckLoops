@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CheckLoops • Smart Setup</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a1f4a; --bg2:#0c2a67; --panel:#0f2f73; --ink:#eaf1ff; --muted:#b5c3e6;
+    --nhs:#005EB8; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; --border:#ffffff22;
+    --card1:#0e2c6e; --card2:#0b245a; --shadow:0 20px 50px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box} html,body{height:100%}
+  body{
+    margin:0; color:var(--ink);
+    background:
+      radial-gradient(1200px 800px at 20% -10%, #1a4fcc66 0%, transparent 60%),
+      radial-gradient(1200px 800px at 100% 10%, #0ea5e955 0%, transparent 60%),
+      linear-gradient(160deg,var(--bg),var(--bg2));
+    font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+  }
+  header{position:sticky;top:0;z-index:20;backdrop-filter:saturate(140%) blur(8px);
+    background:linear-gradient(180deg, rgba(10,24,60,.85), rgba(10,24,60,.60));
+    border-bottom:1px solid var(--border)}
+  .nav{max-width:1200px;margin:0 auto;padding:14px 18px;display:flex;align-items:center;gap:14px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:.2px;font-size:18px}
+  .brand .dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(135deg,#7dd3fc,#60a5fa);box-shadow:0 0 20px #60a5fa99;}
+  .navfill{flex:1}
+  .stepper{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
+  .chip{padding:6px 10px;border:1px solid var(--border);border-radius:999px;background:linear-gradient(180deg,#0d2b69,#0a2357)}
+  .chip.active{border-color:#60a5fa;color:#dbeafe}
+  .chip.ok{border-color:#22c55e;color:#bbf7d0}
+  .wrap{max-width:1200px;margin:20px auto;padding:0 18px}
+  .hero{background:linear-gradient(180deg,#0d2b69aa,#0b2356aa);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);padding:22px}
+  .hero h1{margin:0 0 6px;font-size:22px}
+  .hero p{margin:0;color:var(--muted)}
+  .progress{height:8px;border-radius:6px;background:#0b1a40;border:1px solid var(--border);overflow:hidden;margin-top:14px}
+  .progress>span{display:block;height:100%;background:linear-gradient(90deg,#60a5fa,#22d3ee);width:20%}
+  .grid{display:grid;grid-template-columns:1.15fr 1fr;gap:16px;margin-top:16px}
+  @media (max-width:980px){.grid{grid-template-columns:1fr}}
+  .card{border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--card1),var(--card2));box-shadow:var(--shadow);padding:14px;animation:floatIn .3s ease both}
+  @keyframes floatIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  .titleRow{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .titleRow strong{font-size:14px}
+  .btn{appearance:none;border:1px solid var(--border);background:linear-gradient(180deg,#0f3b8a,#0c2d6a);color:#e6f0ff;padding:9px 12px;border-radius:10px;cursor:pointer;font-size:13px}
+  .btn.primary{background:linear-gradient(180deg,#1e63d0,#134da6);border-color:#4b7bd6}
+  .btn.success{background:linear-gradient(180deg,#16a34a,#12843f);border-color:#2bd47a}
+  .btn.ghost{background:transparent}
+  .searchbar{display:flex;gap:8px;align-items:center;margin-top:10px}
+  .searchbar input{flex:1;padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:linear-gradient(180deg,#0c285f,#0a2252);color:#eaf1ff}
+  .hint{color:var(--muted);font-size:12px}
+  .list{margin-top:10px;max-height:360px;overflow:auto;display:grid;gap:8px}
+  .item{background:linear-gradient(180deg,#102f74,#0b255a);border:1px solid var(--border);border-radius:12px;padding:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;transition:transform .12s,border-color .12s,box-shadow .12s}
+  .item:hover{transform:translateY(-1px);border-color:#60a5fa;box-shadow:0 10px 24px rgba(13,70,160,.25)}
+  .item small{color:var(--muted)}
+  .kv{display:grid;grid-template-columns:140px 1fr;gap:6px 12px;font-size:13px;margin-top:10px}
+  .kv div{padding:5px 0;border-bottom:1px dashed #ffffff20}
+  .mono{background:#0a1633;border:1px solid #1f2b52;color:#d6e4ff;border-radius:10px;padding:10px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
+  .badges{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
+  .badge{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);background:linear-gradient(180deg,#0e2c6e,#0b245a);border-radius:999px;padding:6px 10px;font-size:12px}
+  .ok{border-color:#22c55e;color:#bbf7d0} .warn{border-color:#f59e0b;color:#ffecb3} .err{border-color:#ef4444;color:#fecaca}
+</style>
+</head>
+<body>
+<header>
+  <div class="nav">
+    <div class="brand"><span class="dot"></span>CheckLoops • Smart Setup</div>
+    <div class="navfill"></div>
+    <div class="stepper">
+      <span class="chip active" id="st1">Welcome</span>
+      <span class="chip" id="st2">Pick Practice</span>
+      <span class="chip" id="st3">Import</span>
+      <span class="chip" id="st4">Verify</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <section class="hero">
+    <h1>Welcome to Smart Setup</h1>
+    <p>Find your practice, import data from <strong>CQC</strong> and <strong>NHS ODS</strong>, and verify it’s saved — all in a few clicks.</p>
+    <div class="progress"><span id="prog" style="width:20%"></span></div>
+  </section>
+
+  <div class="grid">
+    <div class="card">
+      <div class="titleRow">
+        <strong>Search for your GP Surgery</strong>
+        <span class="hint">Searching “CQC All GPs”</span>
+      </div>
+      <div class="searchbar">
+        <input id="q" placeholder="Enter practice name…" />
+        <button class="btn primary" id="go">Search</button>
+        <label class="hint"><input type="checkbox" id="odsOnly"> ODS only</label>
+      </div>
+      <div id="results" class="list"></div>
+    </div>
+
+    <div class="card">
+      <div class="titleRow">
+        <strong>Selected Practice</strong>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn ghost" id="btnReload">Reload Row</button>
+          <button class="btn" id="btnCQC">CQC → Save</button>
+          <button class="btn" id="btnODS">NHS ODS → Save</button>
+          <button class="btn success" id="btnBoth">Run Both</button>
+        </div>
+      </div>
+      <div id="meta" class="kv"></div>
+      <div class="badges">
+        <span id="badgeCqc" class="badge warn">CQC: idle</span>
+        <span id="badgeOds" class="badge warn">NHS ODS: idle</span>
+        <span id="badgeVerify" class="badge warn">DB Save: idle</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="debugCard" style="margin-top:16px">
+    <div class="titleRow">
+      <strong>Debug</strong>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn ghost" id="btnCopy">Copy</button>
+      </div>
+    </div>
+    <div id="debug" class="mono" style="min-height:300px;max-height:520px;overflow:auto">No debug yet.</div>
+  </div>
+</div>
+
+<script>
+  // ===== Config =====
+  const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_wpy7lxfbI2HwvsznlWJVKg_Zx7HnAc4';
+  const TABLE = 'CQC All GPs';
+  const CQC_FN = 'fetch-cqc-details';
+  const ODS_FN = 'fetch-nhs-data-complete';
+
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // ===== UI helpers =====
+  const el = id => document.getElementById(id);
+  const debugEl = el('debug'); const progEl = el('prog');
+  const badgeCqc = el('badgeCqc'); const badgeOds = el('badgeOds'); const badgeVerify = el('badgeVerify');
+
+  // ---- Display helpers (pretty-casing + safe URL + safe stringify/prune) ----
+  function escapeHTML(s){
+    return String(s ?? '')
+      .replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+  function toSafeHref(url){
+    if(!url) return '#';
+    try{
+      const s = String(url).trim();
+      const normalized = /^https?:\/\//i.test(s) ? s : ('https://' + s.replace(/^\/+/, ''));
+      const u = new URL(normalized);
+      return u.href;
+    }catch{
+      return '#';
+    }
+  }
+  function titleCaseSmart(s){
+    if(!s) return s;
+    return String(s).split(/(\s+|[-/])/g).map(tok=>{
+      if(!tok.trim()) return tok; // whitespace or separator
+      const upper = tok.toUpperCase();
+      const lower = tok.toLowerCase();
+      // preserve 2-4 letter acronyms (ALLCAPS)
+      if(tok.length <= 4 && tok === upper && tok !== lower) return tok;
+      // title-case the rest
+      return tok.charAt(0).toUpperCase() + tok.slice(1).toLowerCase();
+    }).join('');
+  }
+  function normaliseNameForStore(s){
+    if(!s) return undefined;
+    return titleCaseSmart(String(s).trim());
+  }
+  function normaliseUrlForStore(url){
+    if(!url) return undefined;
+    try{
+      const s = String(url).trim();
+      const withScheme = /^https?:\/\//i.test(s) ? s : 'https://' + s.replace(/^\/+/, '');
+      const u = new URL(withScheme);
+      return u.href;
+    }catch{
+      return undefined;
+    }
+  }
+  function pickNonEmpty(...vals){
+    for(const v of vals){
+      if(v !== undefined && v !== null && String(v).trim() !== '') return v;
+    }
+    return undefined;
+  }
+  function preferWebsite(row){
+    // prefer explicit website column; else pull from CQC provider/location sources if present
+    let site = row?.website || '';
+    let loc = row?.location_source;
+    let prov = row?.provider_source;
+    if(typeof loc === 'string'){ try{ loc = JSON.parse(loc); }catch{} }
+    if(typeof prov === 'string'){ try{ prov = JSON.parse(prov); }catch{} }
+    site = site || loc?.website || prov?.website || '';
+    // normalise to https:// if bare domain
+    if(site && !/^https?:\/\//i.test(site)){
+      site = 'https://' + site.replace(/^\/+/, '');
+    }
+    return site;
+  }
+  function asWebsiteCell(site){
+    if(!site) return '—';
+    const href = toSafeHref(site);
+    const text = (site || '').replace(/^https?:\/\//i,'');
+    return `<a href="${escapeHTML(href)}" target="_blank" rel="noopener noreferrer">${escapeHTML(text)}</a>`;
+  }
+  function pruneObject(obj, {maxDepth=3, maxArray=20, maxString=200}={}){
+    const seen = new WeakSet();
+    function _p(v, depth){
+      if(v===null || typeof v!=='object') {
+        if(typeof v==='string' && v.length>maxString) return v.slice(0,maxString)+'…';
+        return v;
+      }
+      if(seen.has(v)) return '[Circular]';
+      seen.add(v);
+      if(Array.isArray(v)){
+        if(depth>=maxDepth) return `[Array(${v.length})]`;
+        const out = v.slice(0,maxArray).map(x=>_p(x, depth+1));
+        if(v.length>maxArray) out.push(`…(+${v.length-maxArray} more)`);
+        return out;
+      }
+      if(depth>=maxDepth) return '[Object]';
+      const out = {};
+      Object.keys(v).sort().forEach(k=>{ out[k] = _p(v[k], depth+1); });
+      return out;
+    }
+    return _p(obj, 0);
+  }
+  function safeStringify(obj){
+    try{
+      return JSON.stringify(pruneObject(obj), null, 2);
+    }catch{
+      return String(obj);
+    }
+  }
+
+  const DEBUG_MAX_LOGS = 200;
+  const debugState = { raw: null, saved: null, logs: [] };
+
+  function renderDebug(){
+    const sections = [];
+    sections.push('=== Latest Edge Response ===');
+    sections.push(debugState.raw ? safeStringify(debugState.raw) : 'None');
+    sections.push('');
+    sections.push('=== Saved Row (after last action) ===');
+    sections.push(debugState.saved ? safeStringify(debugState.saved) : 'None');
+    sections.push('');
+    sections.push('=== Log ===');
+    const lines = debugState.logs.map(entry => {
+      const head = `[${entry.time}] ${entry.message}`;
+      if(entry.obj){
+        const body = safeStringify(entry.obj).split('\n').map(l => '  ' + l).join('\n');
+        return head + '\n' + body;
+      }
+      return head;
+    });
+    sections.push(lines.join('\n'));
+    let text = sections.join('\n').trim();
+
+    // Trim any accidental trailing array/object dump like:  [{"idx":0,...}]
+    const m = text.match(/\s\[\{[\s\S]*\}\]\s*$/);
+    if(m){ text = text.slice(0, text.length - m[0].length).trim(); }
+
+    debugEl.textContent = text;
+  }
+
+  function log(msg, obj){
+    const time = new Date().toLocaleTimeString();
+    debugState.logs.push({ time, message: msg, obj });
+    if(debugState.logs.length > DEBUG_MAX_LOGS) debugState.logs.shift();
+    renderDebug();
+  }
+  function setRaw(obj){ debugState.raw = obj; renderDebug(); }
+  function setSaved(obj){ debugState.saved = obj; renderDebug(); }
+  async function copyDebug(){
+    const text = debugEl.textContent || '';
+    try{
+      await navigator.clipboard.writeText(text);
+      const btn = document.getElementById('btnCopy');
+      const prev = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(()=> btn.textContent = prev, 1200);
+    }catch(e){
+      const btn = document.getElementById('btnCopy');
+      const prev = btn.textContent;
+      btn.textContent = 'Copy failed';
+      setTimeout(()=> btn.textContent = prev, 1200);
+    }
+  }
+  function setProg(n){ progEl.style.width = Math.max(5,Math.min(100,n))+'%'; }
+  function setChip(id){ document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active')); el(id).classList.add('active'); }
+  function setBadge(badge, text, cls){ badge.textContent = text; badge.className = 'badge ' + (cls||''); }
+  function markVerified(){ setChip('st4'); setProg(100); }
+  function kv(k,v){ return `<div style="color:#b5c3e6">${escapeHTML(k)}</div><div>${escapeHTML(v ?? '—')}</div>`; }
+  function kvHtml(k,html){ return `<div style="color:#b5c3e6">${escapeHTML(k)}</div><div>${html || '—'}</div>`; }
+  const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
+  const isEmptyObj = v => isObj(v) && Object.keys(v).length === 0;
+
+  let current = null; // { location_id, provider_id, ods_code, row }
+
+  // ===== Search =====
+  async function search(){
+    const q = el('q').value.trim();
+    if(!q) return;
+    setChip('st2'); setProg(35);
+    el('results').innerHTML = '<div class="item"><small>Searching…</small></div>';
+    let query = supabase.from(TABLE)
+      .select('location_id, location_name, postcode, region, ods_code, provider_id')
+      .ilike('location_name', `%${q}%`)
+      .limit(25);
+    if(el('odsOnly').checked){ query = query.not('ods_code','is',null).neq('ods_code',''); }
+    const { data, error } = await query;
+    if(error){ log('Search error', error); el('results').innerHTML='<div class="item"><small>Error searching.</small></div>'; return; }
+    renderResults(data||[]);
+  }
+  function renderResults(rows){
+    const list = el('results');
+    if(!rows.length){ list.innerHTML = '<div class="item"><small>No matches</small></div>'; return; }
+    list.innerHTML = '';
+    rows.forEach(r=>{
+      const div = document.createElement('div');
+      div.className = 'item';
+      const namePretty = titleCaseSmart(r.location_name || '');
+      const region = r.region || '—';
+      const pc = r.postcode || '—';
+      const ods = r.ods_code ? ('ODS ' + r.ods_code) : '';
+      div.innerHTML =
+        `<div><strong>${escapeHTML(namePretty)}</strong><br><small>${escapeHTML(region)} · ${escapeHTML(pc)}</small></div>`+
+        `<div><small>${escapeHTML(ods)}</small></div>`;
+      div.onclick = ()=> selectPractice(r.location_id);
+      list.appendChild(div);
+    });
+  }
+
+  // ===== Load + show one row =====
+  async function selectPractice(location_id){
+    setChip('st2'); setProg(45);
+    const { data, error } = await supabase.from(TABLE).select('*').eq('location_id', location_id).single();
+    if(error){ log('Load failed', error); return; }
+    current = { location_id: data.location_id, provider_id: data.provider_id||null, ods_code: data.ods_code||null, row: data };
+    renderMeta(data);
+    setSaved({ saved_row: data });
+    logRequiredChecklist(); // NEW: show required fields presence/candidates
+    setBadge(badgeCqc,'CQC: idle','warn');
+    setBadge(badgeOds,'NHS ODS: idle','warn');
+    setBadge(badgeVerify,'DB Save: idle','warn');
+  }
+
+  function renderMeta(row){
+    const addr = [row.address_line_1,row.address_line_2,row.town_city,row.postcode].filter(Boolean).join(', ');
+    const displayName = titleCaseSmart(row.location_name || '');
+    const site = preferWebsite(row);
+
+    const regDate = row.registration_date ? String(row.registration_date).split('T')[0] : '—';
+    const regStatus = row.registration_status || '—';
+
+    el('meta').innerHTML =
+      kv('Location', displayName || '—') +
+      kv('Location ID', row.location_id) +
+      kv('Provider ID', row.provider_id||'—') +
+      kv('ODS code', row.ods_code||'—') +
+      kv('Phone', row.main_phone_number||'—') +
+      kvHtml('Website', asWebsiteCell(site)) +
+      kv('Address', addr||'—') +
+      kv('Region', row.region||'—') +
+      kv('Constituency', row.constituency || '—') +
+      kv('Reg. status', regStatus) +
+      kv('Reg. date', regDate) +
+      kv('Last NHS update', row.last_nhs_update ? String(row.last_nhs_update).replace('T',' ').split('.')[0] : '—');
+  }
+
+  // ===== CQC: Edge with direct fallback =====
+  async function runCQC(){
+    if(!current) return;
+    setChip('st3'); setProg(60);
+    setBadge(badgeCqc,'CQC: running…','warn');
+    const payload = { location_id: current.location_id, provider_id: current.provider_id||null };
+    log(`Calling ${CQC_FN}…`, payload);
+    const beforeRow = current?.row ? JSON.parse(JSON.stringify(current.row)) : null;
+
+    let cqcPayload = null;
+    let edgeUpdated = false;
+    try{
+      const { data: fnRes, error } = await supabase.functions.invoke(CQC_FN, { body: payload });
+      if(error){ throw error; }
+      setRaw(fnRes);
+      edgeUpdated = !!fnRes?.database_updated;
+      cqcPayload = extractCqcPayload(fnRes);
+      if(!cqcPayload || isEmptyObj(cqcPayload)){
+        log('CQC edge returned empty — using direct CQC fallback');
+        cqcPayload = await fetchCqcDirect(current.location_id, current.provider_id);
+      }
+    }catch(e){
+      log('CQC edge error — using direct CQC fallback', String(e));
+      cqcPayload = await fetchCqcDirect(current.location_id, current.provider_id);
+    }
+
+    if(edgeUpdated){
+      const after = await reloadRow();
+      setBadge(badgeCqc,'CQC: OK','ok');
+      if (beforeRow && after) {
+        const diff = diffKeys(beforeRow, after);
+        if (diff.changed.length) {
+          log('Edge (CQC) changed fields', diff);
+          setBadge(badgeVerify, `DB Save: updated (${diff.changed.length})`, 'ok');
+        } else {
+          setBadge(badgeVerify, 'DB Save: no change', 'warn');
+        }
+      } else {
+        setBadge(badgeVerify,'DB Save: verified','ok');
+      }
+      markVerified();
+      return;
+    }
+
+    if(!cqcPayload || isEmptyObj(cqcPayload)){ setBadge(badgeCqc,'CQC: empty','err'); return; }
+
+    const update = buildUpdateFromCqc(cqcPayload);
+    await saveUpdate(update, 'cqc');
+    if(update.ods_code){ current.ods_code = update.ods_code; }
+    setBadge(badgeCqc,'CQC: OK','ok');
+    markVerified();
+  }
+
+  async function fetchCqcDirect(location_id, provider_id){
+    try{
+      const loc = await fetchJson(`https://api.cqc.org.uk/public/v1/locations/${encodeURIComponent(location_id)}`);
+      let prov = null;
+      if(provider_id){ prov = await fetchJson(`https://api.cqc.org.uk/public/v1/providers/${encodeURIComponent(provider_id)}`); }
+      const payload = { location: loc, provider: prov };
+      setRaw({ fallback_cqc: payload });
+      return payload;
+    }catch(e){ log('Direct CQC fetch failed', String(e)); return null; }
+  }
+
+  // ===== ODS: Edge with robust code guessing + direct fallback =====
+  async function runODS(){
+    if(!current) return;
+    setChip('st3'); setProg(70);
+    setBadge(badgeOds,'NHS ODS: running…','warn');
+
+    const payload = { location_id: current.location_id, ods_code: current.ods_code||null };
+    log(`Calling ${ODS_FN}…`, payload);
+    const beforeRow = current?.row ? JSON.parse(JSON.stringify(current.row)) : null;
+
+    let ods = null;
+    let edgeUpdated = false;
+    try{
+      const { data: fnRes, error } = await supabase.functions.invoke(ODS_FN, { body: payload });
+      if(error){ throw error; }
+      setRaw(fnRes);
+      edgeUpdated = !!fnRes?.database_updated;
+      ods = extractOdsPayload(fnRes);
+    }catch(e){
+      log('ODS edge error', String(e));
+    }
+
+    if(edgeUpdated){
+      const after = await reloadRow();
+      setBadge(badgeOds,'NHS ODS: OK','ok');
+      if (beforeRow && after) {
+        const diff = diffKeys(beforeRow, after);
+        if (diff.changed.length) {
+          log('Edge (ODS) changed fields', diff);
+          setBadge(badgeVerify, `DB Save: updated (${diff.changed.length})`, 'ok');
+        } else {
+          setBadge(badgeVerify, 'DB Save: no change', 'warn');
+        }
+      } else {
+        setBadge(badgeVerify,'DB Save: verified','ok');
+      }
+      markVerified();
+      return;
+    }
+
+    if(!ods || isEmptyObj(ods)){
+      const guessed = guessOdsCode(current.row);
+      if(guessed){ log('ODS edge empty — using code from CQC JSON', { guessed_ods_code: guessed }); }
+      else { log('ODS edge empty — no ODS in column/JSON; using name/postcode'); }
+      ods = await fetchOdsDirect(guessed, current.row?.location_name, current.row?.postcode);
+      if(!ods){ setBadge(badgeOds,'NHS ODS: not found','err'); return; }
+      setRaw({ fallback_ods: ods });
+    }
+
+    const update = buildUpdateFromOds(ods);
+    if(!Object.keys(update).length){ setBadge(badgeOds,'NHS ODS: no fields','err'); return; }
+    await saveUpdate(update, 'ods');
+    if(update.ods_code){ current.ods_code = update.ods_code; }
+    setBadge(badgeOds,'NHS ODS: OK','ok');
+    markVerified();
+  }
+
+  // ===== Reload row after DB update =====
+  async function reloadRow(){
+    if(!current) return null;
+    const { data, error } = await supabase
+      .from(TABLE).select('*')
+      .eq('location_id', current.location_id)
+      .single();
+    if(error){ log('Reload failed', error); return null; }
+    current.row = data;
+    current.provider_id = data.provider_id || current.provider_id;
+    current.ods_code = data.ods_code || current.ods_code;
+    renderMeta(data);
+    setSaved({ saved_row: data });
+    logRequiredChecklist(); // NEW: show required fields presence/candidates
+    return data;
+  }
+
+  async function runBoth(){ await runCQC(); await runODS(); }
+
+  // ===== Extractors =====
+  function extractCqcPayload(edge){
+    if(edge?.data?.cqc_location || edge?.data?.cqc_provider) return { location: edge.data.cqc_location, provider: edge.data.cqc_provider };
+    if(edge?.phase1_cqc?.data?.location || edge?.phase1_cqc?.data?.provider) return { location: edge.phase1_cqc.data.location, provider: edge.phase1_cqc.data.provider };
+    if(edge?.data?.location || edge?.data?.provider) return { location: edge.data.location, provider: edge.data.provider };
+    return edge?.data || edge;
+  }
+  function extractOdsPayload(edge){
+    if(edge?.data?.ods_data) return edge.data.ods_data;
+    if(edge?.phase2_ods?.data && Object.keys(edge.phase2_ods.data||{}).length) return edge.phase2_ods.data;
+    // Sometimes functions return the raw ORD object at top level
+    if(edge?.Organisation || edge?.organisation) return edge;
+    return edge?.data || edge;
+  }
+
+  // ===== Guess ODS from row + stored CQC JSON =====
+  function guessOdsCode(row){
+    const fromCol = normalizeOds(current.ods_code || row?.ods_code || '');
+    if(fromCol) return fromCol;
+    let locSrc = null, provSrc = null;
+    try{ locSrc = typeof row?.location_source === 'string' ? JSON.parse(row.location_source) : row?.location_source; }catch(_){}
+    try{ provSrc = typeof row?.provider_source === 'string' ? JSON.parse(row.provider_source) : row?.provider_source; }catch(_){}
+    const candidates = [
+      locSrc?.odsCode, provSrc?.odsCode,
+      locSrc?.identifier?.value, provSrc?.identifier?.value
+    ].filter(Boolean).map(normalizeOds).filter(Boolean);
+    return candidates[0] || '';
+  }
+
+  // ===== Direct ORD fallback =====
+  async function fetchOdsDirect(odsCode, name, postcode){
+    try{
+      if(odsCode){
+        const byCode = await fetchJson(`https://directory.spineservices.nhs.uk/ORD/2-0-0/organisations/${encodeURIComponent(odsCode)}`);
+        if(byCode && !isEmptyObj(byCode)) return byCode;
+      }
+      if(name){
+        const list = await fetchJson(`https://directory.spineservices.nhs.uk/ORD/2-0-0/organisations?Name=${encodeURIComponent(name)}`);
+        const arr = list?.organisations || list?.Organisations || [];
+        if(Array.isArray(arr) && arr.length){
+          if(postcode){
+            const hit = arr.find(o => JSON.stringify(o).toUpperCase().includes(String(postcode).toUpperCase()));
+            return hit || arr[0];
+          }
+          return arr[0];
+        }
+      }
+    }catch(e){
+      const msg = String(e||'');
+      log('ORD fallback error', msg);
+      if(msg.toLowerCase().includes('cors') || msg.includes('TypeError: Failed to fetch')){
+        setBadge(badgeOds,'NHS ODS: CORS blocked','err');
+      }
+      return null;
+    }
+    return null;
+  }
+
+  // ===== Builders =====
+  function buildUpdateFromCqc(cqc){
+    if(!cqc) return {};
+    const loc = cqc.location || cqc.cqc_location || cqc.Location || cqc || null;
+    const prov = cqc.provider || cqc.cqc_provider || cqc.Provider || null;
+    const pick = (a,b,c)=> a!==undefined ? a : (b!==undefined ? b : c);
+    const ratingObj = loc?.currentRatings || null;
+
+    // Derive ODS code from any available field
+    const derivedOds = normalizeOds(
+      loc?.odsCode ||
+      prov?.odsCode ||
+      loc?.identifier?.value ||
+      prov?.identifier?.value
+    );
+
+    // Normalised names + URLs for permanent storage
+    const locName = normaliseNameForStore(pick(loc?.name, prov?.name, undefined));
+    const provName = normaliseNameForStore(prov?.name);
+    const locSite = normaliseUrlForStore(pick(loc?.website, prov?.website, undefined));
+    const provSite = normaliseUrlForStore(prov?.website);
+
+    // Extras to persist
+    const brandId   = pick(prov?.brandId, loc?.brandId, undefined);
+    const brandName = pick(prov?.brandName, loc?.brandName, undefined);
+    const county    = pick(loc?.postalAddressCounty, prov?.postalAddressCounty, undefined);
+    const coHouseNo = prov?.companiesHouseNumber;
+
+    // Contacts + KQR
+    const contacts = pick(prov?.contacts, loc?.contacts, undefined);
+    const kqr = ratingObj?.overall?.keyQuestionRatings;
+
+    return compact({
+      // store native objects in jsonb columns (avoid double-stringifying)
+      location_source: loc || undefined,
+      provider_source: prov || undefined,
+
+      location_name: locName,
+      provider_name: provName,
+      provider_id: pick(loc?.providerId, prov?.providerId, undefined),
+      organisation_type: pick(loc?.organisationType, undefined, undefined),
+      location_type: pick(loc?.type, undefined, undefined),
+      region: pick(loc?.region, undefined, undefined),
+
+      address_line_1: pick(loc?.postalAddressLine1, undefined, undefined),
+      address_line_2: pick(loc?.postalAddressLine2, undefined, undefined),
+      town_city: pick(loc?.postalAddressTownCity, undefined, undefined),
+      postcode: pick(loc?.postalCode, undefined, undefined),
+      uprn: pick(loc?.uprn, undefined, undefined),
+      county: county,
+
+      latitude: (loc?.onspdLatitude!=null)? Number(loc.onspdLatitude) : undefined,
+      longitude:(loc?.onspdLongitude!=null)? Number(loc.onspdLongitude): undefined,
+
+      main_phone_number: pick(loc?.mainPhoneNumber, prov?.mainPhoneNumber, undefined),
+      website: locSite,
+
+      onspd_ccg_code: pick(loc?.onspdCcgCode, undefined, undefined),
+      onspd_ccg_name: pick(loc?.onspdCcgName, undefined, undefined),
+      onspd_icb_code: pick(loc?.onspdIcbCode, undefined, undefined),
+      onspd_icb_name: pick(loc?.onspdIcbName, undefined, undefined),
+
+      ods_ccg_code: pick(loc?.odsCcgCode, undefined, undefined),
+      ods_ccg_name: pick(loc?.odsCcgName, undefined, undefined),
+
+      overall_rating: ratingObj?.overall?.rating,
+      last_inspection_date: pick(loc?.lastInspection?.date, undefined, undefined),
+      last_report_date: pick(loc?.lastReport?.publicationDate, undefined, undefined),
+
+      // ===== REQUIRED (location) =====
+      constituency: pick(loc?.constituency, undefined, undefined),
+      current_ratings: ratingObj || undefined,
+      historic_ratings: loc?.historicRatings || undefined,
+      key_question_ratings: (Array.isArray(kqr) && kqr.length) ? kqr : undefined,
+      registration_status: loc?.registrationStatus || undefined,
+      registration_date: loc?.registrationDate || undefined,
+      contacts: contacts || undefined,
+
+      // arrays/objects straight into jsonb
+      regulated_activities: loc?.regulatedActivities || undefined,
+      inspection_areas: loc?.inspectionAreas || undefined,
+      inspection_categories: loc?.inspectionCategories || undefined,
+      gac_service_types: loc?.gacServiceTypes || undefined,
+      specialisms: loc?.specialisms || undefined,
+
+      // ===== REQUIRED (provider-only) =====
+      provider_website: provSite,
+      provider_main_phone_number: prov?.mainPhoneNumber,
+      provider_registration_status: prov?.registrationStatus,
+      provider_registration_date: prov?.registrationDate,
+      ownership_type: prov?.ownershipType,
+      provider_region: prov?.region,
+      provider_address_line_1: prov?.postalAddressLine1,
+      provider_address_line_2: prov?.postalAddressLine2,
+      provider_town_city: prov?.postalAddressTownCity,
+      provider_postcode: prov?.postalCode,
+      provider_location_ids: prov?.locationIds || undefined,
+      provider_inspection_areas: prov?.inspectionAreas || undefined,
+      provider_brand_id: brandId,
+      provider_brand_name: brandName,
+      companies_house_number: coHouseNo,
+
+      provider_constituency: prov?.constituency || undefined,
+      provider_county: prov?.postalAddressCounty || undefined,
+      provider_inspection_directorate: prov?.inspectionDirectorate || undefined,
+      provider_latitude: (prov?.onspdLatitude!=null)? Number(prov.onspdLatitude) : undefined,
+      provider_longitude:(prov?.onspdLongitude!=null)? Number(prov.onspdLongitude): undefined,
+      provider_local_authority: prov?.localAuthority || undefined,
+      provider_onspd_icb_code: prov?.onspdIcbCode || undefined,
+      provider_onspd_icb_name: prov?.onspdIcbName || undefined,
+      provider_type: prov?.type || prov?.organisationType || undefined,
+      provider_uprn: prov?.uprn || undefined,
+
+      ods_code: derivedOds || undefined,
+      updated_at: new Date().toISOString(),
+    });
+  }
+
+  function buildUpdateFromOds(ods){
+    if(!ods || isEmptyObj(ods)) return {};
+
+    // Support both FHIR-ish and ORD shapes
+    const org = ods.organisation || ods.Organisation || {};
+    const contactsOds = Array.isArray(ods?.Contacts?.Contact) ? ods.Contacts.Contact
+                      : (Array.isArray(ods?.contacts) ? ods.contacts : undefined);
+
+    // --- Identifier / ODS code ---
+    let ident = '';
+    if(ods.identifier?.value){
+      ident = ods.identifier.value;
+    } else if(Array.isArray(ods.identifier)){
+      const m = ods.identifier.find(x => String(x.system||'').toLowerCase().includes('ods'));
+      ident = m?.value || ods.identifier[0]?.value || '';
+    } else if(typeof ods.identifier === 'string'){
+      ident = ods.identifier;
+    }
+    if(!ident){
+      const orgId = ods.OrgId || org.OrgId;
+      ident = orgId?.extension || orgId?.value || '';
+    }
+    if(!ident && ods.code){ ident = ods.code; }
+
+    // --- Contacts / telecom ---
+    let phone = null;
+    let url = ods.website || null;
+
+    const telecom = Array.isArray(ods.telecom) ? ods.telecom : [];
+    if(telecom.length){
+      phone = telecom.find(t => String(t.system||'').toLowerCase() === 'phone')?.value || phone;
+      url   = telecom.find(t => String(t.system||'').toLowerCase() === 'url')?.value || url;
+    }
+    if(!phone && Array.isArray(ods.contacts)){
+      phone = ods.contacts.find(t => (t.system||'').toLowerCase()==='phone')?.value || null;
+    }
+    if(Array.isArray(ods.Contacts?.Contact)){
+      const tel = ods.Contacts.Contact.find(c => String(c.type||'').toLowerCase().includes('tel'));
+      const web = ods.Contacts.Contact.find(c => String(c.type||'').toLowerCase().includes('web'));
+      phone = tel?.value || phone;
+      url = web?.value || url;
+    }
+
+    // --- Address mapping ---
+    const addr = Array.isArray(ods.address) ? ods.address[0]
+               : (ods.address || ods.addresses || org.address || ods.GeoLoc?.Location || null);
+    const line = Array.isArray(addr?.line) ? addr.line : [];
+    const line1 = addr?.line1 || line[0] || addr?.AddrLn1;
+    const line2 = addr?.line2 || line[1] || addr?.AddrLn2;
+    const city  = addr?.city || addr?.town || addr?.Town;
+    const pc    = addr?.postalCode || addr?.postcode || addr?.PostCode;
+    const county = addr?.county || addr?.County;
+
+    const rawName = ods.name || org.Name || ods.Organisation?.Name;
+
+    return compact({
+      // store raw ODS object (jsonb)
+      nhs_ods_data: ods,
+      last_nhs_update: new Date().toISOString(),
+      ods_code: normalizeOds(ident) || undefined,
+
+      location_name: normaliseNameForStore(rawName),
+      main_phone_number: phone || undefined,
+      website: normaliseUrlForStore(url),
+      address_line_1: line1 || undefined,
+      address_line_2: line2 || undefined,
+      town_city: city || undefined,
+      postcode: pc || undefined,
+      county: county || undefined,
+
+      // persist ODS contact structure into jsonb if present
+      contacts: contactsOds || undefined,
+
+      updated_at: new Date().toISOString(),
+    });
+  }
+
+  // ===== Save + verify (always re-select after save) =====
+  async function saveUpdate(update, label){
+    if(!current) return;
+
+    const clean = compact(update);
+
+    // BEFORE snapshot
+    const { data: before } = await supabase
+      .from(TABLE).select('*')
+      .eq('location_id', current.location_id)
+      .single();
+
+    let updated = null, updErr = null, zeroRows = false;
+
+    if(Object.keys(clean).length){
+      const res = await supabase
+        .from(TABLE)
+        .update(clean)
+        .eq('location_id', current.location_id)
+        .select('*')
+        .maybeSingle(); // avoid PGRST116 when 0 rows are returned
+
+      updated = res.data;
+      updErr = res.error;
+
+      if(!updated && !updErr){ zeroRows = true; }
+      if(updErr && updErr.code === 'PGRST116'){ zeroRows = true; updErr = null; }
+      if(updErr){
+        log('Save failed', updErr);
+      }
+    }else{
+      log(`${label}: nothing to update`);
+    }
+
+    // AFTER snapshot (always reload to verify, even if update returned nothing)
+    const { data: after, error: afterErr } = await supabase
+      .from(TABLE).select('*')
+      .eq('location_id', current.location_id)
+      .single();
+
+    if(afterErr){ log('Reload after save failed', afterErr); }
+
+    const finalRow = after || updated || before;
+    if(finalRow){
+      current.row = finalRow;
+      current.provider_id = finalRow.provider_id || current.provider_id;
+      current.ods_code = finalRow.ods_code || current.ods_code;
+      renderMeta(finalRow);
+      setSaved({ saved_row: finalRow });
+    }
+
+    const diff = diffKeys(before||{}, (after||{}));
+    if(diff.changed.length){
+      log(`Saved (${label})`, { keys: Object.keys(clean) });
+      log('Changed fields', diff);
+      setBadge(badgeVerify, `DB Save: updated (${diff.changed.length})`, 'ok');
+      setProg(100);
+    }else{
+      if(Object.keys(clean).length && zeroRows){
+        log('Save returned 0 rows (likely RLS / no match). Verified no change on reload.');
+      }
+      if (Object.keys(clean).length){
+        setBadge(badgeVerify,'DB Save: already up to date','warn');
+      } else {
+        setBadge(badgeVerify,'DB Save: no change','warn');
+      }
+    }
+  }
+
+  // ===== Utilities =====
+  async function fetchJson(url){
+    try{
+      const res = await fetch(url, { headers:{ 'Accept':'application/json' }, cache:'no-store', mode:'cors' });
+      if(res.type === 'opaque'){ throw new Error('CORS: opaque response'); }
+      if(!res.ok){ throw new Error(`${res.status} ${res.statusText}`); }
+      const text = await res.text();
+      try{
+        return JSON.parse(text);
+      }catch{
+        throw new Error('Invalid JSON from '+url);
+      }
+    }catch(e){
+      const msg = String(e||'');
+      if(msg.toLowerCase().includes('cors') || msg.includes('TypeError: Failed to fetch')){
+        log('Network/CORS when fetching '+url, msg);
+      }
+      throw e;
+    }
+  }
+  function compact(obj){ const out={}; Object.entries(obj||{}).forEach(([k,v])=>{ if(v!==undefined) out[k]=v; }); return out; }
+  function normalizeOds(c){ if(!c) return ''; const u=String(c).trim().toUpperCase(); return /^[A-Z0-9]{3,12}$/.test(u)?u:''; }
+  function diffKeys(a,b){
+    const keys = Array.from(new Set([...Object.keys(a||{}),...Object.keys(b||{})]));
+    const changed = []; const from={}; const to={};
+    keys.forEach(k=>{
+      const va = a?.[k]; const vb = b?.[k];
+      const same = JSON.stringify(va)===JSON.stringify(vb);
+      if(!same){ changed.push(k); from[k]=va; to[k]=vb; }
+    });
+    return { changed, from, to };
+  }
+
+  // ===== Required fields checklist (for the debugger) =====
+  const REQUIRED_FIELDS = {
+    location: ['constituency','contacts','current_ratings','historic_ratings','key_question_ratings','registration_date','registration_status'],
+    provider: ['provider_constituency','provider_county','provider_inspection_directorate','provider_latitude','provider_longitude','provider_local_authority','provider_onspd_icb_code','provider_onspd_icb_name','provider_type','provider_uprn'],
+  };
+
+  function _preview(v){
+    if(v===null || v===undefined) return '—';
+    try{
+      if(Array.isArray(v)) return v.length ? `[Array(${v.length})]` : '[]';
+      if(typeof v === 'object') {
+        const keys = Object.keys(v);
+        return keys.length ? `{${keys.slice(0,4).join(',')}${keys.length>4? ',…':''}}` : '{}';
+      }
+      const s = String(v);
+      return s.length>60 ? s.slice(0,60)+'…' : s;
+    }catch{ return '—'; }
+  }
+
+  function _parseJsonMaybe(v){ if(!v) return null; if(typeof v==='object') return v; try{ return JSON.parse(v); }catch{ return null; } }
+
+  function extractSources(row){
+    const loc = _parseJsonMaybe(row?.location_source);
+    const prov = _parseJsonMaybe(row?.provider_source);
+    const ods = _parseJsonMaybe(row?.nhs_ods_data);
+    return { loc, prov, ods };
+  }
+
+  function computeRequiredStatus(row){
+    const { loc, prov, ods } = extractSources(row || {});
+    const saved = {};
+    const candidates = {};
+
+    function setCand(field, valLoc, valProv, valOds){
+      candidates[field] = {
+        cqc_location: _preview(valLoc),
+        cqc_provider: _preview(valProv),
+        ods: _preview(valOds),
+      };
+    }
+
+    // Location-required
+    saved.constituency = _preview(row?.constituency);
+    setCand('constituency', loc?.constituency, prov?.constituency, undefined);
+
+    saved.contacts = _preview(row?.contacts);
+    setCand('contacts', loc?.contacts, prov?.contacts, ods?.Contacts?.Contact || ods?.contacts);
+
+    saved.current_ratings = _preview(row?.current_ratings);
+    setCand('current_ratings', loc?.currentRatings, undefined, undefined);
+
+    saved.historic_ratings = _preview(row?.historic_ratings);
+    setCand('historic_ratings', loc?.historicRatings, undefined, undefined);
+
+    saved.key_question_ratings = _preview(row?.key_question_ratings);
+    setCand('key_question_ratings', loc?.currentRatings?.overall?.keyQuestionRatings, undefined, undefined);
+
+    saved.registration_date = _preview(row?.registration_date);
+    setCand('registration_date', loc?.registrationDate, undefined, undefined);
+
+    saved.registration_status = _preview(row?.registration_status);
+    setCand('registration_status', loc?.registrationStatus, undefined, undefined);
+
+    // Provider-only
+    saved.provider_constituency = _preview(row?.provider_constituency);
+    setCand('provider_constituency', undefined, prov?.constituency, undefined);
+
+    saved.provider_county = _preview(row?.provider_county);
+    setCand('provider_county', undefined, prov?.postalAddressCounty, undefined);
+
+    saved.provider_inspection_directorate = _preview(row?.provider_inspection_directorate);
+    setCand('provider_inspection_directorate', undefined, prov?.inspectionDirectorate, undefined);
+
+    saved.provider_latitude = _preview(row?.provider_latitude);
+    saved.provider_longitude = _preview(row?.provider_longitude);
+    setCand('provider_latitude', undefined, prov?.onspdLatitude, undefined);
+    setCand('provider_longitude', undefined, prov?.onspdLongitude, undefined);
+
+    saved.provider_local_authority = _preview(row?.provider_local_authority);
+    setCand('provider_local_authority', undefined, prov?.localAuthority, undefined);
+
+    saved.provider_onspd_icb_code = _preview(row?.provider_onspd_icb_code);
+    saved.provider_onspd_icb_name = _preview(row?.provider_onspd_icb_name);
+    setCand('provider_onspd_icb_code', undefined, prov?.onspdIcbCode, undefined);
+    setCand('provider_onspd_icb_name', undefined, prov?.onspdIcbName, undefined);
+
+    saved.provider_type = _preview(row?.provider_type);
+    setCand('provider_type', undefined, (prov?.type || prov?.organisationType), undefined);
+
+    saved.provider_uprn = _preview(row?.provider_uprn);
+    setCand('provider_uprn', undefined, prov?.uprn, undefined);
+
+    // lists
+    function isOk(val){ return val && val !== '—'; }
+    const ok = [];
+    const missing = [];
+    Object.entries(saved).forEach(([k,v]) => (isOk(v) ? ok : missing).push(k));
+
+    return { ok, missing, saved, candidates };
+  }
+
+  function logRequiredChecklist(){
+    if(!current || !current.row) return;
+    const status = computeRequiredStatus(current.row);
+    log('Required fields present (saved)', { ok: status.ok, missing: status.missing });
+    if(status.missing.length){
+      const hints = {};
+      status.missing.forEach(f => { hints[f] = status.candidates[f]; });
+      log('Available in sources for missing fields', hints);
+    }
+  }
+
+  // ===== Wire up =====
+  el('go').onclick = search;
+  el('q').addEventListener('keydown', e=>{ if(e.key==='Enter') search(); });
+  el('odsOnly').addEventListener('change', ()=>{ if(el('q').value.trim()) search(); });
+  el('btnReload').onclick = ()=> current && selectPractice(current.location_id);
+  el('btnCQC').onclick = runCQC;
+  el('btnODS').onclick = runODS;
+  el('btnBoth').onclick = runBoth;
+
+  // focus
+  window.addEventListener('load', ()=> el('q').focus());
+  el('btnCopy').onclick = copyDebug;
+</script>
+</body>
+</html>

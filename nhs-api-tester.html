@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NHS API Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
+        input {
+            padding: 8px;
+            font-size: 16px;
+            flex: 1;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #0070f3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .results {
+            margin-top: 20px;
+        }
+        pre {
+            background-color: #f6f8fa;
+            border-radius: 4px;
+            padding: 16px;
+            overflow: auto;
+        }
+        .endpoint {
+            margin-bottom: 20px;
+        }
+        .success {
+            color: green;
+        }
+        .error {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <h1>NHS API Test</h1>
+    <div class="container">
+        <div>
+            <p>This tool tests different NHS API endpoints for ODS code lookups to determine which one works best.</p>
+        </div>
+        
+        <div class="input-group">
+            <input type="text" id="odsCode" placeholder="Enter ODS Code (e.g., G0102001)" value="G0102001">
+            <button id="testButton">Test NHS API</button>
+        </div>
+        
+        <div class="results" id="results">
+            <p>Enter an ODS code above and click "Test NHS API" to see the results.</p>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = "https://zezbynzaksxawykkmuvi.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inplemj5bnpha3N4YXd5a2ttdXZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE2NTU5MzU5NjIsImV4cCI6MTk3MTUxMTk2Mn0.H-qhxGpJtHGCSRPJEFjgbBDzBlQ0MUPD1RnHfnOiLXY";
+        
+        // Create Supabase client properly
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        document.getElementById('testButton').addEventListener('click', async () => {
+            const odsCode = document.getElementById('odsCode').value.trim();
+            if (!odsCode) {
+                alert('Please enter an ODS code');
+                return;
+            }
+            
+            document.getElementById('results').innerHTML = '<p>Testing NHS API endpoints for ODS code: ' + odsCode + '...</p>';
+            
+            try {
+                const { data, error } = await supabase.functions.invoke('test-nhs-api', {
+                    body: { ods_code: odsCode }
+                });
+                
+                if (error) {
+                    document.getElementById('results').innerHTML = `<p class="error">Error: ${error.message}</p>`;
+                    return;
+                }
+                
+                let resultsHtml = `<h2>Results for ODS Code: ${odsCode}</h2>`;
+                
+                // Primary Endpoint
+                resultsHtml += buildEndpointResult(
+                    'Primary Endpoint (api.nhs.uk)',
+                    data.results.primary_endpoint
+                );
+                
+                // Fallback Endpoint
+                resultsHtml += buildEndpointResult(
+                    'Fallback Endpoint (directory.spineservices.nhs.uk)',
+                    data.results.fallback_endpoint
+                );
+                
+                // Directory API Endpoint
+                resultsHtml += buildEndpointResult(
+                    'Directory API Endpoint (directory-api.nhs.uk)',
+                    data.results.directory_api_endpoint
+                );
+                
+                document.getElementById('results').innerHTML = resultsHtml;
+            } catch (err) {
+                document.getElementById('results').innerHTML = `<p class="error">Error: ${err.message}</p>`;
+            }
+        });
+        
+        function buildEndpointResult(name, result) {
+            let html = `<div class="endpoint">
+                <h3>${name}: <span class="${result.success ? 'success' : 'error'}">${result.success ? 'SUCCESS' : 'FAILED'}</span></h3>`;
+                
+            if (result.success) {
+                html += `<p>Status: ${result.status}</p>
+                    <p>Data Preview:</p>
+                    <pre>${formatJsonPreview(result.data)}</pre>`;
+            } else {
+                html += `<p>Status: ${result.status || 'N/A'}</p>
+                    <p>Error: ${result.error || 'Unknown error'}</p>`;
+            }
+            
+            html += '</div>';
+            return html;
+        }
+        
+        function formatJsonPreview(data) {
+            return JSON.stringify(data, null, 2);
+        }
+    </script>
+</body>
+</html>
