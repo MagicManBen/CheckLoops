@@ -6633,35 +6633,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
                   <!-- Supabase Connection -->
                   <div class="debug-step" data-step="connection">
-                    <span class="debug-icon">⏳</span>
                     <span class="debug-text">Connect to Supabase API</span>
                     <div class="debug-detail" style="margin-left:20px; color:#666; display:none;"></div>
                   </div>
 
                   <!-- Site Invites Insert -->
                   <div class="debug-step" data-step="site_invites">
-                    <span class="debug-icon">⏳</span>
                     <span class="debug-text">Insert to site_invites table</span>
                     <div class="debug-detail" style="margin-left:20px; color:#666; display:none;"></div>
                   </div>
 
                   <!-- Master Users Insert -->
                   <div class="debug-step" data-step="edge_function">
-                    <span class="debug-icon">⏳</span>
                     <span class="debug-text">Call send-invitation Edge Function</span>
                     <div class="debug-detail" style="margin-left:20px; color:#666; display:none;"></div>
                   </div>
 
                   <!-- Send Email -->
                   <div class="debug-step" data-step="email">
-                    <span class="debug-icon">⏳</span>
                     <span class="debug-text">Edge Function email response</span>
                     <div class="debug-detail" style="margin-left:20px; color:#666; display:none;"></div>
                   </div>
 
                   <!-- Complete -->
                   <div class="debug-step" data-step="complete">
-                    <span class="debug-icon">⏳</span>
                     <span class="debug-text">Process complete</span>
                     <div class="debug-detail" style="margin-left:20px; color:#666; display:none;"></div>
                   </div>
@@ -7857,14 +7852,69 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
           </div>
 
-          <!-- Staff Entitlement Card Layout -->
-          <div id="entitlements-filter-container">
-            <!-- Filter controls will be loaded here -->
+          <!-- Staff Holiday Table -->
+          <div style="margin-top: 20px; padding: 24px; background: var(--glass); border-radius: 16px; border: 1px solid var(--border-color); box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div class="panel-header" style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+              <h3 class="panel-title">Staff Holiday Overview</h3>
+              <button class="btn" id="refresh-staff-holidays" onclick="loadStaffHolidayTable()" style="padding: 8px 16px;">
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M4 4v6h6M20 20v-6h-6M4 10l2.5-2.5C8 6 10.5 5 13 5s5 1 6.5 2.5L22 10M2 14l2.5 2.5C6 18 8.5 19 11 19s5-1 6.5-2.5L20 14"/>
+                </svg>
+                Refresh
+              </button>
+            </div>
+
+            <!-- Bulk Actions -->
+            <div style="padding: 16px; background: rgba(255,255,255,0.05); border-radius: 12px; margin-bottom: 20px; border: 1px solid var(--border-color);">
+              <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <label style="color: var(--white); font-weight: 500;">Set All Multiplier:</label>
+                  <input type="number" id="bulk-multiplier" min="0" max="52" step="1" placeholder="10"
+                    style="width: 60px; padding: 6px; border-radius: 6px; background: var(--glass); border: 1px solid var(--border-color); color: var(--white);">
+                  <button onclick="setAllMultiplier()" class="btn" style="padding: 6px 12px; background: var(--accent);">
+                    Apply to All
+                  </button>
+                </div>
+                <button onclick="unlockAllHolidays()" class="btn" style="padding: 6px 12px; background: var(--success);">
+                  Unlock All Holidays
+                </button>
+                <button onclick="setAllManual()" class="btn" style="padding: 6px 12px; background: var(--warning);">
+                  Set All to Manual
+                </button>
+                <button onclick="setAllToMultiplier()" class="btn" style="padding: 6px 12px; background: var(--info);">
+                  Set All to Multiplier Mode
+                </button>
+                <button onclick="saveAllHolidays()" class="btn" style="padding: 6px 12px; background: #28a745; color: white; font-weight: 600;">
+                  💾 Save All Changes
+                </button>
+                <button onclick="testSupabaseConnection()" class="btn" style="padding: 6px 12px; background: #6c757d; color: white;">
+                  🔌 Test Connection
+                </button>
+              </div>
+            </div>
+
+            <div style="overflow-x: auto; border-radius: 12px; border: 2px solid #ddd; background: white;">
+              <table id="staff-holiday-table" style="width: 100%; border-collapse: collapse; background: white;">
+                <thead>
+                  <tr>
+                    <th style="text-align: left; padding: 14px; font-weight: 600; color: #333; border-bottom: 2px solid #ddd; border-right: 1px solid #ddd;">Staff Name</th>
+                    <th style="text-align: center; padding: 14px; font-weight: 600; color: #333; border-bottom: 2px solid #ddd; border-right: 1px solid #ddd;">Weekly Total</th>
+                    <th style="text-align: center; padding: 14px; font-weight: 600; color: #333; border-bottom: 2px solid #ddd; border-right: 1px solid #ddd;">Weeks Multiplier</th>
+                    <th style="text-align: center; padding: 14px; font-weight: 600; color: #333; border-bottom: 2px solid #ddd; border-right: 1px solid #ddd;">Override</th>
+                    <th style="text-align: right; padding: 14px; font-weight: 600; color: #333; border-bottom: 2px solid #ddd; border-right: 1px solid #ddd;">Entitlement</th>
+                    <th style="text-align: right; padding: 14px; font-weight: 600; color: #333; border-bottom: 2px solid #ddd; border-right: 1px solid #ddd;">Booked</th>
+                    <th style="text-align: right; padding: 14px; font-weight: 600; color: #333; border-bottom: 2px solid #ddd; border-right: 1px solid #ddd;">Remaining</th>
+                    <th style="text-align: center; padding: 14px; font-weight: 600; color: #333; border-bottom: 2px solid #ddd; border-right: 1px solid #ddd;">Unlock</th>
+                    <th style="text-align: center; padding: 14px; font-weight: 600; color: #333; border-bottom: 2px solid #ddd;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="staff-holiday-tbody">
+                  <!-- Staff rows will be populated here -->
+                </tbody>
+              </table>
+            </div>
           </div>
 
-          <div id="entitlements-cards-container" style="margin-top: 20px;">
-            <!-- Staff cards will be loaded here -->
-          </div>
 
           <!-- Holiday Settings Section -->
           <div style="margin-top: 40px; padding: 24px; background: var(--glass); border-radius: 16px; border: 1px solid var(--border-color); box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
@@ -10810,9 +10860,9 @@ window.PIR_DEFINITIONS_DATA = [
         break;
       case 'entitlement-management':
         loadHolidayData();
-        // Ensure card layout is loaded
-        if (typeof loadStaffEntitlementCards === 'function') {
-          loadStaffEntitlementCards();
+        // Load the new staff holiday table
+        if (typeof loadStaffHolidayTable === 'function') {
+          loadStaffHolidayTable();
         }
         break;
     }
@@ -11649,19 +11699,7 @@ window.PIR_DEFINITIONS_DATA = [
     const stepElement = document.querySelector(`.debug-step[data-step="${step}"]`);
     if (!stepElement) return;
 
-    const iconElement = stepElement.querySelector('.debug-icon');
     const detailElement = stepElement.querySelector('.debug-detail');
-
-    // Update icon based on status
-    if (status === 'running') {
-      iconElement.textContent = '🔄';
-    } else if (status === 'success') {
-      iconElement.textContent = '✅';
-    } else if (status === 'error') {
-      iconElement.textContent = '❌';
-    } else if (status === 'warning') {
-      iconElement.textContent = '⚠️';
-    }
 
     // Add detail if provided
     if (detail && detailElement) {
@@ -11698,7 +11736,6 @@ window.PIR_DEFINITIONS_DATA = [
     invitationDebugLog = [];
     debugStartTime = Date.now();
     document.querySelectorAll('.debug-step').forEach(step => {
-      step.querySelector('.debug-icon').textContent = '⏳';
       step.querySelector('.debug-detail').style.display = 'none';
       step.querySelector('.debug-detail').innerHTML = '';
     });
@@ -22829,6 +22866,1351 @@ window.refreshStaffData = refreshStaffData;
     alert('View user requests coming soon');
   };
 
+  // Load staff holiday table
+  window.loadStaffHolidayTable = async function() {
+    if (!window.supabase) {
+      console.error('Supabase not initialized');
+      return;
+    }
+
+    try {
+      const siteId = window.ctx?.site_id || 2;
+      console.log('Loading staff holiday table for site_id:', siteId);
+
+      // Fetch all users from master_users
+      const { data: users, error } = await window.supabase
+        .from('master_users')
+        .select(`
+          id,
+          auth_user_id,
+          full_name,
+          email,
+          is_gp,
+          total_holiday_entitlement,
+          holiday_entitlement,
+          approved_holidays_used,
+          holiday_taken,
+          holiday_remaining,
+          holiday_approved,
+          holiday_multiplier,
+          manual_override,
+          weekly_hours,
+          weekly_sessions,
+          monday_hours, tuesday_hours, wednesday_hours, thursday_hours, friday_hours,
+          monday_sessions, tuesday_sessions, wednesday_sessions, thursday_sessions, friday_sessions
+        `)
+        .eq('site_id', siteId)
+        .order('full_name');
+
+      if (error) {
+        console.error('Error loading users:', error);
+        document.getElementById('staff-holiday-tbody').innerHTML = `
+          <tr><td colspan="9" style="text-align:center; padding:20px; color:var(--danger);">Error loading staff data: ${error.message}</td></tr>
+        `;
+        return;
+      }
+
+      const tbody = document.getElementById('staff-holiday-tbody');
+      if (!tbody) return;
+
+      // Helper function to convert hours to HH:MM format
+      const hoursToHHMM = (hours) => {
+        if (!hours && hours !== 0) return '00:00';
+        const h = Math.floor(hours);
+        const m = Math.round((hours - h) * 60);
+        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+      };
+
+      // Helper function to format sessions
+      const formatSessions = (sessions) => {
+        if (!sessions && sessions !== 0) return '0';
+        return `${sessions}`;
+      };
+
+      // Build table rows
+      const rows = users.map(user => {
+        const isGP = user.is_gp || false;
+
+        // Calculate weekly total
+        let weeklyTotal;
+        if (isGP) {
+          weeklyTotal = user.weekly_sessions ||
+            (user.monday_sessions || 0) + (user.tuesday_sessions || 0) +
+            (user.wednesday_sessions || 0) + (user.thursday_sessions || 0) +
+            (user.friday_sessions || 0);
+        } else {
+          weeklyTotal = user.weekly_hours ||
+            (user.monday_hours || 0) + (user.tuesday_hours || 0) +
+            (user.wednesday_hours || 0) + (user.thursday_hours || 0) +
+            (user.friday_hours || 0);
+        }
+
+        // Get multiplier value (default to 10 if not set)
+        const savedMultiplier = user.holiday_multiplier || 10;
+        const useMultiplier = !user.manual_override;
+
+        // Calculate entitlement based on mode
+        let finalEntitlement;
+        if (user.manual_override && (user.total_holiday_entitlement || user.holiday_entitlement)) {
+          // Use manual override if set
+          finalEntitlement = user.total_holiday_entitlement || user.holiday_entitlement;
+        } else {
+          // Use multiplier
+          finalEntitlement = weeklyTotal * savedMultiplier;
+        }
+
+        // Calculate booked/taken holidays
+        const booked = user.approved_holidays_used || user.holiday_taken || 0;
+
+        // Calculate remaining
+        const remaining = user.holiday_remaining !== null && user.holiday_remaining !== undefined
+          ? user.holiday_remaining
+          : (finalEntitlement - booked);
+
+        // Format display values based on GP status
+        let weeklyDisplay, entitlementDisplay, bookedDisplay, remainingDisplay;
+
+        if (isGP) {
+          weeklyDisplay = `${formatSessions(weeklyTotal)} sessions`;
+          entitlementDisplay = `${formatSessions(finalEntitlement)} sessions`;
+          bookedDisplay = `${formatSessions(booked)} sessions`;
+          remainingDisplay = `${formatSessions(remaining)} sessions`;
+        } else {
+          weeklyDisplay = hoursToHHMM(weeklyTotal);
+          entitlementDisplay = hoursToHHMM(finalEntitlement);
+          bookedDisplay = hoursToHHMM(booked);
+          remainingDisplay = hoursToHHMM(remaining);
+        }
+
+        return `
+          <tr style="border-bottom: 1px solid #ddd;">
+            <td style="padding: 14px; color: #333; border-right: 1px solid #ddd;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #007bff, #6f42c1); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 12px;">
+                  ${user.full_name ? user.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2) : '??'}
+                </div>
+                <span style="font-weight: 500; color: #333;">${user.full_name || 'Unknown'}</span>
+                ${isGP ? '<span style="background: #007bff; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 8px;">GP</span>' : ''}
+              </div>
+            </td>
+            <td style="padding: 14px; text-align: center; color: #333; font-weight: 600; border-right: 1px solid #ddd;">
+              <span id="weekly-total-${user.id}">${weeklyDisplay}</span>
+            </td>
+            <td style="padding: 14px; text-align: center; border-right: 1px solid #ddd;">
+              <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <input type="checkbox"
+                  id="use-multiplier-${user.id}"
+                  ${useMultiplier ? 'checked' : ''}
+                  onchange="toggleMultiplierMode('${user.id}', '${user.auth_user_id}', this.checked)"
+                  style="cursor: pointer; width: 18px; height: 18px;"
+                  title="Use weeks multiplier">
+                <input type="number"
+                  id="multiplier-${user.id}"
+                  data-user-id="${user.auth_user_id}"
+                  data-weekly="${weeklyTotal}"
+                  data-is-gp="${isGP}"
+                  value="${savedMultiplier}"
+                  min="0"
+                  max="52"
+                  step="1"
+                  ${!useMultiplier ? 'disabled' : ''}
+                  oninput="liveUpdateEntitlement('${user.id}', '${user.auth_user_id}', this.value, ${weeklyTotal}, ${isGP})"
+                  style="width: 70px; padding: 6px; border-radius: 6px; background: white; border: 1px solid ${!useMultiplier ? '#ddd' : '#007bff'}; color: ${!useMultiplier ? '#999' : '#333'}; text-align: center; font-weight: 600;">
+                <span style="color: #666; font-size: 12px;">weeks</span>
+              </div>
+            </td>
+            <td style="padding: 14px; text-align: center; border-right: 1px solid #ddd;">
+              <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <input type="checkbox"
+                  id="use-override-${user.id}"
+                  ${!useMultiplier ? 'checked' : ''}
+                  onchange="toggleOverrideMode('${user.id}', '${user.auth_user_id}', this.checked)"
+                  style="cursor: pointer; width: 18px; height: 18px;"
+                  title="Use manual override">
+                <input type="number"
+                  id="override-${user.id}"
+                  placeholder="${Math.round(weeklyTotal * savedMultiplier)}"
+                  value="${user.manual_override ? (user.total_holiday_entitlement || user.holiday_entitlement || '') : ''}"
+                  ${useMultiplier ? 'disabled' : ''}
+                  oninput="liveUpdateOverrideEntitlement('${user.id}', this.value, ${isGP})"
+                  style="width: 80px; padding: 6px; border-radius: 6px; background: white; border: 1px solid ${useMultiplier ? '#ddd' : '#ffc107'}; color: ${useMultiplier ? '#999' : '#333'}; text-align: center; font-weight: 600;">
+              </div>
+            </td>
+            <td style="padding: 14px; text-align: right; color: #333; font-weight: 700; font-size: 15px; border-right: 1px solid #ddd;">
+              <span id="entitlement-${user.id}">${entitlementDisplay}</span>
+            </td>
+            <td style="padding: 14px; text-align: right; color: #333; border-right: 1px solid #ddd;">
+              <span id="booked-${user.id}" data-value="${booked}">${bookedDisplay}</span>
+            </td>
+            <td style="padding: 14px; text-align: right; color: ${remaining < 0 ? '#dc3545' : '#28a745'}; font-weight: 700; font-size: 15px; border-right: 1px solid #ddd;">
+              <span id="remaining-${user.id}">${remainingDisplay}</span>
+            </td>
+            <td style="padding: 14px; text-align: center; border-right: 1px solid #ddd;">
+              <input type="checkbox"
+                id="unlock-${user.id}"
+                ${user.holiday_approved ? 'checked' : ''}
+                onchange="toggleHolidaysApproval('${user.auth_user_id}', this.checked)"
+                style="cursor: pointer; width: 18px; height: 18px; accent-color: #28a745;"
+                title="Approve/unlock holidays for booking">
+            </td>
+            <td style="padding: 14px; text-align: center;">
+              <button
+                id="save-btn-${user.id}"
+                onclick="saveRowData('${user.id}', '${user.auth_user_id}', ${isGP})"
+                style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                💾 Save
+              </button>
+              <span id="save-status-${user.id}" style="margin-left: 8px; font-size: 12px; display: none;"></span>
+              <button
+                onclick="showDebugForRow('${user.id}', '${user.auth_user_id}', ${isGP})"
+                style="padding: 4px 8px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 10px; margin-left: 4px;"
+                title="Debug info">
+                🐛
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      tbody.innerHTML = rows || '<tr><td colspan="9" style="text-align:center; padding:20px; color:var(--muted);">No staff found</td></tr>';
+
+      console.log(`Loaded ${users.length} staff in holiday table`);
+
+    } catch (error) {
+      console.error('Error loading staff holiday table:', error);
+      document.getElementById('staff-holiday-tbody').innerHTML = `
+        <tr><td colspan="9" style="text-align:center; padding:20px; color:var(--danger);">Error: ${error.message}</td></tr>
+      `;
+    }
+  };
+
+  // Toggle holidays approval for a user
+  window.toggleHolidaysApproval = async function(userId, isApproved) {
+    if (!window.supabase) return;
+
+    try {
+      const { error } = await window.supabase
+        .from('master_users')
+        .update({ holiday_approved: isApproved })
+        .eq('auth_user_id', userId);
+
+      if (error) throw error;
+
+      showToast(`Holidays ${isApproved ? 'approved/unlocked' : 'locked'} successfully`, 'success');
+    } catch (error) {
+      console.error('Error updating holidays approval status:', error);
+      showToast('Failed to update holidays approval status', 'error');
+      // Reload to reset checkbox state
+      loadStaffHolidayTable();
+    }
+  };
+
+  // Toggle between multiplier and override mode - saves immediately
+  window.toggleMultiplierMode = async function(rowId, authUserId, useMultiplier) {
+    if (!window.supabase) return;
+
+    try {
+      // Get the user row to find current values
+      const userRow = document.getElementById(`multiplier-${rowId}`);
+
+      let updateData = { manual_override: !useMultiplier };
+
+      // If switching to multiplier mode, recalculate and save entitlement
+      if (useMultiplier && userRow) {
+        const weeklyTotal = parseFloat(userRow.dataset.weekly) || 0;
+        const multiplier = parseInt(userRow.value) || 10;
+        const entitlement = weeklyTotal * multiplier;
+
+        // Get booked from UI
+        const rowId = userRow.id.replace('multiplier-', '');
+        const bookedEl = document.getElementById(`booked-${rowId}`);
+        const booked = bookedEl ? (parseFloat(bookedEl.getAttribute('data-value')) || 0) : 0;
+        const remaining = entitlement - booked;
+
+        updateData = {
+          manual_override: false,
+          holiday_multiplier: multiplier,
+          total_holiday_entitlement: Math.round(entitlement),
+          holiday_entitlement: Math.round(entitlement)
+          // holiday_remaining is auto-calculated by database
+        };
+      }
+
+      const { error } = await window.supabase
+        .from('master_users')
+        .update(updateData)
+        .eq('auth_user_id', authUserId);
+
+      if (error) throw error;
+
+      // Reload table to reflect changes
+      loadStaffHolidayTable();
+    } catch (error) {
+      console.error('Error toggling multiplier mode:', error);
+      showToast('Failed to update mode', 'error');
+      loadStaffHolidayTable();
+    }
+  };
+
+  // Toggle override mode - saves immediately
+  window.toggleOverrideMode = async function(rowId, authUserId, useOverride) {
+    if (!window.supabase) return;
+
+    try {
+      let updateData = { manual_override: useOverride };
+
+      // If switching to override mode, save current override value
+      if (useOverride) {
+        // Find the override input
+        const overrideInput = document.getElementById(`override-${rowId}`);
+        let overrideValue = overrideInput ? parseFloat(overrideInput.value) : null;
+
+        if (overrideValue) {
+          // Get booked from UI
+          const bookedEl = document.getElementById(`booked-${rowId}`);
+          const booked = bookedEl ? (parseFloat(bookedEl.getAttribute('data-value')) || 0) : 0;
+
+          const remaining = overrideValue - booked;
+
+          updateData = {
+            manual_override: true,
+            total_holiday_entitlement: Math.round(overrideValue),
+            holiday_entitlement: Math.round(overrideValue)
+            // holiday_remaining is auto-calculated by database
+          };
+        }
+      }
+
+      const { error } = await window.supabase
+        .from('master_users')
+        .update(updateData)
+        .eq('auth_user_id', authUserId);
+
+      if (error) throw error;
+
+      // Reload table to reflect changes
+      loadStaffHolidayTable();
+    } catch (error) {
+      console.error('Error toggling override mode:', error);
+      showToast('Failed to update mode', 'error');
+      loadStaffHolidayTable();
+    }
+  };
+
+  // Update multiplier value - saves to database immediately
+  window.updateMultiplier = async function(userId, multiplier, weeklyTotal, isGP) {
+    if (!window.supabase) return;
+
+    const value = parseInt(multiplier);
+    if (isNaN(value) || value < 0 || value > 52) {
+      return; // Silently ignore invalid values during typing
+    }
+
+    try {
+      // First get current booked hours to calculate remaining
+      const { data: currentUser, error: fetchError } = await window.supabase
+        .from('master_users')
+        .select('approved_holidays_used, holiday_taken')
+        .eq('auth_user_id', userId)
+        .single();
+
+      if (fetchError) {
+        console.error('Error fetching user:', fetchError);
+        return;
+      }
+
+      const booked = currentUser.approved_holidays_used || currentUser.holiday_taken || 0;
+      const entitlement = weeklyTotal * value;
+      const remaining = entitlement - booked;
+
+      const updateData = {
+        holiday_multiplier: value,
+        total_holiday_entitlement: Math.round(entitlement),
+        holiday_entitlement: Math.round(entitlement),
+        // holiday_remaining is auto-calculated by database
+        manual_override: false
+      };
+
+      const { error } = await window.supabase
+        .from('master_users')
+        .update(updateData)
+        .eq('auth_user_id', userId);
+
+      if (error) {
+        console.error('Error updating multiplier:', error);
+        showToast('Failed to save multiplier', 'error');
+      }
+    } catch (error) {
+      console.error('Error updating multiplier:', error);
+    }
+  };
+
+  // Update override value - saves to database immediately
+  window.updateOverride = async function(userId, overrideValue, isGP) {
+    if (!window.supabase) return;
+
+    const value = overrideValue ? parseFloat(overrideValue) : null;
+
+    if (value !== null && isNaN(value)) {
+      return; // Silently ignore invalid values during typing
+    }
+
+    try {
+      // First get current booked hours to calculate remaining
+      const { data: currentUser, error: fetchError } = await window.supabase
+        .from('master_users')
+        .select('approved_holidays_used, holiday_taken')
+        .eq('auth_user_id', userId)
+        .single();
+
+      if (fetchError) {
+        console.error('Error fetching user:', fetchError);
+        return;
+      }
+
+      const booked = currentUser.approved_holidays_used || currentUser.holiday_taken || 0;
+      const remaining = value !== null ? value - booked : null;
+
+      const updateData = {
+        total_holiday_entitlement: Math.round(value),
+        holiday_entitlement: Math.round(value),
+        // holiday_remaining is auto-calculated by database
+        manual_override: true
+      };
+
+      const { error } = await window.supabase
+        .from('master_users')
+        .update(updateData)
+        .eq('auth_user_id', userId);
+
+      if (error) {
+        console.error('Error updating override:', error);
+        showToast('Failed to save override', 'error');
+      }
+    } catch (error) {
+      console.error('Error updating override:', error);
+    }
+  };
+
+  // Immediate update multiplier - saves to database immediately on every keystroke
+  window.immediateUpdateMultiplier = async function(userId, authUserId, multiplierValue, weeklyTotal, isGP) {
+    const value = parseInt(multiplierValue) || 0;
+
+    // Update UI immediately
+    liveUpdateEntitlement(userId, authUserId, value, weeklyTotal, isGP);
+
+    // Save to database
+    if (!window.supabase || isNaN(value) || value < 0 || value > 52) return;
+
+    try {
+      const entitlement = weeklyTotal * value;
+
+      // Get booked value from UI
+      const bookedEl = document.getElementById(`booked-${userId}`);
+      const booked = bookedEl ? (parseFloat(bookedEl.getAttribute('data-value')) || 0) : 0;
+      const remaining = entitlement - booked;
+
+      const updateData = {
+        holiday_multiplier: value,
+        total_holiday_entitlement: Math.round(entitlement),
+        holiday_entitlement: Math.round(entitlement),
+        // holiday_remaining is auto-calculated by database
+        manual_override: false
+      };
+
+      const { error } = await window.supabase
+        .from('master_users')
+        .update(updateData)
+        .eq('auth_user_id', authUserId);
+
+      if (error) {
+        console.error('Error saving multiplier:', error);
+      }
+    } catch (error) {
+      console.error('Error in immediateUpdateMultiplier:', error);
+    }
+  };
+
+  // Immediate update override - saves to database immediately on every keystroke
+  window.immediateUpdateOverride = async function(userId, authUserId, overrideValue, isGP) {
+    const value = parseFloat(overrideValue) || 0;
+
+    // Update UI immediately
+    liveUpdateOverrideEntitlement(userId, value, isGP);
+
+    // Save to database
+    if (!window.supabase || !overrideValue) return;
+
+    try {
+      // Get booked value from UI
+      const bookedEl = document.getElementById(`booked-${userId}`);
+      const booked = bookedEl ? (parseFloat(bookedEl.getAttribute('data-value')) || 0) : 0;
+      const remaining = value - booked;
+
+      const updateData = {
+        total_holiday_entitlement: Math.round(value),
+        holiday_entitlement: Math.round(value),
+        // holiday_remaining is auto-calculated by database
+        manual_override: true
+      };
+
+      const { error } = await window.supabase
+        .from('master_users')
+        .update(updateData)
+        .eq('auth_user_id', authUserId);
+
+      if (error) {
+        console.error('Error saving override:', error);
+      }
+    } catch (error) {
+      console.error('Error in immediateUpdateOverride:', error);
+    }
+  };
+
+  // Live update functions for immediate visual feedback
+  window.liveUpdateEntitlement = function(userId, authUserId, multiplierValue, weeklyTotal, isGP) {
+    const value = parseFloat(multiplierValue) || 0;
+    const entitlement = weeklyTotal * value;
+
+    // Helper function to convert hours to HH:MM format
+    const hoursToHHMM = (hours) => {
+      if (!hours && hours !== 0) return '00:00';
+      const h = Math.floor(hours);
+      const m = Math.round((hours - h) * 60);
+      return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+    };
+
+    // Update entitlement display
+    const entitlementEl = document.getElementById(`entitlement-${userId}`);
+    if (entitlementEl) {
+      if (isGP) {
+        entitlementEl.textContent = `${Math.round(entitlement)} sessions`;
+      } else {
+        entitlementEl.textContent = hoursToHHMM(entitlement);
+      }
+    }
+
+    // Update remaining display
+    const bookedEl = document.getElementById(`booked-${userId}`);
+    const remainingEl = document.getElementById(`remaining-${userId}`);
+    if (bookedEl && remainingEl) {
+      const booked = parseFloat(bookedEl.getAttribute('data-value')) || 0;
+      const remaining = entitlement - booked;
+
+      if (isGP) {
+        remainingEl.textContent = `${Math.round(remaining)} sessions`;
+      } else {
+        remainingEl.textContent = hoursToHHMM(remaining);
+      }
+
+      // Update color
+      remainingEl.style.color = remaining < 0 ? '#dc3545' : '#28a745';
+    }
+  };
+
+  window.liveUpdateOverrideEntitlement = function(userId, overrideValue, isGP) {
+    const value = parseFloat(overrideValue) || 0;
+
+    // Helper function to convert hours to HH:MM format
+    const hoursToHHMM = (hours) => {
+      if (!hours && hours !== 0) return '00:00';
+      const h = Math.floor(hours);
+      const m = Math.round((hours - h) * 60);
+      return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+    };
+
+    // Update entitlement display
+    const entitlementEl = document.getElementById(`entitlement-${userId}`);
+    if (entitlementEl && value) {
+      if (isGP) {
+        entitlementEl.textContent = `${Math.round(value)} sessions`;
+      } else {
+        entitlementEl.textContent = hoursToHHMM(value);
+      }
+
+      // Update remaining display
+      const bookedEl = document.getElementById(`booked-${userId}`);
+      const remainingEl = document.getElementById(`remaining-${userId}`);
+      if (bookedEl && remainingEl) {
+        const booked = parseFloat(bookedEl.getAttribute('data-value')) || 0;
+        const remaining = value - booked;
+
+        if (isGP) {
+          remainingEl.textContent = `${Math.round(remaining)} sessions`;
+        } else {
+          remainingEl.textContent = hoursToHHMM(remaining);
+        }
+
+        // Update color
+        remainingEl.style.color = remaining < 0 ? '#dc3545' : '#28a745';
+      }
+    }
+  };
+
+  // Debug storage and panel
+  window.debugLogs = [];
+  window.lastDebugData = {};
+
+  // Enhanced debug logging function
+  function debugLog(category, data) {
+    const timestamp = new Date().toISOString();
+    const logEntry = { timestamp, category, data };
+    window.debugLogs.push(logEntry);
+    console.log(`[DEBUG ${category}]`, data);
+
+    // Keep only last 100 logs
+    if (window.debugLogs.length > 100) {
+      window.debugLogs.shift();
+    }
+  }
+
+  // Show debug panel
+  window.showDebugPanel = function() {
+    // Remove existing panel if any
+    const existing = document.getElementById('debug-panel');
+    if (existing) existing.remove();
+
+    const panel = document.createElement('div');
+    panel.id = 'debug-panel';
+    panel.style.cssText = `
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 90%;
+      max-width: 800px;
+      height: 80vh;
+      background: white;
+      border: 2px solid #dc3545;
+      border-radius: 8px;
+      box-shadow: 0 10px 50px rgba(0,0,0,0.3);
+      z-index: 999999;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    `;
+
+    const debugData = {
+      timestamp: new Date().toISOString(),
+      supabaseExists: !!window.supabase,
+      supabaseUrl: window.CONFIG?.SUPABASE_URL,
+      lastOperation: window.lastDebugData,
+      recentLogs: window.debugLogs.slice(-20),
+      browserInfo: {
+        userAgent: navigator.userAgent,
+        platform: navigator.platform,
+        language: navigator.language
+      },
+      sessionInfo: {
+        hasSession: false,
+        user: null
+      }
+    };
+
+    // Try to get session info
+    if (window.supabase) {
+      window.supabase.auth.getSession().then(({ data }) => {
+        debugData.sessionInfo.hasSession = !!data?.session;
+        debugData.sessionInfo.user = data?.session?.user?.email || 'No user';
+        updateDebugContent();
+      });
+    }
+
+    const updateDebugContent = () => {
+      const content = JSON.stringify(debugData, null, 2);
+      const textArea = panel.querySelector('textarea');
+      if (textArea) textArea.value = content;
+    };
+
+    panel.innerHTML = `
+      <div style="padding: 15px; background: #dc3545; color: white; font-weight: bold; display: flex; justify-content: space-between; align-items: center;">
+        <span>🐛 DEBUG PANEL - Save Operation Details</span>
+        <button onclick="document.getElementById('debug-panel').remove()" style="background: white; color: #dc3545; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">✕ Close</button>
+      </div>
+      <div style="padding: 15px; flex: 1; overflow: auto; display: flex; flex-direction: column;">
+        <div style="margin-bottom: 10px; display: flex; gap: 10px;">
+          <button onclick="copyDebugData()" style="padding: 8px 15px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">📋 Copy All Debug Info</button>
+          <button onclick="window.debugLogs = []; window.lastDebugData = {}; showToast('Debug logs cleared', 'info'); document.getElementById('debug-panel').remove();" style="padding: 8px 15px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">🗑️ Clear Logs</button>
+        </div>
+        <textarea id="debug-content" style="flex: 1; width: 100%; padding: 10px; font-family: monospace; font-size: 12px; border: 1px solid #ddd; border-radius: 4px; resize: none;" readonly>${JSON.stringify(debugData, null, 2)}</textarea>
+      </div>
+    `;
+
+    document.body.appendChild(panel);
+  };
+
+  // Copy debug data to clipboard
+  window.copyDebugData = function() {
+    const textarea = document.getElementById('debug-content');
+    if (textarea) {
+      textarea.select();
+      document.execCommand('copy');
+      showToast('Debug data copied to clipboard!', 'success');
+    }
+  };
+
+  // Show debug for specific row
+  window.showDebugForRow = function(rowId, authUserId, isGP) {
+    window.lastDebugData = {
+      action: 'DEBUG_ROW',
+      rowId,
+      authUserId,
+      isGP,
+      timestamp: new Date().toISOString(),
+      elements: {
+        useMultiplierCheckbox: document.getElementById(`use-multiplier-${rowId}`)?.checked,
+        multiplierValue: document.getElementById(`multiplier-${rowId}`)?.value,
+        overrideValue: document.getElementById(`override-${rowId}`)?.value,
+        unlockCheckbox: document.getElementById(`unlock-${rowId}`)?.checked,
+        weeklyTotal: document.getElementById(`multiplier-${rowId}`)?.dataset?.weekly
+      },
+      supabaseInfo: {
+        clientExists: !!window.supabase,
+        url: window.CONFIG?.SUPABASE_URL,
+        hasAuthFunction: !!window.supabase?.auth,
+        hasFromFunction: !!window.supabase?.from
+      }
+    };
+    showDebugPanel();
+  };
+
+  // Test Supabase connection
+  window.testSupabaseConnection = async function() {
+    window.lastDebugData = {
+      action: 'CONNECTION_TEST',
+      timestamp: new Date().toISOString(),
+      steps: []
+    };
+
+    const addStep = (step, data) => {
+      window.lastDebugData.steps.push({ step, data, time: new Date().toISOString() });
+      debugLog(step, data);
+    };
+
+    try {
+      addStep('START', 'Testing Supabase connection...');
+
+      // Check if Supabase client exists
+      addStep('CLIENT_CHECK', {
+        exists: !!window.supabase,
+        url: window.CONFIG?.SUPABASE_URL,
+        key: window.CONFIG?.SUPABASE_ANON_KEY ? 'Present' : 'Missing',
+        hasAuth: !!window.supabase?.auth,
+        hasFrom: !!window.supabase?.from
+      });
+
+      if (!window.supabase) {
+        throw new Error('Supabase client not initialized');
+      }
+
+      // Test auth session
+      const { data: sessionData, error: sessionError } = await window.supabase.auth.getSession();
+      addStep('SESSION_TEST', {
+        hasSession: !!sessionData?.session,
+        userEmail: sessionData?.session?.user?.email || 'No user',
+        userId: sessionData?.session?.user?.id || 'No ID',
+        error: sessionError?.message
+      });
+
+      // Test database read
+      const { data: readData, error: readError } = await window.supabase
+        .from('master_users')
+        .select('id, full_name, site_id')
+        .eq('site_id', window.ctx?.site_id || 2)
+        .limit(1);
+
+      addStep('READ_TEST', {
+        success: !!readData && !readError,
+        recordCount: readData?.length || 0,
+        error: readError?.message,
+        errorCode: readError?.code,
+        siteId: window.ctx?.site_id || 2
+      });
+
+      // Test database write (using a harmless update)
+      if (sessionData?.session?.user?.id) {
+        const testData = { test_timestamp: new Date().toISOString() };
+        const { data: writeData, error: writeError } = await window.supabase
+          .from('master_users')
+          .update(testData)
+          .eq('auth_user_id', sessionData.session.user.id)
+          .select();
+
+        addStep('WRITE_TEST', {
+          success: !!writeData && !writeError,
+          recordsUpdated: writeData?.length || 0,
+          error: writeError?.message,
+          errorCode: writeError?.code,
+          errorHint: writeError?.hint
+        });
+
+        if (writeError) {
+          addStep('WRITE_ERROR_DETAILS', {
+            fullError: JSON.stringify(writeError),
+            isRLSError: writeError.code === '42501' || writeError.message?.includes('policy'),
+            isAuthError: writeError.code === 'PGRST301' || writeError.message?.includes('JWT')
+          });
+        }
+      }
+
+      addStep('COMPLETE', 'All connection tests completed');
+      showToast('Connection test complete - Check debug panel', 'info');
+      showDebugPanel();
+
+    } catch (error) {
+      addStep('ERROR', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+      showToast('Connection test failed - Check debug panel', 'error');
+      showDebugPanel();
+    }
+  };
+
+  // Save individual row data to Supabase with enhanced debugging
+  window.saveRowData = async function(rowId, authUserId, isGP) {
+    // Clear debug for this operation
+    window.lastDebugData = {
+      rowId,
+      authUserId,
+      isGP,
+      timestamp: new Date().toISOString(),
+      steps: []
+    };
+
+    const addDebugStep = (step, data) => {
+      window.lastDebugData.steps.push({ step, data, time: new Date().toISOString() });
+      debugLog(step, data);
+    };
+
+    addDebugStep('START', { rowId, authUserId, isGP });
+
+    if (!window.supabase) {
+      addDebugStep('ERROR', 'Database connection not available');
+      showDebugPanel();
+      showToast('Database connection not available - Check debug panel', 'error');
+      return;
+    }
+
+    addDebugStep('SUPABASE_CHECK', {
+      clientExists: true,
+      hasAuth: !!window.supabase.auth,
+      hasFrom: !!window.supabase.from,
+      url: window.CONFIG?.SUPABASE_URL,
+      anon_key: window.CONFIG?.SUPABASE_ANON_KEY ? 'Present' : 'Missing'
+    });
+
+    // Check session
+    try {
+      const { data: sessionData } = await window.supabase.auth.getSession();
+      addDebugStep('SESSION_CHECK', {
+        hasSession: !!sessionData?.session,
+        userEmail: sessionData?.session?.user?.email || 'No user',
+        userId: sessionData?.session?.user?.id || 'No ID'
+      });
+    } catch (sessionError) {
+      addDebugStep('SESSION_ERROR', {
+        message: sessionError.message
+      });
+    }
+
+    const statusEl = document.getElementById(`save-status-${rowId}`);
+    const saveBtn = document.getElementById(`save-btn-${rowId}`);
+
+    try {
+      // Show saving status
+      if (statusEl) {
+        statusEl.style.display = 'inline';
+        statusEl.style.color = '#ffc107';
+        statusEl.textContent = '⏳ Saving...';
+      }
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.style.opacity = '0.5';
+      }
+
+      // Get current values from the UI
+      const useMultiplierCheckbox = document.getElementById(`use-multiplier-${rowId}`);
+      const multiplierInput = document.getElementById(`multiplier-${rowId}`);
+      const overrideInput = document.getElementById(`override-${rowId}`);
+      const unlockCheckbox = document.getElementById(`unlock-${rowId}`);
+
+      const useMultiplier = useMultiplierCheckbox ? useMultiplierCheckbox.checked : false;
+      const multiplierValue = parseInt(multiplierInput?.value || 10);
+      const overrideValue = parseFloat(overrideInput?.value || 0);
+      const isUnlocked = unlockCheckbox ? unlockCheckbox.checked : false;
+      const weeklyTotal = parseFloat(multiplierInput?.dataset.weekly || 0);
+
+      addDebugStep('UI_VALUES', {
+        useMultiplier,
+        multiplierValue,
+        overrideValue,
+        isUnlocked,
+        weeklyTotal,
+        elements: {
+          multiplierInputExists: !!multiplierInput,
+          checkboxExists: !!useMultiplierCheckbox,
+          overrideInputExists: !!overrideInput,
+          unlockCheckboxExists: !!unlockCheckbox
+        }
+      });
+
+      // Calculate entitlement based on mode
+      let entitlement;
+      if (useMultiplier) {
+        entitlement = weeklyTotal * multiplierValue;
+      } else {
+        // In manual override mode, use the override value (can be 0)
+        entitlement = overrideValue || 0;
+      }
+
+      // Get booked value
+      const bookedEl = document.getElementById(`booked-${rowId}`);
+      const booked = bookedEl ? (parseFloat(bookedEl.getAttribute('data-value')) || 0) : 0;
+      const remaining = entitlement - booked;
+
+      // Prepare update data - Round to integers for database
+      const updateData = {
+        holiday_multiplier: multiplierValue,
+        manual_override: !useMultiplier,
+        total_holiday_entitlement: Math.round(entitlement),
+        holiday_entitlement: Math.round(entitlement),
+        // holiday_remaining is a generated column - database calculates it automatically
+        holiday_approved: isUnlocked
+      };
+
+      addDebugStep('UPDATE_DATA', {
+        updateData,
+        calculations: {
+          entitlement,
+          booked,
+          remaining,
+          formula: useMultiplier ? `${weeklyTotal} * ${multiplierValue} = ${entitlement}` : `override = ${entitlement}`
+        }
+      });
+      console.log('Saving row data:', { authUserId, updateData });
+
+      // Save to database
+      addDebugStep('SUPABASE_CALL_START', {
+        table: 'master_users',
+        operation: 'update',
+        filter: { auth_user_id: authUserId },
+        updateData,
+        supabaseClientInfo: {
+          exists: !!window.supabase,
+          fromExists: !!window.supabase?.from,
+          canCallFrom: typeof window.supabase?.from === 'function'
+        }
+      });
+
+      let data, error;
+      try {
+        const result = await window.supabase
+          .from('master_users')
+          .update(updateData)
+          .eq('auth_user_id', authUserId)
+          .select();
+
+        data = result.data;
+        error = result.error;
+      } catch (catchError) {
+        addDebugStep('SUPABASE_CATCH_ERROR', {
+          message: catchError.message,
+          stack: catchError.stack,
+          name: catchError.name
+        });
+        error = catchError;
+      }
+
+      addDebugStep('SUPABASE_RESPONSE', {
+        hasData: !!data,
+        dataLength: data?.length,
+        data: data,
+        hasError: !!error,
+        error: error ? {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          statusCode: error.statusCode,
+          fullError: JSON.stringify(error)
+        } : null
+      });
+
+      if (error) {
+        console.error('Error saving row:', error);
+        window.lastDebugData.error = error;
+
+        // Check for common RLS issues
+        if (error.code === '42501' || error.message?.includes('policy')) {
+          addDebugStep('RLS_ERROR', {
+            message: 'Row Level Security policy violation',
+            hint: 'User may not have permission to update this record',
+            authUserId: authUserId
+          });
+        }
+
+        // Check for authentication issues
+        if (error.code === 'PGRST301' || error.message?.includes('JWT')) {
+          addDebugStep('AUTH_ERROR', {
+            message: 'Authentication issue',
+            hint: 'Session may have expired or token is invalid'
+          });
+        }
+
+        showDebugPanel();
+        throw error;
+      }
+
+      console.log('Row saved successfully:', data);
+
+      // Show success status
+      if (statusEl) {
+        statusEl.style.color = '#28a745';
+        statusEl.textContent = '✅ Saved!';
+        setTimeout(() => {
+          statusEl.style.display = 'none';
+        }, 3000);
+      }
+
+      // Update display to confirm save
+      const entitlementEl = document.getElementById(`entitlement-${rowId}`);
+      if (entitlementEl) {
+        entitlementEl.style.backgroundColor = '#d4edda';
+        setTimeout(() => {
+          entitlementEl.style.backgroundColor = '';
+        }, 1000);
+      }
+
+      // Show success toast
+      showToast('Holiday data saved successfully!', 'success');
+
+    } catch (error) {
+      console.error('Failed to save row:', error);
+
+      addDebugStep('CATCH_ERROR', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+        fullError: JSON.stringify(error)
+      });
+
+      // Show error status
+      if (statusEl) {
+        statusEl.style.color = '#dc3545';
+        statusEl.textContent = '❌ Failed';
+        setTimeout(() => {
+          statusEl.style.display = 'none';
+        }, 3000);
+      }
+
+      showDebugPanel();
+      showToast(`Failed to save: ${error.message} (Debug panel opened)`, 'error');
+    } finally {
+      // Re-enable save button
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.style.opacity = '1';
+      }
+    }
+  };
+
+  // Save all rows to Supabase
+  window.saveAllHolidays = async function() {
+    if (!window.supabase) {
+      showToast('Database connection not available', 'error');
+      return;
+    }
+
+    if (!confirm('Save all holiday changes to database?')) return;
+
+    try {
+      showToast('Saving all changes...', 'info');
+
+      // Get all save buttons
+      const saveButtons = document.querySelectorAll('[id^="save-btn-"]');
+      let successCount = 0;
+      let errorCount = 0;
+
+      // Save each row
+      for (const btn of saveButtons) {
+        const rowId = btn.id.replace('save-btn-', '');
+        const multiplierInput = document.getElementById(`multiplier-${rowId}`);
+
+        if (multiplierInput) {
+          const authUserId = multiplierInput.dataset.userId;
+          const isGP = multiplierInput.dataset.isGp === 'true';
+
+          try {
+            // Get current values
+            const useMultiplierCheckbox = document.getElementById(`use-multiplier-${rowId}`);
+            const overrideInput = document.getElementById(`override-${rowId}`);
+            const unlockCheckbox = document.getElementById(`unlock-${rowId}`);
+
+            const useMultiplier = useMultiplierCheckbox ? useMultiplierCheckbox.checked : false;
+            const multiplierValue = parseInt(multiplierInput.value || 10);
+            const overrideValue = parseFloat(overrideInput?.value || 0);
+            const isUnlocked = unlockCheckbox ? unlockCheckbox.checked : false;
+            const weeklyTotal = parseFloat(multiplierInput.dataset.weekly || 0);
+
+            // Calculate entitlement
+            let entitlement;
+            if (useMultiplier) {
+              entitlement = weeklyTotal * multiplierValue;
+            } else {
+              // In manual override mode, use the override value (can be 0)
+              entitlement = overrideValue || 0;
+            }
+
+            // Get booked value
+            const bookedEl = document.getElementById(`booked-${rowId}`);
+            const booked = bookedEl ? (parseFloat(bookedEl.getAttribute('data-value')) || 0) : 0;
+            const remaining = entitlement - booked;
+
+            // Save to database
+            const { error } = await window.supabase
+              .from('master_users')
+              .update({
+                holiday_multiplier: multiplierValue,
+                manual_override: !useMultiplier,
+                total_holiday_entitlement: Math.round(entitlement),
+                holiday_entitlement: Math.round(entitlement),
+                // holiday_remaining is auto-calculated by database
+                holiday_approved: isUnlocked
+              })
+              .eq('auth_user_id', authUserId);
+
+            if (error) {
+              console.error(`Error saving row ${rowId}:`, error);
+              errorCount++;
+            } else {
+              successCount++;
+
+              // Show visual feedback
+              const statusEl = document.getElementById(`save-status-${rowId}`);
+              if (statusEl) {
+                statusEl.style.display = 'inline';
+                statusEl.style.color = '#28a745';
+                statusEl.textContent = '✅';
+                setTimeout(() => {
+                  statusEl.style.display = 'none';
+                }, 2000);
+              }
+            }
+          } catch (error) {
+            console.error(`Failed to save row ${rowId}:`, error);
+            errorCount++;
+          }
+        }
+      }
+
+      // Show final result
+      if (errorCount === 0) {
+        showToast(`✅ All ${successCount} records saved successfully!`, 'success');
+      } else if (successCount > 0) {
+        showToast(`⚠️ Saved ${successCount} records, ${errorCount} failed`, 'warning');
+      } else {
+        showToast(`❌ Failed to save changes`, 'error');
+      }
+
+    } catch (error) {
+      console.error('Error in saveAllHolidays:', error);
+      showToast(`Failed to save all: ${error.message}`, 'error');
+    }
+  };
+
+  // Bulk Actions
+  window.setAllMultiplier = async function() {
+    if (!window.supabase) return;
+
+    const multiplierValue = document.getElementById('bulk-multiplier').value;
+    if (!multiplierValue) {
+      showToast('Please enter a multiplier value', 'error');
+      return;
+    }
+
+    const value = parseInt(multiplierValue);
+    if (isNaN(value) || value < 0 || value > 52) {
+      showToast('Please enter a valid multiplier between 0 and 52', 'error');
+      return;
+    }
+
+    if (!confirm(`Set all staff to ${value} weeks multiplier?`)) return;
+
+    try {
+      showToast('Updating all staff multipliers...', 'info');
+
+      const siteId = window.ctx?.site_id || 2;
+
+      // First get all users from the database with their current data
+      const { data: users, error: fetchError } = await window.supabase
+        .from('master_users')
+        .select(`
+          id,
+          auth_user_id,
+          is_gp,
+          weekly_hours,
+          weekly_sessions,
+          monday_hours, tuesday_hours, wednesday_hours, thursday_hours, friday_hours,
+          monday_sessions, tuesday_sessions, wednesday_sessions, thursday_sessions, friday_sessions,
+          approved_holidays_used,
+          holiday_taken
+        `)
+        .eq('site_id', siteId);
+
+      if (fetchError) throw fetchError;
+
+      // Update each user
+      const updatePromises = users.map(user => {
+        const isGP = user.is_gp || false;
+        let weeklyTotal;
+
+        if (isGP) {
+          weeklyTotal = user.weekly_sessions ||
+            (user.monday_sessions || 0) + (user.tuesday_sessions || 0) +
+            (user.wednesday_sessions || 0) + (user.thursday_sessions || 0) +
+            (user.friday_sessions || 0);
+        } else {
+          weeklyTotal = user.weekly_hours ||
+            (user.monday_hours || 0) + (user.tuesday_hours || 0) +
+            (user.wednesday_hours || 0) + (user.thursday_hours || 0) +
+            (user.friday_hours || 0);
+        }
+
+        const booked = user.approved_holidays_used || user.holiday_taken || 0;
+        const entitlement = weeklyTotal * value;
+        const remaining = entitlement - booked;
+
+        // Update the UI immediately if the element exists
+        const multiplierInput = document.getElementById(`multiplier-${user.id}`);
+        if (multiplierInput) {
+          multiplierInput.value = value;
+          liveUpdateEntitlement(user.id, user.auth_user_id, value, weeklyTotal, isGP);
+
+          // Enable multiplier mode
+          const useMultiplierCheckbox = document.getElementById(`use-multiplier-${user.id}`);
+          const overrideCheckbox = document.getElementById(`use-override-${user.id}`);
+          const overrideInput = document.getElementById(`override-${user.id}`);
+
+          if (useMultiplierCheckbox) {
+            useMultiplierCheckbox.checked = true;
+          }
+          if (overrideCheckbox) {
+            overrideCheckbox.checked = false;
+          }
+          if (overrideInput) {
+            overrideInput.disabled = true;
+            overrideInput.style.border = '1px solid #ddd';
+            overrideInput.style.color = '#999';
+          }
+          if (multiplierInput) {
+            multiplierInput.disabled = false;
+            multiplierInput.style.border = '1px solid #007bff';
+            multiplierInput.style.color = '#333';
+          }
+        }
+
+        // Update database
+        return window.supabase
+          .from('master_users')
+          .update({
+            holiday_multiplier: value,
+            total_holiday_entitlement: Math.round(entitlement),
+            holiday_entitlement: Math.round(entitlement),
+            // holiday_remaining is auto-calculated by database
+            manual_override: false
+          })
+          .eq('auth_user_id', user.auth_user_id);
+      });
+
+      const results = await Promise.all(updatePromises);
+
+      // Check if any updates failed
+      const hasErrors = results.some(result => result.error);
+
+      if (hasErrors) {
+        console.error('Some updates failed:', results.filter(r => r.error));
+        showToast('Some staff could not be updated', 'warning');
+      } else {
+        showToast(`All ${users.length} staff set to ${value} weeks multiplier`, 'success');
+      }
+
+    } catch (error) {
+      console.error('Error setting all multipliers:', error);
+      showToast(`Failed to update multipliers: ${error.message}`, 'error');
+    }
+  };
+
+  window.unlockAllHolidays = async function() {
+    if (!window.supabase) return;
+
+    if (!confirm('Unlock holidays for all staff?')) return;
+
+    try {
+      const siteId = window.ctx?.site_id || 2;
+
+      const { error } = await window.supabase
+        .from('master_users')
+        .update({ holiday_approved: true })
+        .eq('site_id', siteId);
+
+      if (error) throw error;
+
+      showToast('All holidays unlocked', 'success');
+      loadStaffHolidayTable();
+    } catch (error) {
+      console.error('Error unlocking all holidays:', error);
+      showToast('Failed to unlock all holidays', 'error');
+    }
+  };
+
+  window.setAllManual = async function() {
+    if (!window.supabase) return;
+
+    if (!confirm('Switch all staff to manual override mode?')) return;
+
+    try {
+      const siteId = window.ctx?.site_id || 2;
+
+      const { error } = await window.supabase
+        .from('master_users')
+        .update({ manual_override: true })
+        .eq('site_id', siteId);
+
+      if (error) throw error;
+
+      showToast('All staff switched to manual mode', 'success');
+      loadStaffHolidayTable();
+    } catch (error) {
+      console.error('Error switching to manual mode:', error);
+      showToast('Failed to switch all to manual mode', 'error');
+    }
+  };
+
+  window.setAllToMultiplier = async function() {
+    if (!window.supabase) return;
+
+    if (!confirm('Switch all staff to multiplier mode?')) return;
+
+    try {
+      const siteId = window.ctx?.site_id || 2;
+
+      const { error } = await window.supabase
+        .from('master_users')
+        .update({ manual_override: false })
+        .eq('site_id', siteId);
+
+      if (error) throw error;
+
+      showToast('All staff switched to multiplier mode', 'success');
+      loadStaffHolidayTable();
+    } catch (error) {
+      console.error('Error switching to multiplier mode:', error);
+      showToast('Failed to switch all to multiplier mode', 'error');
+    }
+  };
+
   // Load entitlements when holidays section is shown (table view)
   async function loadHolidayEntitlements() {
     if (!window.supabase) return;
@@ -23530,9 +24912,9 @@ window.refreshStaffData = refreshStaffData;
     if (e.detail === 'entitlement-management') {
       loadHolidayEntitlements();
       loadHolidayRequests();
-      // Also load the card view
-      if (typeof loadStaffEntitlementCards === 'function') {
-        loadStaffEntitlementCards();
+      // Load the new staff holiday table
+      if (typeof loadStaffHolidayTable === 'function') {
+        loadStaffHolidayTable();
       }
     }
   });
@@ -23542,14 +24924,14 @@ window.refreshStaffData = refreshStaffData;
     console.log('Loading holiday data...');
     loadHolidayEntitlements();
     loadHolidayRequests();
-    // Also load the card view
-    if (typeof loadStaffEntitlementCards === 'function') {
-      loadStaffEntitlementCards();
+    // Load the new staff holiday table
+    if (typeof loadStaffHolidayTable === 'function') {
+      loadStaffHolidayTable();
     } else {
-      console.log('loadStaffEntitlementCards function not yet available, retrying...');
+      console.log('loadStaffHolidayTable function not yet available, retrying...');
       setTimeout(() => {
-        if (typeof loadStaffEntitlementCards === 'function') {
-          loadStaffEntitlementCards();
+        if (typeof loadStaffHolidayTable === 'function') {
+          loadStaffHolidayTable();
         }
       }, 1000);
     }

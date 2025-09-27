@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GP Practice Finder & Integrator</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            color: #333;
+        }
+        h1, h2, h3 {
+            color: #0070f3;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .search-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        input, select {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            flex-grow: 1;
+        }
+        button {
+            background-color: #0070f3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            min-width: 120px;
+        }
+        button:hover {
+            background-color: #0051a8;
+        }
+        button.secondary {
+            background-color: #6c757d;
+        }
+        .results-panel {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            background-color: #f9f9f9;
+        }
+        .data-panel {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .data-source {
+            flex: 1;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 15px;
+            background-color: white;
+        }
+        .data-source h3 {
+            margin-top: 0;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .combined-data {
+            border: 1px solid #4caf50;
+            border-radius: 6px;
+            padding: 15px;
+            background-color: #f1f8e9;
+            margin-top: 20px;
+        }
+        .combined-data h3 {
+            color: #2e7d32;
+            margin-top: 0;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            font-style: italic;
+            color: #666;
+        }
+        pre {
+            background-color: #f6f8fa;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 14px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: 600;
+        }
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        .info-row {
+            display: flex;
+            margin-bottom: 10px;
+        }
+        .info-label {
+            width: 140px;
+            font-weight: 600;
+        }
+        .info-value {
+            flex-grow: 1;
+        }
+        .success-message {
+            background-color: #d4edda;
+            color: #155724;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        .error-message {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        .search-results {
+            margin-top: 20px;
+        }
+        .hide {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>GP Practice Finder & NHS/CQC Integrator</h1>
+    <p>Search for a GP practice by name or ODS code to retrieve and combine data from NHS and CQC APIs.</p>
+
+    <div class="container">
+        <div class="search-container">
+            <select id="searchType">
+                <option value="ods">Search by ODS Code</option>
+                <option value="name">Search by Practice Name</option>
+            </select>
+            <input type="text" id="searchInput" placeholder="Enter ODS code (e.g., B86030) or practice name">
+            <button id="searchButton">Search</button>
+        </div>
+
+        <div id="searchResults" class="search-results hide">
+            <h2>Search Results</h2>
+            <p id="resultsCount"></p>
+            <table id="resultsTable">
+                <thead>
+                    <tr>
+                        <th>Practice Name</th>
+                        <th>ODS Code</th>
+                        <th>Address</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsBody"></tbody>
+            </table>
+        </div>
+
+        <div id="loadingMessage" class="loading hide">
+            <p>Loading data from NHS and CQC APIs...</p>
+        </div>
+
+        <div id="practiceDetails" class="results-panel hide">
+            <h2 id="practiceName"></h2>
+            
+            <div class="data-panel">
+                <div class="data-source">
+                    <h3>NHS Data</h3>
+                    <div id="nhsData"></div>
+                    <button id="viewRawNhs" class="secondary">View Raw NHS Data</button>
+                </div>
+                
+                <div class="data-source">
+                    <h3>CQC Data</h3>
+                    <div id="cqcData"></div>
+                    <button id="viewRawCqc" class="secondary">View Raw CQC Data</button>
+                </div>
+            </div>
+            
+            <div class="combined-data">
+                <h3>Combined Data for Database</h3>
+                <div id="combinedData"></div>
+                <div style="display: flex; justify-content: space-between; margin-top: 15px;">
+                    <button id="saveToDatabase">Save to Database</button>
+                    <button id="exportJson" class="secondary">Export as JSON</button>
+                </div>
+                <div id="saveMessage" class="hide"></div>
+            </div>
+        </div>
+
+        <div id="rawDataModal" class="modal hide">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2 id="modalTitle"></h2>
+                <pre id="rawDataContent"></pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Supabase Client
+        const SUPABASE_URL = "https://zezbynzaksxawykkmuvi.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inplemj5bnpha3N4YXd5a2ttdXZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE2NTU5MzU5NjIsImV4cCI6MTk3MTUxMTk2Mn0.H-qhxGpJtHGCSRPJEFjgbBDzBlQ0MUPD1RnHfnOiLXY";
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        // Current practice data
+        let currentNhsData = null;
+        let currentCqcData = null;
+        let currentOdsCode = null;
+        let currentCombinedData = null;
+        
+        // DOM elements
+        const searchType = document.getElementById('searchType');
+        const searchInput = document.getElementById('searchInput');
+        const searchButton = document.getElementById('searchButton');
+        const searchResults = document.getElementById('searchResults');
+        const resultsCount = document.getElementById('resultsCount');
+        const resultsBody = document.getElementById('resultsBody');
+        const loadingMessage = document.getElementById('loadingMessage');
+        const practiceDetails = document.getElementById('practiceDetails');
+        const practiceName = document.getElementById('practiceName');
+        const nhsData = document.getElementById('nhsData');
+        const cqcData = document.getElementById('cqcData');
+        const combinedData = document.getElementById('combinedData');
+        const saveToDatabase = document.getElementById('saveToDatabase');
+        const exportJson = document.getElementById('exportJson');
+        const saveMessage = document.getElementById('saveMessage');
+        const viewRawNhs = document.getElementById('viewRawNhs');
+        const viewRawCqc = document.getElementById('viewRawCqc');
+        const rawDataModal = document.getElementById('rawDataModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const rawDataContent = document.getElementById('rawDataContent');
+        
+        // Event listeners
+        searchButton.addEventListener('click', performSearch);
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') performSearch();
+        });
+        saveToDatabase.addEventListener('click', savePracticeToDatabase);
+        exportJson.addEventListener('click', exportPracticeJson);
+        viewRawNhs.addEventListener('click', () => showRawData('NHS API Raw Data', currentNhsData));
+        viewRawCqc.addEventListener('click', () => showRawData('CQC API Raw Data', currentCqcData));
+        
+        // Handle search type change
+        searchType.addEventListener('change', () => {
+            if (searchType.value === 'ods') {
+                searchInput.placeholder = "Enter ODS code (e.g., B86030)";
+            } else {
+                searchInput.placeholder = "Enter practice name (e.g., Burton Croft Surgery)";
+            }
+        });
+        
+        // Search function
+        async function performSearch() {
+            const query = searchInput.value.trim();
+            if (!query) {
+                alert('Please enter a search term');
+                return;
+            }
+            
+            // Reset UI
+            searchResults.classList.add('hide');
+            practiceDetails.classList.add('hide');
+            loadingMessage.classList.remove('hide');
+            
+            try {
+                if (searchType.value === 'ods') {
+                    // Direct ODS code search
+                    await fetchPracticeByOdsCode(query);
+                } else {
+                    // Name search - search in CQC data first
+                    await searchPracticesByName(query);
+                }
+            } catch (error) {
+                console.error('Error during search:', error);
+                loadingMessage.classList.add('hide');
+                alert(`Error: ${error.message || 'An unknown error occurred'}`);
+            }
+        }
+        
+        // Search practices by name
+        async function searchPracticesByName(name) {
+            try {
+                const { data, error } = await supabase
+                    .from('CQC All GPs')
+                    .select('location_id, location_name, ods_code, address_line_1, town_city, postcode')
+                    .ilike('location_name', `%${name}%`)
+                    .limit(10);
+                
+                loadingMessage.classList.add('hide');
+                
+                if (error) throw error;
+                
+                if (data && data.length > 0) {
+                    displaySearchResults(data);
+                } else {
+                    alert('No practices found with that name');
+                }
+            } catch (error) {
+                console.error('Error searching practices:', error);
+                loadingMessage.classList.add('hide');
+                alert(`Error searching practices: ${error.message}`);
+            }
+        }
+        
+        // Display search results
+        function displaySearchResults(results) {
+            resultsBody.innerHTML = '';
+            resultsCount.textContent = `Found ${results.length} practice(s)`;
+            
+            results.forEach(practice => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${practice.location_name || 'N/A'}</td>
+                    <td>${practice.ods_code || 'N/A'}</td>
+                    <td>${[practice.address_line_1, practice.town_city, practice.postcode].filter(Boolean).join(', ')}</td>
+                    <td><button class="select-practice" data-ods="${practice.ods_code}">Select</button></td>
+                `;
+                resultsBody.appendChild(row);
+            });
+            
+            // Add event listeners to select buttons
+            document.querySelectorAll('.select-practice').forEach(button => {
+                button.addEventListener('click', () => {
+                    const odsCode = button.getAttribute('data-ods');
+                    if (odsCode) {
+                        fetchPracticeByOdsCode(odsCode);
+                    } else {
+                        alert('No ODS code available for this practice');
+                    }
+                });
+            });
+            
+            searchResults.classList.remove('hide');
+        }
+        
+        // Fetch practice by ODS code
+        async function fetchPracticeByOdsCode(odsCode) {
+            searchResults.classList.add('hide');
+            loadingMessage.classList.remove('hide');
+            currentOdsCode = odsCode;
+            
+            try {
+                // Fetch from NHS API
+                const nhsPromise = fetchFromNhsApi(odsCode);
+                
+                // Fetch from CQC database (or API if needed)
+                const cqcPromise = fetchFromCqcData(odsCode);
+                
+                // Wait for both to complete
+                const [nhsResult, cqcResult] = await Promise.all([nhsPromise, cqcPromise]);
+                
+                currentNhsData = nhsResult;
+                currentCqcData = cqcResult;
+                
+                // Process and display the data
+                displayPracticeDetails(nhsResult, cqcResult);
+            } catch (error) {
+                console.error('Error fetching practice data:', error);
+                loadingMessage.classList.add('hide');
+                alert(`Error: ${error.message || 'Failed to fetch practice data'}`);
+            }
+        }
+        
+        // Fetch from NHS API
+        async function fetchFromNhsApi(odsCode) {
+            try {
+                // Use our edge function to get NHS data
+                const { data, error } = await supabase.functions.invoke('nhs-ods-api-fix', {
+                    body: { ods_code: odsCode }
+                });
+                
+                if (error) throw error;
+                
+                return data.data || null;
+            } catch (error) {
+                console.error('NHS API error:', error);
+                
+                // Try direct call if edge function fails
+                try {
+                    const response = await fetch(`https://directory.spineservices.nhs.uk/ORD/2-0-0/organisations/${odsCode}`, {
+                        headers: { 'Accept': 'application/json' }
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`NHS API returned status: ${response.status}`);
+                    }
+                    
+                    return await response.json();
+                } catch (directError) {
+                    console.error('Direct NHS API error:', directError);
+                    throw new Error(`NHS API error: ${directError.message}`);
+                }
+            }
+        }
+        
+        // Fetch from CQC data in Supabase
+        async function fetchFromCqcData(odsCode) {
+            try {
+                const { data, error } = await supabase
+                    .from('CQC All GPs')
+                    .select('*')
+                    .eq('ods_code', odsCode)
+                    .limit(1)
+                    .single();
+                
+                if (error) throw error;
+                
+                return data || null;
+            } catch (error) {
+                console.error('CQC data fetch error:', error);
+                
+                // If the record doesn't exist, return empty object
+                if (error.code === 'PGRST116') {
+                    return null;
+                }
+                
+                throw new Error(`CQC data error: ${error.message}`);
+            }
+        }
+        
+        // Display practice details
+        function displayPracticeDetails(nhsData, cqcData) {
+            loadingMessage.classList.add('hide');
+            
+            if (!nhsData && !cqcData) {
+                alert('No data found for this practice from either NHS or CQC');
+                return;
+            }
+            
+            // Set practice name from either source
+            const name = (nhsData?.Organisation?.Name) || (cqcData?.location_name) || 'Unknown Practice';
+            practiceName.textContent = name;
+            
+            // Display NHS data
+            if (nhsData) {
+                const org = nhsData.Organisation;
+                document.getElementById('nhsData').innerHTML = '';
+                
+                const nhsHtml = `
+                    <div class="info-row">
+                        <div class="info-label">ODS Code:</div>
+                        <div class="info-value">${org?.OrgId?.extension || 'N/A'}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Name:</div>
+                        <div class="info-value">${org?.Name || 'N/A'}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Status:</div>
+                        <div class="info-value">${org?.Status || 'N/A'}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Phone:</div>
+                        <div class="info-value">${org?.Contacts?.Contact?.[0]?.value || 'N/A'}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Address:</div>
+                        <div class="info-value">
+                            ${org?.GeoLoc?.Location?.AddrLn1 || ''}<br>
+                            ${org?.GeoLoc?.Location?.AddrLn2 ? org.GeoLoc.Location.AddrLn2 + '<br>' : ''}
+                            ${org?.GeoLoc?.Location?.Town || ''}<br>
+                            ${org?.GeoLoc?.Location?.County ? org.GeoLoc.Location.County + '<br>' : ''}
+                            ${org?.GeoLoc?.Location?.PostCode || 'No postcode'}
+                        </div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Last Updated:</div>
+                        <div class="info-value">${org?.LastChangeDate || 'N/A'}</div>
+                    </div>
+                `;
+                
+                document.getElementById('nhsData').innerHTML = nhsHtml;
+            } else {
+                document.getElementById('nhsData').innerHTML = '<p>No NHS data available for this practice</p>';
+            }
+            
+            // Display CQC data
+            if (cqcData) {
+                const cqcHtml = `
+                    <div class="info-row">
+                        <div class="info-label">Location ID:</div>
+                        <div class="info-value">${cqcData.location_id || 'N/A'}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">ODS Code:</div>
+                        <div class="info-value">${cqcData.ods_code || 'N/A'}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Name:</div>
+                        <div class="info-value">${cqcData.location_name || 'N/A'}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Phone:</div>
+                        <div class="info-value">${cqcData.main_phone_number || 'N/A'}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Website:</div>
+                        <div class="info-value">${cqcData.website || 'N/A'}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Address:</div>
+                        <div class="info-value">
+                            ${cqcData.address_line_1 || ''}<br>
+                            ${cqcData.address_line_2 ? cqcData.address_line_2 + '<br>' : ''}
+                            ${cqcData.town_city || ''}<br>
+                            ${cqcData.county ? cqcData.county + '<br>' : ''}
+                            ${cqcData.postcode || 'No postcode'}
+                        </div>
+                    </div>
+                `;
+                
+                document.getElementById('cqcData').innerHTML = cqcHtml;
+            } else {
+                document.getElementById('cqcData').innerHTML = '<p>No CQC data available for this practice</p>';
+            }
+            
+            // Create combined data
+            const combined = createCombinedData(nhsData, cqcData);
+            currentCombinedData = combined;
+            
+            // Display combined data
+            const combinedHtml = `
+                <div class="info-row">
+                    <div class="info-label">ODS Code:</div>
+                    <div class="info-value">${combined.ods_code || 'N/A'}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Name:</div>
+                    <div class="info-value">${combined.location_name || 'N/A'}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Phone:</div>
+                    <div class="info-value">${combined.main_phone_number || 'N/A'}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Address:</div>
+                    <div class="info-value">
+                        ${combined.address_line_1 || ''}<br>
+                        ${combined.town_city || ''} ${combined.postcode || ''}
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('combinedData').innerHTML = combinedHtml;
+            
+            // Show the practice details panel
+            practiceDetails.classList.remove('hide');
+        }
+        
+        // Create combined data from NHS and CQC sources
+        function createCombinedData(nhsData, cqcData) {
+            const combined = {};
+            
+            // Start with CQC data if available
+            if (cqcData) {
+                Object.assign(combined, cqcData);
+            }
+            
+            // Add/override with NHS data
+            if (nhsData?.Organisation) {
+                const org = nhsData.Organisation;
+                
+                // Basic info
+                combined.ods_code = org.OrgId?.extension || combined.ods_code;
+                combined.location_name = org.Name || combined.location_name;
+                
+                // Contact info
+                if (org.Contacts?.Contact && org.Contacts.Contact.length > 0) {
+                    const phoneContact = org.Contacts.Contact.find(c => c.type === 'tel');
+                    if (phoneContact && phoneContact.value) {
+                        combined.main_phone_number = phoneContact.value;
+                    }
+                }
+                
+                // Address info
+                if (org.GeoLoc?.Location) {
+                    const loc = org.GeoLoc.Location;
+                    combined.address_line_1 = loc.AddrLn1 || combined.address_line_1;
+                    combined.address_line_2 = loc.AddrLn2 || combined.address_line_2;
+                    combined.town_city = loc.Town || combined.town_city;
+                    combined.county = loc.County || combined.county;
+                    combined.postcode = loc.PostCode || combined.postcode;
+                }
+                
+                // Store raw data
+                combined.nhs_ods_data = nhsData;
+                combined.last_nhs_update = new Date().toISOString();
+            }
+            
+            return combined;
+        }
+        
+        // Save to database
+        async function savePracticeToDatabase() {
+            if (!currentCombinedData || !currentOdsCode) {
+                alert('No practice data to save');
+                return;
+            }
+            
+            saveMessage.classList.remove('success-message', 'error-message', 'hide');
+            saveMessage.textContent = 'Saving to database...';
+            saveMessage.classList.add('loading');
+            
+            try {
+                // Check if record exists
+                const { data: existingData, error: checkError } = await supabase
+                    .from('CQC All GPs')
+                    .select('location_id')
+                    .eq('ods_code', currentOdsCode)
+                    .maybeSingle();
+                
+                if (checkError) throw checkError;
+                
+                let result;
+                
+                if (existingData) {
+                    // Update existing record
+                    result = await supabase
+                        .from('CQC All GPs')
+                        .update(currentCombinedData)
+                        .eq('ods_code', currentOdsCode)
+                        .select();
+                } else {
+                    // Insert new record
+                    result = await supabase
+                        .from('CQC All GPs')
+                        .insert(currentCombinedData)
+                        .select();
+                }
+                
+                if (result.error) throw result.error;
+                
+                saveMessage.textContent = `Practice successfully ${existingData ? 'updated' : 'added'} to database!`;
+                saveMessage.classList.remove('loading');
+                saveMessage.classList.add('success-message');
+            } catch (error) {
+                console.error('Database save error:', error);
+                saveMessage.textContent = `Error: ${error.message || 'Failed to save to database'}`;
+                saveMessage.classList.remove('loading');
+                saveMessage.classList.add('error-message');
+            }
+            
+            saveMessage.classList.remove('hide');
+        }
+        
+        // Export as JSON
+        function exportPracticeJson() {
+            if (!currentCombinedData) {
+                alert('No practice data to export');
+                return;
+            }
+            
+            const jsonString = JSON.stringify(currentCombinedData, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `practice_${currentOdsCode || 'data'}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+        
+        // Show raw data modal
+        function showRawData(title, data) {
+            modalTitle.textContent = title;
+            rawDataContent.textContent = JSON.stringify(data, null, 2);
+            
+            // Modal display logic would go here - simplified for this example
+            // In this version, we're just showing the raw data in a new window
+            const jsonString = JSON.stringify(data, null, 2);
+            const win = window.open('', '_blank');
+            win.document.write(`<html><head><title>${title}</title></head><body><pre>${jsonString}</pre></body></html>`);
+        }
+    </script>
+</body>
+</html>

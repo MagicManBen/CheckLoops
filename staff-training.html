@@ -4,40 +4,70 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CheckLoop — My Training</title>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.supabase.co https://*.supabase.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.supabase.com wss://*.supabase.co wss://*.supabase.com https:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.supabase.co https://*.supabase.com https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.supabase.com wss://*.supabase.co wss://*.supabase.com https:;">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="config.js"></script>
   <script src="supabase-js.js"></script>
-  <!-- PDF.js for PDF text extraction - Load synchronously to ensure it's available -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+  <!-- PDF.js for PDF text extraction - Load with multi-CDN fallback -->
   <script>
-    // Set PDF.js worker immediately after library loads
-    if (typeof pdfjsLib !== 'undefined') {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-      console.log('[DEBUG] PDF.js initialized with worker');
+    console.log('[DEBUG] Loading PDF.js...');
+
+    function loadPdfJs() {
+      const tryLoad = (src, onfail) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = () => {
+          console.log('[DEBUG] PDF.js loaded:', src);
+          setupPdfJs();
+        };
+        s.onerror = onfail;
+        document.head.appendChild(s);
+      };
+
+      // Use local PDF.js files for reliability
+      tryLoad(
+        'pdf.min.js',
+        () => {
+          console.error('[DEBUG] Local PDF.js failed to load! Check if pdf.min.js exists.');
+          alert('PDF.js failed to load. Please ensure pdf.min.js file exists in the same directory.');
+        }
+      );
     }
+
+    function setupPdfJs() {
+      if (typeof pdfjsLib !== 'undefined') {
+        // Use local worker file for reliability
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
+        console.log('[DEBUG] PDF.js initialized with worker');
+        window.pdfJsReady = true;
+        window.dispatchEvent(new CustomEvent('pdfjs-ready'));
+      }
+    }
+
+    loadPdfJs();
   </script>
-  <!-- Standardized Staff Navigation -->
+
+  <!-- Standardized Staff Navigation + Styles -->
   <link rel="stylesheet" href="staff-nav.css">
   <link rel="stylesheet" href="improved-training-modal.css">
   <link rel="stylesheet" href="toast-notifications.css">
   <link rel="stylesheet" href="certificate-uploader.css">
+
   <script src="staff-nav.js"></script>
   <script src="toast-notifications.js"></script>
   <script src="certificate-uploader-debug.js"></script>
-  <script src="certificate-uploader.js"></script>
+  <script src="certificate-uploader-pdf-to-image.js"></script>
+
   <style>
     :root {
-      /* Primary color palette - matching homepage */
       --primary: #0b4fb3;
       --primary-dark: #062b6f;
       --primary-light: #2b6ecc;
       --primary-lightest: #e8f2ff;
-
-      /* Accent colors */
       --accent: #76a7ff;
       --accent-2: #5f96ff;
       --success: #2bd4a7;
@@ -46,8 +76,6 @@
       --warning-light: #fffbeb;
       --danger: #ff6b6b;
       --danger-light: #fef2f2;
-
-      /* Neutral colors */
       --white: #ffffff;
       --gray-50: #f8fafc;
       --gray-100: #f1f5f9;
@@ -59,40 +87,23 @@
       --gray-700: #334155;
       --gray-800: #1e293b;
       --gray-900: #0f172a;
-
-      /* Shadows */
       --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
       --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
       --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
       --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
       --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1);
       --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
-
-      /* Border radius */
       --radius-sm: 0.375rem;
       --radius: 0.5rem;
       --radius-lg: 0.75rem;
       --radius-xl: 1rem;
       --radius-2xl: 1.5rem;
-
-      /* Typography */
       --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
       --font-display: 'Plus Jakarta Sans', 'Inter', sans-serif;
-
-      /* Transitions */
       --transition: all 0.2s ease-in-out;
     }
-
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    html, body {
-      height: 100%;
-    }
-
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
     body {
       font-family: var(--font-sans);
       background: linear-gradient(135deg, #e8f2ff 0%, #ffffff 100%) !important;
@@ -102,1226 +113,784 @@
       position: relative;
       overflow-x: hidden;
     }
-
-    /* Subtle background pattern */
     body::before {
       content: '';
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      position: fixed; inset: 0;
       background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="%23e2e8f0" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>') !important;
-      opacity: 0.3;
-      z-index: -1;
-      pointer-events: none;
+      opacity: 0.3; z-index: -1; pointer-events: none;
     }
-
-    /* Remove old background animations */
     .bg, .wave, .mesh { display: none; }
-
-    /* Page container */
-    .page-container {
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      position: relative;
-    }
-
-    /* Main content */
-    .content {
-      max-width: 1400px;
-      margin: 0 auto;
-      padding: 2rem;
-      flex: 1;
-      position: relative;
-      z-index: 1;
-    }
-
-    /* Modern panel styling */
+    .page-container { min-height: 100vh; display: flex; flex-direction: column; position: relative; }
+    .content { max-width: 1400px; margin: 0 auto; padding: 2rem; flex: 1; position: relative; z-index: 1; }
     .panel {
       background: var(--white);
       border-radius: var(--radius-xl);
       box-shadow: var(--shadow-lg);
       border: 1px solid var(--gray-200);
-      padding: 1.5rem;
-      margin-bottom: 1.5rem;
-      position: relative;
-      overflow: hidden;
+      padding: 1.5rem; margin-bottom: 1.5rem; position: relative; overflow: hidden;
     }
-
     .panel::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 3px;
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
       background: linear-gradient(90deg, var(--primary), var(--accent));
     }
-
-    /* Top navigation bar */
-    .topbar {
-      background: var(--white);
-      border-bottom: 1px solid var(--gray-200);
-      padding: 1rem 2rem;
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      box-shadow: var(--shadow-sm);
-      position: sticky;
-      top: 0;
-      z-index: 100;
+    .nav { display: flex; gap: 0.5rem; }
+    .nav a { padding: 0.5rem 1rem; border-radius: var(--radius); color: var(--gray-600); text-decoration: none; font-weight: 500; transition: var(--transition); }
+    .nav a:hover { background: var(--gray-100); color: var(--gray-900); }
+    .nav a.active { background: var(--primary-lightest); color: var(--primary); font-weight: 600; }
+    .btn { padding: 0.75rem 1.25rem; border-radius: var(--radius); font-weight: 600; font-size: 0.9375rem; cursor: pointer; transition: var(--transition); border: none; display: inline-flex; align-items: center; gap: 0.5rem; background: var(--gray-100); color: var(--gray-700); }
+    .btn:hover { background: var(--gray-200); }
+    .btn.primary, .btn-primary { background: var(--primary); color: #fff; box-shadow: var(--shadow-sm); }
+    .btn.primary:hover, .btn-primary:hover { background: var(--primary-dark); transform: translateY(-1px); box-shadow: var(--shadow-md); }
+    .btn.secondary, .btn-secondary { background: var(--gray-100); color: var(--gray-700); border: 1px solid var(--gray-300); }
+    .btn.secondary:hover, .btn-secondary:hover { background: var(--gray-200); border-color: var(--gray-400); }
+    .filters { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 1rem 0; }
+    .chip { padding: 0.5rem 1rem; border-radius: 999px; background: var(--gray-100); border: 1px solid var(--gray-200); cursor: pointer; font-size: 0.875rem; font-weight: 500; color: var(--gray-600); transition: var(--transition); }
+    .chip:hover { background: var(--gray-200); color: var(--gray-700); }
+    .chip.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    .table thead { background: var(--gray-50); border-bottom: 2px solid var(--gray-200); }
+    .table th { padding: 0.75rem 1rem; text-align: left; font-weight: 600; color: var(--gray-700); font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .table td { padding: 1rem; border-bottom: 1px solid var(--gray-100); color: var(--gray-900); }
+    .table tbody tr { transition: var(--transition); }
+    .table tbody tr:hover { background: var(--gray-50); }
+    .table .right { text-align: right; }
+    .badge { display: inline-flex; align-items: center; padding: 0.375rem 0.75rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+    .badge.ok { background: var(--success-light); color: #059669; border: 1px solid #6ee7b7; }
+    .badge.warn { background: var(--warning-light); color: #b45309; border: 1px solid #fcd34d; }
+    .badge.danger { background: var(--danger-light); color: #b91c1c; border: 1px solid #fca5a5; }
+    .badge.info { background: var(--primary-lightest); color: var(--primary); border: 1px solid var(--primary-light); }
+    #training-table tbody tr { cursor: pointer; }
+    .expiry-countdown { font-weight: 600; padding: 0.375rem 0.75rem; border-radius: 999px; font-size: 0.75rem; display: inline-block; }
+    .expiry-countdown.expired { background: var(--danger-light); color: #b91c1c; border: 1px solid #fca5a5; }
+    .expiry-countdown.critical { background: var(--warning-light); color: #b45309; border: 1px solid #fcd34d; }
+    .expiry-countdown.warning { background: #fff7ed; color: #ea580c; border: 1px solid #fed7aa; }
+    .expiry-countdown.good { background: var(--success-light); color: #059669; border: 1px solid #6ee7b7; }
+    .modal { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.5); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 9999; }
+    .modal-content { background: var(--white); border-radius: var(--radius-2xl); padding: 0; max-height: 90vh; overflow-y: auto; border: 1px solid var(--gray-200); box-shadow: var(--shadow-2xl); position: relative; }
+    .modal-content::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, var(--primary), var(--accent)); border-radius: var(--radius-2xl) var(--radius-2xl) 0 0; }
+    .modal-header { padding: 1.5rem; border-bottom: 1px solid var(--gray-200); display: flex; align-items: center; justify-content: space-between; }
+    .modal-header h3 { margin: 0; color: var(--gray-900); font-size: 1.25rem; font-weight: 700; font-family: var(--font-display); }
+    .close-btn { background: none; border: none; color: var(--gray-400); font-size: 1.5rem; cursor: pointer; padding: 0; width: 2rem; height: 2rem; display: flex; align-items: center; justify-content: center; transition: var(--transition); }
+    .close-btn:hover { color: var(--gray-700); }
+    .modal-body { padding: 1.5rem; }
+    .modal-footer { padding: 1.5rem; border-top: 1px solid var(--gray-200); display: flex; gap: 0.75rem; justify-content: flex-end; background: var(--gray-50); }
+    .form-group { margin-bottom: 1.25rem; }
+    .form-group label { display: block; margin-bottom: 0.5rem; color: var(--gray-700); font-weight: 600; font-size: 0.875rem; }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; padding: 0.75rem 1rem; border: 1px solid var(--gray-300); background: var(--white); border-radius: var(--radius); color: var(--gray-900); font-size: 1rem; transition: var(--transition);
     }
-
-    .nav {
-      display: flex;
-      gap: 0.5rem;
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(11, 79, 179, 0.1);
     }
-
-    .nav a {
-      padding: 0.5rem 1rem;
-      border-radius: var(--radius);
-      color: var(--gray-600);
-      text-decoration: none;
-      font-weight: 500;
-      transition: var(--transition);
-    }
-
-    .nav a:hover {
-      background: var(--gray-100);
-      color: var(--gray-900);
-    }
-
-    .nav a.active {
-      background: var(--primary-lightest);
-      color: var(--primary);
-      font-weight: 600;
-    }
-
-    .spacer {
-      flex: 1;
-    }
-
-    .pill {
-      padding: 0.375rem 0.75rem;
-      border-radius: 999px;
-      background: var(--gray-100);
-      color: var(--gray-700);
-      font-size: 0.875rem;
-      font-weight: 500;
-    }
-
-    /* Modern button styles */
-    .btn {
-      padding: 0.75rem 1.25rem;
-      border-radius: var(--radius);
-      font-weight: 600;
-      font-size: 0.9375rem;
-      cursor: pointer;
-      transition: var(--transition);
-      border: none;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.5rem;
-      background: var(--gray-100);
-      color: var(--gray-700);
-    }
-
-    .btn:hover {
-      background: var(--gray-200);
-    }
-
-    .btn.primary, .btn-primary {
-      background: var(--primary);
-      color: white;
-      box-shadow: var(--shadow-sm);
-    }
-
-    .btn.primary:hover, .btn-primary:hover {
-      background: var(--primary-dark);
-      transform: translateY(-1px);
-      box-shadow: var(--shadow-md);
-    }
-
-    .btn.secondary, .btn-secondary {
-      background: var(--gray-100);
-      color: var(--gray-700);
-      border: 1px solid var(--gray-300);
-    }
-
-    .btn.secondary:hover, .btn-secondary:hover {
-      background: var(--gray-200);
-      border-color: var(--gray-400);
-    }
-
-    /* Filter chips */
-    .filters {
-      display: flex;
-      gap: 0.5rem;
-      flex-wrap: wrap;
-      margin: 1rem 0;
-    }
-
-    .chip {
-      padding: 0.5rem 1rem;
-      border-radius: 999px;
-      background: var(--gray-100);
-      border: 1px solid var(--gray-200);
-      cursor: pointer;
-      font-size: 0.875rem;
-      font-weight: 500;
-      color: var(--gray-600);
-      transition: var(--transition);
-    }
-
-    .chip:hover {
-      background: var(--gray-200);
-      color: var(--gray-700);
-    }
-
-    .chip.active {
-      background: var(--primary);
-      color: white;
-      border-color: var(--primary);
-    }
-    /* Modern table styling */
-    .table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 1rem;
-    }
-
-    .table thead {
-      background: var(--gray-50);
-      border-bottom: 2px solid var(--gray-200);
-    }
-
-    .table th {
-      padding: 0.75rem 1rem;
-      text-align: left;
-      font-weight: 600;
-      color: var(--gray-700);
-      font-size: 0.875rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .table td {
-      padding: 1rem;
-      border-bottom: 1px solid var(--gray-100);
-      color: var(--gray-900);
-    }
-
-    .table tbody tr {
-      transition: var(--transition);
-    }
-
-    .table tbody tr:hover {
-      background: var(--gray-50);
-    }
-
-    .table .right {
-      text-align: right;
-    }
-
-    /* Badges */
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 0.375rem 0.75rem;
-      border-radius: 999px;
-      font-size: 0.75rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .badge.ok {
-      background: var(--success-light);
-      color: #059669;
-      border: 1px solid #6ee7b7;
-    }
-
-    .badge.warn {
-      background: var(--warning-light);
-      color: #b45309;
-      border: 1px solid #fcd34d;
-    }
-
-    .badge.danger {
-      background: var(--danger-light);
-      color: #b91c1c;
-      border: 1px solid #fca5a5;
-    }
-
-    .badge.info {
-      background: var(--primary-lightest);
-      color: var(--primary);
-      border: 1px solid var(--primary-light);
-    }
-    /* Training table specific styles */
-    #training-table tbody tr {
-      cursor: pointer;
-    }
-    /* Expiry countdown styles */
-    .expiry-countdown {
-      font-weight: 600;
-      padding: 0.375rem 0.75rem;
-      border-radius: 999px;
-      font-size: 0.75rem;
-      display: inline-block;
-    }
-    .expiry-countdown.expired {
-      background: var(--danger-light);
-      color: #b91c1c;
-      border: 1px solid #fca5a5;
-    }
-    .expiry-countdown.critical {
-      background: var(--warning-light);
-      color: #b45309;
-      border: 1px solid #fcd34d;
-    }
-    .expiry-countdown.warning {
-      background: #fff7ed;
-      color: #ea580c;
-      border: 1px solid #fed7aa;
-    }
-    .expiry-countdown.good {
-      background: var(--success-light);
-      color: #059669;
-      border: 1px solid #6ee7b7;
-    }
-    /* Modern modal styles */
-    .modal {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(15, 23, 42, 0.5);
-      backdrop-filter: blur(8px);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 9999;
-    }
-
-    .modal-content {
-      background: var(--white);
-      border-radius: var(--radius-2xl);
-      padding: 0;
-      max-height: 90vh;
-      overflow-y: auto;
-      border: 1px solid var(--gray-200);
-      box-shadow: var(--shadow-2xl);
-      position: relative;
-    }
-
-    .modal-content::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 4px;
-      background: linear-gradient(90deg, var(--primary), var(--accent));
-      border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
-    }
-
-    .modal-header {
-      padding: 1.5rem;
-      border-bottom: 1px solid var(--gray-200);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    .modal-header h3 {
-      margin: 0;
-      color: var(--gray-900);
-      font-size: 1.25rem;
-      font-weight: 700;
-      font-family: var(--font-display);
-    }
-
-    .close-btn {
-      background: none;
-      border: none;
-      color: var(--gray-400);
-      font-size: 1.5rem;
-      cursor: pointer;
-      padding: 0;
-      width: 2rem;
-      height: 2rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: var(--transition);
-    }
-
-    .close-btn:hover {
-      color: var(--gray-700);
-    }
-
-    .modal-body {
-      padding: 1.5rem;
-    }
-
-    .modal-footer {
-      padding: 1.5rem;
-      border-top: 1px solid var(--gray-200);
-      display: flex;
-      gap: 0.75rem;
-      justify-content: flex-end;
-      background: var(--gray-50);
-    }
-
-    .form-group {
-      margin-bottom: 1.25rem;
-    }
-
-    .form-group label {
-      display: block;
-      margin-bottom: 0.5rem;
-      color: var(--gray-700);
-      font-weight: 600;
-      font-size: 0.875rem;
-    }
-
-    .form-group input,
-    .form-group select,
-    .form-group textarea {
-      width: 100%;
-      padding: 0.75rem 1rem;
-      border: 1px solid var(--gray-300);
-      background: var(--white);
-      border-radius: var(--radius);
-      color: var(--gray-900);
-      font-size: 1rem;
-      transition: var(--transition);
-    }
-
-    .form-group input:focus,
-    .form-group select:focus,
-    .form-group textarea:focus {
-      outline: none;
-      border-color: var(--primary);
-      box-shadow: 0 0 0 3px rgba(11, 79, 179, 0.1);
-    }
-
-    .form-group select option {
-      background: var(--white);
-      color: var(--gray-900);
-    }
-
-    .form-group small {
-      display: block;
-      margin-top: 0.25rem;
-      color: var(--gray-500);
-      font-size: 0.875rem;
-    }
-
-    /* Progress bar styling */
-    .progress-wrap {
-      margin: 1.5rem 0;
-    }
-
-    .progress {
-      height: 12px;
-      background: var(--gray-200);
-      border-radius: 999px;
-      overflow: hidden;
-      border: 1px solid var(--gray-300);
-    }
-
-    .bar {
-      height: 100%;
-      background: linear-gradient(90deg, var(--primary), var(--accent));
-      transition: width 0.8s ease;
-    }
-
-    .meta-note {
-      text-align: right;
-      margin-top: 0.5rem;
-      color: var(--gray-600);
-      font-size: 0.875rem;
-      font-weight: 500;
-    }
-
-    /* Icon containers */
-    .illus-circle {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 48px;
-      height: 48px;
-      background: linear-gradient(135deg, var(--primary-lightest), var(--gray-50));
-      border: 1px solid var(--gray-200);
-      border-radius: var(--radius-lg);
-      box-shadow: var(--shadow-sm);
-    }
-
-    .illus-circle img {
-      width: 32px;
-      height: 32px;
-    }
-
-    /* Footer */
-    .footer {
-      text-align: center;
-      padding: 2rem;
-      color: var(--gray-500);
-      font-size: 0.875rem;
-    }
-
-    /* Responsive adjustments */
+    .form-group small { display: block; margin-top: 0.25rem; color: var(--gray-500); font-size: 0.875rem; }
+    .progress-wrap { margin: 1.5rem 0; }
+    .progress { height: 12px; background: var(--gray-200); border-radius: 999px; overflow: hidden; border: 1px solid var(--gray-300); }
+    .bar { height: 100%; background: linear-gradient(90deg, var(--primary), var(--accent)); transition: width 0.8s ease; }
+    .meta-note { text-align: right; margin-top: 0.5rem; color: var(--gray-600); font-size: 0.875rem; font-weight: 500; }
+    .illus-circle { display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; background: linear-gradient(135deg, var(--primary-lightest), var(--gray-50)); border: 1px solid var(--gray-200); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
+    .illus-circle img { width: 32px; height: 32px; }
+    .footer { text-align: center; padding: 2rem; color: var(--gray-500); font-size: 0.875rem; }
     @media (max-width: 768px) {
-      .content {
-        padding: 1rem;
-      }
-
-      .topbar {
-        padding: 0.75rem 1rem;
-        flex-wrap: wrap;
-      }
-
-      .filters {
-        width: 100%;
-      }
+      .content { padding: 1rem; }
+      .filters { width: 100%; }
     }
-
-    /* Full-width layout just for this page */
-    .content.content-wide {
-      max-width: none;
-      margin: 0;
-      padding-left: 0;
-      padding-right: 0;
-    }
+    .content.content-wide { max-width: none; margin: 0; padding-left: 0; padding-right: 0; }
   </style>
 </head>
 <body>
   <div class="page-container">
     <!-- Standard nav mount point -->
     <div id="navbar-root"></div>
-      <script type="module">
-      import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, daysBetween, attachLogout, createAchievementClient } from './staff-common.js';
-        (async function(){
-          try{
-            console.debug('[staff-training] start');
-            const isClinicalRole = (roleDetail='') => /doctor|nurse|clin|pharmacist/i.test(roleDetail);
 
-            const supabase = await initSupabase();
-            // Make supabase available globally for Admin Portal button
-            window.supabase = supabase;
-            console.debug('[staff-training] supabase inited');
-            handleAuthState(supabase);
-            if (typeof window.renderStandardStaffNav === 'function') {
-              window.renderStandardStaffNav('staff-training.html');
+    <script type="module">
+      import {
+        initSupabase,
+        requireStaffSession,
+        getSiteText,
+        setTopbar,
+        handleAuthState,
+        navActivate,
+        daysBetween,
+        attachLogout,
+        createAchievementClient
+      } from './staff-common.js';
+
+      (async function () {
+        try {
+          console.debug('[staff-training] start');
+          const isClinicalRole = (roleDetail = '') => /doctor|nurse|clin|pharmacist/i.test(roleDetail);
+
+          const supabase = await initSupabase();
+          window.supabase = supabase; // expose for other scripts
+          console.debug('[staff-training] supabase inited');
+          handleAuthState(supabase);
+
+          if (typeof window.renderStandardStaffNav === 'function') {
+            window.renderStandardStaffNav('staff-training.html');
+          }
+          navActivate('training');
+          attachLogout(supabase);
+
+          let achievementClient = null;
+
+          async function refreshTrainingAchievements(metadata = {}) {
+            if (!achievementClient) return;
+            try {
+              const { count } = await supabase
+                .from('training_records')
+                .select('id', { count: 'exact', head: true })
+                .eq('user_id', currentUser.id);
+
+              const totalRecords = count ?? 0;
+              await achievementClient.ensureUnlocked('training_triple', {
+                condition: totalRecords >= 3,
+                metadata: { totalRecords, ...metadata }
+              });
+            } catch (err) {
+              console.warn('[staff-training] refreshTrainingAchievements failed', err);
             }
-            navActivate('training');
-            attachLogout(supabase);
+          }
 
-            let achievementClient = null;
+          try {
+            const { session, profileRow } = await requireStaffSession(supabase);
+            console.debug('[staff-training] requireStaffSession OK', session?.user?.id, profileRow);
+            const user = session.user;
 
-            async function refreshTrainingAchievements(metadata = {}) {
-              if (!achievementClient) return;
-              try {
-                const { count } = await supabase
-                  .from('training_records')
-                  .select('id', { count: 'exact', head: true })
-                  .eq('user_id', currentUser.id);
+            const displayName =
+              profileRow?.full_name ||
+              user?.raw_user_meta_data?.full_name ||
+              (user?.email?.split('@')[0]);
 
-                const totalRecords = count ?? 0;
-                await achievementClient.ensureUnlocked('training_triple', {
-                  condition: totalRecords >= 3,
-                  metadata: { totalRecords, ...metadata }
-                });
-              } catch (err) {
-                console.warn('[staff-training] refreshTrainingAchievements failed', err);
+            const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
+            const accessType = profileRow?.access_type || user?.raw_user_meta_data?.access_type || null;
+            const role = (accessType || profileRow?.role || user?.raw_user_meta_data?.role || 'Staff');
+            const roleDetail = role;
+
+            setTopbar({
+              siteText: await getSiteText(supabase, siteId),
+              email: user.email,
+              role: roleDetail,
+              access_type: accessType || profileRow?.role
+            });
+
+            // Admin portal button toggle (if present)
+            const adminRole = (accessType || profileRow?.role || '').toLowerCase();
+            const adminPortalBtn = document.getElementById('adminPortalBtn');
+            if (adminPortalBtn) {
+              if (adminRole === 'admin' || adminRole === 'owner') {
+                adminPortalBtn.style.display = 'inline-flex';
+              } else {
+                adminPortalBtn.style.display = 'none';
               }
             }
 
-            // Admin nav removed - separate staff portal
+            try {
+              achievementClient = await createAchievementClient({
+                supabase,
+                session,
+                profile: profileRow
+              });
+            } catch (err) {
+              console.warn('[staff-training] achievement client init failed', err);
+            }
 
-            try{
-              const { session, profileRow } = await requireStaffSession(supabase);
-              console.debug('[staff-training] requireStaffSession OK', session?.user?.id, profileRow);
-              const user = session.user;
-              const displayName = profileRow?.full_name || user?.raw_user_meta_data?.full_name || (user?.email?.split('@')[0]);
-              const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
-              const accessType = profileRow?.access_type || user?.raw_user_meta_data?.access_type || null;
-              const role = (accessType || profileRow?.role || user?.raw_user_meta_data?.role || 'Staff');
-              const roleDetail = role; // setTopbar will format as needed
-              setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: roleDetail , access_type: accessType || profileRow?.role});
+            // Current user object for training features
+            let currentUser = {
+              id: user.id,
+              siteId,
+              displayName,
+              roleDetail
+            };
+            window.currentUser = currentUser;
+            console.log('[DEBUG] CurrentUser:', currentUser);
 
-              // Show admin portal button for admins/owners
-              const adminRole = (accessType || profileRow?.role || '').toLowerCase();
-              const adminPortalBtn = document.getElementById('adminPortalBtn');
-              if (adminPortalBtn) {
-                if (adminRole === 'admin' || adminRole === 'owner') {
-                  adminPortalBtn.style.display = 'inline-flex';
-                } else {
-                  adminPortalBtn.style.display = 'none';
-                }
-              }
+            let required = [];
+            let myRecords = [];
 
-              try {
-                achievementClient = await createAchievementClient({
-                  supabase,
-                  session,
-                  profile: profileRow
-                });
-              } catch (err) {
-                console.warn('[staff-training] achievement client init failed', err);
-              }
+            // Required types by role
+            if (siteId) {
+              const tt = await supabase
+                .from('training_types')
+                .select('id,name,validity_months,is_clinical_required,is_non_clinical_required,active')
+                .eq('site_id', siteId)
+                .eq('active', true);
 
-              // Create currentUser object for training functionality
-              let currentUser = {
-                id: user.id,
-                siteId,
-                displayName,
-                roleDetail
-              };
+              const allTypes = (!tt.error && tt.data) ? tt.data : [];
+              required = allTypes.filter(t => isClinicalRole(roleDetail) ? t.is_clinical_required : t.is_non_clinical_required);
+            }
 
-              // Make currentUser globally available for certificate uploader
-              window.currentUser = currentUser;
-              console.log('[DEBUG] CurrentUser created and set globally:', currentUser);
-              console.log('[DEBUG] User ID:', currentUser.id);
-              console.log('[DEBUG] Site ID:', currentUser.siteId);
-              console.log('[DEBUG] Display Name:', currentUser.displayName);
-              console.log('[DEBUG] Role Detail:', currentUser.roleDetail);
+            // My records (by user_id UUID)
+            if (siteId && user.id) {
+              const tr = await supabase
+                .from('training_records')
+                .select('id,training_type_id,completion_date,expiry_date,certificate_url')
+                .eq('site_id', siteId)
+                .eq('user_id', user.id);
 
-              let required = [];
-              let myRecords = [];
+              if (!tr.error && tr.data) myRecords = tr.data;
+            }
 
-              if (siteId){
-                const tt = await supabase
-                  .from('training_types')
-                  .select('id,name,validity_months,is_clinical_required,is_non_clinical_required,active')
-                  .eq('site_id', siteId)
-                  .eq('active', true);
-                const allTypes = (!tt.error && tt.data) ? tt.data : [];
-                required = allTypes.filter(t => isClinicalRole(roleDetail) ? t.is_clinical_required : t.is_non_clinical_required);
-              }
+            const now = new Date();
+            const rows = (required.length ? required : []).map(t => {
+              const recs = myRecords.filter(r => r.training_type_id === t.id);
+              const latest = recs.sort((a, b) =>
+                new Date(b.expiry_date || b.completion_date || 0) -
+                new Date(a.expiry_date || a.completion_date || 0)
+              )[0];
 
-              // Load training records for the authenticated user using user_id (UUID)
-              if (siteId && user.id){
-                const tr = await supabase
-                  .from('training_records')
-                  .select('id,training_type_id,completion_date,expiry_date,certificate_url')
-                  .eq('site_id', siteId)
-                  .eq('user_id', user.id);
-                if (!tr.error && tr.data) myRecords = tr.data;
-              }
+              let status = 'info';
+              let statusHtml = '<span class="badge info">Not started</span>';
+              let expiryCountdown = '';
 
-              const now = new Date();
-              const rows = (required.length ? required : []).map(t => {
-                const recs = myRecords.filter(r => r.training_type_id === t.id);
-                const latest = recs.sort((a,b)=> new Date(b.expiry_date||b.completion_date||0) - new Date(a.expiry_date||a.completion_date||0))[0];
-                let status = 'info';
-                let statusHtml = '<span class="badge info">Not started</span>';
-                let expiryCountdown = '';
-                if (latest){
-                  const expiry = latest.expiry_date || (t.validity_months ? new Date(new Date(latest.completion_date).setMonth(new Date(latest.completion_date).getMonth()+Number(t.validity_months))) : null);
-                  if (expiry){
-                    const days = daysBetween(expiry, now);
-                    const expiryDate = new Date(expiry);
-                    
-                    // Create countdown display
-                    let countdownClass = '';
-                    let countdownText = '';
-                    
-                    if (days < 0) {
-                      status = 'danger';
-                      statusHtml = '<span class="badge danger">Expired</span>';
-                      countdownClass = 'expired';
-                      countdownText = `Expired ${Math.abs(days)} days ago`;
-                    } else if (days === 0) {
-                      status = 'danger';
-                      statusHtml = '<span class="badge danger">Expires today</span>';
-                      countdownClass = 'critical';
-                      countdownText = 'Expires today';
-                    } else if (days <= 7) {
-                      status = 'warn';
-                      statusHtml = '<span class="badge warn">Due soon</span>';
-                      countdownClass = 'critical';
-                      countdownText = `${days} day${days !== 1 ? 's' : ''} left`;
-                    } else if (days <= 30) {
-                      status = 'warn';
-                      statusHtml = '<span class="badge warn">Due soon</span>';
-                      countdownClass = 'warning';
-                      countdownText = `${days} days left`;
-                    } else {
-                      status = 'ok';
-                      statusHtml = '<span class="badge ok">Valid</span>';
-                      countdownClass = 'good';
-                      const months = Math.floor(days / 30);
-                      if (months > 0) {
-                        countdownText = `${months} month${months !== 1 ? 's' : ''} left`;
-                      } else {
-                        countdownText = `${days} days left`;
-                      }
-                    }
-                    
-                    expiryCountdown = `<span class="expiry-countdown ${countdownClass}">${countdownText}</span>`;
+              if (latest) {
+                const expiry = latest.expiry_date ||
+                  (t.validity_months
+                    ? new Date(new Date(latest.completion_date).setMonth(
+                        new Date(latest.completion_date).getMonth() + Number(t.validity_months)
+                      ))
+                    : null);
+
+                if (expiry) {
+                  const days = daysBetween(expiry, now);
+
+                  let countdownClass = '';
+                  let countdownText = '';
+
+                  if (days < 0) {
+                    status = 'danger';
+                    statusHtml = '<span class="badge danger">Expired</span>';
+                    countdownClass = 'expired';
+                    countdownText = `Expired ${Math.abs(days)} days ago`;
+                  } else if (days === 0) {
+                    status = 'danger';
+                    statusHtml = '<span class="badge danger">Expires today</span>';
+                    countdownClass = 'critical';
+                    countdownText = 'Expires today';
+                  } else if (days <= 7) {
+                    status = 'warn';
+                    statusHtml = '<span class="badge warn">Due soon</span>';
+                    countdownClass = 'critical';
+                    countdownText = `${days} day${days !== 1 ? 's' : ''} left`;
+                  } else if (days <= 30) {
+                    status = 'warn';
+                    statusHtml = '<span class="badge warn">Due soon</span>';
+                    countdownClass = 'warning';
+                    countdownText = `${days} days left`;
                   } else {
                     status = 'ok';
-                    statusHtml = '<span class="badge ok">Completed</span>';
-                    expiryCountdown = '<span class="expiry-countdown good">No expiry</span>';
+                    statusHtml = '<span class="badge ok">Valid</span>';
+                    countdownClass = 'good';
+                    const months = Math.floor(days / 30);
+                    countdownText = months > 0
+                      ? `${months} month${months !== 1 ? 's' : ''} left`
+                      : `${days} days left`;
                   }
+
+                  expiryCountdown = `<span class="expiry-countdown ${countdownClass}">${countdownText}</span>`;
                 } else {
-                  expiryCountdown = '<span class="expiry-countdown" style="color: var(--gray-400);">Click to add</span>';
-                }
-                return `<tr data-status="${status}" data-training-id="${t.id}"><td>${t.name}</td><td>${statusHtml}</td><td class="right">${expiryCountdown}</td></tr>`;
-              });
-
-              document.getElementById('training-loading').style.display='none';
-              if (!rows.length){ document.getElementById('training-empty').style.display='block'; }
-              else {
-                document.getElementById('training-wrap').style.display='';
-                document.querySelector('#training-table tbody').innerHTML = rows.join('');
-                // Make rows clickable after rendering
-                attachRowClickHandlers();
-              }
-
-              // Update progress bar with training data
-              updateTrainingProgressBar(required, myRecords);
-
-              // Simple client-side filter
-              document.querySelectorAll('.chip').forEach(ch => ch.onclick = () => {
-                document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-                ch.classList.add('active');
-                const f = ch.getAttribute('data-filter');
-                document.querySelectorAll('#training-table tbody tr').forEach(tr => {
-                  const st = tr.getAttribute('data-status');
-                  tr.style.display = (f==='all' || st===f) ? '' : 'none';
-                });
-              });
-
-              // Training upload functionality
-              let trainingTypes = [];
-              // currentUser already has the correct user.id from authentication
-
-              // Load training types for dropdown
-              if (siteId) {
-                console.log('[DEBUG] Loading training types for site:', siteId);
-                const ttResult = await supabase
-                  .from('training_types')
-                  .select('id,name,validity_months,is_clinical_required,is_non_clinical_required,active')
-                  .eq('site_id', siteId)
-                  .eq('active', true)
-                  .order('name');
-
-                if (!ttResult.error && ttResult.data) {
-                  trainingTypes = ttResult.data;
-                  // Make training types globally available for certificate uploader
-                  window.trainingTypes = trainingTypes;
-                  console.log('[DEBUG] Training types loaded:', trainingTypes.length, 'types');
-                  console.log('[DEBUG] Training types:', trainingTypes);
-
-                  const select = document.getElementById('training-type-select');
-                  trainingTypes.forEach(type => {
-                    const option = document.createElement('option');
-                    option.value = type.id;
-                    option.textContent = type.name;
-                    select.appendChild(option);
-                  });
-                } else {
-                  console.error('[DEBUG] Failed to load training types:', ttResult.error);
+                  status = 'ok';
+                  statusHtml = '<span class="badge ok">Completed</span>';
+                  expiryCountdown = '<span class="expiry-countdown good">No expiry</span>';
                 }
               } else {
-                console.warn('[DEBUG] No site ID - cannot load training types');
+                expiryCountdown = '<span class="expiry-countdown" style="color: var(--gray-400);">Click to add</span>';
               }
+              return `<tr data-status="${status}" data-training-id="${t.id}"><td>${t.name}</td><td>${statusHtml}</td><td class="right">${expiryCountdown}</td></tr>`;
+            });
 
-              // Modal event handlers
-              document.getElementById('upload-training-btn').addEventListener('click', () => openTrainingModal());
-              document.getElementById('training-modal-close').addEventListener('click', closeTrainingModal);
-              document.getElementById('training-cancel-btn').addEventListener('click', closeTrainingModal);
-              document.getElementById('training-save-btn').addEventListener('click', saveTrainingRecord);
-              document.getElementById('training-certificate').addEventListener('change', handleFileUpload);
-              document.getElementById('training-completion-date').addEventListener('change', calculateExpiry);
-              document.getElementById('training-expiry-period').addEventListener('change', calculateExpiry);
-              document.getElementById('training-type-select').addEventListener('change', updateExpiryBasedOnTrainingType);
+            document.getElementById('training-loading').style.display = 'none';
+            if (!rows.length) {
+              document.getElementById('training-empty').style.display = 'block';
+            } else {
+              document.getElementById('training-wrap').style.display = '';
+              document.querySelector('#training-table tbody').innerHTML = rows.join('');
+              attachRowClickHandlers();
+            }
 
-              // Make rows clickable
-              function attachRowClickHandlers() {
-                document.querySelectorAll('#training-table tbody tr').forEach(row => {
-                  row.addEventListener('click', function() {
-                    const trainingName = this.querySelector('td:first-child').textContent;
-                    const trainingType = trainingTypes.find(t => t.name === trainingName);
-                    if (trainingType) {
+            // Update progress bar
+            updateTrainingProgressBar(required, myRecords);
+
+            // Filter chips
+            document.querySelectorAll('.chip').forEach(ch => ch.onclick = () => {
+              document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+              ch.classList.add('active');
+              const f = ch.getAttribute('data-filter');
+              document.querySelectorAll('#training-table tbody tr').forEach(tr => {
+                const st = tr.getAttribute('data-status');
+                tr.style.display = (f === 'all' || st === f) ? '' : 'none';
+              });
+            });
+
+            // Training upload functionality
+            let trainingTypes = [];
+            // Load training types for dropdown
+            if (siteId) {
+              console.log('[DEBUG] Loading training types for site:', siteId);
+              const ttResult = await supabase
+                .from('training_types')
+                .select('id,name,validity_months,is_clinical_required,is_non_clinical_required,active')
+                .eq('site_id', siteId)
+                .eq('active', true)
+                .order('name');
+
+              if (!ttResult.error && ttResult.data) {
+                trainingTypes = ttResult.data;
+                window.trainingTypes = trainingTypes;
+                console.log('[DEBUG] Training types loaded:', trainingTypes.length, 'types');
+                console.log('[DEBUG] Training types:', trainingTypes);
+
+                const select = document.getElementById('training-type-select');
+                trainingTypes.forEach(type => {
+                  const option = document.createElement('option');
+                  option.value = type.id;
+                  option.textContent = type.name;
+                  select.appendChild(option);
+                });
+
+                // Notify readiness + initialize cert uploader once
+                try { window.dispatchEvent(new Event('staff-ready')); } catch (_) {}
+                if (typeof initCertificateUploaderPDFToImage === 'function' && !window.__certUploaderInited) {
+                  try {
+                    window.certificateUploaderAPI = initCertificateUploaderPDFToImage();
+                    window.__certUploaderInited = true;
+                    console.log('[DEBUG] Certificate uploader initialized (post-auth)');
+                  } catch (err) {
+                    console.warn('[DEBUG] Certificate uploader init failed', err);
+                  }
+                }
+
+              } else {
+                console.error('[DEBUG] Failed to load training types:', ttResult.error);
+              }
+            } else {
+              console.warn('[DEBUG] No site ID - cannot load training types');
+            }
+
+            // Modal controls (buttons inside modal UI)
+            document.getElementById('upload-training-btn')?.addEventListener('click', () => {
+              if (window.trainingModal && typeof window.trainingModal.open === 'function') {
+                window.trainingModal.open();
+              } else {
+                openTrainingModal();
+              }
+            });
+            document.getElementById('training-modal-close')?.addEventListener('click', closeTrainingModal);
+            document.getElementById('training-cancel-btn')?.addEventListener('click', closeTrainingModal);
+            document.getElementById('training-save-btn')?.addEventListener('click', saveTrainingRecord);
+            document.getElementById('training-certificate')?.addEventListener('change', handleFileUpload);
+            document.getElementById('training-completion-date')?.addEventListener('change', calculateExpiry);
+            document.getElementById('training-expiry-period')?.addEventListener('change', calculateExpiry);
+            document.getElementById('training-type-select')?.addEventListener('change', updateExpiryBasedOnTrainingType);
+
+            function attachRowClickHandlers() {
+              document.querySelectorAll('#training-table tbody tr').forEach(row => {
+                row.addEventListener('click', function () {
+                  const trainingName = this.querySelector('td:first-child').textContent;
+                  const trainingType = trainingTypes.find(t => t.name === trainingName);
+                  if (trainingType) {
+                    if (window.trainingModal?.open) {
+                      window.trainingModal.open({ preselectId: trainingType.id });
+                      document.getElementById('training-type-select').value = trainingType.id;
+                      updateExpiryBasedOnTrainingType();
+                    } else {
                       openTrainingModal(trainingType);
                     }
-                  });
+                  }
                 });
-              }
+              });
+            }
 
-              // Training modal functions
-              function openTrainingModal(preselectedType = null) {
-                document.getElementById('training-upload-modal').style.display = 'flex';
-                // Set completion date to today
-                document.getElementById('training-completion-date').value = new Date().toISOString().split('T')[0];
-                
-                // If we have a preselected type, set it and calculate expiry
-                if (preselectedType) {
-                  document.getElementById('training-type-select').value = preselectedType.id;
-                  // Set default expiry period based on training type validity
-                  if (preselectedType.validity_months) {
-                    if (preselectedType.validity_months <= 1) {
-                      document.getElementById('training-expiry-period').value = '1month';
-                    } else if (preselectedType.validity_months <= 3) {
-                      document.getElementById('training-expiry-period').value = '3months';
-                    } else if (preselectedType.validity_months <= 6) {
-                      document.getElementById('training-expiry-period').value = '6months';
-                    } else if (preselectedType.validity_months <= 12) {
-                      document.getElementById('training-expiry-period').value = '1year';
-                    } else if (preselectedType.validity_months <= 24) {
-                      document.getElementById('training-expiry-period').value = '2years';
-                    } else {
-                      document.getElementById('training-expiry-period').value = '3years';
-                    }
-                  }
+            // Modal helpers
+            function openTrainingModal(preselectedType = null) {
+              document.getElementById('training-upload-modal').style.display = 'flex';
+              document.getElementById('training-completion-date').value = new Date().toISOString().split('T')[0];
+              if (preselectedType) {
+                document.getElementById('training-type-select').value = preselectedType.id;
+                if (preselectedType.validity_months) {
+                  const m = Number(preselectedType.validity_months);
+                  const id = (m <= 1) ? '1month' : (m <= 3) ? '3months' : (m <= 6) ? '6months' : (m <= 12) ? '1year' : (m <= 24) ? '2years' : '3years';
+                  document.getElementById('training-expiry-period').value = id;
                 }
-                
-                // Calculate initial expiry
-                calculateExpiry();
+              }
+              calculateExpiry();
+            }
+
+            function closeTrainingModal() {
+              document.getElementById('training-upload-modal').style.display = 'none';
+              document.getElementById('training-upload-form').reset();
+              document.getElementById('training-upload-error').style.display = 'none';
+              window.uploadedFile = null;
+            }
+
+            function handleFileUpload(event) {
+              const file = event.target.files[0];
+              if (!file) return;
+              if (file.size > 10 * 1024 * 1024) {
+                const err = document.getElementById('training-upload-error');
+                err.textContent = 'File size must be less than 10MB';
+                err.style.display = 'block';
+                return;
+              }
+              window.uploadedFile = file;
+              document.getElementById('file-name').style.display = 'inline-flex';
+              document.getElementById('file-name-text').textContent = file.name;
+              document.getElementById('training-upload-error').style.display = 'none';
+            }
+
+            function calculateExpiry() {
+              const completionDate = document.getElementById('training-completion-date').value;
+              const expiryPeriod = document.getElementById('training-expiry-period').value;
+
+              if (!completionDate || !expiryPeriod || expiryPeriod === 'never') {
+                document.getElementById('calculated-expiry').textContent = 'No expiry';
+                window.calculatedExpiryDate = null;
+                return;
               }
 
-              function closeTrainingModal() {
-                document.getElementById('training-upload-modal').style.display = 'none';
-                document.getElementById('training-upload-form').reset();
-                document.getElementById('training-upload-error').style.display = 'none';
-                window.uploadedFile = null;
+              const completion = new Date(completionDate);
+              const expiry = new Date(completion);
+
+              switch (expiryPeriod) {
+                case '1week': expiry.setDate(expiry.getDate() + 7); break;
+                case '1month': expiry.setMonth(expiry.getMonth() + 1); break;
+                case '3months': expiry.setMonth(expiry.getMonth() + 3); break;
+                case '6months': expiry.setMonth(expiry.getMonth() + 6); break;
+                case '1year': expiry.setFullYear(expiry.getFullYear() + 1); break;
+                case '2years': expiry.setFullYear(expiry.getFullYear() + 2); break;
+                case '3years': expiry.setFullYear(expiry.getFullYear() + 3); break;
               }
 
-              function handleFileUpload(event) {
-                const file = event.target.files[0];
-                
-                if (!file) return;
-                
-                if (file.size > 10 * 1024 * 1024) {
-                  document.getElementById('training-upload-error').textContent = 'File size must be less than 10MB';
-                  document.getElementById('training-upload-error').style.display = 'block';
-                  return;
-                }
-                
-                window.uploadedFile = file;
-                document.getElementById('file-name').textContent = file.name;
-                document.getElementById('training-upload-error').style.display = 'none';
-              }
+              document.getElementById('calculated-expiry').textContent = expiry.toLocaleDateString();
+              window.calculatedExpiryDate = expiry.toISOString().split('T')[0];
+            }
 
-              function calculateExpiry() {
+            function updateExpiryBasedOnTrainingType() {
+              const selectedTypeId = document.getElementById('training-type-select').value;
+              if (!selectedTypeId) return;
+              const selectedType = trainingTypes.find(t => t.id == selectedTypeId);
+              if (!selectedType) return;
+
+              if (selectedType.validity_months) {
+                const m = Number(selectedType.validity_months);
+                document.getElementById('training-expiry-period').value =
+                  (m <= 1) ? '1month' :
+                  (m <= 3) ? '3months' :
+                  (m <= 6) ? '6months' :
+                  (m <= 12) ? '1year' :
+                  (m <= 24) ? '2years' : '3years';
+              } else {
+                document.getElementById('training-expiry-period').value = 'never';
+              }
+              calculateExpiry();
+            }
+
+            async function saveTrainingRecord(event) {
+              if (event) event.preventDefault();
+
+              const errorDiv = document.getElementById('training-upload-error');
+              errorDiv.style.display = 'none';
+
+              try {
+                const typeId = document.getElementById('training-type-select').value;
                 const completionDate = document.getElementById('training-completion-date').value;
-                const expiryPeriod = document.getElementById('training-expiry-period').value;
-                
-                if (!completionDate || !expiryPeriod || expiryPeriod === 'never') {
-                  document.getElementById('calculated-expiry').textContent = 'No expiry';
+                const expiryDate = window.calculatedExpiryDate || null;
+                const notes = document.getElementById('training-notes').value;
+
+                if (!typeId || !completionDate) {
+                  errorDiv.textContent = 'Please fill in all required fields';
+                  errorDiv.style.display = 'block';
                   return;
                 }
-                
-                const completion = new Date(completionDate);
-                const expiry = new Date(completion);
-                
-                // Calculate based on selected period
-                switch(expiryPeriod) {
-                  case '1week':
-                    expiry.setDate(expiry.getDate() + 7);
-                    break;
-                  case '1month':
-                    expiry.setMonth(expiry.getMonth() + 1);
-                    break;
-                  case '3months':
-                    expiry.setMonth(expiry.getMonth() + 3);
-                    break;
-                  case '6months':
-                    expiry.setMonth(expiry.getMonth() + 6);
-                    break;
-                  case '1year':
-                    expiry.setFullYear(expiry.getFullYear() + 1);
-                    break;
-                  case '2years':
-                    expiry.setFullYear(expiry.getFullYear() + 2);
-                    break;
-                  case '3years':
-                    expiry.setFullYear(expiry.getFullYear() + 3);
-                    break;
-                }
-                
-                // Display calculated expiry
-                document.getElementById('calculated-expiry').textContent = expiry.toLocaleDateString();
-                
-                // Store for saving
-                window.calculatedExpiryDate = expiry.toISOString().split('T')[0];
-              }
 
-              function updateExpiryBasedOnTrainingType() {
-                const selectedTypeId = document.getElementById('training-type-select').value;
-                if (!selectedTypeId) return;
-                
-                // Find the selected training type from our loaded types
-                const selectedType = trainingTypes.find(t => t.id == selectedTypeId);
-                if (!selectedType) return;
-                
-                // Set expiry period based on the selected training's validity_months
-                if (selectedType.validity_months) {
-                  if (selectedType.validity_months <= 1) {
-                    document.getElementById('training-expiry-period').value = '1month';
-                  } else if (selectedType.validity_months <= 3) {
-                    document.getElementById('training-expiry-period').value = '3months';
-                  } else if (selectedType.validity_months <= 6) {
-                    document.getElementById('training-expiry-period').value = '6months';
-                  } else if (selectedType.validity_months <= 12) {
-                    document.getElementById('training-expiry-period').value = '1year';
-                  } else if (selectedType.validity_months <= 24) {
-                    document.getElementById('training-expiry-period').value = '2years';
-                  } else {
-                    document.getElementById('training-expiry-period').value = '3years';
+                if (!currentUser.id) {
+                  errorDiv.textContent = 'User session not found. Please refresh and try again.';
+                  errorDiv.style.display = 'block';
+                  return;
+                }
+
+                let certificateUrl = null;
+
+                if (window.uploadedFile) {
+                  const file = window.uploadedFile;
+                  const fileExt = file.name.split('.').pop();
+                  const fileName = `${currentUser.id}_${typeId}_${Date.now()}.${fileExt}`;
+                  const filePath = `${currentUser.siteId}/training_certificates/${fileName}`;
+
+                  const { data: uploadData, error: uploadError } = await supabase.storage
+                    .from('training_certificates')
+                    .upload(filePath, file, {
+                      cacheControl: '3600',
+                      upsert: false
+                    });
+
+                  if (uploadError) {
+                    console.error('Upload error:', uploadError);
+                    errorDiv.textContent = 'Failed to upload certificate: ' + uploadError.message;
+                    errorDiv.style.display = 'block';
+                    return;
                   }
+                  certificateUrl = filePath;
+                }
+
+                const recordData = {
+                  site_id: currentUser.siteId,
+                  user_id: currentUser.id,
+                  training_type_id: parseInt(typeId, 10),
+                  completion_date: completionDate,
+                  expiry_date: expiryDate,
+                  notes: notes || null,
+                  certificate_url: certificateUrl
+                };
+
+                const { error } = await supabase.from('training_records').insert(recordData);
+                if (error) {
+                  console.error('Database error:', error);
+                  errorDiv.textContent = 'Failed to save training record: ' + error.message;
+                  errorDiv.style.display = 'block';
+                  return;
+                }
+
+                if (window.trainingModal?.close) {
+                  window.trainingModal.close();
                 } else {
-                  // If no validity_months, set to no expiry
-                  document.getElementById('training-expiry-period').value = 'never';
+                  closeTrainingModal();
                 }
-                
-                // Recalculate expiry date based on the new expiry period
-                calculateExpiry();
-              }
 
-              async function saveTrainingRecord(event) {
-                if (event) event.preventDefault();
-                
-                const errorDiv = document.getElementById('training-upload-error');
-                errorDiv.style.display = 'none';
-                
-                try {
-                  // Get form values
-                  const typeId = document.getElementById('training-type-select').value;
-                  const completionDate = document.getElementById('training-completion-date').value;
-                  const expiryDate = window.calculatedExpiryDate || null;
-                  const notes = document.getElementById('training-notes').value;
-                  
-                  if (!typeId || !completionDate) {
-                    errorDiv.textContent = 'Please fill in all required fields';
-                    errorDiv.style.display = 'block';
-                    return;
-                  }
-                  
-                  if (!currentUser.id) {
-                    errorDiv.textContent = 'User session not found. Please refresh and try again.';
-                    errorDiv.style.display = 'block';
-                    return;
-                  }
-                  
-                  let certificateUrl = null;
-                  
-                  // Upload file if provided
-                  if (window.uploadedFile) {
-                    const file = window.uploadedFile;
-                    const fileExt = file.name.split('.').pop();
-                    const fileName = `${currentUser.id}_${typeId}_${Date.now()}.${fileExt}`;
-                    const filePath = `${currentUser.siteId}/training_certificates/${fileName}`;
-                    
-                    const { data: uploadData, error: uploadError } = await supabase.storage
-                      .from('training_certificates')
-                      .upload(filePath, file, {
-                        cacheControl: '3600',
-                        upsert: false
-                      });
-                    
-                    if (uploadError) {
-                      console.error('Upload error:', uploadError);
-                      errorDiv.textContent = 'Failed to upload certificate: ' + uploadError.message;
-                      errorDiv.style.display = 'block';
-                      return;
-                    }
-                    
-                    certificateUrl = filePath;
-                  }
-                  
-                  // Prepare record data using user_id (UUID standard)
-                  const recordData = {
-                    site_id: currentUser.siteId,
-                    user_id: currentUser.id,
-                    training_type_id: parseInt(typeId),
-                    completion_date: completionDate,
-                    expiry_date: expiryDate,
-                    notes: notes || null,
-                    certificate_url: certificateUrl
-                  };
-                  
-                  // Save to database
-                  const { data, error } = await supabase
-                    .from('training_records')
-                    .insert(recordData);
-                  
-                  if (error) {
-                    console.error('Database error:', error);
-                    errorDiv.textContent = 'Failed to save training record: ' + error.message;
-                    errorDiv.style.display = 'block';
-                    return;
-                  }
-                  
-                  // Success - close modal
-                  if (window.trainingModal) {
-                    window.trainingModal.close();
-                  } else {
-                    closeTrainingModal();
-                  }
-
-                  if (achievementClient) {
-                    try {
-                      await achievementClient.ensureUnlocked('first_training_upload', {
-                        metadata: {
-                          training_type_id: parseInt(typeId),
-                          completion_date: completionDate,
-                          has_certificate: Boolean(certificateUrl)
-                        }
-                      });
-                      await refreshTrainingAchievements({
-                        training_type_id: parseInt(typeId),
+                if (achievementClient) {
+                  try {
+                    await achievementClient.ensureUnlocked('first_training_upload', {
+                      metadata: {
+                        training_type_id: parseInt(typeId, 10),
                         completion_date: completionDate,
                         has_certificate: Boolean(certificateUrl)
-                      });
-                    } catch (achievementError) {
-                      console.warn('Failed to unlock training achievements:', achievementError);
-                    }
+                      }
+                    });
+                    await refreshTrainingAchievements({
+                      training_type_id: parseInt(typeId, 10),
+                      completion_date: completionDate,
+                      has_certificate: Boolean(certificateUrl)
+                    });
+                  } catch (achievementError) {
+                    console.warn('Failed to unlock training achievements:', achievementError);
                   }
-
-                  // Show success message with enhanced toast notification
-                  if (typeof showToast === 'function') {
-                    showToast('Training record saved successfully!', 'success', 3000);
-                  } else {
-                    // Fallback to basic notification
-                    const successDiv = document.createElement('div');
-                    successDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; background: var(--success); color: white; padding: 0.75rem 1.25rem; border-radius: var(--radius); box-shadow: var(--shadow-lg); z-index: 10000; font-weight: 600;';
-                    successDiv.textContent = 'Training record saved successfully!';
-                    document.body.appendChild(successDiv);
-                    setTimeout(() => successDiv.remove(), 2000);
-                  }
-                  
-                  // Refresh training data
-                  setTimeout(() => {
-                    // Refresh training data instead of reloading page to prevent debugger interference
-                    if (typeof loadTrainingData === 'function') {
-                      loadTrainingData();
-                    } else if (typeof refreshTraining === 'function') {
-                      refreshTraining();
-                    } else if (typeof initializeTraining === 'function') {
-                      initializeTraining();
-                    }
-                  }, 500);
-                  
-                } catch (error) {
-                  console.error('Save error:', error);
-                  errorDiv.textContent = 'Failed to save training record. Please try again.';
-                  errorDiv.style.display = 'block';
                 }
-              }
 
-              } catch(e){
-                console.error('Upload error:', e);
-              }
+                if (typeof showToast === 'function') {
+                  showToast('Training record saved successfully!', 'success', 3000);
+                } else {
+                  const successDiv = document.createElement('div');
+                  successDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; background: var(--success); color: white; padding: 0.75rem 1.25rem; border-radius: var(--radius); box-shadow: var(--shadow-lg); z-index: 10000; font-weight: 600;';
+                  successDiv.textContent = 'Training record saved successfully!';
+                  document.body.appendChild(successDiv);
+                  setTimeout(() => successDiv.remove(), 2000);
+                }
 
-              // Progress bar functions
-              function updateProgressBar(requiredTypes, myRecords) {
-                const now = new Date();
-                let valid = 0, dueSoon = 0, overdue = 0, total = requiredTypes.length;
-                let nextExpiringDate = null;
-                let nextExpiringName = '';
-                let recentActivity = [];
-
-                requiredTypes.forEach(type => {
-                  const records = myRecords.filter(r => r.training_type_id === type.id);
-                  const latest = records.sort((a,b)=> new Date(b.expiry_date||b.completion_date||0) - new Date(a.expiry_date||a.completion_date||0))[0];
-                  
-                  if (!latest) {
-                    overdue++;
-                    return;
-                  }
-
-                  const expiry = latest.expiry_date ? new Date(latest.expiry_date) : 
-                    (type.validity_months ? new Date(new Date(latest.completion_date).setMonth(new Date(latest.completion_date).getMonth() + Number(type.validity_months))) : null);
-                  
-                  if (!expiry) {
-                    valid++;
-                    return;
-                  }
-
-                  const days = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
-                  
-                  if (days < 0) {
-                    overdue++;
-                  } else if (days <= 30) {
-                    dueSoon++;
-                    
-                    // Track next expiring
-                    if (!nextExpiringDate || expiry < nextExpiringDate) {
-                      nextExpiringDate = expiry;
-                      nextExpiringName = type.name;
-                    }
+                setTimeout(() => {
+                  if (typeof loadTrainingData === 'function') {
+                    loadTrainingData();
+                  } else if (typeof refreshTraining === 'function') {
+                    refreshTraining();
+                  } else if (typeof initializeTraining === 'function') {
+                    initializeTraining();
                   } else {
-                    valid++;
+                    // fallback: reload
+                    location.reload();
                   }
+                }, 500);
 
-                  // Track recent activity (completed in last 30 days)
-                  if (latest.completion_date) {
-                    const completionDate = new Date(latest.completion_date);
-                    const daysSinceCompletion = Math.ceil((now - completionDate) / (1000 * 60 * 60 * 24));
-                    if (daysSinceCompletion <= 30) {
-                      recentActivity.push({
-                        name: type.name,
-                        date: completionDate,
-                        days: daysSinceCompletion
-                      });
-                    }
+              } catch (error) {
+                console.error('Save error:', error);
+                errorDiv.textContent = 'Failed to save training record. Please try again.';
+                errorDiv.style.display = 'block';
+              }
+            }
+
+            // Expose for non-module script
+            window.saveTrainingRecord = saveTrainingRecord;
+
+            // Progress helpers
+            function updateProgressBar(requiredTypes, myRecords) {
+              const now = new Date();
+              let valid = 0, dueSoon = 0, overdue = 0, total = requiredTypes.length;
+              let nextExpiringDate = null;
+              let nextExpiringName = '';
+              let recentActivity = [];
+
+              requiredTypes.forEach(type => {
+                const records = myRecords.filter(r => r.training_type_id === type.id);
+                const latest = records.sort((a, b) =>
+                  new Date(b.expiry_date || b.completion_date || 0) -
+                  new Date(a.expiry_date || a.completion_date || 0)
+                )[0];
+
+                if (!latest) { overdue++; return; }
+
+                const expiry = latest.expiry_date
+                  ? new Date(latest.expiry_date)
+                  : (type.validity_months
+                      ? new Date(new Date(latest.completion_date).setMonth(new Date(latest.completion_date).getMonth() + Number(type.validity_months)))
+                      : null);
+
+                if (!expiry) { valid++; return; }
+
+                const days = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+
+                if (days < 0) overdue++;
+                else if (days <= 30) {
+                  dueSoon++;
+                  if (!nextExpiringDate || expiry < nextExpiringDate) {
+                    nextExpiringDate = expiry;
+                    nextExpiringName = type.name;
                   }
-                });
+                } else valid++;
 
-                const percentage = total > 0 ? Math.round((valid / total) * 100) : 0;
+                if (latest.completion_date) {
+                  const completionDate = new Date(latest.completion_date);
+                  const daysSince = Math.ceil((now - completionDate) / (1000 * 60 * 60 * 24));
+                  if (daysSince <= 30) {
+                    recentActivity.push({ name: type.name, date: completionDate, days: daysSince });
+                  }
+                }
+              });
 
-                // Update progress ring
-                const circumference = 283; // 2 * π * 45
-                const offset = circumference - (percentage / 100) * circumference;
-                document.getElementById('training-progress-ring').style.strokeDashoffset = offset;
+              const percentage = total > 0 ? Math.round((valid / total) * 100) : 0;
+              const circumference = 283;
+              const offset = circumference - (percentage / 100) * circumference;
+              const ring = document.getElementById('training-progress-ring');
+              if (ring) ring.style.strokeDashoffset = offset;
 
-                // Update numbers with animation
-                animateNumber(document.getElementById('training-percentage'), percentage, '%', 1000);
-                animateNumber(document.getElementById('valid-count'), valid, '', 600);
-                animateNumber(document.getElementById('due-soon-count'), dueSoon, '', 800);
-                animateNumber(document.getElementById('overdue-count'), overdue, '', 1000);
+              animateNumber(document.getElementById('training-percentage'), percentage, '%', 1000);
+              animateNumber(document.getElementById('valid-count'), valid, '', 600);
+              animateNumber(document.getElementById('due-soon-count'), dueSoon, '', 800);
+              animateNumber(document.getElementById('overdue-count'), overdue, '', 1000);
 
-                // Update next expiring
-                const nextExpiringEl = document.getElementById('next-expiring');
+              const nextExpiringEl = document.getElementById('next-expiring');
+              if (nextExpiringEl) {
                 if (nextExpiringDate && nextExpiringName) {
                   const days = Math.ceil((nextExpiringDate - now) / (1000 * 60 * 60 * 24));
                   nextExpiringEl.innerHTML = `
-                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-                      <div style="font-weight: 600; color: var(--gray-900); font-size: 0.875rem;">${nextExpiringName}</div>
-                      <div style="color: ${days <= 7 ? 'var(--danger)' : days <= 14 ? 'var(--warning)' : 'var(--gray-500)'}; font-size: 0.75rem;">
+                    <div style="display:flex;flex-direction:column;gap:0.25rem;">
+                      <div style="font-weight:600;color:var(--gray-900);font-size:0.875rem;">${nextExpiringName}</div>
+                      <div style="color:${days <= 7 ? 'var(--danger)' : days <= 14 ? 'var(--warning)' : 'var(--gray-500)'};font-size:0.75rem;">
                         ${days > 0 ? `Expires in ${days} day${days !== 1 ? 's' : ''}` : 'Expired'}
                       </div>
-                    </div>
-                  `;
+                    </div>`;
                 } else {
                   nextExpiringEl.innerHTML = '<div style="color: var(--gray-500);">All training up to date! 🎉</div>';
                 }
+              }
 
-                // Update recent activity
-                const recentEl = document.getElementById('recent-training');
+              const recentEl = document.getElementById('recent-training');
+              if (recentEl) {
                 if (recentActivity.length > 0) {
-                  const latest = recentActivity.sort((a,b) => b.date - a.date)[0];
+                  const latest = recentActivity.sort((a, b) => b.date - a.date)[0];
                   recentEl.innerHTML = `
-                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-                      <div style="font-weight: 600; color: var(--gray-900); font-size: 0.875rem;">${latest.name}</div>
+                    <div style="display:flex;flex-direction:column;gap:0.25rem;">
+                      <div style="font-weight:600;color:var(--gray-900);font-size:0.875rem;">${latest.name}</div>
                       <div style="color: var(--success); font-size: 0.75rem;">
                         Completed ${latest.days} day${latest.days !== 1 ? 's' : ''} ago
                       </div>
-                    </div>
-                  `;
+                    </div>`;
                 } else {
                   recentEl.innerHTML = '<div style="color: var(--gray-500);">No recent activity</div>';
                 }
               }
+            }
 
-              // Function to update the training progress bar
-              function updateTrainingProgressBar(requiredTypes, userRecords) {
-                const now = new Date();
-                let validCount = 0;
-                const totalCount = requiredTypes.length;
+            function updateTrainingProgressBar(requiredTypes, userRecords) {
+              const now = new Date();
+              let validCount = 0;
+              const totalCount = requiredTypes.length;
 
-                // Calculate valid training items
-                requiredTypes.forEach(type => {
-                  const records = userRecords.filter(r => r.training_type_id === type.id);
-                  const latest = records.sort((a,b)=> new Date(b.expiry_date||b.completion_date||0) - new Date(a.expiry_date||a.completion_date||0))[0];
-                  
-                  if (latest) {
-                    const expiry = latest.expiry_date ? new Date(latest.expiry_date) : (type.validity_months ? new Date(new Date(latest.completion_date).setMonth(new Date(latest.completion_date).getMonth()+Number(type.validity_months))) : null);
-                    
-                    if (!expiry || expiry > now) {
-                      validCount++;
-                    }
-                  }
-                });
+              requiredTypes.forEach(type => {
+                const records = userRecords.filter(r => r.training_type_id === type.id);
+                const latest = records.sort((a, b) =>
+                  new Date(b.expiry_date || b.completion_date || 0) -
+                  new Date(a.expiry_date || a.completion_date || 0)
+                )[0];
 
-                // Calculate percentage
-                const percentage = totalCount > 0 ? Math.round((validCount / totalCount) * 100) : 0;
-                
-                // Update progress bar
-                const progressBar = document.getElementById('training-progress-bar');
-                const progressLabel = document.getElementById('training-progress-label');
-                
-                if (progressBar) {
-                  // Animate the progress bar
-                  setTimeout(() => {
-                    progressBar.style.width = `${percentage}%`;
-                  }, 100);
-                }
-                
-                if (progressLabel) {
-                  progressLabel.textContent = `${percentage}% Training Complete (${validCount}/${totalCount})`;
-                }
-
-                console.log(`Training progress: ${validCount}/${totalCount} = ${percentage}%`);
-              }
-
-              function animateNumber(element, targetValue, suffix = '', duration = 1000) {
-                const startValue = 0;
-                const startTime = performance.now();
-                
-                function updateNumber(currentTime) {
-                  const elapsed = currentTime - startTime;
-                  const progress = Math.min(elapsed / duration, 1);
-                  const easeOutQuart = 1 - Math.pow(1 - progress, 4);
-                  const currentValue = Math.round(startValue + (targetValue - startValue) * easeOutQuart);
-                  
-                  element.textContent = currentValue + suffix;
-                  
-                  if (progress < 1) {
-                    requestAnimationFrame(updateNumber);
-                  }
-                }
-                
-                requestAnimationFrame(updateNumber);
-              }
-
-              // Toggle details functionality
-              document.getElementById('training-toggle').addEventListener('click', function() {
-                const details = document.getElementById('training-details');
-                const icon = this.querySelector('svg');
-                const isExpanded = details.style.display !== 'none';
-                
-                if (isExpanded) {
-                  details.style.display = 'none';
-                  icon.style.transform = 'rotate(0deg)';
-                } else {
-                  details.style.display = 'block';
-                  icon.style.transform = 'rotate(180deg)';
+                if (latest) {
+                  const expiry = latest.expiry_date
+                    ? new Date(latest.expiry_date)
+                    : (type.validity_months
+                        ? new Date(new Date(latest.completion_date).setMonth(new Date(latest.completion_date).getMonth() + Number(type.validity_months)))
+                        : null);
+                  if (!expiry || expiry > now) validCount++;
                 }
               });
 
-            } catch(e){
-              // requireStaffSession or inner errors
-              if (String(e.message).includes('NO_SESSION')) { window.location.replace('home.html'); return; }
-              if (String(e.message).includes('NOT_STAFF')) { window.location.replace('home.html'); return; }
-              console.error('[staff-training] inner error', e);
-              document.getElementById('training-loading').style.display='none';
-              document.getElementById('training-empty').style.display='block';
+              const percentage = totalCount > 0 ? Math.round((validCount / totalCount) * 100) : 0;
+              const progressBar = document.getElementById('training-progress-bar');
+              const progressLabel = document.getElementById('training-progress-label');
+
+              if (progressBar) {
+                setTimeout(() => { progressBar.style.width = `${percentage}%`; }, 100);
+              }
+              if (progressLabel) {
+                progressLabel.textContent = `${percentage}% Training Complete (${validCount}/${totalCount})`;
+              }
+              console.log(`Training progress: ${validCount}/${totalCount} = ${percentage}%`);
             }
-        })();
-      </script>
-    
+
+            function animateNumber(element, targetValue, suffix = '', duration = 1000) {
+              if (!element) return;
+              const startValue = 0;
+              const startTime = performance.now();
+
+              function updateNumber(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const easeOutQuart = 1 - Math.pow(1 - progress, 4);
+                const currentValue = Math.round(startValue + (targetValue - startValue) * easeOutQuart);
+                element.textContent = currentValue + suffix;
+                if (progress < 1) requestAnimationFrame(updateNumber);
+              }
+              requestAnimationFrame(updateNumber);
+            }
+
+            // Toggle details functionality (guarded if elements are absent)
+            {
+              const trainingToggleEl = document.getElementById('training-toggle');
+              if (trainingToggleEl) {
+                trainingToggleEl.addEventListener('click', function () {
+                  const details = document.getElementById('training-details');
+                  if (!details) return;
+                  const icon = this.querySelector('svg');
+                  const isExpanded = details.style.display !== 'none';
+                  if (isExpanded) {
+                    details.style.display = 'none';
+                    if (icon) icon.style.transform = 'rotate(0deg)';
+                  } else {
+                    details.style.display = 'block';
+                    if (icon) icon.style.transform = 'rotate(180deg)';
+                  }
+                });
+              }
+            }
+
+          } catch (e) {
+            console.error('Upload error:', e);
+          }
+
+        } catch (e) {
+          if (String(e.message).includes('NO_SESSION')) { window.location.replace('home.html'); return; }
+          if (String(e.message).includes('NOT_STAFF')) { window.location.replace('home.html'); return; }
+          console.error('[staff-training] inner error', e);
+          document.getElementById('training-loading').style.display = 'none';
+          document.getElementById('training-empty').style.display = 'block';
+        }
+      })();
+    </script>
 
     <!-- Main Content Area -->
     <main class="content content-wide">
-      <!-- Training Panel -->
       <div class="panel">
         <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem;">
           <div class="illus-circle"><img src="https://api.iconify.design/fluent-emoji-flat:books.svg" alt="Training"></div>
           <h2 style="margin:0;font-size:1.5rem;font-weight:700;color:var(--gray-900);font-family:var(--font-display);">My Training</h2>
           <div style="flex:1"></div>
           <button class="btn btn-primary" id="upload-training-btn">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
               <polyline points="17,8 12,3 7,8"></polyline>
               <line x1="12" y1="3" x2="12" y2="15"></line>
@@ -1329,12 +898,12 @@
             Upload Training
           </button>
         </div>
-        
+
         <!-- AI Certificate Upload Zone -->
         <div class="certificate-dropzone" id="certificate-dropzone">
           <div class="certificate-dropzone-inner">
             <div class="dropzone-icon">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                 <polyline points="14 2 14 8 20 8"></polyline>
                 <line x1="12" y1="18" x2="12" y2="12"></line>
@@ -1348,10 +917,9 @@
             </div>
           </div>
           <input type="file" class="certificate-upload-input" id="certificate-upload" accept=".pdf,.png,.jpg,.jpeg" />
-          
           <div class="certificate-preview" id="certificate-preview">
             <div class="preview-header">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                 <polyline points="14 2 14 8 20 8"></polyline>
               </svg>
@@ -1360,14 +928,14 @@
                 <div class="preview-filesize" id="preview-filesize">0 KB</div>
               </div>
               <div class="preview-actions">
-                <button class="preview-btn" id="view-certificate-btn" title="View">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <button class="preview-btn" id="view-certificate-btn" title="View" aria-label="View certificate">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                     <circle cx="12" cy="12" r="3"></circle>
                   </svg>
                 </button>
-                <button class="preview-btn remove" id="remove-certificate-btn" title="Remove">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <button class="preview-btn remove" id="remove-certificate-btn" title="Remove" aria-label="Remove certificate">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                     <polyline points="3 6 5 6 21 6"></polyline>
                     <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
                   </svg>
@@ -1404,7 +972,13 @@
         <!-- Training Table -->
         <div id="training-wrap" style="display:none;">
           <table id="training-table" class="table">
-            <thead><tr><th>Training</th><th>Status</th><th class="right">Expiry Countdown</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Training</th>
+                <th>Status</th>
+                <th class="right">Expiry Countdown</th>
+              </tr>
+            </thead>
             <tbody></tbody>
           </table>
         </div>
@@ -1420,7 +994,7 @@
     <div class="training-modal-content">
       <div class="training-modal-header">
         <h3>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
             <circle cx="9" cy="7" r="4"></circle>
             <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
@@ -1428,11 +1002,10 @@
           </svg>
           Add Training Record
         </h3>
-        <button class="training-close-btn" id="training-modal-close">&times;</button>
+        <button class="training-close-btn" id="training-modal-close" aria-label="Close">&times;</button>
       </div>
-      
+
       <div class="training-modal-body">
-        <!-- Step indicator for visual progress -->
         <div class="step-indicator">
           <div class="step active">
             <div class="step-circle">1</div>
@@ -1447,14 +1020,13 @@
             <div class="step-label">Add Details</div>
           </div>
         </div>
-        
+
         <div id="training-upload-error" class="training-upload-error"></div>
-        
+
         <form id="training-upload-form">
           <div class="training-form-group">
             <label for="training-type-select">
-              Training Type 
-              <span class="required-star">*</span>
+              Training Type <span class="required-star">*</span>
               <span class="info-tooltip" data-tooltip="Select the specific training course or qualification">ⓘ</span>
             </label>
             <select id="training-type-select" required>
@@ -1462,20 +1034,18 @@
             </select>
             <small>Choose the training course or qualification you completed</small>
           </div>
-          
+
           <div class="training-form-group">
             <label for="training-completion-date">
-              Completion Date 
-              <span class="required-star">*</span>
+              Completion Date <span class="required-star">*</span>
             </label>
             <input type="date" id="training-completion-date" required>
             <small>The date when you completed this training</small>
           </div>
-          
+
           <div class="training-form-group">
             <label for="training-expiry-period">
-              Expiry Period 
-              <span class="required-star">*</span>
+              Expiry Period <span class="required-star">*</span>
               <span class="info-tooltip" data-tooltip="How long this training is valid for">ⓘ</span>
             </label>
             <select id="training-expiry-period" required>
@@ -1489,10 +1059,9 @@
               <option value="never">No Expiry</option>
             </select>
           </div>
-          
-          <!-- Expiry calculation display -->
+
           <div class="training-expiry-info">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <circle cx="12" cy="12" r="10"></circle>
               <line x1="12" y1="8" x2="12" y2="12"></line>
               <line x1="12" y1="16" x2="12.01" y2="16"></line>
@@ -1503,7 +1072,7 @@
               <div class="expiry-info">Your training record will be marked as expired after this date.</div>
             </div>
           </div>
-          
+
           <div class="training-form-group">
             <label for="training-certificate">
               Certificate File
@@ -1512,7 +1081,7 @@
             <div class="file-upload-container">
               <input type="file" id="training-certificate" class="file-input" accept=".pdf,.jpg,.jpeg,.png">
               <label for="training-certificate" class="file-upload-button" id="file-upload-button">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                   <polyline points="17,8 12,3 7,8"></polyline>
                   <line x1="12" y1="3" x2="12" y2="15"></line>
@@ -1520,7 +1089,7 @@
                 Choose file...
               </label>
               <div class="file-name" id="file-name" style="display: none;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
                   <polyline points="13 2 13 9 20 9"></polyline>
                 </svg>
@@ -1529,7 +1098,7 @@
               <small>PDF, JPG, PNG (max 10MB). Adding your certificate helps verify your training.</small>
             </div>
           </div>
-          
+
           <div class="training-form-group">
             <label for="training-notes">Notes</label>
             <textarea id="training-notes" rows="3" placeholder="Any additional information about this training (optional)"></textarea>
@@ -1537,17 +1106,17 @@
           </div>
         </form>
       </div>
-      
+
       <div class="training-modal-footer">
-        <button type="button" class="training-btn training-btn-secondary" id="training-cancel-btn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button type="button" class="training-btn training-btn-secondary" id="training-cancel-btn" aria-label="Cancel">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
           </svg>
           Cancel
         </button>
-        <button type="submit" class="training-btn training-btn-primary" id="training-save-btn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button type="submit" class="training-btn training-btn-primary" id="training-save-btn" aria-label="Save training record">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
             <polyline points="17 21 17 13 7 13 7 21"></polyline>
             <polyline points="7 3 7 8 15 8"></polyline>
@@ -1558,14 +1127,13 @@
     </div>
   </div>
 
-
-    <!-- Certificate Confirmation Modal -->
+  <!-- Certificate Confirmation Modal -->
   <div id="cert-confirmation-modal" class="cert-confirmation-modal">
     <div class="cert-modal-content">
       <div class="cert-modal-header">
         <h3>Confirm Certificate Details</h3>
-        <button class="cert-close-btn" id="cert-modal-close">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button class="cert-close-btn" id="cert-modal-close" aria-label="Close">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
           </svg>
@@ -1573,7 +1141,7 @@
       </div>
       <div class="cert-modal-body">
         <p>We've extracted the following information from your certificate. Please review and edit if necessary.</p>
-        
+
         <div class="cert-extracted-data">
           <div class="cert-data-row">
             <div class="cert-data-label">Name</div>
@@ -1581,45 +1149,44 @@
               <input type="text" id="cert-person-name" placeholder="Person name not detected">
             </div>
           </div>
-          
+
           <div class="cert-data-row">
             <div class="cert-data-label">Training Type</div>
             <div class="cert-data-value">
               <select id="cert-training-type">
                 <option value="">Select training type...</option>
-                <!-- Options will be populated from the database -->
               </select>
             </div>
           </div>
-          
+
           <div class="cert-data-row">
             <div class="cert-data-label">Completion Date</div>
             <div class="cert-data-value">
               <input type="date" id="cert-completion-date">
             </div>
           </div>
-          
+
           <div class="cert-data-row">
             <div class="cert-data-label">Expiry Date</div>
             <div class="cert-data-value">
               <input type="date" id="cert-expiry-date">
             </div>
           </div>
-          
+
           <div class="cert-data-row">
             <div class="cert-data-label">Provider</div>
             <div class="cert-data-value">
               <input type="text" id="cert-provider" placeholder="Provider not detected">
             </div>
           </div>
-          
+
           <div class="cert-data-row">
             <div class="cert-data-label">Certificate ID</div>
             <div class="cert-data-value">
               <input type="text" id="cert-id" placeholder="Certificate ID not detected">
             </div>
           </div>
-          
+
           <div class="cert-data-row">
             <div class="cert-data-label">Notes</div>
             <div class="cert-data-value">
@@ -1636,493 +1203,85 @@
   </div>
 
   <!-- Debug Console - Persistent across all pages -->
-    <script src="debug-console.js"></script>
-    <script src="supabase-debug.js"></script>
-    <script src="training-modal.js"></script>
-<!-- Staff Profile Fix -->
-<script src="staff-profile-fix.js"></script>
+  <script src="debug-console.js"></script>
+  <script src="supabase-debug.js"></script>
+  <script src="training-modal.js"></script>
+  <script src="staff-profile-fix.js"></script>
 
-<!-- Initialize training modal functionality -->
-<script>
-  // Add extensive debugging for certificate uploader
-  console.log('[DEBUG] Staff Training Page Loading');
-  console.log('[DEBUG] Supabase URL:', window.supabaseUrl || CONFIG?.SUPABASE_URL);
-  console.log('[DEBUG] Current location:', window.location.href);
+  <!-- Initialize training modal functionality + uploader hooks -->
+  <script>
+    console.log('[DEBUG] Staff Training Page Loading');
+    console.log('[DEBUG] Supabase URL:', window.supabaseUrl || (window.CONFIG && CONFIG.SUPABASE_URL));
+    console.log('[DEBUG] Current location:', window.location.href);
 
-  document.addEventListener('DOMContentLoaded', function() {
-    console.log('[DEBUG] DOM Content Loaded - Initializing training features');
+    document.addEventListener('DOMContentLoaded', function () {
+      console.log('[DEBUG] DOM Content Loaded - Initializing training features');
 
-    // Initialize training modal with custom save handler
-    if (typeof TrainingModal !== 'undefined') {
-      console.log('[DEBUG] TrainingModal found, initializing');
-      window.trainingModal = new TrainingModal({
-        onSave: saveTrainingRecord,
-        onClose: function() {
-          document.getElementById('training-upload-form').reset();
-          document.getElementById('training-upload-error').style.display = 'none';
-          window.uploadedFile = null;
-        }
-      });
-    } else {
-      console.warn('[DEBUG] TrainingModal not found');
-    }
-
-    // Attach click handler to upload button
-    const uploadBtn = document.getElementById('upload-training-btn');
-    if (uploadBtn) {
-      console.log('[DEBUG] Upload button found, attaching click handler');
-      uploadBtn.addEventListener('click', function() {
-        if (window.trainingModal) {
-          window.trainingModal.open();
-        } else {
-          console.error('[DEBUG] trainingModal not initialized');
-        }
-      });
-    } else {
-      console.error('[DEBUG] Upload button not found');
-    }
-
-    // Listen for save events to handle the data
-    document.addEventListener('trainingModalSave', function(event) {
-      const data = event.detail;
-      console.log('[DEBUG] Training modal save event received:', data);
-      saveTrainingRecord();
-    });
-
-    // Make trainingTypes available globally for certificate uploader
-    window.trainingTypes = window.trainingTypes || [];
-    console.log('[DEBUG] Training types available:', window.trainingTypes.length);
-
-    // Certificate AI Processing
-    console.log('[DEBUG] Checking for certificate uploader function');
-    if (typeof initCertificateUploader === 'function') {
-      console.log('[DEBUG] Certificate uploader function found, initializing');
-      console.log('[DEBUG] Training types count:', window.trainingTypes?.length || 0);
-      console.log('[DEBUG] Current user:', window.currentUser);
-      console.log('[DEBUG] Supabase client:', !!window.supabase);
-
-      // Initialize certificate uploader from external script
-      window.certificateUploaderAPI = initCertificateUploader();
-      console.log('[DEBUG] Certificate uploader API initialized:', !!window.certificateUploaderAPI);
-    } else {
-      console.error('[DEBUG] Certificate uploader function not found. Script might not be loaded.');
-      console.log('[DEBUG] Available functions:', Object.keys(window).filter(k => k.includes('certificate')));
-    }
-
-    // Set global supabase URL for certificate uploader
-    if (CONFIG && CONFIG.SUPABASE_URL) {
-      window.supabaseUrl = CONFIG.SUPABASE_URL;
-      console.log('[DEBUG] Supabase URL set from CONFIG:', window.supabaseUrl);
-    }
-  });
-  
-  // Initialize PDF.js worker
-  if (typeof pdfjsLib !== 'undefined') {
-    console.log('[DEBUG] PDF.js library found, setting worker');
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-  } else {
-    console.warn('[DEBUG] PDF.js library not loaded');
-  }
-
-  // Debug helper for monitoring certificate uploads
-  window.debugCertificateUpload = function() {
-    console.log('=== Certificate Upload Debug Info ===');
-    console.log('Supabase client:', !!window.supabase);
-    console.log('Current user:', window.currentUser);
-    console.log('Training types:', window.trainingTypes);
-    console.log('Certificate file:', window.certificateFile);
-    console.log('Certificate URL:', window.certificateUrl);
-    console.log('Certificate data:', window.certificateData);
-    console.log('Supabase URL:', window.supabaseUrl);
-    console.log('CONFIG:', window.CONFIG);
-    console.log('=====================================');
-  };
-
-  // THIS FUNCTION IS REMOVED - Using the external certificate-uploader.js instead
-  // The duplicate initCertificateUploader function has been removed to avoid conflicts
-  // The functionality is now provided by the certificate-uploader.js script
-  /*
-  function initCertificateUploader() {
-    const dropzone = document.getElementById('certificate-dropzone');
-    const fileInput = document.getElementById('certificate-upload');
-    const preview = document.getElementById('certificate-preview');
-    const filenameEl = document.getElementById('preview-filename');
-    const filesizeEl = document.getElementById('preview-filesize');
-    const processingIndicator = document.getElementById('processing-indicator');
-    const removeBtn = document.getElementById('remove-certificate-btn');
-    const viewBtn = document.getElementById('view-certificate-btn');
-    
-    // Certificate confirmation modal elements
-    const confirmModal = document.getElementById('cert-confirmation-modal');
-    const closeBtn = document.getElementById('cert-modal-close');
-    const cancelBtn = document.getElementById('cert-cancel-btn');
-    const saveBtn = document.getElementById('cert-save-btn');
-    
-    // Certificate form fields
-    const personNameInput = document.getElementById('cert-person-name');
-    const trainingTypeSelect = document.getElementById('cert-training-type');
-    const completionDateInput = document.getElementById('cert-completion-date');
-    const expiryDateInput = document.getElementById('cert-expiry-date');
-    const providerInput = document.getElementById('cert-provider');
-    const certIdInput = document.getElementById('cert-id');
-    const notesInput = document.getElementById('cert-notes');
-    
-    // Drag and drop events
-    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-      dropzone.addEventListener(eventName, preventDefaults, false);
-    });
-    
-    function preventDefaults(e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    
-    ['dragenter', 'dragover'].forEach(eventName => {
-      dropzone.addEventListener(eventName, highlight, false);
-    });
-    
-    ['dragleave', 'drop'].forEach(eventName => {
-      dropzone.addEventListener(eventName, unhighlight, false);
-    });
-    
-    function highlight() {
-      dropzone.classList.add('dragover');
-    }
-    
-    function unhighlight() {
-      dropzone.classList.remove('dragover');
-    }
-    
-    // Handle file drop
-    dropzone.addEventListener('drop', handleDrop, false);
-    
-    function handleDrop(e) {
-      const dt = e.dataTransfer;
-      const files = dt.files;
-      
-      if (files.length) {
-        fileInput.files = files;
-        handleFiles(files);
-      }
-    }
-    
-    // Handle file selection
-    fileInput.addEventListener('change', function() {
-      if (this.files.length) {
-        handleFiles(this.files);
-      }
-    });
-    
-    // Remove button functionality
-    removeBtn.addEventListener('click', function() {
-      resetUploader();
-    });
-    
-    // View button functionality
-    viewBtn.addEventListener('click', function() {
-      if (window.certificateFile) {
-        const url = URL.createObjectURL(window.certificateFile);
-        window.open(url, '_blank');
-      }
-    });
-    
-    // Modal close buttons
-    closeBtn.addEventListener('click', closeConfirmModal);
-    cancelBtn.addEventListener('click', closeConfirmModal);
-    
-    // Save button functionality
-    saveBtn.addEventListener('click', saveFromConfirmationModal);
-    
-    function closeConfirmModal() {
-      confirmModal.classList.remove('active');
-    }
-    
-    function formatFileSize(bytes) {
-      if (bytes < 1024) return bytes + ' bytes';
-      else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-      else return (bytes / 1048576).toFixed(1) + ' MB';
-    }
-    
-    function resetUploader() {
-      fileInput.value = '';
-      preview.classList.remove('active');
-      processingIndicator.classList.remove('error', 'success');
-      processingIndicator.innerHTML = '<div class="spinner"></div><span>Processing certificate with AI...</span>';
-      window.certificateFile = null;
-      window.certificateUrl = null;
-      window.certificateData = null;
-    }
-    
-    function handleFiles(files) {
-      const file = files[0];
-      
-      // Validate file
-      if (!file) return;
-      
-      if (file.size > 10 * 1024 * 1024) {
-        showError('File size must be less than 10MB');
-        return;
-      }
-      
-      const validTypes = ['application/pdf', 'image/png', 'image/jpeg'];
-      if (!validTypes.includes(file.type)) {
-        showError('Only PDF, PNG and JPG files are supported');
-        return;
-      }
-      
-      // Save file for later use
-      window.certificateFile = file;
-      
-      // Update preview
-      filenameEl.textContent = file.name;
-      filesizeEl.textContent = formatFileSize(file.size);
-      preview.classList.add('active');
-      
-      // Process file
-      processCertificate(file);
-    }
-    
-    function showError(message) {
-      processingIndicator.classList.add('error');
-      processingIndicator.innerHTML = `
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="12" y1="8" x2="12" y2="12"></line>
-          <line x1="12" y1="16" x2="12.01" y2="16"></line>
-        </svg>
-        <span>${message}</span>
-      `;
-      preview.classList.add('active');
-    }
-    
-    function showSuccess(message) {
-      processingIndicator.classList.add('success');
-      processingIndicator.innerHTML = `
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-          <polyline points="22 4 12 14.01 9 11.01"></polyline>
-        </svg>
-        <span>${message}</span>
-      `;
-    }
-    
-    // Process certificate with AI
-    async function processCertificate(file) {
-      try {
-        // Show processing state
-        processingIndicator.classList.remove('error', 'success');
-        processingIndicator.innerHTML = '<div class="spinner"></div><span>Processing certificate with AI...</span>';
-        
-        // First, extract text from the file
-        let textContent = '';
-        
-        if (file.type === 'application/pdf') {
-          textContent = await extractTextFromPDF(file);
-        } else if (file.type === 'image/png' || file.type === 'image/jpeg') {
-          // For images, we'll need to first upload to Supabase
-          // and then call the Edge Function with the URL
-          textContent = "This is an image file. AI extraction will be performed after upload.";
-        }
-        
-        // Upload file to Supabase
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          throw new Error('Not authenticated');
-        }
-        
-        const fileExt = file.name.split('.').pop();
-        const fileName = `cert_${Date.now()}.${fileExt}`;
-        const filePath = `${currentUser.siteId}/training_certificates/${fileName}`;
-        
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('training_certificates')
-          .upload(filePath, file, {
-            cacheControl: '3600',
-            upsert: false
-          });
-        
-        if (uploadError) {
-          console.error('Upload error:', uploadError);
-          throw new Error('Failed to upload certificate: ' + uploadError.message);
-        }
-        
-        // Save the URL for later reference
-        window.certificateUrl = filePath;
-        
-        // For PDF, call Edge Function with extracted text
-        // For images, we'd need OCR service, but for now just call the Edge Function with the signed URL
-        const { data: signedURL } = await supabase.storage
-          .from('training_certificates')
-          .createSignedUrl(filePath, 60); // 60 seconds expiry
-        
-        // Call the Edge Function
-        const response = await fetch(`${window.supabaseUrl}/functions/v1/extract-certificate`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
+      // Initialize TrainingModal with global saver to avoid module scope issues
+      if (typeof TrainingModal !== 'undefined') {
+        console.log('[DEBUG] TrainingModal found, initializing');
+        window.trainingModal = new TrainingModal({
+          onSave: () => {
+            if (typeof window.saveTrainingRecord === 'function') {
+              window.saveTrainingRecord();
+            } else {
+              console.warn('[DEBUG] saveTrainingRecord not ready yet');
+            }
           },
-          body: JSON.stringify({ 
-            text: textContent,
-            signedUrl: signedURL.signedUrl // Pass signed URL for server-side processing if needed
-          })
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `HTTP ${response.status}`);
-        }
-        
-        const result = await response.json();
-        
-        if (!result.success) {
-          throw new Error(result.error || 'AI extraction failed');
-        }
-        
-        // Save extracted data for confirmation
-        window.certificateData = result.data || {};
-        
-        // Show success message
-        showSuccess('Certificate processed successfully! Click to confirm details.');
-        
-        // Wait a moment for user to see the success message
-        setTimeout(() => {
-          // Open confirmation modal
-          openConfirmationModal(window.certificateData);
-        }, 1500);
-        
-      } catch (error) {
-        console.error('Certificate processing error:', error);
-        showError(error.message || 'Failed to process certificate');
-      }
-    }
-    
-    // Extract text from PDF
-    async function extractTextFromPDF(file) {
-      if (typeof pdfjsLib === 'undefined') {
-        throw new Error('PDF.js not loaded. Please refresh the page and try again.');
-      }
-
-      const arrayBuffer = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      let fullText = '';
-
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        const pageText = textContent.items.map(item => item.str).join(' ');
-        fullText += pageText + '\n';
-      }
-
-      return fullText.trim();
-    }
-    
-    // Open confirmation modal with extracted data
-    function openConfirmationModal(data) {
-      // Fill form fields with extracted data
-      if (data.person_name) personNameInput.value = data.person_name;
-      
-      // Match training name to training type
-      if (data.training_name) {
-        const trainingOptions = Array.from(trainingTypeSelect.options);
-        const matchedOption = trainingOptions.find(option => 
-          option.text.toLowerCase().includes(data.training_name.toLowerCase())
-        );
-        
-        if (matchedOption) trainingTypeSelect.value = matchedOption.value;
-      }
-      
-      if (data.completion_date) completionDateInput.value = data.completion_date;
-      if (data.expiry_date) expiryDateInput.value = data.expiry_date;
-      if (data.provider) providerInput.value = data.provider;
-      if (data.certificate_id) certIdInput.value = data.certificate_id;
-      
-      // Set default notes with additional details
-      let notes = '';
-      if (data.additional_details) notes += data.additional_details;
-      if (data.provider) notes += `\nProvider: ${data.provider}`;
-      notesInput.value = notes.trim();
-      
-      // Populate training type dropdown
-      while (trainingTypeSelect.options.length > 1) {
-        trainingTypeSelect.remove(1);
-      }
-      
-      trainingTypes.forEach(type => {
-        const option = document.createElement('option');
-        option.value = type.id;
-        option.textContent = type.name;
-        trainingTypeSelect.appendChild(option);
-      });
-      
-      // Open modal
-      confirmModal.classList.add('active');
-    }
-    
-    // Save from confirmation modal
-    async function saveFromConfirmationModal() {
-      try {
-        // Validate required fields
-        const trainingTypeId = trainingTypeSelect.value;
-        const completionDate = completionDateInput.value;
-        
-        if (!trainingTypeId || !completionDate) {
-          alert('Please select a training type and completion date');
-          return;
-        }
-        
-        // Prepare record data
-        const recordData = {
-          site_id: currentUser.siteId,
-          user_id: currentUser.id,
-          training_type_id: parseInt(trainingTypeId),
-          completion_date: completionDate,
-          expiry_date: expiryDateInput.value || null,
-          notes: notesInput.value || null,
-          certificate_url: window.certificateUrl
-        };
-        
-        // Save to database
-        const { data, error } = await supabase
-          .from('training_records')
-          .insert(recordData);
-        
-        if (error) {
-          throw error;
-        }
-        
-        // Close modal
-        closeConfirmModal();
-        
-        // Reset uploader
-        resetUploader();
-        
-        // Show success notification
-        if (typeof showToast === 'function') {
-          showToast('Training record saved successfully!', 'success', 3000);
-        } else {
-          alert('Training record saved successfully!');
-        }
-        
-        // Refresh training data
-        setTimeout(() => {
-          if (typeof loadTrainingData === 'function') {
-            loadTrainingData();
-          } else if (typeof refreshTraining === 'function') {
-            refreshTraining();
-          } else if (typeof initializeTraining === 'function') {
-            initializeTraining();
-          } else {
-            window.location.reload();
+          onClose: function () {
+            const form = document.getElementById('training-upload-form');
+            const err = document.getElementById('training-upload-error');
+            if (form) form.reset();
+            if (err) err.style.display = 'none';
+            window.uploadedFile = null;
           }
-        }, 500);
-        
-      } catch (error) {
-        console.error('Save error:', error);
-        alert('Failed to save training record: ' + error.message);
+        });
+      } else {
+        console.warn('[DEBUG] TrainingModal not found');
       }
+
+      // Listen for save events from modal (custom event)
+      document.addEventListener('trainingModalSave', function (event) {
+        const data = event.detail;
+        console.log('[DEBUG] Training modal save event received:', data);
+        if (typeof window.saveTrainingRecord === 'function') window.saveTrainingRecord();
+      });
+
+      // Make trainingTypes available globally for certificate uploader if not already
+      window.trainingTypes = window.trainingTypes || [];
+      console.log('[DEBUG] Training types available:', window.trainingTypes.length);
+
+      // Certificate AI Processing with PDF-to-Image Support (initialized after auth + types in main module)
+      console.log('[DEBUG] Certificate uploader will be initialized by the main module once user + types are ready');
+
+      // Set global supabase URL for certificate uploader
+      if (window.CONFIG && CONFIG.SUPABASE_URL) {
+        window.supabaseUrl = CONFIG.SUPABASE_URL;
+        console.log('[DEBUG] Supabase URL set from CONFIG:', window.supabaseUrl);
+      }
+    });
+
+    // Initialize PDF.js worker if library is already present
+    if (typeof pdfjsLib !== 'undefined') {
+      console.log('[DEBUG] PDF.js library found, setting worker');
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    } else {
+      console.warn('[DEBUG] PDF.js library not loaded');
     }
-  } */
-</script>
+
+    // Debug helper for monitoring certificate uploads
+    window.debugCertificateUpload = function () {
+      console.log('=== Certificate Upload Debug Info ===');
+      console.log('Supabase client:', !!window.supabase);
+      console.log('Current user:', window.currentUser);
+      console.log('Training types:', window.trainingTypes);
+      console.log('Certificate file:', window.certificateFile);
+      console.log('Certificate URL:', window.certificateUrl);
+      console.log('Certificate data:', window.certificateData);
+      console.log('Supabase URL:', window.supabaseUrl);
+      console.log('CONFIG:', window.CONFIG);
+      console.log('=====================================');
+    };
+  </script>
 </body>
 </html>

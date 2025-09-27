@@ -46,6 +46,19 @@ const certificateDebugger = {
       const controls = document.createElement('div');
       controls.style.cssText = `display: flex; gap: 8px;`;
       
+      const copyBtn = document.createElement('button');
+      copyBtn.textContent = 'Copy All';
+      copyBtn.style.cssText = `
+        background: #10b981;
+        border: none;
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 10px;
+      `;
+      copyBtn.onclick = () => this.copyAll();
+
       const clearBtn = document.createElement('button');
       clearBtn.textContent = 'Clear';
       clearBtn.style.cssText = `
@@ -58,7 +71,7 @@ const certificateDebugger = {
         font-size: 10px;
       `;
       clearBtn.onclick = () => this.clear();
-      
+
       const closeBtn = document.createElement('button');
       closeBtn.textContent = 'Close';
       closeBtn.style.cssText = `
@@ -71,7 +84,8 @@ const certificateDebugger = {
         font-size: 10px;
       `;
       closeBtn.onclick = () => this.hide();
-      
+
+      controls.appendChild(copyBtn);
       controls.appendChild(clearBtn);
       controls.appendChild(closeBtn);
       
@@ -97,8 +111,10 @@ const certificateDebugger = {
   
   log(message, type = 'log') {
     if (!this.debugEnabled) return;
-    
-    console[type](this.logPrefix, message);
+
+    // Safe console logging - fallback to console.log if type doesn't exist
+    const logMethod = console[type] || console.log;
+    logMethod(this.logPrefix, message);
     
     try {
       const panel = document.getElementById(this.debugPanelId);
@@ -177,6 +193,42 @@ const certificateDebugger = {
       }
     } catch (e) {
       console.error('Error clearing debug panel:', e);
+    }
+  },
+
+  copyAll() {
+    try {
+      const panel = document.getElementById(this.debugPanelId);
+      if (panel) {
+        const content = panel.querySelector('.debug-content');
+        const text = content.textContent || content.innerText || '';
+
+        // Add API response if available
+        let fullText = text;
+        if (window.lastCertificateAPIResponse) {
+          fullText += '\n\n=== LAST API RESPONSE ===\n' +
+                      JSON.stringify(window.lastCertificateAPIResponse, null, 2);
+        }
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(fullText).then(() => {
+            this.success('Debug log copied to clipboard!');
+          }).catch(() => {
+            alert('Failed to copy to clipboard');
+          });
+        } else {
+          // Fallback
+          const textarea = document.createElement('textarea');
+          textarea.value = fullText;
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textarea);
+          this.success('Debug log copied to clipboard!');
+        }
+      }
+    } catch (e) {
+      console.error('Error copying debug log:', e);
     }
   },
   

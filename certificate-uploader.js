@@ -194,10 +194,29 @@ function initCertificateUploader() {
       return;
     }
     
-    const validTypes = ['application/pdf', 'image/png', 'image/jpeg'];
+    // ONLY ACCEPT IMAGE FILES - PDFs are NOT supported by OpenAI Vision
+    const validTypes = ['image/png', 'image/jpeg', 'image/jpg'];
+
+    if (file.type === 'application/pdf') {
+      debug.error('PDF files are not supported by AI vision');
+      showError('❌ PDF files cannot be processed directly.\n\n✅ Please convert to an image:\n1. Open your PDF\n2. Take a screenshot (Win+Shift+S or Cmd+Shift+4)\n3. Save as PNG or JPG\n4. Upload the image file');
+
+      // Show detailed instructions
+      alert('PDF CONVERSION REQUIRED\n\n' +
+            'OpenAI Vision API only accepts image files.\n\n' +
+            'Quick conversion steps:\n' +
+            '• Windows: Open PDF → Press Win+Shift+S → Select area → Save\n' +
+            '• Mac: Open PDF → Press Cmd+Shift+4 → Select area → Save\n' +
+            '• Or use any PDF viewer → File → Save As → PNG/JPEG\n\n' +
+            'Then upload the saved image file.');
+
+      resetUploader();
+      return;
+    }
+
     if (!validTypes.includes(file.type)) {
-      debug.error(`Invalid file type: ${file.type}. Only PDF, PNG, and JPG are supported.`);
-      showError('Only PDF, PNG and JPG files are supported');
+      debug.error(`Invalid file type: ${file.type}. Only images (PNG, JPG) are supported.`);
+      showError('Only PNG and JPG images are supported. PDFs must be converted to images first.');
       return;
     }
     
@@ -243,81 +262,170 @@ function initCertificateUploader() {
       `;
     }
   }
+
+  function showAPIDebugInfo(apiResponse) {
+    // Create or find the debug display panel
+    let debugPanel = document.getElementById('api-debug-display');
+    if (!debugPanel) {
+      debugPanel = document.createElement('div');
+      debugPanel.id = 'api-debug-display';
+      debugPanel.style.cssText = `
+        position: fixed;
+        top: 100px;
+        right: 20px;
+        width: 600px;
+        max-height: 700px;
+        background: #1a1a1a;
+        color: #0f0;
+        border: 2px solid #0f0;
+        border-radius: 8px;
+        padding: 15px;
+        font-family: monospace;
+        font-size: 12px;
+        overflow-y: auto;
+        z-index: 10000;
+        box-shadow: 0 0 20px rgba(0,255,0,0.3);
+      `;
+      document.body.appendChild(debugPanel);
+    }
+
+    // Build the display content
+    let html = `
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <h3 style="margin: 0; color: #0f0;">🔍 AI CERTIFICATE READER</h3>
+        <button onclick="document.getElementById('api-debug-display').remove()" style="
+          background: #f00;
+          color: #fff;
+          border: none;
+          padding: 5px 10px;
+          cursor: pointer;
+          border-radius: 4px;
+        ">Close</button>
+      </div>
+      <hr style="border-color: #0f0; margin: 10px 0;">
+    `;
+
+    // Show success/error status FIRST
+    if (apiResponse.success) {
+      html += `
+        <div style="margin-bottom: 15px;">
+          <div style="background: #0f0; color: #000; padding: 10px; border-radius: 4px; font-weight: bold; text-align: center; font-size: 16px;">
+            ✅ CERTIFICATE EXTRACTED SUCCESSFULLY
+          </div>
+        </div>
+      `;
+    } else if (apiResponse.error) {
+      html += `
+        <div style="margin-bottom: 15px;">
+          <div style="background: #f00; color: #fff; padding: 10px; border-radius: 4px; font-weight: bold;">
+            ❌ ERROR: ${apiResponse.error}
+          </div>
+        </div>
+      `;
+    }
+
+    // Show extracted data in a clean format
+    if (apiResponse.data) {
+      const data = apiResponse.data;
+      html += `
+        <div style="margin-bottom: 15px;">
+          <h4 style="color: #0ff; margin: 10px 0;">📋 EXTRACTED CERTIFICATE INFORMATION:</h4>
+          <div style="background: #000; padding: 15px; border: 2px solid #0ff; border-radius: 4px;">
+            <table style="width: 100%; color: #0f0; font-size: 14px;">
+              <tr><td style="padding: 5px; width: 40%; color: #ff0;">Person Name:</td><td style="padding: 5px; color: #fff;">${data.person_name || 'Not found'}</td></tr>
+              <tr><td style="padding: 5px; color: #ff0;">Training/Course:</td><td style="padding: 5px; color: #fff;">${data.training_name || 'Not found'}</td></tr>
+              <tr><td style="padding: 5px; color: #ff0;">Completion Date:</td><td style="padding: 5px; color: #fff;">${data.completion_date || 'Not found'}</td></tr>
+              <tr><td style="padding: 5px; color: #ff0;">Expiry Date:</td><td style="padding: 5px; color: #fff;">${data.expiry_date || 'N/A'}</td></tr>
+              <tr><td style="padding: 5px; color: #ff0;">Provider:</td><td style="padding: 5px; color: #fff;">${data.provider || 'Not found'}</td></tr>
+              <tr><td style="padding: 5px; color: #ff0;">Certificate ID:</td><td style="padding: 5px; color: #fff;">${data.certificate_id || 'N/A'}</td></tr>
+              <tr><td style="padding: 5px; color: #ff0;">Additional Info:</td><td style="padding: 5px; color: #fff;">${data.additional_details || 'None'}</td></tr>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    // Show raw AI response for debugging
+    if (apiResponse.raw_text) {
+      html += `
+        <div style="margin-bottom: 15px;">
+          <h4 style="color: #888; margin: 10px 0;">🔍 Raw AI Response (Debug):</h4>
+          <div style="background: #111; padding: 10px; border: 1px solid #444; border-radius: 4px; font-size: 11px; white-space: pre-wrap; max-height: 200px; overflow-y: auto;">
+${apiResponse.raw_text || 'No text extracted'}
+          </div>
+        </div>
+      `;
+    }
+
+    // Show debug info
+    if (apiResponse.debug) {
+      html += `
+        <div style="margin-bottom: 15px;">
+          <h4 style="color: #ff0; margin: 10px 0;">🔧 DEBUG INFO:</h4>
+          <div style="background: #000; padding: 10px; border: 1px solid #0f0; border-radius: 4px;">
+            <pre style="margin: 0; white-space: pre-wrap;">${JSON.stringify(apiResponse.debug, null, 2)}</pre>
+          </div>
+        </div>
+      `;
+    }
+
+    // Show extraction type
+    if (apiResponse.extraction_method) {
+      html += `
+        <div style="margin-bottom: 15px;">
+          <h4 style="color: #ff0; margin: 10px 0;">⚙️ EXTRACTION METHOD:</h4>
+          <div style="background: #000; padding: 10px; border: 1px solid #0f0; border-radius: 4px;">
+            ${apiResponse.extraction_method}
+          </div>
+        </div>
+      `;
+    }
+
+    debugPanel.innerHTML = html;
+    debugPanel.style.display = 'block';
+  }
   
   // Process certificate with AI
   async function processCertificate(file) {
     try {
-      debug.info('Starting certificate AI processing');
-      
+      debug.info('Starting simplified certificate AI processing');
+
       // Check if we have a supabase client
       if (!window.supabase) {
         throw new Error('Supabase client not found. Make sure supabase is initialized before uploading certificates.');
       }
-      
+
       // Check if currentUser is available
       if (!window.currentUser || !window.currentUser.siteId) {
         throw new Error('Current user or site ID not found. Authentication may not be complete.');
       }
-      
+
       // Show processing state
       if (processingIndicator) {
         processingIndicator.classList.remove('error', 'success');
-        processingIndicator.innerHTML = '<div class="spinner"></div><span>Processing certificate with AI...</span>';
-      }
-      
-      // First, try to extract text from the file client-side
-      let textContent = '';
-      let needsServerProcessing = false;
-
-      if (file.type === 'application/pdf') {
-        debug.info('PDF file detected');
-
-        // Check if PDF.js is loaded
-        if (typeof pdfjsLib !== 'undefined') {
-          debug.info('PDF.js is available, extracting text client-side');
-          try {
-            textContent = await extractTextFromPDF(file);
-            debug.info(`Extracted ${textContent.length} characters from PDF`);
-          } catch (pdfError) {
-            debug.warn('PDF text extraction failed, will use server-side processing:', pdfError.message);
-            needsServerProcessing = true;
-          }
-        } else {
-          debug.info('PDF.js not available, will use server-side processing');
-          needsServerProcessing = true;
-        }
-      } else if (file.type === 'image/png' || file.type === 'image/jpeg') {
-        debug.info('Image file detected. Text extraction will be performed server-side.');
-        needsServerProcessing = true;
+        processingIndicator.innerHTML = '<div class="spinner"></div><span>Processing certificate with AI Vision...</span>';
       }
 
-      // If we couldn't extract text client-side, mark for server processing
-      if (needsServerProcessing) {
-        textContent = ''; // Empty text will signal server to process the file
-        debug.info('File will be processed server-side using signed URL');
-      }
-      
-      // Get session for authentication
+      debug.info(`Processing file: ${file.name} (${formatFileSize(file.size)})`);
+      debug.info(`File type: ${file.type}`);
+
+      // Get session for authentication (optional for this edge function)
       debug.info('Getting Supabase session');
       const { data: sessionData, error: sessionError } = await window.supabase.auth.getSession();
-      
+
       if (sessionError || !sessionData.session) {
-        debug.error('Authentication error:', sessionError);
-        throw new Error('Not authenticated. Please log in again.');
+        debug.warn('No auth session, proceeding without authentication');
       }
-      
+
       const session = sessionData.session;
-      
-      // Upload file to Supabase
+
+      // Step 1: Upload file to Supabase Storage
       debug.info('Uploading file to Supabase storage');
       const fileExt = file.name.split('.').pop();
       const fileName = `cert_${Date.now()}.${fileExt}`;
       const filePath = `${window.currentUser.siteId}/training_certificates/${fileName}`;
 
-      debug.info(`Upload bucket: training_certificates`);
       debug.info(`Upload path: ${filePath}`);
-      debug.info(`File size: ${formatFileSize(file.size)}`);
-      debug.info(`File type: ${file.type}`);
 
       const { data: uploadData, error: uploadError } = await window.supabase.storage
         .from('training_certificates')
@@ -325,109 +433,103 @@ function initCertificateUploader() {
           cacheControl: '3600',
           upsert: false
         });
-      
+
       if (uploadError) {
         debug.error('Supabase upload error:', uploadError);
         throw new Error('Failed to upload certificate: ' + uploadError.message);
       }
-      
-      debug.success('File uploaded successfully to Supabase storage');
-      
+
+      debug.success('File uploaded successfully');
+
       // Save the URL for later reference
       window.certificateUrl = filePath;
-      
-      // Create a signed URL for the file
-      debug.info('Creating signed URL for the uploaded file');
+
+      // Step 2: Create a signed URL for the file
+      debug.info('Creating signed URL for AI processing');
       const { data: signedUrlData, error: signedUrlError } = await window.supabase.storage
         .from('training_certificates')
         .createSignedUrl(filePath, 60); // 60 seconds expiry
-      
+
       if (signedUrlError || !signedUrlData) {
         debug.error('Failed to create signed URL:', signedUrlError);
         throw new Error('Failed to create access URL for the file');
       }
-      
+
       const signedUrl = signedUrlData.signedUrl;
       debug.info('Signed URL created successfully');
-      
-      // Call the Edge Function
+
+      // Step 3: Send to Edge Function (use the same auth that worked for storage)
       const supabaseUrl = window.supabaseUrl || window.CONFIG?.SUPABASE_URL || 'https://unveoqnlqnobufhublyw.supabase.co';
+      const apiEndpoint = `${supabaseUrl}/functions/v1/extract-certificate-v2`;
 
-      // Try v2 endpoint first (handles server-side processing), fallback to v1
-      let apiEndpoint = `${supabaseUrl}/functions/v1/extract-certificate-v2`;
-      let useV2 = true;
-
-      debug.info(`Calling Edge Function at: ${apiEndpoint}`);
-      debug.info(`Text content length: ${textContent.length} characters`);
-      debug.info(`Needs server processing: ${needsServerProcessing}`);
-      debug.info(`Signed URL provided: ${!!signedUrl}`);
-      debug.info(`Authorization token length: ${session.access_token?.length || 0}`);
+      debug.info(`Calling Edge Function with Supabase client auth`);
 
       const requestBody = {
-        text: textContent || '',  // Send empty string if we need server processing
-        signedUrl: needsServerProcessing ? signedUrl : undefined  // Only send URL if needed
+        signedUrl: signedUrl,
+        filename: file.name
       };
 
-      debug.info('Request body:', JSON.stringify(requestBody).substring(0, 200) + '...');
+      // Use the CORRECT anon key from CONFIG (the same one that works for storage)
+      const CORRECT_ANON_KEY = window.CONFIG?.SUPABASE_ANON_KEY ||
+                               'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME';
 
-      let response = await fetch(apiEndpoint, {
+      debug.info('Using anon key for Edge Function auth');
+
+      const authHeaders = {
+        'Authorization': `Bearer ${CORRECT_ANON_KEY}`,
+        'apikey': CORRECT_ANON_KEY,
+        'Content-Type': 'application/json'
+      };
+
+      debug.info('Auth headers prepared with correct anon key');
+
+      const response = await fetch(apiEndpoint, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
+        headers: authHeaders,
         body: JSON.stringify(requestBody)
       });
 
-      // If v2 endpoint not found, fallback to v1 (but it won't handle server-side PDF processing)
-      if (response.status === 404 && useV2) {
-        debug.warn('V2 endpoint not found, falling back to V1');
-        apiEndpoint = `${supabaseUrl}/functions/v1/extract-certificate`;
-
-        // For v1, we must have text content
-        if (!textContent) {
-          throw new Error('Cannot process file server-side with V1 endpoint. Please deploy V2 endpoint or ensure PDF.js is loaded.');
-        }
-
-        response = await fetch(apiEndpoint, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            text: textContent,
-            signedUrl: signedUrl
-          })
-        });
-      }
-      
-      // Log the response status
       debug.info(`Edge Function response status: ${response.status}`);
-      
+
       if (!response.ok) {
         let errorMessage = `HTTP error ${response.status}`;
+        let hint = '';
         try {
           const errorData = await response.json();
           errorMessage = errorData.error || errorMessage;
+          hint = errorData.hint || '';
+          debug.error('Error details:', errorData);
         } catch {}
-        
+
         debug.error('Edge Function error:', errorMessage);
-        throw new Error(errorMessage);
+
+        // If it's a PDF conversion issue, show helpful message
+        if (errorMessage.includes('unsupported image') || errorMessage.includes('PDF')) {
+          throw new Error('PDF certificates are not directly supported. Please:\n1. Take a screenshot of your PDF certificate\n2. Save it as PNG or JPEG\n3. Upload the image file instead');
+        }
+
+        throw new Error(errorMessage + (hint ? '\n\n' + hint : ''));
       }
-      
+
       const result = await response.json();
-      debug.info('Edge Function result received:', JSON.stringify(result));
-      
+      debug.info('AI extraction complete');
+      debug.info('Raw AI text:', result.raw_text);
+
+      // Store raw API response for debugging
+      window.lastCertificateAPIResponse = result;
+
+      // CREATE A VISIBLE DEBUG PANEL ON THE PAGE
+      showAPIDebugInfo(result);
+
       if (!result.success) {
         debug.error('AI extraction failed:', result.error);
         throw new Error(result.error || 'AI extraction failed');
       }
-      
+
       // Save extracted data for confirmation
       window.certificateData = result.data || {};
-      debug.success('Certificate data extracted:', JSON.stringify(window.certificateData));
-      
+      debug.success('Certificate data extracted:', JSON.stringify(window.certificateData, null, 2));
+
       // Show success message
       showSuccess('Certificate processed successfully! Click to confirm details.');
       
@@ -498,18 +600,38 @@ function initCertificateUploader() {
     const notesInput = document.getElementById('cert-notes');
     
     // Fill form fields with extracted data if elements exist
-    if (personNameInput && data.person_name) personNameInput.value = data.person_name;
-    if (completionDateInput && data.completion_date) completionDateInput.value = data.completion_date;
-    if (expiryDateInput && data.expiry_date) expiryDateInput.value = data.expiry_date;
-    if (providerInput && data.provider) providerInput.value = data.provider;
-    if (certIdInput && data.certificate_id) certIdInput.value = data.certificate_id;
-    
-    // Set default notes with additional details
+    if (personNameInput) {
+      personNameInput.value = data.person_name || '';
+      debug.info(`Set person name: ${data.person_name || 'empty'}`);
+    }
+
+    if (completionDateInput) {
+      completionDateInput.value = data.completion_date || '';
+      debug.info(`Set completion date: ${data.completion_date || 'empty'}`);
+    }
+
+    if (expiryDateInput) {
+      expiryDateInput.value = data.expiry_date || '';
+      debug.info(`Set expiry date: ${data.expiry_date || 'empty'}`);
+    }
+
+    if (providerInput) {
+      providerInput.value = data.provider || '';
+      debug.info(`Set provider: ${data.provider || 'empty'}`);
+    }
+
+    if (certIdInput) {
+      certIdInput.value = data.certificate_id || '';
+      debug.info(`Set certificate ID: ${data.certificate_id || 'empty'}`);
+    }
+
+    // Set notes with provider and additional details
     if (notesInput) {
-      let notes = '';
-      if (data.additional_details) notes += data.additional_details;
-      if (data.provider) notes += `\nProvider: ${data.provider}`;
-      notesInput.value = notes.trim();
+      let notes = [];
+      if (data.provider) notes.push(`Provider: ${data.provider}`);
+      if (data.additional_details) notes.push(data.additional_details);
+      notesInput.value = notes.join('\n').trim();
+      debug.info(`Set notes: ${notes.join(', ') || 'empty'}`);
     }
     
     // Populate training type dropdown if it exists
