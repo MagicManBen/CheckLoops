@@ -747,7 +747,7 @@ export function renderStaffNavigation(activePage = 'home') {
     { page: 'home', href: 'staff.html', label: 'Home' },
     { page: 'welcome', href: 'staff-welcome.html', label: 'Welcome' },
     { page: 'holidays', href: 'my-holidays.html', label: 'My Holidays' },
-    { page: 'meetings', href: 'staff-meetings.html', label: 'Meetings', disabled: true, tooltip: 'Coming Soon!' },
+    // { page: 'meetings', href: 'staff-meetings.html', label: 'Meetings', disabled: true, tooltip: 'Coming Soon!' },
     { page: 'training', href: 'staff-training.html', label: 'My Training' },
     { page: 'quiz', href: 'staff-quiz.html', label: 'Quiz' },
     // Admin Site entry is appended dynamically below for admins

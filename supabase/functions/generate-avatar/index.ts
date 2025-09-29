@@ -72,8 +72,9 @@ Strict rules:
 - Choose values strictly from the allowedOptions lists provided by the user message. Never invent values outside those lists.
 - If a described attribute does not exist in the allowedOptions for that field, pick the closest semantic match from the allowed list; if still ambiguous, omit that key.
 - For gender hints: "man/male" = more masculine seeds/expressions; "woman/female" = varied expressions.
-- Set probabilities using only allowed values. If an item is clearly present (e.g., glasses mentioned), prefer 100 if available.
+- ALWAYS set all probabilities to 100 when available. This ensures features are consistently displayed.
 - For colors (hairColor, skinColor, backgroundColor), select strictly from the corresponding allowed options lists (do not invent new hex codes).
+- For hair colors, provide specific guidance: "blue" = "3eac2c", "brown" = "6a4e35" or "562306", "red" = "ab2a18" or "9e5622", "blonde" = "e5d7a3" or "b9a05f".
 - Return valid JSON only with field names from requiredFields and values from allowedOptions.`
 
     const userMsg = JSON.stringify({

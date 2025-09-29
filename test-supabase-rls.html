@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Supabase RLS Test</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #0f0; }
+  .section { margin: 20px 0; padding: 15px; border: 1px solid #0f0; }
+  button { padding: 10px 20px; margin: 5px; background: #003300; color: #0f0; border: 1px solid #0f0; cursor: pointer; }
+  button:hover { background: #005500; }
+  pre { white-space: pre-wrap; word-wrap: break-word; }
+  .error { color: #f00; }
+  .warning { color: #fa0; }
+  .success { color: #0f0; }
+</style>
+</head>
+<body>
+<h1>Supabase RLS Investigation</h1>
+
+<div class="section">
+  <h2>Test Configuration</h2>
+  <pre id="config"></pre>
+</div>
+
+<div class="section">
+  <h2>RLS Policy Tests</h2>
+  <button onclick="testAnonRead()">Test Anon Read</button>
+  <button onclick="testAnonUpdate()">Test Anon Update</button>
+  <button onclick="testAnonInsert()">Test Anon Insert</button>
+  <button onclick="checkAuthStatus()">Check Auth Status</button>
+  <button onclick="testEdgeFunctions()">Test Edge Functions</button>
+</div>
+
+<div class="section">
+  <h2>Results</h2>
+  <pre id="results"></pre>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
+const ANON_KEY = 'sb_publishable_wpy7lxfbI2HwvsznlWJVKg_Zx7HnAc4';
+// WARNING: Never use service key in client-side code in production!
+// const SERVICE_KEY = 'sb_secret_ylIhDtikpno4LTTUmpDJvw_Ov7BtIEp'; // DO NOT USE IN CLIENT
+
+const TABLE = 'CQC All GPs';
+const TEST_LOCATION_ID = '1-10240838706'; // Ravenscroft Health
+
+const supabase = window.supabase.createClient(SUPABASE_URL, ANON_KEY);
+
+const log = (msg, data, cls = '') => {
+  const results = document.getElementById('results');
+  const timestamp = new Date().toISOString();
+  const entry = `[${timestamp}] ${msg}${data ? '\n' + JSON.stringify(data, null, 2) : ''}`;
+  const div = document.createElement('div');
+  div.className = cls;
+  div.textContent = entry;
+  results.appendChild(div);
+  results.scrollTop = results.scrollHeight;
+};
+
+// Display config
+document.getElementById('config').textContent = `
+URL: ${SUPABASE_URL}
+Table: ${TABLE}
+Test Location: ${TEST_LOCATION_ID}
+Using: ANON KEY (publishable)
+`;
+
+async function checkAuthStatus() {
+  log('Checking auth status...');
+
+  const { data: { user }, error } = await supabase.auth.getUser();
+
+  if (error) {
+    log('Auth check error:', error, 'error');
+  } else if (user) {
+    log('Authenticated user:', user, 'success');
+  } else {
+    log('No authenticated user (using anon key)', null, 'warning');
+  }
+
+  // Check session
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) {
+    log('Active session:', {
+      access_token: session.access_token?.substring(0, 20) + '...',
+      expires_at: session.expires_at
+    }, 'success');
+  } else {
+    log('No active session', null, 'warning');
+  }
+}
+
+async function testAnonRead() {
+  log('Testing READ with anon key...');
+
+  const { data, error, count } = await supabase
+    .from(TABLE)
+    .select('location_id, location_name, provider_id', { count: 'exact' })
+    .eq('location_id', TEST_LOCATION_ID)
+    .single();
+
+  if (error) {
+    log('Read failed:', error, 'error');
+  } else {
+    log('Read successful:', data, 'success');
+    log(`Total accessible rows: ${count || 'unknown'}`);
+  }
+}
+
+async function testAnonUpdate() {
+  log('Testing UPDATE with anon key...');
+
+  // Try a harmless update
+  const testUpdate = {
+    updated_at: new Date().toISOString()
+  };
+
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update(testUpdate)
+    .eq('location_id', TEST_LOCATION_ID)
+    .select();
+
+  if (error) {
+    log('Update failed:', error, 'error');
+    log('This suggests RLS is blocking UPDATE operations', null, 'warning');
+  } else if (!data || data.length === 0) {
+    log('Update returned 0 rows (RLS blocking)', null, 'error');
+    log('RLS policy is preventing updates even though no error was thrown', null, 'warning');
+  } else {
+    log('Update successful:', { rows_updated: data.length }, 'success');
+  }
+}
+
+async function testAnonInsert() {
+  log('Testing INSERT with anon key...');
+
+  // Try to insert a test record
+  const testInsert = {
+    location_id: 'TEST-' + Date.now(),
+    location_name: 'RLS Test Location',
+    created_at: new Date().toISOString()
+  };
+
+  const { data, error } = await supabase
+    .from(TABLE)
+    .insert(testInsert)
+    .select();
+
+  if (error) {
+    log('Insert failed:', error, 'error');
+    if (error.code === '42501') {
+      log('RLS policy is blocking INSERT operations', null, 'warning');
+    }
+  } else if (!data || data.length === 0) {
+    log('Insert returned 0 rows (RLS blocking)', null, 'error');
+  } else {
+    log('Insert successful:', data, 'success');
+    // Clean up test record
+    await supabase.from(TABLE).delete().eq('location_id', testInsert.location_id);
+  }
+}
+
+async function testEdgeFunctions() {
+  log('Testing Edge Functions...');
+
+  const functions = [
+    'fetch-cqc-details',
+    'fetch-nhs-data-complete',
+    'merge-gp-row',
+    'merge-location',
+    'merge-location-provider',
+    'merge-gp-fields'
+  ];
+
+  for (const fn of functions) {
+    try {
+      log(`Testing ${fn}...`);
+      const { data, error } = await supabase.functions.invoke(fn, {
+        body: {
+          location_id: TEST_LOCATION_ID,
+          test: true,
+          dry_run: true
+        }
+      });
+
+      if (error) {
+        if (error.name === 'FunctionsFetchError') {
+          log(`${fn}: NOT DEPLOYED`, null, 'error');
+        } else {
+          log(`${fn}: Error`, error, 'error');
+        }
+      } else {
+        log(`${fn}: AVAILABLE`, {
+          has_data: !!data,
+          database_updated: data?.database_updated,
+          success: data?.success
+        }, 'success');
+      }
+    } catch (e) {
+      log(`${fn}: Exception`, e.toString(), 'error');
+    }
+  }
+}
+
+// Add keyboard shortcut info
+log('Ready for testing. Use the buttons above to test different operations.', null, 'success');
+log('RLS (Row Level Security) policies control what operations are allowed.', null, 'warning');
+log('If updates fail with 0 rows, RLS is blocking the operation.', null, 'warning');
+</script>
+</body>
+</html>
