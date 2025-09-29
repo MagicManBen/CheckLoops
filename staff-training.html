@@ -449,13 +449,31 @@
 
                 // Notify readiness + initialize cert uploader once
                 try { window.dispatchEvent(new Event('staff-ready')); } catch (_) {}
-                if (typeof initCertificateUploaderPDFToImage === 'function' && !window.__certUploaderInited) {
-                  try {
-                    window.certificateUploaderAPI = initCertificateUploaderPDFToImage();
-                    window.__certUploaderInited = true;
-                    console.log('[DEBUG] Certificate uploader initialized (post-auth)');
-                  } catch (err) {
-                    console.warn('[DEBUG] Certificate uploader init failed', err);
+                
+                // Load staff data for certificate uploader
+                if (typeof loadStaffData === 'function') {
+                  loadStaffData().then(() => {
+                    // Initialize certificate uploader after staff data is loaded
+                    if (typeof initCertificateUploaderPDFToImage === 'function' && !window.__certUploaderInited) {
+                      try {
+                        window.certificateUploaderAPI = initCertificateUploaderPDFToImage();
+                        window.__certUploaderInited = true;
+                        console.log('[DEBUG] Certificate uploader initialized (post-auth)');
+                      } catch (err) {
+                        console.warn('[DEBUG] Certificate uploader init failed', err);
+                      }
+                    }
+                  });
+                } else {
+                  // Fallback if loadStaffData is not defined
+                  if (typeof initCertificateUploaderPDFToImage === 'function' && !window.__certUploaderInited) {
+                    try {
+                      window.certificateUploaderAPI = initCertificateUploaderPDFToImage();
+                      window.__certUploaderInited = true;
+                      console.log('[DEBUG] Certificate uploader initialized (post-auth)');
+                    } catch (err) {
+                      console.warn('[DEBUG] Certificate uploader init failed', err);
+                    }
                   }
                 }
 
@@ -911,12 +929,12 @@
               </svg>
             </div>
             <div class="dropzone-text">
-              <h3>Upload training certificate</h3>
-              <p>Drag & drop your training certificate here or click to browse</p>
-              <p style="font-size: 0.75rem; color: var(--gray-400);">Supports PDF, PNG, JPG (max 10MB)</p>
+              <h3>Upload training certificates</h3>
+              <p>Drag & drop your certificates here or click to browse</p>
+              <p style="font-size: 0.75rem; color: var(--gray-400);">Supports multiple PDF, PNG, JPG files (max 10MB each)</p>
             </div>
           </div>
-          <input type="file" class="certificate-upload-input" id="certificate-upload" accept=".pdf,.png,.jpg,.jpeg" />
+          <input type="file" class="certificate-upload-input" id="certificate-upload" accept=".pdf,.png,.jpg,.jpeg" multiple />
           <div class="certificate-preview" id="certificate-preview">
             <div class="preview-header">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -1130,74 +1148,173 @@
   <!-- Certificate Confirmation Modal -->
   <div id="cert-confirmation-modal" class="cert-confirmation-modal">
     <div class="cert-modal-content">
+      <!-- Progress Steps -->
+      <div class="modal-progress-steps">
+        <div class="progress-step completed">
+          <div class="step-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20,6 9,17 4,12"></polyline>
+            </svg>
+          </div>
+          <span>PDF Processed</span>
+        </div>
+        <div class="progress-step completed">
+          <div class="step-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20,6 9,17 4,12"></polyline>
+            </svg>
+          </div>
+          <span>AI Analysis</span>
+        </div>
+        <div class="progress-step completed">
+          <div class="step-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20,6 9,17 4,12"></polyline>
+            </svg>
+          </div>
+          <span>Data Extracted</span>
+        </div>
+        <div class="progress-step active">
+          <div class="step-icon">
+            <div class="pulse-dot"></div>
+          </div>
+          <span>Confirm Details</span>
+        </div>
+      </div>
+
+      <!-- Modal Header -->
       <div class="cert-modal-header">
-        <h3>Confirm Certificate Details</h3>
+        <div class="success-badge">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22,4 12,14.01 9,11.01"></polyline>
+          </svg>
+          Certificate Successfully Processed
+        </div>
+        <h3>Review Training Details</h3>
+        <p>Please review and confirm the extracted information below.</p>
         <button class="cert-close-btn" id="cert-modal-close" aria-label="Close">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
           </svg>
         </button>
       </div>
+
+      <!-- Modal Body -->
       <div class="cert-modal-body">
-        <p>We've extracted the following information from your certificate. Please review and edit if necessary.</p>
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="cert-person-name">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+              Full Name
+            </label>
+            <input type="text" id="cert-person-name" placeholder="Person name not detected">
+          </div>
 
-        <div class="cert-extracted-data">
-          <div class="cert-data-row">
-            <div class="cert-data-label">Name</div>
-            <div class="cert-data-value">
-              <input type="text" id="cert-person-name" placeholder="Person name not detected">
+          <div class="form-group">
+            <label for="cert-training-type">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path>
+                <path d="M6 12v5c3 3 9 3 12 0v-5"></path>
+              </svg>
+              Training Type
+            </label>
+            <select id="cert-training-type">
+              <option value="">Select training type...</option>
+            </select>
+            <div class="ai-match-indicator" id="ai-match-status" style="display: none;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 12l2 2 4-4"></path>
+                <circle cx="12" cy="12" r="9"></circle>
+              </svg>
+              AI matched with <span id="match-confidence">90%</span> confidence
             </div>
           </div>
 
-          <div class="cert-data-row">
-            <div class="cert-data-label">Training Type</div>
-            <div class="cert-data-value">
-              <select id="cert-training-type">
-                <option value="">Select training type...</option>
-              </select>
-            </div>
+          <div class="form-group">
+            <label for="cert-completion-date">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="16" y1="2" x2="16" y2="6"></line>
+                <line x1="8" y1="2" x2="8" y2="6"></line>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
+              </svg>
+              Completion Date
+            </label>
+            <input type="date" id="cert-completion-date">
           </div>
 
-          <div class="cert-data-row">
-            <div class="cert-data-label">Completion Date</div>
-            <div class="cert-data-value">
-              <input type="date" id="cert-completion-date">
-            </div>
+          <div class="form-group">
+            <label for="cert-validity-years">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12,6 12,12 16,14"></polyline>
+              </svg>
+              Valid For
+            </label>
+            <select id="cert-validity-years">
+              <option value="">Auto-calculated...</option>
+              <option value="1">1 Year</option>
+              <option value="2">2 Years</option>
+              <option value="3">3 Years</option>
+              <option value="5">5 Years</option>
+              <option value="never">Never Expires</option>
+            </select>
+            <div class="expiry-preview" id="expiry-preview"></div>
           </div>
 
-          <div class="cert-data-row">
-            <div class="cert-data-label">Expiry Date</div>
-            <div class="cert-data-value">
-              <input type="date" id="cert-expiry-date">
-            </div>
+          <div class="form-group">
+            <label for="cert-provider">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+                <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+              </svg>
+              Training Provider
+            </label>
+            <input type="text" id="cert-provider" placeholder="Provider not detected">
           </div>
 
-          <div class="cert-data-row">
-            <div class="cert-data-label">Provider</div>
-            <div class="cert-data-value">
-              <input type="text" id="cert-provider" placeholder="Provider not detected">
-            </div>
-          </div>
-
-          <div class="cert-data-row">
-            <div class="cert-data-label">Certificate ID</div>
-            <div class="cert-data-value">
-              <input type="text" id="cert-id" placeholder="Certificate ID not detected">
-            </div>
-          </div>
-
-          <div class="cert-data-row">
-            <div class="cert-data-label">Notes</div>
-            <div class="cert-data-value">
-              <textarea id="cert-notes" rows="3" placeholder="Add any additional notes here..."></textarea>
-            </div>
+          <div class="form-group">
+            <label for="cert-id">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14,2 14,8 20,8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+              </svg>
+              Certificate ID
+            </label>
+            <input type="text" id="cert-id" placeholder="Certificate ID not detected">
           </div>
         </div>
+
+        <div class="form-group full-width">
+          <label for="cert-notes">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+              <path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+            </svg>
+            Additional Notes
+          </label>
+          <textarea id="cert-notes" rows="3" placeholder="Add any additional notes here..."></textarea>
+        </div>
       </div>
+
+      <!-- Modal Footer -->
       <div class="cert-modal-footer">
         <button class="cert-btn cert-btn-secondary" id="cert-cancel-btn">Cancel</button>
-        <button class="cert-btn cert-btn-primary" id="cert-save-btn">Save Training Record</button>
+        <button class="cert-btn cert-btn-primary" id="cert-save-btn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+            <polyline points="17,21 17,13 7,13 7,21"></polyline>
+            <polyline points="7,3 7,8 15,8"></polyline>
+          </svg>
+          Save Training Record
+        </button>
       </div>
     </div>
   </div>
@@ -1261,15 +1378,50 @@
       }
     });
 
-    // Initialize PDF.js worker if library is already present
+      // Initialize PDF.js worker if library is already present
     if (typeof pdfjsLib !== 'undefined') {
       console.log('[DEBUG] PDF.js library found, setting worker');
-      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
     } else {
       console.warn('[DEBUG] PDF.js library not loaded');
     }
-
-    // Debug helper for monitoring certificate uploads
+    
+    // Load staff data for certificate uploader
+    async function loadStaffData() {
+      if (!window.supabase || !window.currentUser || !window.currentUser.siteId) {
+        console.warn('[DEBUG] Cannot load staff data - Supabase or current user not available');
+        return;
+      }
+      
+      try {
+        console.log('[DEBUG] Loading staff data for certificate uploader');
+        const staffRes = await window.supabase
+          .from('master_users')
+          .select('auth_user_id, full_name, role, kiosk_user_id')
+          .eq('site_id', window.currentUser.siteId);
+          
+        if (staffRes.error) {
+          throw staffRes.error;
+        }
+        
+        // Map profiles to staff format expected by certificate uploader
+        const mappedStaff = staffRes.data?.map(profile => ({
+          id: profile.kiosk_user_id || profile.auth_user_id,
+          user_id: profile.auth_user_id,
+          full_name: profile.full_name,
+          role: profile.access_type || profile.role,
+          active: true
+        })) || [];
+        
+        // Make staff data available for certificate uploader
+        window.trainingData = window.trainingData || {};
+        window.trainingData.staff = mappedStaff;
+        
+        console.log('[DEBUG] Staff data loaded:', mappedStaff.length, 'staff members');
+      } catch (err) {
+        console.error('[DEBUG] Failed to load staff data:', err);
+      }
+    }    // Debug helper for monitoring certificate uploads
     window.debugCertificateUpload = function () {
       console.log('=== Certificate Upload Debug Info ===');
       console.log('Supabase client:', !!window.supabase);

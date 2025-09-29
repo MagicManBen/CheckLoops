@@ -259,7 +259,7 @@ const ActivityLikes = (function() {
   function getActivityType(cardElement) {
     // Try to extract from the element's classList first
     for (const className of cardElement.classList) {
-      if (['quiz', 'training', 'holiday', 'profile_update', 'new_member'].includes(className)) {
+      if (['quiz', 'training', 'holiday', 'profile_update', 'new_member', 'avatar_emotion'].includes(className)) {
         return className;
       }
     }
@@ -335,9 +335,14 @@ const ActivityLikes = (function() {
     const heartElement = document.createElement('div');
     heartElement.className = 'activity-heart';
     heartElement.innerHTML = '❤️';
-    heartElement.style.cssText = 
+    heartElement.style.cssText =
       'position: absolute; top: 8px; right: 8px; font-size: 18px; ' +
       'animation: pulse 1.5s infinite; cursor: pointer; z-index: 2;';
+
+    // Prevent double-click on heart from triggering activity like
+    heartElement.addEventListener('dblclick', function(e) {
+      e.stopPropagation();
+    });
     
     // Ensure card has position relative for absolute positioning
     if (getComputedStyle(cardElement).position !== 'relative') {

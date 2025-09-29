@@ -26,26 +26,40 @@ async function enhanceActivityLikesTooltips() {
       return false;
     }
     
-    // Fetch ALL likes with user information for this site
-    const { data: allLikesWithUsers, error } = await window.supabase
+    // Fetch ALL likes with user information for this site (fixed join)
+    const { data: allLikes, error: likesError } = await window.supabase
       .from('activity_likes')
-      .select(`
-        id, 
-        user_id, 
-        activity_type, 
-        activity_id,
-        master_users!activity_likes_user_id_fkey(
-          nickname, 
-          full_name,
-          avatar_url
-        )
-      `)
+      .select('*')
       .eq('site_id', userData.site_id);
-      
-    if (error) {
-      console.error('Error fetching likes with user information:', error);
+
+    if (likesError) {
+      console.error('Error fetching likes:', likesError);
       return false;
     }
+
+    // Get user details for all likes
+    const userIds = [...new Set(allLikes.map(like => like.user_id))];
+    const { data: users, error: usersError } = await window.supabase
+      .from('master_users')
+      .select('auth_user_id, nickname, full_name, avatar_url')
+      .in('auth_user_id', userIds);
+
+    if (usersError) {
+      console.error('Error fetching users:', usersError);
+      return false;
+    }
+
+    // Create a map of user data
+    const userMap = {};
+    users.forEach(user => {
+      userMap[user.auth_user_id] = user;
+    });
+
+    // Combine likes with user data
+    const allLikesWithUsers = allLikes.map(like => ({
+      ...like,
+      master_users: userMap[like.user_id] || null
+    }));
     
     if (!allLikesWithUsers || allLikesWithUsers.length === 0) {
       console.log('No activity likes found for this site');
@@ -77,69 +91,170 @@ async function enhanceActivityLikesTooltips() {
     // Find all heart elements and add tooltips
     const heartElements = document.querySelectorAll('.activity-heart');
     let enhancedCount = 0;
-    
+
+    console.log(`Found ${heartElements.length} heart elements to enhance with tooltips`);
+
     heartElements.forEach(heart => {
       const activityCard = heart.closest('.activity-item');
-      if (!activityCard) return;
-      
+      if (!activityCard) {
+        console.warn('Heart element without parent activity card');
+        return;
+      }
+
       const activityType = getActivityTypeFromCard(activityCard);
       const activityId = getActivityIdFromCard(activityCard);
-      
-      if (!activityType || !activityId) return;
-      
+
+      if (!activityType || !activityId) {
+        console.warn(`Could not determine activity type/id for heart: type=${activityType}, id=${activityId}`);
+        return;
+      }
+
       const likeKey = `${activityType}:${activityId}`;
       const likesForActivity = likesByActivity[likeKey];
       
+      // Even if no likes data yet, set up the click handler to fetch on-demand
+      // Remove any existing tooltip and event listeners
+      const existingTooltip = heart.querySelector('.heart-tooltip');
+      if (existingTooltip) {
+        existingTooltip.remove();
+      }
+
+      // Remove old event listeners if they exist
+      if (heart._clickHandler) {
+        heart.removeEventListener('click', heart._clickHandler);
+      }
+
+      // Add click handler for all hearts
+      heart.classList.add('tooltip-enabled');
+      heart.style.cursor = 'pointer';
+
       if (likesForActivity && likesForActivity.length > 0) {
-        // Remove any existing tooltip and event listeners
-        const existingTooltip = heart.querySelector('.heart-tooltip');
-        if (existingTooltip) {
-          existingTooltip.remove();
-        }
-        
-        // Remove old event listeners if they exist
-        if (heart._mouseoverHandler) {
-          heart.removeEventListener('mouseover', heart._mouseoverHandler);
-        }
-        if (heart._mouseoutHandler) {
-          heart.removeEventListener('mouseout', heart._mouseoutHandler);
-        }
-        
         // Create tooltip content
         const tooltipContent = createHeartTooltip(likesForActivity);
-        
+
         // Add tooltip to heart
         heart.appendChild(tooltipContent);
-        
-        // Add direct event listeners for tooltip visibility
-        heart.classList.add('tooltip-enabled');
-        heart.style.cursor = 'pointer';
-        
+
         // Store the tooltip for easy access
         heart._tooltip = tooltipContent;
-        
-        // Add direct mouseover/mouseout handlers
-        heart._mouseoverHandler = function() {
-          if (heart._tooltip) {
-            heart._tooltip.style.display = 'block';
-          }
-        };
-        
-        heart._mouseoutHandler = function() {
-          if (heart._tooltip) {
-            heart._tooltip.style.display = 'none';
-          }
-        };
-        
-        // Add event listeners
-        heart.addEventListener('mouseover', heart._mouseoverHandler);
-        heart.addEventListener('mouseout', heart._mouseoutHandler);
-        
+
         // Add title attribute for basic tooltip fallback
         heart.setAttribute('title', `${likesForActivity.length} ${likesForActivity.length === 1 ? 'person' : 'people'} liked this`);
-        
-        enhancedCount++;
+      } else {
+        // No likes data, create empty tooltip
+        const emptyTooltip = document.createElement('div');
+        emptyTooltip.className = 'heart-tooltip';
+        emptyTooltip.style.cssText = `
+          position: absolute;
+          right: 25px;
+          top: 0;
+          background: white;
+          border-radius: 8px;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+          padding: 8px;
+          display: none;
+          z-index: 100;
+          border: 1px solid #e2e8f0;
+        `;
+        emptyTooltip.innerHTML = '<div style="font-size: 12px; color: #666;">No likes yet</div>';
+        heart.appendChild(emptyTooltip);
+        heart._tooltip = emptyTooltip;
       }
+
+      // Add click handler to toggle tooltip for ALL hearts
+      heart._clickHandler = async function(e) {
+        console.log('Heart clicked!');
+        e.stopPropagation();
+        e.preventDefault();
+
+        // If no tooltip content, try fetching likes again
+        if (!heart._tooltip || heart._tooltip.textContent === 'No likes yet') {
+          console.log('No tooltip or empty, fetching fresh data...');
+
+          // Fetch fresh likes data
+          const activityCard = heart.closest('.activity-item');
+          const activityType = getActivityTypeFromCard(activityCard);
+          const activityId = getActivityIdFromCard(activityCard);
+          const likeKey = `${activityType}:${activityId}`;
+
+          console.log('Fetching likes for:', { activityType, activityId, likeKey });
+
+          // Try to get fresh likes data
+          try {
+            const { data: freshLikes } = await window.supabase
+              .from('activity_likes')
+              .select('*')
+              .eq('activity_type', activityType)
+              .eq('activity_id', activityId);
+
+            if (freshLikes && freshLikes.length > 0) {
+              // Get user details
+              const userIds = [...new Set(freshLikes.map(l => l.user_id))];
+              const { data: users } = await window.supabase
+                .from('master_users')
+                .select('auth_user_id, nickname, full_name, avatar_url')
+                .in('auth_user_id', userIds);
+
+              const userMap = {};
+              if (users) {
+                users.forEach(u => {
+                  userMap[u.auth_user_id] = u;
+                });
+              }
+
+              const likesWithUsers = freshLikes.map(like => ({
+                userId: like.user_id,
+                nickname: userMap[like.user_id]?.nickname || userMap[like.user_id]?.full_name || 'Anonymous',
+                avatarUrl: userMap[like.user_id]?.avatar_url
+              }));
+
+              // Update tooltip
+              if (heart._tooltip) {
+                heart._tooltip.remove();
+              }
+              const newTooltip = createHeartTooltip(likesWithUsers);
+              heart.appendChild(newTooltip);
+              heart._tooltip = newTooltip;
+              heart._tooltip.style.display = 'block';
+            }
+          } catch (err) {
+            console.error('Error fetching fresh likes:', err);
+          }
+        }
+
+        // Close any other open tooltips
+        document.querySelectorAll('.heart-tooltip').forEach(tooltip => {
+          if (tooltip !== heart._tooltip) {
+            tooltip.style.display = 'none';
+          }
+        });
+
+        // Toggle this tooltip
+        if (heart._tooltip) {
+          const isVisible = heart._tooltip.style.display === 'block';
+          heart._tooltip.style.display = isVisible ? 'none' : 'block';
+          console.log('Tooltip toggled to:', heart._tooltip.style.display);
+        } else {
+          console.warn('No tooltip to toggle!');
+        }
+      };
+
+      // Add event listener
+      heart.addEventListener('click', heart._clickHandler);
+
+      // Add a document click handler to close tooltips when clicking outside
+      if (!document._heartTooltipCloseHandler) {
+        document._heartTooltipCloseHandler = function(e) {
+          if (!e.target.closest('.activity-heart')) {
+            document.querySelectorAll('.heart-tooltip').forEach(tooltip => {
+              tooltip.style.display = 'none';
+            });
+          }
+        };
+        document.addEventListener('click', document._heartTooltipCloseHandler);
+      }
+
+      enhancedCount++;
     });
     
     console.log(`Enhanced ${enhancedCount} heart elements with user tooltips`);
@@ -154,7 +269,7 @@ async function enhanceActivityLikesTooltips() {
 function getActivityTypeFromCard(card) {
   // Try to extract from the element's classList first
   for (const className of card.classList) {
-    if (['quiz', 'training', 'holiday', 'profile_update', 'new_member'].includes(className)) {
+    if (['quiz', 'training', 'holiday', 'profile_update', 'new_member', 'avatar_emotion'].includes(className)) {
       return className;
     }
   }
@@ -165,7 +280,27 @@ function getActivityTypeFromCard(card) {
 
 // Helper function to extract activity ID from card
 function getActivityIdFromCard(card) {
-  return card.getAttribute('data-activity-id');
+  const attrId = card.getAttribute('data-activity-id');
+  if (attrId) {
+    console.log('Activity ID from attribute:', attrId);
+    return attrId;
+  }
+
+  // Fallback: generate hash like activity-likes.js does
+  const title = card.querySelector('.activity-title')?.textContent || '';
+  const detail = card.querySelector('.activity-detail')?.textContent || '';
+  const time = card.querySelector('.activity-time')?.textContent || '';
+
+  // Create a simple hash of the content
+  let hash = 0;
+  const str = `${title}|${detail}|${time}`;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash = hash & hash;
+  }
+  const generatedId = 'activity_' + Math.abs(hash).toString(16);
+  console.log('Generated activity ID:', generatedId);
+  return generatedId;
 }
 
 // Function to create tooltip element with user info
@@ -327,11 +462,14 @@ function addHeartTooltipStyles() {
   document.head.appendChild(styleEl);
 }
 
+// Make the enhancement function globally available
+window.enhanceActivityLikesTooltips = enhanceActivityLikesTooltips;
+
 // Run the enhancement when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
   // Add tooltip styles
   addHeartTooltipStyles();
-  
+
   // Wait a bit for the activity likes to be initialized and fixed first
   setTimeout(() => {
     enhanceActivityLikesTooltips().then(result => {

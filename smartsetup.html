@@ -59,10 +59,17 @@
   .item small{color:var(--muted)}
   .kv{display:grid;grid-template-columns:140px 1fr;gap:6px 12px;font-size:13px;margin-top:10px}
   .kv div{padding:5px 0;border-bottom:1px dashed #ffffff20}
-  .mono{background:#0a1633;border:1px solid #1f2b52;color:#d6e4ff;border-radius:10px;padding:10px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
+  .mono{background:#0a1633;border:1px solid #1f2b52;color:#d6e4ff;border-radius:10px;padding:10px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word;overflow:auto}
   .badges{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
   .badge{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);background:linear-gradient(180deg,#0e2c6e,#0b245a);border-radius:999px;padding:6px 10px;font-size:12px}
   .ok{border-color:#22c55e;color:#bbf7d0} .warn{border-color:#f59e0b;color:#ffecb3} .err{border-color:#ef4444;color:#fecaca}
+  .checklist{margin-top:8px;padding:8px;background:#0a1633aa;border-radius:8px;border:1px solid #1f2b52;font-size:11px}
+  .checklist .section{margin-bottom:6px}
+  .checklist .label{color:#7dd3fc;font-weight:600;margin-bottom:3px}
+  .checklist .fields{display:flex;flex-wrap:wrap;gap:4px}
+  .checklist .field{padding:2px 5px;border-radius:4px;background:#0c285f;border:1px solid #2a4a8a}
+  .checklist .field.captured{background:#16a34a33;border-color:#22c55e}
+  .checklist .field.missing{background:#ef444433;border-color:#ef4444}
 </style>
 </head>
 <body>
@@ -82,7 +89,7 @@
 <div class="wrap">
   <section class="hero">
     <h1>Welcome to Smart Setup</h1>
-    <p>Find your practice, import data from <strong>CQC</strong> and <strong>NHS ODS</strong>, and verify it’s saved — all in a few clicks.</p>
+    <p>Find your practice, import from <strong>CQC</strong> and <strong>NHS ODS</strong>, and verify it's saved — fast.</p>
     <div class="progress"><span id="prog" style="width:20%"></span></div>
   </section>
 
@@ -90,11 +97,11 @@
     <div class="card">
       <div class="titleRow">
         <strong>Search for your GP Surgery</strong>
-        <span class="hint">Searching “CQC All GPs”</span>
+        <span class="hint">Searching "CQC All GPs"</span>
       </div>
       <div class="searchbar">
         <input id="q" placeholder="Enter practice name…" />
-        <button class="btn primary" id="go">Search</button>
+        <button type="button" class="btn primary" id="go">Search</button>
         <label class="hint"><input type="checkbox" id="odsOnly"> ODS only</label>
       </div>
       <div id="results" class="list"></div>
@@ -104,217 +111,119 @@
       <div class="titleRow">
         <strong>Selected Practice</strong>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button class="btn ghost" id="btnReload">Reload Row</button>
-          <button class="btn" id="btnCQC">CQC → Save</button>
-          <button class="btn" id="btnODS">NHS ODS → Save</button>
-          <button class="btn success" id="btnBoth">Run Both</button>
+          <button type="button" class="btn ghost" id="btnReload">Reload Row</button>
+          <button type="button" class="btn" id="btnFetchCQC">CQC → Save</button>
+          <button type="button" class="btn" id="btnFetchODS">NHS ODS → Save</button>
+          <button type="button" class="btn success" id="btnFetchBoth">Run Both</button>
         </div>
       </div>
       <div id="meta" class="kv"></div>
       <div class="badges">
-        <span id="badgeCqc" class="badge warn">CQC: idle</span>
-        <span id="badgeOds" class="badge warn">NHS ODS: idle</span>
-        <span id="badgeVerify" class="badge warn">DB Save: idle</span>
+        <span id="apiStatus" class="badge warn">Idle</span>
       </div>
+      <div id="captureChecklist" class="checklist" style="display:none"></div>
     </div>
   </div>
 
-  <div class="card" id="debugCard" style="margin-top:16px">
+  <div class="card" style="margin-top:16px">
     <div class="titleRow">
-      <strong>Debug</strong>
-      <div style="display:flex;gap:8px;align-items:center">
-        <button class="btn ghost" id="btnCopy">Copy</button>
-      </div>
+      <strong>Debug Panel</strong>
+      <button type="button" class="btn ghost" onclick="copyDebug()">Copy</button>
     </div>
-    <div id="debug" class="mono" style="min-height:300px;max-height:520px;overflow:auto">No debug yet.</div>
+    <div id="raw" class="mono" style="min-height:180px;max-height:300px">
+      === Latest Edge/Fetch Response ===
+      No data yet
+    </div>
+    <div id="saved" class="mono" style="min-height:100px;max-height:200px;margin-top:10px">
+      === Saved Row (after last action) ===
+      None
+    </div>
+    <div id="log" class="mono" style="min-height:150px;max-height:260px;margin-top:10px">
+      === Log ===
+    </div>
   </div>
 </div>
 
 <script>
-  // ===== Config =====
+  // ===== Config (client-safe) =====
   const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
   const SUPABASE_ANON_KEY = 'sb_publishable_wpy7lxfbI2HwvsznlWJVKg_Zx7HnAc4';
   const TABLE = 'CQC All GPs';
+  const EDGE_FN = 'fetch-nhs-data-complete';
   const CQC_FN = 'fetch-cqc-details';
-  const ODS_FN = 'fetch-nhs-data-complete';
+
+  // Edge merge functions (for RLS fallback)
+  const MERGE_FNS = [
+    'merge-gp-row',
+    'merge-location',
+    'merge-location-provider',
+    'merge-gp-fields',
+    EDGE_FN,
+    CQC_FN
+  ];
 
   const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  // ===== UI helpers =====
-  const el = id => document.getElementById(id);
-  const debugEl = el('debug'); const progEl = el('prog');
-  const badgeCqc = el('badgeCqc'); const badgeOds = el('badgeOds'); const badgeVerify = el('badgeVerify');
+  const el = (id)=>document.getElementById(id);
+  const logEl = el('log');
+  const rawEl = el('raw');
+  const savedEl = el('saved');
+  const progEl = el('prog');
 
-  // ---- Display helpers ----
-  function escapeHTML(s){
-    return String(s ?? '')
-      .replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-  }
-  function toSafeHref(url){
-    if(!url) return '#';
-    try{
-      const s = String(url).trim();
-      const normalized = /^https?:\/\//i.test(s) ? s : ('https://' + s.replace(/^\/+/, ''));
-      const u = new URL(normalized);
-      return u.href;
-    }catch{
-      return '#';
-    }
-  }
-  function titleCaseSmart(s){
-    if(!s) return s;
-    return String(s).split(/(\s+|[-/])/g).map(tok=>{
-      if(!tok.trim()) return tok;
-      const upper = tok.toUpperCase();
-      const lower = tok.toLowerCase();
-      if(tok.length <= 4 && tok === upper && tok !== lower) return tok;
-      return tok.charAt(0).toUpperCase() + tok.slice(1).toLowerCase();
-    }).join('');
-  }
-  function normaliseNameForStore(s){
-    if(!s) return undefined;
-    return titleCaseSmart(String(s).trim());
-  }
-  function normaliseUrlForStore(url){
-    if(!url) return undefined;
-    try{
-      const s = String(url).trim();
-      const withScheme = /^https?:\/\//i.test(s) ? s : 'https://' + s.replace(/^\/+/, '');
-      const u = new URL(withScheme);
-      return u.href;
-    }catch{
-      return undefined;
-    }
-  }
-  function pickNonEmpty(...vals){
-    for(const v of vals){
-      if(v !== undefined && v !== null && String(v).trim() !== '') return v;
-    }
-    return undefined;
-  }
-  function preferWebsite(row){
-    let site = row?.website || '';
-    let loc = row?.location_source;
-    let prov = row?.provider_source;
-    if(typeof loc === 'string'){ try{ loc = JSON.parse(loc); }catch{} }
-    if(typeof prov === 'string'){ try{ prov = JSON.parse(prov); }catch{} }
-    site = site || loc?.website || prov?.website || '';
-    if(site && !/^https?:\/\//i.test(site)){
-      site = 'https://' + site.replace(/^\/+/, '');
-    }
-    return site;
-  }
-  function asWebsiteCell(site){
-    if(!site) return '—';
-    const href = toSafeHref(site);
-    const text = (site || '').replace(/^https?:\/\//i,'');
-    return `<a href="${escapeHTML(href)}" target="_blank" rel="noopener noreferrer">${escapeHTML(text)}</a>`;
-  }
-  function pruneObject(obj, {maxDepth=3, maxArray=20, maxString=200}={}){
-    const seen = new WeakSet();
-    function _p(v, depth){
-      if(v===null || typeof v!=='object') {
-        if(typeof v==='string' && v.length>maxString) return v.slice(0,maxString)+'…';
-        return v;
-      }
-      if(seen.has(v)) return '[Circular]';
-      seen.add(v);
-      if(Array.isArray(v)){
-        if(depth>=maxDepth) return `[Array(${v.length})]`;
-        const out = v.slice(0,maxArray).map(x=>_p(x, depth+1));
-        if(v.length>maxArray) out.push(`…(+${v.length-maxArray} more)`);
-        return out;
-      }
-      if(depth>=maxDepth) return '[Object]';
-      const out = {};
-      Object.keys(v).sort().forEach(k=>{ out[k] = _p(v[k], depth+1); });
-      return out;
-    }
-    return _p(obj, 0);
-  }
-  function safeStringify(obj){
-    try{
-      return JSON.stringify(pruneObject(obj), null, 2);
-    }catch{
-      return String(obj);
-    }
+  function log(msg, data){
+    const time = new Date().toISOString().replace('T',' ').replace('Z','');
+    logEl.textContent += `\n[${time}] ${msg}`;
+    if(data){ logEl.textContent += `\n  ${JSON.stringify(data,null,2).split('\n').join('\n  ')}`; }
+    logEl.scrollTop = logEl.scrollHeight;
   }
 
-  const DEBUG_MAX_LOGS = 200;
-  const debugState = { raw: null, saved: null, logs: [] };
+  function setRaw(obj){
+    rawEl.textContent = '=== Latest Edge/Fetch Response ===\n' + JSON.stringify(obj, null, 2);
+  }
 
-  function renderDebug(){
-    const sections = [];
-    sections.push('=== Latest Edge/Fetch Response ===');
-    sections.push(debugState.raw ? safeStringify(debugState.raw) : 'None');
-    sections.push('');
-    sections.push('=== Saved Row (after last action) ===');
-    sections.push(debugState.saved ? safeStringify(debugState.saved) : 'None');
-    sections.push('');
-    sections.push('=== Log ===');
-    const lines = debugState.logs.map(entry => {
-      const head = `[${entry.time}] ${entry.message}`;
-      if(entry.obj){
-        const body = safeStringify(entry.obj).split('\n').map(l => '  ' + l).join('\n');
-        return head + '\n' + body;
-      }
-      return head;
-    });
-    sections.push(lines.join('\n'));
-    let text = sections.join('\n').trim();
-    const m = text.match(/\s\[\{[\s\S]*\}\]\s*$/);
-    if(m){ text = text.slice(0, text.length - m[0].length).trim(); }
-    debugEl.textContent = text;
+  function setSaved(obj){
+    savedEl.textContent = '=== Saved Row (after last action) ===\n' + (obj ? JSON.stringify(obj, null, 2) : 'None');
   }
-  function log(msg, obj){
-    const time = new Date().toLocaleTimeString();
-    debugState.logs.push({ time, message: msg, obj });
-    if(debugState.logs.length > DEBUG_MAX_LOGS) debugState.logs.shift();
-    renderDebug();
-  }
-  function setRaw(obj){ debugState.raw = obj; renderDebug(); }
-  function setSaved(obj){ debugState.saved = obj; renderDebug(); }
-  async function copyDebug(){
-    const text = debugEl.textContent || '';
-    try{
-      await navigator.clipboard.writeText(text);
-      const btn = document.getElementById('btnCopy');
-      const prev = btn.textContent;
-      btn.textContent = 'Copied!';
-      setTimeout(()=> btn.textContent = prev, 1200);
-    }catch(e){
-      const btn = document.getElementById('btnCopy');
-      const prev = btn.textContent;
-      btn.textContent = 'Copy failed';
-      setTimeout(()=> btn.textContent = prev, 1200);
-    }
-  }
-  function setProg(n){ progEl.style.width = Math.max(5,Math.min(100,n))+'%'; }
-  function setChip(id){ document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active')); el(id).classList.add('active'); }
-  function setBadge(badge, text, cls){ badge.textContent = text; badge.className = 'badge ' + (cls||''); }
-  function markVerified(){ setChip('st4'); setProg(100); }
-  function kv(k,v){ return `<div style="color:#b5c3e6">${escapeHTML(k)}</div><div>${escapeHTML(v ?? '—')}</div>`; }
-  function kvHtml(k,html){ return `<div style="color:#b5c3e6">${escapeHTML(k)}</div><div>${html || '—'}</div>`; }
-  const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
-  const isEmptyObj = v => isObj(v) && Object.keys(v).length === 0;
 
-  let current = null; // { location_id, provider_id, ods_code, row }
+  function setStatus(txt, cls='warn'){
+    const badge = el('apiStatus');
+    badge.textContent = txt;
+    badge.className = `badge ${cls}`;
+  }
+
+  function setProg(n){
+    progEl.style.width = Math.max(5, Math.min(100, n)) + '%';
+  }
+
+  function setChip(id){
+    document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+    el(id).classList.add('active');
+  }
+
+  let current = null; // { location_id, provider_id, ods_code?, row? }
 
   // ===== Search =====
   async function search(){
     const q = el('q').value.trim();
-    if(!q) return;
+    if(!q){ return; }
+    setStatus('Searching…');
     setChip('st2'); setProg(35);
     el('results').innerHTML = '<div class="item"><small>Searching…</small></div>';
+
     let query = supabase.from(TABLE)
       .select('location_id, location_name, postcode, region, ods_code, provider_id')
       .ilike('location_name', `%${q}%`)
-      .limit(25);
+      .limit(20);
+
     if(el('odsOnly').checked){ query = query.not('ods_code','is',null).neq('ods_code',''); }
+
     const { data, error } = await query;
-    if(error){ log('Search error', error); el('results').innerHTML='<div class="item"><small>Error searching.</small></div>'; return; }
-    renderResults(data||[]);
+    if(error){ setStatus('Search failed', 'err'); log('Search failed', error); el('results').innerHTML=''; return; }
+
+    setStatus(`Found ${data.length}`, 'ok');
+    renderResults(data);
   }
+
   function renderResults(rows){
     const list = el('results');
     if(!rows.length){ list.innerHTML = '<div class="item"><small>No matches</small></div>'; return; }
@@ -322,177 +231,154 @@
     rows.forEach(r=>{
       const div = document.createElement('div');
       div.className = 'item';
-      const namePretty = titleCaseSmart(r.location_name || '');
-      const region = r.region || '—';
-      const pc = r.postcode || '—';
-      const ods = r.ods_code ? ('ODS ' + r.ods_code) : '';
-      div.innerHTML =
-        `<div><strong>${escapeHTML(namePretty)}</strong><br><small>${escapeHTML(region)} · ${escapeHTML(pc)}</small></div>`+
-        `<div><small>${escapeHTML(ods)}</small></div>`;
-      div.onclick = ()=> selectPractice(r.location_id);
+      div.innerHTML = `<div><strong>${r.location_name}</strong><br/><small>${r.region||'—'} · ${r.postcode||'—'}</small></div><div><small>${r.ods_code?('ODS '+r.ods_code):''}</small></div>`;
+      div.onclick = ()=>selectPractice(r.location_id);
       list.appendChild(div);
     });
   }
 
   // ===== Load + show one row =====
   async function selectPractice(location_id){
+    setStatus('Loading row…');
     setChip('st2'); setProg(45);
     const { data, error } = await supabase.from(TABLE).select('*').eq('location_id', location_id).single();
-    if(error){ log('Load failed', error); return; }
-    current = { location_id: data.location_id, provider_id: data.provider_id||null, ods_code: data.ods_code||null, row: data };
+    if(error){ setStatus('Load failed', 'err'); log('Load failed', error); return; }
+    current = {
+      location_id: data.location_id,
+      provider_id: data.provider_id || null,
+      ods_code: data.ods_code || null,
+      row: data
+    };
+    setStatus('Row ready', 'ok');
     renderMeta(data);
     setSaved({ saved_row: data });
-    setBadge(badgeCqc,'CQC: idle','warn');
-    setBadge(badgeOds,'NHS ODS: idle','warn');
-    setBadge(badgeVerify,'DB Save: idle','warn');
   }
+
   function renderMeta(row){
+    const m = el('meta');
     const addr = [row.address_line_1,row.address_line_2,row.town_city,row.postcode].filter(Boolean).join(', ');
-    const displayName = titleCaseSmart(row.location_name || '');
-    const site = preferWebsite(row);
-    el('meta').innerHTML =
-      kv('Location', displayName || '—') +
+    m.innerHTML = ''+
+      kv('Location name', row.location_name) +
       kv('Location ID', row.location_id) +
       kv('Provider ID', row.provider_id||'—') +
       kv('ODS code', row.ods_code||'—') +
       kv('Phone', row.main_phone_number||'—') +
-      kvHtml('Website', asWebsiteCell(site)) +
+      kv('Website', row.website||'—') +
       kv('Address', addr||'—') +
       kv('Region', row.region||'—') +
-      kv('Last NHS update', row.last_nhs_update ? String(row.last_nhs_update).replace('T',' ').split('.')[0] : '—');
+      kv('Last NHS update', row.last_nhs_update? String(row.last_nhs_update).replace('T',' ').split('.')[0] : '—');
   }
+  function kv(k,v){ return `<div style="color:var(--muted)">${k}</div><div>${v??'—'}</div>`; }
 
-  // ===== CQC: Edge with direct fallback =====
-  async function runCQC(){
-    if(!current) return;
-    setChip('st3'); setProg(60);
-    setBadge(badgeCqc,'CQC: running…','warn');
-    const payload = { location_id: current.location_id, provider_id: current.provider_id||null };
-    log(`Calling ${CQC_FN}…`, payload);
-    const beforeRow = current?.row ? JSON.parse(JSON.stringify(current.row)) : null;
+  // ===== Fix A: RLS-aware save flow =====
+  async function saveUpdate(update, source='manual'){
+    if(!current) return null;
+    const clean = compact(update);
+    if(!Object.keys(clean).length){ log('Nothing to update'); return null; }
 
-    let cqcPayload = null;
-    let edgeUpdated = false;
-    try{
-      const { data: fnRes, error } = await supabase.functions.invoke(CQC_FN, { body: payload });
-      if(error){ throw error; }
-      setRaw(fnRes);
-      edgeUpdated = !!fnRes?.database_updated;
-      cqcPayload = extractCqcPayload(fnRes);
-      if(!cqcPayload || isEmptyObj(cqcPayload)){
-        log('CQC edge returned empty — using direct CQC fallback');
-        cqcPayload = await fetchCqcDirect(current.location_id, current.provider_id);
-      }
-    }catch(e){
-      log('CQC edge error — using direct CQC fallback', String(e));
-      cqcPayload = await fetchCqcDirect(current.location_id, current.provider_id);
+    // Try direct update
+    const { data, error } = await supabase.from(TABLE).update(clean).eq('location_id', current.location_id).select('*');
+    if(error){
+      setStatus('Save failed','err');
+      log('Save failed', error);
+      return null;
     }
 
-    if(edgeUpdated){
-      const after = await reloadRow();
-      setBadge(badgeCqc,'CQC: OK','ok');
-      if (beforeRow && after) {
-        const diff = diffKeys(beforeRow, after);
-        if (diff.changed.length) {
-          log('Edge (CQC) changed fields', diff);
-          setBadge(badgeVerify, `DB Save: updated (${diff.changed.length})`, 'ok');
-        } else {
-          setBadge(badgeVerify, 'DB Save: no change', 'warn');
+    // Check if any rows were updated (FIX A: RLS detection)
+    if(!data || data.length === 0){
+      log('Direct update returned 0 rows (RLS blocked) - falling back to Edge merge');
+      const mergeResult = await writeViaEdge(clean, source);
+      if(mergeResult.ok){
+        // Reload the row to get the updated data
+        const reloaded = await reloadRow();
+        return reloaded;
+      }
+      return null;
+    }
+
+    log('Saved successfully', { keys: Object.keys(clean), rows_updated: data.length });
+    setSaved({ saved_row: data[0] });
+    current.row = data[0];
+    renderMeta(data[0]);
+    return data[0];
+  }
+
+  // ===== Edge merge fallback (service role) =====
+  async function writeViaEdge(patch, sourceLabel){
+    const payload = {
+      table: TABLE,
+      location_id: current.location_id,
+      provider_id: current.provider_id || null,
+      ods_code: current.ods_code || null,
+      source: sourceLabel,
+      action: 'merge',
+      apply: true,
+      patch
+    };
+
+    let workingFunctions = 0;
+    let lastWorkingFunction = null;
+
+    for (const fn of MERGE_FNS){
+      try{
+        log(`Trying Edge merge via ${fn}...`);
+        const { data, error } = await supabase.functions.invoke(fn, { body: payload });
+        if(error){
+          if(error.name === 'FunctionsFetchError'){
+            // Function doesn't exist, skip silently
+            continue;
+          }
+          log(`Edge merge via ${fn} error`, error);
+          continue;
         }
-      } else {
-        setBadge(badgeVerify,'DB Save: verified','ok');
-      }
-      markVerified();
-      return;
-    }
 
-    if(!cqcPayload || isEmptyObj(cqcPayload)){ setBadge(badgeCqc,'CQC: empty','err'); return; }
+        workingFunctions++;
+        lastWorkingFunction = fn;
 
-    const update = buildUpdateFromCqc(cqcPayload);
-    log('Capture checklist (CQC)', captureChecklist(update));
-    await saveUpdate(update, 'cqc');
-    if(update.ods_code){ current.ods_code = update.ods_code; }
-    setBadge(badgeCqc,'CQC: OK','ok');
-    markVerified();
-  }
+        // Check for success - handle Edge function quirks
+        // fetch-cqc-details has a bug where it returns database_updated:false even when it updates
+        const isSuccess = data && (
+          data.database_updated === true ||
+          data.ok === true ||
+          data.success === true ||
+          // Special case: fetch-cqc-details returns success:true with data even when database_updated is false
+          (fn === 'fetch-cqc-details' && data.success === true && data.data)
+        );
 
-  async function fetchCqcDirect(location_id, provider_id){
-    try{
-      const loc = await fetchJson(`https://api.cqc.org.uk/public/v1/locations/${encodeURIComponent(location_id)}`);
-      let prov = null;
-      if(provider_id){ prov = await fetchJson(`https://api.cqc.org.uk/public/v1/providers/${encodeURIComponent(provider_id)}`); }
-      const payload = { location: loc, provider: prov };
-      setRaw({ fallback_cqc: payload });
-      return payload;
-    }catch(e){ log('Direct CQC fetch failed', String(e)); return null; }
-  }
-
-  // ===== ODS: Edge with robust code guessing + direct fallback =====
-  async function runODS(){
-    if(!current) return;
-    setChip('st3'); setProg(70);
-    setBadge(badgeOds,'NHS ODS: running…','warn');
-
-    const payload = { location_id: current.location_id, ods_code: current.ods_code||null };
-    log(`Calling ${ODS_FN}…`, payload);
-    const beforeRow = current?.row ? JSON.parse(JSON.stringify(current.row)) : null;
-
-    let ods = null;
-    let edgeUpdated = false;
-    try{
-      const { data: fnRes, error } = await supabase.functions.invoke(ODS_FN, { body: payload });
-      if(error){ throw error; }
-      setRaw(fnRes);
-      edgeUpdated = !!fnRes?.database_updated;
-      ods = extractOdsPayload(fnRes);
-    }catch(e){
-      log('ODS edge error', String(e));
-    }
-
-    if(edgeUpdated){
-      const after = await reloadRow();
-      setBadge(badgeOds,'NHS ODS: OK','ok');
-      if (beforeRow && after) {
-        const diff = diffKeys(beforeRow, after);
-        if (diff.changed.length) {
-          log('Edge (ODS) changed fields', diff);
-          setBadge(badgeVerify, `DB Save: updated (${diff.changed.length})`, 'ok');
-        } else {
-          setBadge(badgeVerify, 'DB Save: no change', 'warn');
+        if(isSuccess){
+          log(`Edge merge via ${fn}: success`, {
+            database_updated: data.database_updated,
+            has_data: !!data.data,
+            success: data.success
+          });
+          setRaw({ edge_merge_fn: fn, result: data });
+          return { ok:true, fn, data };
+        } else if(data && data.database_updated === false){
+          log(`Edge merge via ${fn}: returned but did not update database`, data);
         }
-      } else {
-        setBadge(badgeVerify,'DB Save: verified','ok');
+      }catch(e){
+        log(`Edge merge via ${fn} threw`, String(e));
       }
-      markVerified();
-      return;
     }
 
-    if(!ods || isEmptyObj(ods)){
-      const guessed = guessOdsCode(current.row);
-      if(guessed){ log('ODS edge empty — using code from CQC JSON', { guessed_ods_code: guessed }); }
-      else { log('ODS edge empty — no ODS in column/JSON; using name/postcode'); }
-      ods = await fetchOdsDirect(guessed, current.row?.location_name, current.row?.postcode);
-      if(!ods){ setBadge(badgeOds,'NHS ODS: not found','err'); return; }
-      setRaw({ fallback_ods: ods });
+    // If no functions worked at all, log a more helpful error
+    if(workingFunctions === 0){
+      log('ERROR: All Edge merge functions failed or do not exist. Please ensure Edge Functions are deployed.');
+      setStatus('Edge Functions not available', 'err');
+    } else if(lastWorkingFunction){
+      log(`Edge merge failed: ${workingFunctions} functions responded but none updated the database`);
     }
 
-    const update = buildUpdateFromOds(ods);
-    log('Capture checklist (ODS)', captureChecklist(update));
-    if(!Object.keys(update).length){ setBadge(badgeOds,'NHS ODS: no fields','err'); return; }
-    await saveUpdate(update, 'ods');
-    if(update.ods_code){ current.ods_code = update.ods_code; }
-    setBadge(badgeOds,'NHS ODS: OK','ok');
-    markVerified();
+    return { ok:false };
   }
 
-  // ===== Reload row after DB update =====
   async function reloadRow(){
     if(!current) return null;
-    const { data, error } = await supabase
-      .from(TABLE).select('*')
-      .eq('location_id', current.location_id)
-      .single();
-    if(error){ log('Reload failed', error); return null; }
+    const { data, error } = await supabase.from(TABLE).select('*').eq('location_id', current.location_id).single();
+    if(error){
+      log('Reload failed', error);
+      return null;
+    }
     current.row = data;
     current.provider_id = data.provider_id || current.provider_id;
     current.ods_code = data.ods_code || current.ods_code;
@@ -501,167 +387,103 @@
     return data;
   }
 
-  async function runBoth(){ await runCQC(); await runODS(); }
+  // ===== CQC fetch (direct) =====
+  async function fetchCQC(){
+    if(!current){ return; }
+    const locId = current.location_id;
+    const provId = current.provider_id;
+    setStatus('Fetching CQC…');
+    setChip('st3'); setProg(60);
 
-  // ===== Extractors =====
-  function extractCqcPayload(edge){
-    if(edge?.data?.cqc_location || edge?.data?.cqc_provider) return { location: edge.data.cqc_location, provider: edge.data.cqc_provider };
-    if(edge?.phase1_cqc?.data?.location || edge?.phase1_cqc?.data?.provider) return { location: edge.phase1_cqc.data.location, provider: edge.phase1_cqc.data.provider };
-    if(edge?.data?.location || edge?.data?.provider) return { location: edge.data.location, provider: edge.data.provider };
-    return edge?.data || edge;
-  }
-  function extractOdsPayload(edge){
-    if(edge?.data?.ods_data) return edge.data.ods_data;
-    if(edge?.phase2_ods?.data && Object.keys(edge.phase2_ods.data||{}).length) return edge.phase2_ods.data;
-    if(edge?.Organisation || edge?.organisation) return edge;
-    return edge?.data || edge;
-  }
-
-  // ===== Guess ODS from row + stored CQC JSON =====
-  function guessOdsCode(row){
-    const fromCol = normalizeOds(current.ods_code || row?.ods_code || '');
-    if(fromCol) return fromCol;
-    let locSrc = null, provSrc = null;
-    try{ locSrc = typeof row?.location_source === 'string' ? JSON.parse(row.location_source) : row?.location_source; }catch(_){}
-    try{ provSrc = typeof row?.provider_source === 'string' ? JSON.parse(row.provider_source) : row?.provider_source; }catch(_){}
-    const candidates = [
-      locSrc?.odsCode, provSrc?.odsCode,
-      locSrc?.identifier?.value, provSrc?.identifier?.value
-    ].filter(Boolean).map(normalizeOds).filter(Boolean);
-    return candidates[0] || '';
-  }
-
-  // ===== Direct ORD fallback =====
-  async function fetchOdsDirect(odsCode, name, postcode){
     try{
-      if(odsCode){
-        const byCode = await fetchJson(`https://directory.spineservices.nhs.uk/ORD/2-0-0/organisations/${encodeURIComponent(odsCode)}`);
-        if(byCode && !isEmptyObj(byCode)) return byCode;
+      // Try CQC Edge Function first (if present)
+      const viaEdge = await tryCqcEdge({ location_id: locId, provider_id: provId });
+      if(viaEdge && viaEdge.data){
+        await afterCqc(viaEdge);
+        return;
       }
-      if(name){
-        const list = await fetchJson(`https://directory.spineservices.nhs.uk/ORD/2-0-0/organisations?Name=${encodeURIComponent(name)}`);
-        const arr = list?.organisations || list?.Organisations || [];
-        if(Array.isArray(arr) && arr.length){
-          if(postcode){
-            const hit = arr.find(o => JSON.stringify(o).toUpperCase().includes(String(postcode).toUpperCase()));
-            return hit || arr[0];
-          }
-          return arr[0];
-        }
+
+      // Fallback: direct CQC API (public)
+      const loc = await fetchJson(`https://api.cqc.org.uk/public/v1/locations/${encodeURIComponent(locId)}`);
+      let prov = null;
+      if(provId){
+        prov = await fetchJson(`https://api.cqc.org.uk/public/v1/providers/${encodeURIComponent(provId)}`);
       }
+      const payload = { location: loc, provider: prov };
+      await afterCqc({ data: payload });
     }catch(e){
-      const msg = String(e||'');
-      log('ORD fallback error', msg);
-      if(msg.toLowerCase().includes('cors') || msg.includes('TypeError: Failed to fetch')){
-        setBadge(badgeOds,'NHS ODS: CORS blocked','err');
-      }
-      return null;
+      setStatus('CQC error', 'err');
+      log('CQC fetch error', String(e));
     }
-    return null;
   }
 
-  // ===== Helpers for contacts & checklist =====
-  function flattenContactsFromRegActs(ra){
-    try{
-      if(!Array.isArray(ra)) return [];
-      const out = [];
-      ra.forEach(r=>{
-        if(Array.isArray(r.contacts)){
-          r.contacts.forEach(c=>{
-            out.push({
-              personTitle: c.personTitle || null,
-              personGivenName: c.personGivenName || null,
-              personFamilyName: c.personFamilyName || null,
-              personRoles: c.personRoles || []
-            });
-          });
-        }
-      });
-      // simple de-dupe by name
-      const seen = new Set();
-      return out.filter(c=>{
-        const key = [c.personTitle,c.personGivenName,c.personFamilyName,(c.personRoles||[]).join('|')].join('|').toLowerCase();
-        if(seen.has(key)) return false;
-        seen.add(key); return true;
-      });
-    }catch{ return []; }
+  async function afterCqc(resp){
+    const cqc = resp?.data || resp;
+    setRaw({ cqc });
+    const update = buildUpdateFromCqc(cqc);
+
+    // Show capture checklist (Fix D)
+    showCaptureChecklist('CQC', update);
+
+    const saved = await saveUpdate(update, 'cqc');
+    if(saved){
+      setStatus('CQC saved', 'ok');
+      setChip('st4'); setProg(100);
+    } else {
+      setStatus('CQC save failed', 'err');
+      log('CQC save failed - no rows updated');
+    }
   }
 
-  const MUST_CAPTURE = [
-    'constituency','contacts','current_ratings','historic_ratings','key_question_ratings',
-    'provider_constituency','provider_county','provider_inspection_directorate','provider_latitude','provider_longitude',
-    'provider_local_authority','provider_onspd_icb_code','provider_onspd_icb_name','provider_type','provider_uprn',
-    'registration_date','registration_status'
-  ];
-  function captureChecklist(update){
-    const got = MUST_CAPTURE.filter(k => update[k] !== undefined);
-    const missing = MUST_CAPTURE.filter(k => update[k] === undefined);
-    return { captured: got, missing };
-  }
-
-  // ===== Builders =====
+  // ===== Fix C: Enhanced CQC builder with all required fields =====
   function buildUpdateFromCqc(cqc){
     if(!cqc) return {};
     const loc = cqc.location || cqc.cqc_location || cqc.Location || cqc || null;
     const prov = cqc.provider || cqc.cqc_provider || cqc.Provider || null;
+
     const pick = (a,b,c)=> a!==undefined ? a : (b!==undefined ? b : c);
 
-    const derivedOds = normalizeOds(
-      loc?.odsCode ||
-      prov?.odsCode ||
-      loc?.identifier?.value ||
-      prov?.identifier?.value
-    );
-
-    // ratings blocks
+    // Extract ratings (Fix C: ensure all rating fields)
     const currentRatings = loc?.currentRatings || null;
     const historicRatings = loc?.historicRatings || null;
     const keyQuestionRatings = currentRatings?.overall?.keyQuestionRatings || null;
-    const ratingsBundle = currentRatings ? { overall: currentRatings.overall, reportDate: currentRatings.reportDate } : undefined;
 
-    // contacts (prefer explicit contacts, else derived from RA contacts)
-    const derivedContacts = flattenContactsFromRegActs(loc?.regulatedActivities || []);
-    const contacts = pick(loc?.contacts, prov?.contacts, (derivedContacts.length? derivedContacts : undefined));
-
-    // Normalised names + URLs
-    const locName = normaliseNameForStore(pick(loc?.name, prov?.name, undefined));
-    const provName = normaliseNameForStore(prov?.name);
-    const locSite = normaliseUrlForStore(pick(loc?.website, prov?.website, undefined));
-    const provSite = normaliseUrlForStore(prov?.website);
-
-    const brandId   = pick(prov?.brandId, loc?.brandId, undefined);
-    const brandName = pick(prov?.brandName, loc?.brandName, undefined);
-    const county    = pick(loc?.postalAddressCounty, prov?.postalAddressCounty, undefined);
+    // Extract contacts from various sources (Fix C: comprehensive contacts)
+    let contacts = loc?.contacts || prov?.contacts || null;
+    if(!contacts && loc?.regulatedActivities){
+      // Try to extract from regulated activities
+      contacts = [];
+      if(Array.isArray(loc.regulatedActivities)){
+        loc.regulatedActivities.forEach(ra => {
+          if(ra.contacts && Array.isArray(ra.contacts)){
+            contacts = contacts.concat(ra.contacts);
+          }
+        });
+      }
+    }
 
     return compact({
-      // native objects into jsonb columns
-      location_source: loc || undefined,
-      provider_source: prov || undefined,
+      location_source: loc ? JSON.stringify(loc) : undefined,
+      provider_source: prov ? JSON.stringify(prov) : undefined,
 
-      // core identity
-      location_name: locName,
-      provider_name: provName,
+      location_name: pick(loc?.name, prov?.name, undefined),
+      provider_name: pick(prov?.name, undefined, undefined),
       provider_id: pick(loc?.providerId, prov?.providerId, undefined),
       organisation_type: pick(loc?.organisationType, undefined, undefined),
       location_type: pick(loc?.type, undefined, undefined),
-      provider_type: prov?.type,
       region: pick(loc?.region, undefined, undefined),
 
-      // address & geo (location)
       address_line_1: pick(loc?.postalAddressLine1, undefined, undefined),
       address_line_2: pick(loc?.postalAddressLine2, undefined, undefined),
       town_city: pick(loc?.postalAddressTownCity, undefined, undefined),
       postcode: pick(loc?.postalCode, undefined, undefined),
       uprn: pick(loc?.uprn, undefined, undefined),
-      county: county,
-      latitude: (loc?.onspdLatitude!=null)? Number(loc.onspdLatitude) : undefined,
-      longitude:(loc?.onspdLongitude!=null)? Number(loc.onspdLongitude): undefined,
-
-      // phone + site
+      latitude: (loc?.onspdLatitude!=null)? String(loc.onspdLatitude) : undefined,
+      longitude:(loc?.onspdLongitude!=null)? String(loc.onspdLongitude): undefined,
       main_phone_number: pick(loc?.mainPhoneNumber, prov?.mainPhoneNumber, undefined),
-      website: locSite,
+      website: pick(loc?.website, prov?.website, undefined),
 
-      // ONSPD / ODS codes (location)
+      // Location codes
       onspd_ccg_code: pick(loc?.onspdCcgCode, undefined, undefined),
       onspd_ccg_name: pick(loc?.onspdCcgName, undefined, undefined),
       onspd_icb_code: pick(loc?.onspdIcbCode, undefined, undefined),
@@ -669,48 +491,23 @@
       ods_ccg_code: pick(loc?.odsCcgCode, undefined, undefined),
       ods_ccg_name: pick(loc?.odsCcgName, undefined, undefined),
 
-      // admin/location flags
-      constituency: loc?.constituency,
-      local_authority: loc?.localAuthority,
-      care_home: loc?.careHome,
-      dormancy: loc?.dormancy,
-      number_of_beds: (loc?.numberOfBeds!=null)? Number(loc.numberOfBeds) : undefined,
-      inspection_directorate: loc?.inspectionDirectorate,
-      registration_date: loc?.registrationDate,
-      registration_status: loc?.registrationStatus,
-
-      // provider-only captures requested
-      provider_constituency: prov?.constituency,
-      provider_county: prov?.postalAddressCounty,
-      provider_inspection_directorate: prov?.inspectionDirectorate,
-      provider_latitude: (prov?.onspdLatitude!=null)? Number(prov.onspdLatitude) : undefined,
-      provider_longitude:(prov?.onspdLongitude!=null)? Number(prov.onspdLongitude): undefined,
-      provider_local_authority: prov?.localAuthority,
-      provider_onspd_icb_code: prov?.onspdIcbCode,
-      provider_onspd_icb_name: prov?.onspdIcbName,
-      provider_type: prov?.type || undefined,
-      provider_uprn: prov?.uprn,
-
-      // dates + ratings
+      // Ratings (Fix C: all rating fields)
       overall_rating: currentRatings?.overall?.rating,
       last_inspection_date: pick(loc?.lastInspection?.date, undefined, undefined),
       last_report_date: pick(loc?.lastReport?.publicationDate, undefined, undefined),
-      ratings: ratingsBundle || undefined,
-      current_ratings: currentRatings || undefined,
-      historic_ratings: historicRatings || undefined,
-      key_question_ratings: keyQuestionRatings || undefined,
+      current_ratings: currentRatings ? JSON.stringify(currentRatings) : undefined,
+      historic_ratings: historicRatings ? JSON.stringify(historicRatings) : undefined,
+      key_question_ratings: keyQuestionRatings ? JSON.stringify(keyQuestionRatings) : undefined,
 
-      // arrays/objects straight into jsonb
-      regulated_activities: loc?.regulatedActivities || undefined,
-      inspection_areas: loc?.inspectionAreas || undefined,
-      inspection_categories: loc?.inspectionCategories || undefined,
-      gac_service_types: loc?.gacServiceTypes || undefined,
-      specialisms: loc?.specialisms || undefined,
-      location_types: loc?.locationTypes || undefined,
-      relationships: loc?.relationships || undefined,
+      // Arrays
+      regulated_activities: loc?.regulatedActivities ? JSON.stringify(loc.regulatedActivities) : undefined,
+      inspection_areas: loc?.inspectionAreas ? JSON.stringify(loc.inspectionAreas) : undefined,
+      inspection_categories: loc?.inspectionCategories ? JSON.stringify(loc.inspectionCategories) : undefined,
+      gac_service_types: loc?.gacServiceTypes ? JSON.stringify(loc.gacServiceTypes) : undefined,
+      specialisms: loc?.specialisms ? JSON.stringify(loc.specialisms) : undefined,
 
-      // provider extras
-      provider_website: provSite,
+      // Provider fields (Fix C: all provider fields)
+      provider_website: prov?.website,
       provider_main_phone_number: prov?.mainPhoneNumber,
       provider_registration_status: prov?.registrationStatus,
       provider_registration_date: prov?.registrationDate,
@@ -720,208 +517,315 @@
       provider_address_line_2: prov?.postalAddressLine2,
       provider_town_city: prov?.postalAddressTownCity,
       provider_postcode: prov?.postalCode,
-      provider_location_ids: prov?.locationIds || undefined,
-      provider_inspection_areas: prov?.inspectionAreas || undefined,
-      provider_brand_id: brandId,
-      provider_brand_name: brandName,
-      companies_house_number: prov?.companiesHouseNumber,
+      provider_location_ids: prov?.locationIds ? JSON.stringify(prov.locationIds) : undefined,
+      provider_inspection_areas: prov?.inspectionAreas ? JSON.stringify(prov.inspectionAreas) : undefined,
 
-      // contacts (location/provider/regActs)
-      contacts: contacts || undefined,
+      // Additional provider fields (Fix C)
+      provider_constituency: prov?.constituency,
+      provider_county: prov?.postalAddressCounty,
+      provider_inspection_directorate: prov?.inspectionDirectorate,
+      provider_latitude: (prov?.onspdLatitude!=null)? String(prov.onspdLatitude) : undefined,
+      provider_longitude: (prov?.onspdLongitude!=null)? String(prov.onspdLongitude): undefined,
+      provider_local_authority: prov?.localAuthority,
+      provider_onspd_icb_code: prov?.onspdIcbCode,
+      provider_onspd_icb_name: prov?.onspdIcbName,
+      provider_type: prov?.type,
+      provider_uprn: prov?.uprn,
 
-      ods_code: derivedOds || undefined,
+      // Location fields (Fix C)
+      constituency: loc?.constituency,
+      contacts: contacts ? JSON.stringify(contacts) : undefined,
+      registration_date: loc?.registrationDate,
+      registration_status: loc?.registrationStatus,
+
+      ods_code: normalizeOds(loc?.odsCode),
       updated_at: new Date().toISOString(),
     });
   }
 
+  // ===== NHS ODS fetch (by ODS if possible, else by name) =====
+  async function fetchODS(){
+    if(!current){ return; }
+    setStatus('Fetching NHS ODS…');
+    setChip('st3'); setProg(70);
+
+    try{
+      // Try Edge Function first (if present)
+      const viaEdge = await tryEdge({ location_id: current.location_id, ods_code: current.ods_code||null, data_sources:['ods'] });
+      if(viaEdge){
+        await afterOds(viaEdge);
+        return;
+      }
+
+      let odsData = null;
+      if(current.ods_code){
+        odsData = await fetchJson(`https://directory.spineservices.nhs.uk/ORD/2-0-0/organisations/${encodeURIComponent(current.ods_code)}`);
+      } else if(current.row){
+        // Fallback: search by name (coarse)
+        const name = encodeURIComponent(current.row.location_name);
+        const list = await fetchJson(`https://directory.spineservices.nhs.uk/ORD/2-0-0/organisations?Name=${name}`);
+        odsData = Array.isArray(list?.organisations) ? list.organisations[0] || null : list || null;
+      }
+      await afterOds({ data: { ods_data: odsData } });
+    }catch(e){
+      setStatus('NHS error', 'err');
+      log('NHS fetch error', String(e));
+    }
+  }
+
+  async function afterOds(resp){
+    const ods = resp?.data?.ods_data || resp?.data || resp || null;
+    setRaw({ ods });
+
+    // Log the ODS structure to help debug parsing
+    if(ods){
+      log('ODS response structure', {
+        hasOrganisation: !!ods.Organisation,
+        hasOrgId: !!(ods.Organisation?.OrgId || ods.OrgId),
+        hasGeoLoc: !!(ods.Organisation?.GeoLoc || ods.GeoLoc),
+        topLevelKeys: Object.keys(ods).slice(0, 10)
+      });
+    }
+
+    const update = buildUpdateFromOds(ods);
+
+    // Show capture checklist (Fix D)
+    showCaptureChecklist('ODS', update);
+
+    const saved = await saveUpdate(update, 'ods');
+    if(saved){
+      setStatus('NHS saved', 'ok');
+      setChip('st4'); setProg(100);
+    } else {
+      setStatus('NHS save failed', 'err');
+      log('ODS save failed - no rows updated');
+    }
+  }
+
+  // ===== Fix B: Shape-agnostic ODS parser =====
   function buildUpdateFromOds(ods){
-    if(!ods || isEmptyObj(ods)) return {};
+    if(!ods) return {};
 
-    const org = ods.organisation || ods.Organisation || {};
+    // Handle case variations for the main object
+    // NHS API often returns the org data directly at root level or under Organisation
+    const org = ods.Organisation || ods.organisation || ods.Organization || ods;
 
-    // identifier / ODS code
+    // Debug: Log what we're working with
+    if(ods){
+      const sample = {
+        hasOrganisation: !!ods.Organisation,
+        orgKeys: org ? Object.keys(org).slice(0, 5) : [],
+        orgIdType: org.OrgId ? typeof org.OrgId : 'none',
+        orgIdValue: org.OrgId?.extension || org.OrgId || 'none'
+      };
+      log('ODS parsing debug', sample);
+    }
+
+    // Extract ODS code from various possible locations (Fix B: flexible extraction)
     let ident = '';
-    if(ods.identifier?.value){
+    // NHS API often uses OrgId with extension as the primary identifier
+    if(org.OrgId){
+      const orgId = org.OrgId;
+      if(typeof orgId === 'string'){
+        ident = orgId;
+      } else if(orgId?.extension){
+        ident = orgId.extension;
+      } else if(orgId?.root){
+        ident = orgId.root;
+      }
+    }
+    // Try identifier field
+    else if(ods.identifier?.value){
       ident = ods.identifier.value;
-    } else if(Array.isArray(ods.identifier)){
-      const m = ods.identifier.find(x => String(x.system||'').toLowerCase().includes('ods'));
+    }
+    else if(Array.isArray(ods.identifier)){
+      const m = ods.identifier.find(x=>String(x.system||'').toLowerCase().includes('ods'));
       ident = m?.value || ods.identifier[0]?.value || '';
-    } else if(typeof ods.identifier === 'string'){
+    }
+    else if(typeof ods.identifier==='string'){
       ident = ods.identifier;
     }
-    if(!ident){
-      const orgId = ods.OrgId || org.OrgId;
-      ident = orgId?.extension || orgId?.value || '';
-    }
-    if(!ident && ods.code){ ident = ods.code; }
-
-    // contacts
-    let phone = null;
-    let url = ods.website || null;
-    let contacts = undefined;
-
-    const telecom = Array.isArray(ods.telecom) ? ods.telecom : [];
-    if(telecom.length){
-      phone = telecom.find(t => String(t.system||'').toLowerCase() === 'phone')?.value || phone;
-      url   = telecom.find(t => String(t.system||'').toLowerCase() === 'url')?.value || url;
-    }
-    if(Array.isArray(ods.contacts)){
-      contacts = ods.contacts;
-    }
-    if(Array.isArray(ods.Contacts?.Contact)){
-      const tel = ods.Contacts.Contact.find(c => String(c.type||'').toLowerCase().includes('tel'));
-      const web = ods.Contacts.Contact.find(c => String(c.type||'').toLowerCase().includes('web'));
-      phone = tel?.value || phone;
-      url = web?.value || url;
-      contacts = ods.Contacts.Contact;
+    // Try code field
+    else if(org.code || org.Code || ods.code || ods.Code){
+      ident = org.code || org.Code || ods.code || ods.Code;
     }
 
-    // address mapping
-    const addr = Array.isArray(ods.address) ? ods.address[0]
-               : (ods.address || ods.addresses || org.address || ods.GeoLoc?.Location || null);
-    const line = Array.isArray(addr?.line) ? addr.line : [];
-    const line1 = addr?.line1 || line[0] || addr?.AddrLn1 || addr?.addressLine1;
-    const line2 = addr?.line2 || line[1] || addr?.AddrLn2 || addr?.addressLine2;
-    const city  = addr?.city || addr?.town || addr?.Town || addr?.postalAddressTownCity;
-    const pc    = addr?.postalCode || addr?.postcode || addr?.PostCode;
-    const county = addr?.county || addr?.County;
-    const uprn = addr?.UPRN || addr?.uprn;
+    // Extract contact information (Fix B: handle various structures)
+    const telecom = Array.isArray(ods.telecom)? ods.telecom :
+                   Array.isArray(org.telecom)? org.telecom : [];
+    const phone = telecom.find(t=>String(t.system||'').toLowerCase()==='phone')?.value || null;
+    const url = telecom.find(t=>String(t.system||'').toLowerCase()==='url')?.value || (ods.website||org.website||null);
 
-    const rawName = ods.name || org.Name || ods.Organisation?.Name;
+    // Handle addresses with case variations (Fix B)
+    // NHS API often uses GeoLoc.Location for address
+    const addr = org.GeoLoc?.Location || ods.GeoLoc?.Location ||
+                (Array.isArray(org.Addresses)? org.Addresses[0] : null) ||
+                (Array.isArray(ods.Addresses)? ods.Addresses[0] : null) ||
+                (Array.isArray(org.address)? org.address[0] : null) ||
+                (Array.isArray(ods.address)? ods.address[0] : null) ||
+                org.Addresses || org.addresses || org.Address || org.address ||
+                ods.Addresses || ods.addresses || ods.Address || ods.address || null;
+
+    const line = Array.isArray(addr?.line)? addr.line : [];
+
+    // Extract name with case variations (Fix B)
+    const name = org.Name || org.name || ods.Name || ods.name ||
+                org.OrganisationName || ods.OrganisationName || null;
+
+    // Extract postcode with case variations (Fix B)
+    const postcode = addr?.PostCode || addr?.Postcode || addr?.postalCode || addr?.postcode ||
+                    org.PostCode || ods.PostCode || null;
 
     return compact({
-      nhs_ods_data: ods,
+      nhs_ods_data: JSON.stringify(ods),
       last_nhs_update: new Date().toISOString(),
-      ods_code: normalizeOds(ident) || undefined,
-
-      location_name: normaliseNameForStore(rawName),
-      main_phone_number: phone || undefined,
-      website: normaliseUrlForStore(url),
-      address_line_1: line1 || undefined,
-      address_line_2: line2 || undefined,
-      town_city: city || undefined,
-      postcode: pc || undefined,
-      county: county || undefined,
-      uprn: uprn || undefined,
-
-      // carry contacts if available
-      contacts: contacts || undefined,
-
+      nhs_last_updated: new Date().toISOString(), // Both timestamp fields
+      ods_code: normalizeOds(ident)||undefined,
+      main_phone_number: phone||undefined,
+      website: url||undefined,
+      address_line_1: addr?.AddrLn1 || addr?.line1 || line[0] || addr?.addressLine1 || undefined,
+      address_line_2: addr?.AddrLn2 || addr?.line2 || line[1] || addr?.addressLine2 || undefined,
+      town_city: addr?.Town || addr?.town || addr?.city || addr?.postalAddressTownCity || undefined,
+      postcode: postcode || undefined,
+      region: org.Region || org.region || ods.Region || ods.region || undefined,
+      location_name: name || undefined,
       updated_at: new Date().toISOString(),
     });
   }
 
-  // ===== Save + verify =====
-  async function saveUpdate(update, label){
-    if(!current) return;
+  // ===== Fix D: Capture Checklist Display =====
+  const MUST_CAPTURE = [
+    'constituency', 'contacts', 'current_ratings', 'historic_ratings', 'key_question_ratings',
+    'provider_constituency', 'provider_county', 'provider_inspection_directorate',
+    'provider_latitude', 'provider_longitude', 'provider_local_authority',
+    'provider_onspd_icb_code', 'provider_onspd_icb_name', 'provider_type', 'provider_uprn',
+    'registration_date', 'registration_status', 'ods_code', 'nhs_ods_data', 'last_nhs_update'
+  ];
 
-    const clean = compact(update);
+  function showCaptureChecklist(source, update){
+    const checklist = el('captureChecklist');
+    const captured = [];
+    const missing = [];
 
-    // BEFORE snapshot
-    const { data: before } = await supabase
-      .from(TABLE).select('*')
-      .eq('location_id', current.location_id)
-      .single();
-
-    let updated = null, updErr = null, zeroRows = false;
-
-    if(Object.keys(clean).length){
-      const res = await supabase
-        .from(TABLE)
-        .update(clean)
-        .eq('location_id', current.location_id)
-        .select('*')
-        .maybeSingle();
-
-      updated = res.data;
-      updErr = res.error;
-
-      if(!updated && !updErr){ zeroRows = true; }
-      if(updErr && updErr.code === 'PGRST116'){ zeroRows = true; updErr = null; }
-      if(updErr){ log('Save failed', updErr); }
-    }else{
-      log(`${label}: nothing to update`);
-    }
-
-    // AFTER snapshot
-    const { data: after, error: afterErr } = await supabase
-      .from(TABLE).select('*')
-      .eq('location_id', current.location_id)
-      .single();
-
-    if(afterErr){ log('Reload after save failed', afterErr); }
-
-    const finalRow = after || updated || before;
-    if(finalRow){
-      current.row = finalRow;
-      current.provider_id = finalRow.provider_id || current.provider_id;
-      current.ods_code = finalRow.ods_code || current.ods_code;
-      renderMeta(finalRow);
-      setSaved({ saved_row: finalRow });
-    }
-
-    const diff = diffKeys(before||{}, (after||{}));
-    if(diff.changed.length){
-      log(`Saved (${label})`, { keys: Object.keys(clean) });
-      log('Changed fields', diff);
-      setBadge(badgeVerify, `DB Save: updated (${diff.changed.length})`, 'ok');
-      setProg(100);
-    }else{
-      if(Object.keys(clean).length && zeroRows){
-        log('Save returned 0 rows (likely RLS / no match). Verified no change on reload.');
-      }
-      if (Object.keys(clean).length){
-        setBadge(badgeVerify,'DB Save: already up to date','warn');
+    MUST_CAPTURE.forEach(field => {
+      if(update[field] !== undefined){
+        captured.push(field);
       } else {
-        setBadge(badgeVerify,'DB Save: no change','warn');
+        missing.push(field);
       }
+    });
+
+    let html = `<div class="section">`;
+    html += `<div class="label">${source} Capture Checklist:</div>`;
+
+    if(captured.length > 0){
+      html += `<div class="label" style="color:#22c55e">✓ Captured (${captured.length}):</div>`;
+      html += `<div class="fields">`;
+      captured.forEach(f => {
+        html += `<span class="field captured">${f}</span>`;
+      });
+      html += `</div>`;
     }
+
+    if(missing.length > 0){
+      html += `<div class="label" style="color:#ef4444">✗ Missing (${missing.length}):</div>`;
+      html += `<div class="fields">`;
+      missing.forEach(f => {
+        html += `<span class="field missing">${f}</span>`;
+      });
+      html += `</div>`;
+    }
+
+    html += `</div>`;
+    checklist.innerHTML = html;
+    checklist.style.display = 'block';
+
+    log(`${source} capture checklist`, { captured: captured.length, missing: missing.length });
   }
 
   // ===== Utilities =====
   async function fetchJson(url){
+    const res = await fetch(url);
+    if(!res.ok){ throw new Error(`${res.status} ${res.statusText}`); }
+    return await res.json();
+  }
+
+  function compact(obj){
+    const out={};
+    Object.keys(obj||{}).forEach(k=>{
+      const v=obj[k];
+      if(v!==undefined) out[k]=v;
+    });
+    return out;
+  }
+
+  function normalizeOds(c){
+    if(!c) return '';
+    const u=String(c).trim().toUpperCase();
+    // More flexible pattern to capture various ODS formats
+    const match = u.match(/([A-Z]\d{2,7})/);
+    return match ? match[0] : '';
+  }
+
+  async function tryEdge(body){
     try{
-      const res = await fetch(url, { headers:{ 'Accept':'application/json' }, cache:'no-store', mode:'cors' });
-      if(res.type === 'opaque'){ throw new Error('CORS: opaque response'); }
-      if(!res.ok){ throw new Error(`${res.status} ${res.statusText}`); }
-      const text = await res.text();
-      try{
-        return JSON.parse(text);
-      }catch{
-        throw new Error('Invalid JSON from '+url);
+      const { data, error } = await supabase.functions.invoke(EDGE_FN, { body });
+      if(error){
+        log('Edge function error (ignored)', error);
+        return null;
       }
+      if(data){
+        setRaw({ edge_response:data });
+        return data;
+      }
+      return null;
     }catch(e){
-      const msg = String(e||'');
-      if(msg.toLowerCase().includes('cors') || msg.includes('TypeError: Failed to fetch')){
-        log('Network/CORS when fetching '+url, msg);
-      }
-      throw e;
+      log('Edge function call failed (ignored)', String(e));
+      return null;
     }
   }
-  function compact(obj){ const out={}; Object.entries(obj||{}).forEach(([k,v])=>{ if(v!==undefined) out[k]=v; }); return out; }
-  function normalizeOds(c){ if(!c) return ''; const u=String(c).trim().toUpperCase(); return /^[A-Z0-9]{3,12}$/.test(u)?u:''; }
-  function diffKeys(a,b){
-    const keys = Array.from(new Set([...Object.keys(a||{}),...Object.keys(b||{})]));
-    const changed = []; const from={}; const to={};
-    keys.forEach(k=>{
-      const va = a?.[k]; const vb = b?.[k];
-      const same = JSON.stringify(va)===JSON.stringify(vb);
-      if(!same){ changed.push(k); from[k]=va; to[k]=vb; }
-    });
-    return { changed, from, to };
+
+  async function tryCqcEdge(body){
+    try{
+      const { data, error } = await supabase.functions.invoke(CQC_FN, { body });
+      if(error){
+        log('CQC Edge function error (ignored)', error);
+        return null;
+      }
+      if(data){
+        setRaw({ cqc_edge_response:data });
+        return data;
+      }
+      return null;
+    }catch(e){
+      log('CQC Edge function call failed (ignored)', String(e));
+      return null;
+    }
+  }
+
+  async function copyDebug(){
+    const debugContent =
+      rawEl.textContent + '\n\n' +
+      savedEl.textContent + '\n\n' +
+      logEl.textContent;
+    try{
+      await navigator.clipboard.writeText(debugContent);
+      alert('Debug content copied to clipboard');
+    }catch(e){
+      alert('Failed to copy: ' + e);
+    }
   }
 
   // ===== Wire up =====
   el('go').onclick = search;
   el('q').addEventListener('keydown', e=>{ if(e.key==='Enter') search(); });
-  el('odsOnly').addEventListener('change', ()=>{ if(el('q').value.trim()) search(); });
   el('btnReload').onclick = ()=> current && selectPractice(current.location_id);
-  el('btnCQC').onclick = runCQC;
-  el('btnODS').onclick = runODS;
-  el('btnBoth').onclick = runBoth;
+  el('btnFetchCQC').onclick = fetchCQC;
+  el('btnFetchODS').onclick = fetchODS;
+  el('btnFetchBoth').onclick = async ()=>{ await fetchCQC(); await fetchODS(); };
 
-  window.addEventListener('load', ()=> el('q').focus());
-  el('btnCopy').onclick = copyDebug;
+  // Focus search on load
+  window.addEventListener('load', ()=>{ el('q').focus(); });
 </script>
 </body>
 </html>

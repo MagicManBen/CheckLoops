@@ -1134,7 +1134,6 @@
           <a href="#" class="nav-link dropdown-toggle">More ▼</a>
           <div class="dropdown-menu">
             <a href="staff-welcome.html" class="dropdown-item">Welcome</a>
-            <a href="staff-meetings.html" class="dropdown-item">Meetings</a>
             <a href="achievements.html" class="dropdown-item">Achievements</a>
           </div>
         </div>
@@ -1309,10 +1308,7 @@
   <!-- Activity likes system -->
   <script src="confetti.js"></script>
   <script src="activity-likes.js"></script>
-  <script src="activity-likes-fix.js"></script>
   <script src="activity-likes-tooltips.js"></script>
-  <script src="activity-simple-tooltips.js"></script>
-  <script src="tooltip-debug.js"></script>
   
   <!-- Temporary test scripts - remove after verification -->
   <script type="module" src="staff-test-helpers.js"></script>
@@ -1780,6 +1776,13 @@
       attachAvatarMenuListeners(trigger);
     }
 
+    async function createAvatarEmotionChangesTable() {
+      // This function is no longer needed - table should be created via SQL script
+      console.warn('The avatar_emotion_changes table should be created via the SQL script in Supabase dashboard');
+      console.warn('Run the create_avatar_emotion_changes_SIMPLE.sql script');
+      return false;
+    }
+
     async function applyAvatarMood(variantKey) {
       if (avatarMenuBusy) return;
       if (!currentUser) return;
@@ -1825,6 +1828,50 @@
 
         if (currentProfile) {
           currentProfile.avatar_url = targetUrl;
+        }
+
+        // Track avatar emotion change as an activity
+        try {
+          const moodName = MOOD_LABELS[variantKey] || variantKey;
+          const { error: activityError } = await supabase
+            .from('avatar_emotion_changes')
+            .insert({
+              user_id: currentUser.id,
+              site_id: String(currentProfile?.site_id), // Convert to string to match TEXT column
+              mood: variantKey === 'default' ? 'neutral' : variantKey,
+              mood_name: variantKey === 'default' ? 'Default' : moodName,
+              avatar_url: targetUrl,
+              created_at: new Date().toISOString()
+            });
+          if (activityError) {
+            // If the table doesn't exist, show helpful message
+            if (activityError.code === '42P01') {
+              console.error('avatar_emotion_changes table does not exist!');
+              console.error('Please run the SQL script: create_avatar_emotion_changes_SIMPLE.sql in your Supabase dashboard');
+
+              // Even without the table, refresh the activity feed to show the change
+              if (window.loadRecentActivity) {
+                const displayName = currentProfile?.nickname || currentProfile?.full_name || currentUser?.email?.split('@')[0] || 'Staff';
+                const siteId = currentProfile?.site_id;
+                setTimeout(() => {
+                  window.loadRecentActivity(displayName, siteId, currentProfile);
+                }, 1000);
+              }
+            } else {
+              console.error('Error tracking avatar emotion change:', activityError);
+            }
+          } else {
+            // Successfully inserted, refresh activity feed immediately
+            console.log('Emotion change recorded, refreshing activity feed...');
+            if (window.loadRecentActivity) {
+              const displayName = currentProfile?.nickname || currentProfile?.full_name || currentUser?.email?.split('@')[0] || 'Staff';
+              const siteId = currentProfile?.site_id;
+              // Refresh immediately to show the new emotion
+              window.loadRecentActivity(displayName, siteId, currentProfile);
+            }
+          }
+        } catch (trackingError) {
+          console.error('Error tracking avatar emotion change:', trackingError);
         }
 
         updateAvatarDisplays(targetUrl);
@@ -1937,6 +1984,88 @@
       await loadRecentActivity(displayName, siteId, profileRow);
 
       await setupAvatarMoodMenu(user, profileRow);
+
+      // Make loadRecentActivity available globally for realtime updates
+      window.loadRecentActivity = loadRecentActivity;
+
+      // Set up realtime subscription for avatar emotion changes
+      setupAvatarEmotionRealtimeSubscription(siteId);
+    }
+
+    // Subscribe to realtime avatar emotion changes for all users in the site
+    function setupAvatarEmotionRealtimeSubscription(siteId) {
+      if (!siteId) return;
+
+      // Subscribe to changes in master_users table for avatar_url updates
+      const avatarChannel = supabase
+        .channel('avatar-emotion-changes')
+        .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'master_users',
+          filter: `site_id=eq.${siteId}`
+        }, async (payload) => {
+          console.log('Avatar update received:', payload);
+
+          // Update all avatars for this user across the page
+          if (payload.new && payload.new.auth_user_id && payload.new.avatar_url) {
+            const userId = payload.new.auth_user_id;
+            const newAvatarUrl = payload.new.avatar_url;
+
+            // If this is the current user, update the navbar avatar
+            if (currentUser && currentUser.id === userId) {
+              updateAvatarDisplays(newAvatarUrl);
+            }
+
+            // Update all activity items with this user's avatar
+            const activityItems = document.querySelectorAll('.activity-item');
+            activityItems.forEach(item => {
+              const avatarEl = item.querySelector('.activity-avatar img');
+              if (avatarEl && avatarEl.getAttribute('data-user-id') === userId) {
+                avatarEl.src = newAvatarUrl;
+              }
+            });
+
+            // Refresh the activity feed to show the emotion change
+            if (window.loadRecentActivity) {
+              const displayName = currentProfile?.nickname || currentProfile?.full_name || currentUser?.email?.split('@')[0] || 'Staff';
+              await loadRecentActivity(displayName, siteId, currentProfile);
+            }
+          }
+        })
+        .subscribe();
+
+      // Also subscribe to inserts in avatar_emotion_changes table (if it exists)
+      try {
+        const emotionChangeChannel = supabase
+          .channel('avatar-emotion-inserts')
+          .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'avatar_emotion_changes',
+            filter: `site_id=eq.${String(siteId)}`
+          }, async (payload) => {
+            console.log('New emotion change received:', payload);
+
+            // Immediately refresh the activity feed to show the new emotion change
+            if (window.loadRecentActivity && payload.new) {
+              console.log('Realtime emotion change detected, refreshing feed...');
+              const displayName = currentProfile?.nickname || currentProfile?.full_name || currentUser?.email?.split('@')[0] || 'Staff';
+              // Refresh immediately
+              await loadRecentActivity(displayName, siteId, currentProfile);
+              // No need to re-initialize, loadRecentActivity already does it
+            }
+          })
+          .subscribe((status) => {
+            if (status === 'SUBSCRIPTION_ERROR') {
+              console.warn('Could not subscribe to avatar_emotion_changes - table may not exist');
+            }
+          });
+      } catch (err) {
+        console.warn('Could not set up avatar emotion changes subscription:', err);
+      }
+
+      console.log('Subscribed to avatar emotion changes for site:', siteId);
     }
 
     async function loadPersonalDashboard(user, profileRow) {
@@ -2233,6 +2362,7 @@
                 timestamp: q.completed_at || q.created_at,
                 type: 'quiz',
                 category: 'quiz',
+                userId: q.user_id,
                 title: isUserQuiz
                   ? (isPractice ? 'You completed a practice quiz' : 'You completed the weekly quiz')
                   : `${q.participant_name || 'Someone'} completed a ${isPractice ? 'practice' : 'weekly'} quiz`,
@@ -2268,6 +2398,7 @@
                 timestamp: t.created_at,
                 type: 'training',
                 category: 'training',
+                userId: t.user_id,
                 title: isUserTraining
                   ? `You uploaded ${t.training_type || 'training'}`
                   : `${t.staff_name || 'Someone'} uploaded ${t.training_type || 'training'}`,
@@ -2298,6 +2429,7 @@
                   timestamp: t.created_at,
                   type: 'training',
                   category: 'training',
+                  userId: t.user_id,
                   title: isUserTraining
                     ? `You uploaded ${t.training_type || 'training'}`
                     : `${t.staff_name || 'Someone'} uploaded ${t.training_type || 'training'}`,
@@ -2335,6 +2467,7 @@
                 timestamp: member.created_at,
                 type: 'new_member',
                 category: 'team',
+                userId: member.auth_user_id,
                 title: isUser
                   ? 'Welcome! You joined the team! 🎉'
                   : `${member.nickname || member.full_name || 'A new member'} joined the team!`,
@@ -2352,6 +2485,7 @@
           console.error('Could not fetch new members:', e);
         }
 
+        // Skip profile updates that are just avatar emotion changes
         try {
           const { data: profileUpdates } = await supabase
             .from('master_users')
@@ -2362,9 +2496,35 @@
             .limit(10);
 
           if (profileUpdates) {
+            // Get recent emotion changes to filter out avatar-only updates
+            const { data: recentEmotionChanges } = await supabase
+              .from('avatar_emotion_changes')
+              .select('user_id, created_at')
+              .eq('site_id', String(siteId))
+              .gte('created_at', oneWeekAgo.toISOString());
+
+            const emotionChangeSet = new Set();
+            if (recentEmotionChanges) {
+              recentEmotionChanges.forEach(change => {
+                // Create a key for each emotion change (user + rounded timestamp)
+                const timeKey = Math.floor(new Date(change.created_at).getTime() / 10000); // 10 second window
+                emotionChangeSet.add(`${change.user_id}-${timeKey}`);
+              });
+            }
+
             for (const p of profileUpdates) {
               const isUser = p.auth_user_id === userId;
               if (p.updated_at && new Date(p.updated_at) > new Date(p.created_at || 0)) {
+                // Check if this update happened around the same time as an emotion change
+                const updateTimeKey = Math.floor(new Date(p.updated_at).getTime() / 10000);
+                const isJustEmotionChange = emotionChangeSet.has(`${p.auth_user_id}-${updateTimeKey}`);
+
+                // Skip this profile update if it coincides with an emotion change
+                if (isJustEmotionChange) {
+                  console.log('Skipping profile update that coincides with emotion change');
+                  continue;
+                }
+
                 const variantAvatar = avatarsAllowed && p.auth_user_id
                   ? await getAvatarVariantUrl(p.auth_user_id, ['neutral', 'confused', 'happy'], p.avatar_url)
                   : null;
@@ -2373,6 +2533,7 @@
                   timestamp: p.updated_at,
                   type: 'profile_update',
                   category: 'profile',
+                  userId: p.auth_user_id,
                   title: isUser
                     ? 'You updated your profile'
                     : `${p.nickname || p.full_name || 'Someone'} updated their profile`,
@@ -2388,6 +2549,69 @@
           }
         } catch (e) {
           console.error('Could not fetch profile updates:', e);
+        }
+
+        // Fetch avatar emotion changes
+        try {
+          const { data: emotionChanges } = await supabase
+            .from('avatar_emotion_changes')
+            .select('*')
+            .eq('site_id', String(siteId))
+            .gte('created_at', oneWeekAgo.toISOString())
+            .order('created_at', { ascending: false })
+            .limit(10);
+
+          if (emotionChanges && emotionChanges.length > 0) {
+            // Get user details for emotion changes
+            const emotionUserIds = [...new Set(emotionChanges.map(e => e.user_id))];
+            const { data: emotionUsers } = await supabase
+              .from('master_users')
+              .select('auth_user_id, nickname, full_name')
+              .in('auth_user_id', emotionUserIds);
+
+            const emotionUserMap = {};
+            if (emotionUsers) {
+              emotionUsers.forEach(u => {
+                emotionUserMap[u.auth_user_id] = u;
+              });
+            }
+
+            for (const change of emotionChanges) {
+              const isUser = change.user_id === userId;
+              const userData = emotionUserMap[change.user_id] || {};
+              const userName = userData.nickname || userData.full_name || 'Someone';
+              const moodEmoji = {
+                happy: '😊',
+                sad: '😢',
+                confused: '😕',
+                angry: '😠',
+                surprised: '😮',
+                relaxed: '😌',
+                excited: '🤩',
+                tired: '😴',
+                determined: '💪',
+                neutral: '😐'
+              }[change.mood] || '🎭';
+
+              activities.push({
+                timestamp: change.created_at,
+                type: 'avatar_emotion',
+                category: 'avatar_emotion',
+                userId: change.user_id,
+                title: isUser
+                  ? `You are feeling ${change.mood_name || change.mood}!`
+                  : `${userName} is feeling ${change.mood_name || change.mood}!`,
+                detail: `Mood changed to: ${moodEmoji} ${change.mood_name || change.mood}`,
+                status: 'info',
+                icon: moodEmoji,
+                avatar: change.avatar_url || (isUser ? currentUserAvatar : null),
+                isOwn: isUser,
+                color: '#ec4899'
+              });
+            }
+          }
+        } catch (e) {
+          console.error('Could not fetch avatar emotion changes:', e);
         }
 
         try {
@@ -2457,6 +2681,7 @@
                 timestamp: h.updated_at || h.created_at,
                 type: 'holiday',
                 category: 'holiday',
+                userId: h.user_id,
                 title,
                 detail: `${h.start_date} – ${h.end_date}`,
                 status: h.status,
@@ -2488,10 +2713,10 @@
         feedEl.innerHTML = recentActivities.map(activity => {
           const isNew = new Date(activity.timestamp) > oneDayAgo;
           const avatarContent = (avatarsAllowed && activity.avatar)
-            ? `<img src="${activity.avatar}" alt="" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`
+            ? `<img src="${activity.avatar}" alt="" data-user-id="${activity.userId || ''}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`
             : activity.icon;
           return `
-          <div class="activity-item ${activity.type}" data-activity-type="${activity.type}" data-activity-id="${activity.category}_${new Date(activity.timestamp).getTime()}">
+          <div class="activity-item ${activity.type}" data-activity-type="${activity.type}" data-activity-id="${activity.category}_${new Date(activity.timestamp).getTime()}" data-user-id="${activity.userId || ''}">
             <div class="activity-avatar">${avatarContent}</div>
             <div class="activity-content">
               <div class="activity-title">
@@ -2510,9 +2735,42 @@
         if (typeof window.initializeActivityLikes === 'function') {
           window.initializeActivityLikes().then(success => {
             console.log('Activity likes system initialized:', success);
+
+            // After initializing likes, enhance with tooltips - give more time for hearts to be created
+            setTimeout(() => {
+              if (typeof window.enhanceActivityLikesTooltips === 'function') {
+                window.enhanceActivityLikesTooltips().then(result => {
+                  console.log('Activity likes tooltips enhanced:', result);
+
+                  // Double-check that hearts are clickable
+                  const hearts = document.querySelectorAll('.activity-heart');
+                  console.log('Found', hearts.length, 'heart elements after enhancement');
+
+                  // Log first heart's click handler status
+                  if (hearts.length > 0) {
+                    console.log('First heart has click handler:', hearts[0]._clickHandler ? 'YES' : 'NO');
+                    console.log('First heart has tooltip:', hearts[0]._tooltip ? 'YES' : 'NO');
+                  }
+                }).catch(err => {
+                  console.error('Error enhancing tooltips:', err);
+                });
+              } else {
+                console.warn('enhanceActivityLikesTooltips function not available - script may not be loaded yet');
+
+                // Try again after a delay
+                setTimeout(() => {
+                  if (typeof window.enhanceActivityLikesTooltips === 'function') {
+                    console.log('Retrying tooltip enhancement...');
+                    window.enhanceActivityLikesTooltips();
+                  }
+                }, 2000);
+              }
+            }, 1500); // Increased timeout to ensure hearts are rendered
           }).catch(err => {
             console.error('Error initializing activity likes:', err);
           });
+        } else {
+          console.warn('initializeActivityLikes function not available');
         }
       } catch (e) {
         console.error('Activity load error:', e);

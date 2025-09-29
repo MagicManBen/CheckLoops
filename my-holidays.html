@@ -1086,28 +1086,38 @@
           const isGP = holidaySummary.is_gp;
           console.log('[my-holidays] Updating display - isGP:', isGP, 'summary:', holidaySummary);
 
-          // Compute totals and used amount
+          // Get holiday values from master_users - using the same fields as admin dashboard
           let totalAllowance = 0;
           let usedAmount = 0;
           let remaining = 0;
 
-          // Derive "used" from approved holiday requests within the selected holiday year
-          const year = holidaySummary.holiday_year || new Date().getFullYear();
-          const { data: approvedRows, error: usedErr } = await supabase
-            .from('4_holiday_requests')
-            .select('total_days, start_date, status')
-            .eq('auth_user_id', user.id)
-            .eq('status', 'approved')
-            .gte('start_date', `${year}-01-01`)
-            .lte('start_date', `${year}-12-31`);
+          // Get total entitlement from master_users (as set in admin dashboard)
+          // This value is set by the admin using multiplier or manual override
+          totalAllowance = parseFloat(holidaySummary.total_holiday_entitlement ||
+                                     holidaySummary.holiday_entitlement || 0);
 
-          if (usedErr) {
-            console.warn('[my-holidays] Could not load used holidays:', usedErr);
-          }
+          // Get used amount from master_users
+          // This tracks holidays already taken
+          usedAmount = parseFloat(holidaySummary.holiday_taken ||
+                                holidaySummary.approved_holidays_used || 0);
 
-          usedAmount = (approvedRows || []).reduce((sum, r) => sum + (parseFloat(r.total_days) || 0), 0);
+          // Get remaining from master_users (auto-calculated by database)
+          // This is a generated column: entitlement - taken
+          remaining = parseFloat(holidaySummary.holiday_remaining !== null && holidaySummary.holiday_remaining !== undefined
+                               ? holidaySummary.holiday_remaining
+                               : (totalAllowance - usedAmount));
+
+          console.log('[my-holidays] Holiday values from master_users:', {
+            totalAllowance,
+            usedAmount,
+            remaining,
+            is_gp: holidaySummary.is_gp,
+            manual_override: holidaySummary.manual_override,
+            holiday_multiplier: holidaySummary.holiday_multiplier
+          });
 
           // Also get pending requests to preview impact
+          const year = holidaySummary.holiday_year || new Date().getFullYear();
           const { data: pendingRows, error: pendingErr } = await supabase
             .from('4_holiday_requests')
             .select('total_days, start_date, status')
@@ -1119,24 +1129,13 @@
             console.warn('[my-holidays] Could not load pending holidays:', pendingErr);
           }
           const pendingAmount = (pendingRows || []).reduce((sum, r) => sum + (parseFloat(r.total_days) || 0), 0);
-
-          if (window.isGP) {
-            // GP uses sessions - from master_users final_annual_sessions
-            totalAllowance = parseFloat(holidaySummary.final_annual_sessions || 0);
-          } else {
-            // Non-GP uses hours - from master_users final_annual_hours
-            totalAllowance = parseFloat(holidaySummary.final_annual_hours || 0);
-          }
-
-          remaining = totalAllowance - usedAmount;
           const remainingAfterPending = remaining - pendingAmount;
 
           if (window.isGP) {
-            // GP uses sessions
-
-            document.getElementById('total-allowance').textContent = totalAllowance;
-            document.getElementById('used-holidays').textContent = usedAmount;
-            document.getElementById('remaining-holidays').textContent = remaining;
+            // GP uses sessions - display as whole numbers
+            document.getElementById('total-allowance').textContent = Math.round(totalAllowance);
+            document.getElementById('used-holidays').textContent = Math.round(usedAmount);
+            document.getElementById('remaining-holidays').textContent = Math.round(remaining);
             document.getElementById('allowance-unit').textContent = 'sessions';
             document.getElementById('used-unit').textContent = 'sessions';
             document.getElementById('remaining-unit').textContent = 'sessions';
@@ -1148,8 +1147,8 @@
             // Set pending preview line
             const pendingLine = document.getElementById('pending-line');
             if (pendingAmount > 0) {
-              document.getElementById('pending-amount').textContent = pendingAmount;
-              document.getElementById('remaining-after-pending').textContent = remainingAfterPending;
+              document.getElementById('pending-amount').textContent = Math.round(pendingAmount);
+              document.getElementById('remaining-after-pending').textContent = Math.round(remainingAfterPending);
               document.getElementById('pending-unit').textContent = 'sessions';
               document.getElementById('remaining-after-unit').textContent = 'sessions';
               pendingLine.style.display = 'block';
@@ -1159,13 +1158,13 @@
 
             console.log('[my-holidays] GP display updated - Total:', totalAllowance, 'Used:', usedAmount, 'Remaining:', remaining);
           } else {
-            // Non-GP uses hours
+            // Non-GP uses hours - display as HH:MM format
             document.getElementById('total-allowance').textContent = formatHours(totalAllowance);
             document.getElementById('used-holidays').textContent = formatHours(usedAmount);
             document.getElementById('remaining-holidays').textContent = formatHours(remaining);
-            document.getElementById('allowance-unit').textContent = '';
-            document.getElementById('used-unit').textContent = '';
-            document.getElementById('remaining-unit').textContent = '';
+            document.getElementById('allowance-unit').textContent = 'hours';
+            document.getElementById('used-unit').textContent = 'hours';
+            document.getElementById('remaining-unit').textContent = 'hours';
 
             // Update progress bar
             const percentage = totalAllowance > 0 ? Math.min(100, Math.max(0, (usedAmount / totalAllowance) * 100)) : 0;
@@ -1176,8 +1175,8 @@
             if (pendingAmount > 0) {
               document.getElementById('pending-amount').textContent = formatHours(pendingAmount);
               document.getElementById('remaining-after-pending').textContent = formatHours(remainingAfterPending);
-              document.getElementById('pending-unit').textContent = '';
-              document.getElementById('remaining-after-unit').textContent = '';
+              document.getElementById('pending-unit').textContent = 'hours';
+              document.getElementById('remaining-after-unit').textContent = 'hours';
               pendingLine.style.display = 'block';
             } else {
               pendingLine.style.display = 'none';

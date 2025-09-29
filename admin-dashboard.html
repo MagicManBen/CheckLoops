@@ -12,16 +12,57 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<script src="pdf.min.js"></script>
+<!-- PDF.js for PDF text extraction - Load with multi-CDN fallback -->
+<script>
+  console.log('[DEBUG] Loading PDF.js...');
+
+  function loadPdfJs() {
+    const tryLoad = (src, onfail) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = () => {
+        console.log('[DEBUG] PDF.js loaded:', src);
+        setupPdfJs();
+      };
+      s.onerror = onfail;
+      document.head.appendChild(s);
+    };
+
+    // Use local PDF.js files for reliability
+    tryLoad(
+      'pdf.min.js',
+      () => {
+        console.error('[DEBUG] Local PDF.js failed to load! Check if pdf.min.js exists.');
+        alert('PDF.js failed to load. Please ensure pdf.min.js file exists in the same directory.');
+      }
+    );
+  }
+
+  function setupPdfJs() {
+    if (typeof pdfjsLib !== 'undefined') {
+      // Use local worker file for reliability
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
+      console.log('[DEBUG] PDF.js initialized with worker');
+      window.pdfJsReady = true;
+      window.dispatchEvent(new CustomEvent('pdfjs-ready'));
+    }
+  }
+
+  loadPdfJs();
+</script>
+
 <script src="xlsx.full.min.js"></script>
 <script src="jszip.min.js"></script>
 <script src="config.js"></script>
 <script src="rls-fix.js"></script>
 <script src="supabase-js.js"></script>
 <link href="entitlement-card-styles.css" rel="stylesheet">
+<link href="certificate-uploader.css" rel="stylesheet">
 <script src="entitlement-card-layout.js" defer></script>
 <script src="sync-holiday-usage.js" defer></script>
 <script src="training-tracker-fix.js" defer></script>
+<script src="certificate-uploader-debug.js"></script>
+<script src="certificate-uploader-pdf-to-image.js" defer></script>
 <script type="module">
   const { createClient } = supabase;
   window.supabaseCreateClient = createClient;
@@ -93,8 +134,8 @@
   Object.defineProperty(window, 'getSupabase', { value: () => sb });
 </script>
 <script>
-  // Configure PDF.js worker
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  // Configure PDF.js worker - Use local worker file for reliability
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
   
   // Define debugLog to prevent errors - simple no-op function
   window.debugLog = function() {};
@@ -6914,6 +6955,84 @@ document.addEventListener('DOMContentLoaded', () => {
             <p style="color:#718096; margin:0;">Drag & drop or click to browse</p>
           </div>
 
+          <!-- Certificate Upload Zone -->
+          <div class="panel" style="margin-bottom:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+              <h3 style="margin:0;">Certificate Upload</h3>
+              <div style="font-size:12px; color:#718096;">Upload certificates for multiple staff members</div>
+            </div>
+
+            <!-- AI Certificate Upload: Simple Button -->
+            <div class="attach-actions" style="margin-bottom:12px;">
+              <button id="btn-attach-certificates" class="btn" style="background:linear-gradient(135deg,#10b981,#059669); padding:10px 16px;">
+                Attach Certificates
+              </button>
+              <div style="font-size:12px; color:#718096; margin-top:6px;">PDF, PNG, JPG (max 10MB each)</div>
+            </div>
+
+            <input type="file" id="certificate-upload" accept=".pdf,.png,.jpg,.jpeg" multiple style="display:none;" />
+
+            <div class="certificate-preview" id="certificate-preview">
+                <div class="preview-header">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                  </svg>
+                  <div class="preview-file-details">
+                    <div class="preview-filename" id="preview-filename">document.pdf</div>
+                    <div class="preview-filesize" id="preview-filesize">0 KB</div>
+                  </div>
+                  <div class="preview-actions">
+                    <button class="preview-btn" id="view-certificate-btn" title="View" aria-label="View certificate">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                      </svg>
+                    </button>
+                    <button class="preview-btn remove" id="remove-certificate-btn" title="Remove" aria-label="Remove certificate">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2 2h4a2 2 0 0 1 2 2v2"></path>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <div id="processing-indicator" class="processing-indicator">
+                  <div class="spinner"></div>
+                  <span>Processing certificate with AI...</span>
+                </div>
+              </div>
+
+            <!-- Keep dropzone element present (hidden) for uploader API expectations -->
+            <div id="certificate-dropzone" style="display:none;"></div>
+
+          </div>
+
+          <script>
+            // Button binding: open native file dialog
+            (function bindAttachButton(){
+              const btn = document.getElementById('btn-attach-certificates');
+              const fi  = document.getElementById('certificate-upload');
+              if (btn && fi) {
+                btn.addEventListener('click', function(e){ e.preventDefault(); fi.click(); });
+              }
+            })();
+
+            // Keep the previous safety shim, but ignore clicks when the button is used
+            (function ensureDropzoneClickWorks(){
+              const dz = document.getElementById('certificate-dropzone');
+              const fi = document.getElementById('certificate-upload');
+              if (!dz || !fi) return;
+              dz.addEventListener('click', function(e){
+                try {
+                  if (e.target.closest('.certificate-preview')) return;
+                  if (e.target.closest('#btn-attach-certificates')) return;
+                  fi.click();
+                } catch(err) { console.warn('File dialog open failed', err); }
+              }, { capture: true });
+            })();
+          </script>
+
           <!-- Data Preview -->
           <div class="panel" id="training-data-preview" style="display:none; margin-bottom:20px;">
             <h3>Preview Data</h3>
@@ -6935,6 +7054,18 @@ document.addEventListener('DOMContentLoaded', () => {
               <button class="btn" onclick="confirmTrainingUpload()" style="background:linear-gradient(135deg, #667eea, #764ba2);">Confirm Upload</button>
               <button class="btn secondary" onclick="cancelTrainingUpload()">Cancel</button>
             </div>
+          </div>
+
+          <!-- Certificate Upload Zone -->
+          <div class="panel">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+              <div>
+                <h3 style="margin:0;">Certificate Upload</h3>
+                <div style="font-size:12px; color:#718096; margin-top:4px;">Upload certificate files (PDF, PNG, JPG) for automatic processing</div>
+              </div>
+            </div>
+            
+
           </div>
 
           <!-- Existing Records -->
@@ -6987,6 +7118,14 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
         </div>
       </section>
+
+
+
+
+
+
+
+
 
       <section class="view" id="view-pre-inspection">
         <div class="panel">
@@ -7106,6 +7245,84 @@ document.addEventListener('DOMContentLoaded', () => {
               <button class="btn" id="btn-export-training">Export Report</button>
             </div>
           </div>
+
+          <!-- Hidden Certificate Elements (required for uploader functionality) -->
+          <div id="certificate-dropzone" style="display:none;"></div>
+          <input type="file" id="certificate-upload" accept=".pdf,.png,.jpg,.jpeg" multiple style="display:none;">
+          
+          <!-- Simple Certificate Upload Button -->
+          <div style="margin-bottom:24px; display:flex; justify-content:flex-end;">
+            <input type="file" id="admin-cert-file-input" accept=".pdf,.png,.jpg,.jpeg" multiple style="display:none;">
+            <!-- Hidden element to maintain upload zone functionality -->
+            <div id="admin-cert-upload-zone" style="display:none;"></div>
+            <button id="btn-upload-certificates" class="btn" style="background:var(--primary); color:white;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px;" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              Upload Certificates
+            </button>
+            
+            <script>
+            // Direct script to connect the upload button - runs immediately 
+            (function() {
+              const uploadBtn = document.getElementById('btn-upload-certificates');
+              const fileInput = document.getElementById('admin-cert-file-input');
+              
+              if (uploadBtn && fileInput) {
+                uploadBtn.addEventListener('click', function(e) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log('[DIRECT] Upload button clicked');
+                  fileInput.click();
+                });
+                
+                fileInput.addEventListener('change', function() {
+                  if (!this.files || !this.files.length) return;
+                  
+                  console.log(`[DIRECT] Selected ${this.files.length} certificate files`);
+                  
+                  // Set up the user context for authentication
+                  if (window.ctx && (window.ctx.site_id || window.ctx.siteId)) {
+                    window.currentUser = window.currentUser || {};
+                    window.currentUser.siteId = window.ctx.site_id || window.ctx.siteId;
+                    window.currentUser.isAdmin = true;
+                  }
+                  
+                  // Initialize uploader on demand if needed
+                  if (!window.__certUploaderInited && typeof initCertificateUploaderPDFToImage === 'function') {
+                    try {
+                      window.isAdminMode = true;
+                      window.certificateUploaderAPI = initCertificateUploaderPDFToImage();
+                      window.__certUploaderInited = true;
+                      console.log('[DIRECT] Initialized certificate uploader on demand');
+                    } catch (err) {
+                      console.error('[DIRECT] Failed to initialize uploader:', err);
+                    }
+                  }
+                  
+                  // Process the files
+                  if (window.certificateUploaderAPI && window.certificateUploaderAPI.processFile) {
+                    window.certificateUploaderAPI.processFile(this.files);
+                    
+                    // Reset file input after processing
+                    setTimeout(() => {
+                      this.value = '';
+                      const certificateInput = document.getElementById('certificate-upload');
+                      if (certificateInput) certificateInput.value = '';
+                      console.log('[DIRECT] Reset file inputs for next upload');
+                    }, 1000);
+                  } else {
+                    console.error('[DIRECT] Certificate uploader API not available');
+                  }
+                });
+                
+                console.log('[DIRECT] Certificate upload button initialized');
+              }
+            })();
+            </script>
+          </div>
           
           <div class="tab-controls" style="margin-bottom: 24px; display:flex; gap:8px;">
             <button class="btn secondary active" id="tab-clinical" data-tab="clinical">Clinical Staff</button>
@@ -7141,6 +7358,45 @@ document.addEventListener('DOMContentLoaded', () => {
             <div style="display: flex; align-items: center; gap: 6px;">
               <div style="width: 12px; height: 12px; background: var(--glass); border-radius: 2px;"></div>
               <span>No Record</span>
+            </div>
+          </div>
+
+          <!-- Pending Training Records Section -->
+          <div id="pending-training-section" style="margin-top: 32px; display: none;">
+            <div style="border-top: 1px solid var(--border); padding-top: 24px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+                <h4 style="margin: 0; display: flex; align-items: center; gap: 8px;">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                  </svg>
+                  Pending New User Certificates
+                </h4>
+                <button class="btn secondary" onclick="refreshPendingRecords()" style="padding: 4px 12px; font-size: 12px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <polyline points="1 20 1 14 7 14"></polyline>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                  </svg>
+                  Refresh
+                </button>
+              </div>
+              <div style="background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+                <div style="display: flex; align-items: start; gap: 8px;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                  </svg>
+                  <div style="flex: 1; font-size: 13px; color: #92400e;">
+                    These certificates were uploaded for users who don't exist yet. When matching users join, click "Match & Apply" to assign their training records.
+                  </div>
+                </div>
+              </div>
+              <div id="pending-records-list" style="display: flex; flex-direction: column; gap: 8px;">
+                <!-- Pending records will be inserted here -->
+              </div>
             </div>
           </div>
         </div>
@@ -7255,6 +7511,206 @@ document.addEventListener('DOMContentLoaded', () => {
             right: 0 !important;
           }
         </style>
+
+        <!-- Certificate Confirmation Modal -->
+        <div id="cert-confirmation-modal" class="cert-confirmation-modal">
+          <div class="cert-modal-content">
+            <!-- Progress Steps -->
+            <div class="modal-progress-steps">
+              <div class="progress-step completed">
+                <div class="step-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="20,6 9,17 4,12"></polyline>
+                  </svg>
+                </div>
+                <span>PDF Processed</span>
+              </div>
+              <div class="progress-step completed">
+                <div class="step-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="20,6 9,17 4,12"></polyline>
+                  </svg>
+                </div>
+                <span>AI Analysis</span>
+              </div>
+              <div class="progress-step completed">
+                <div class="step-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="20,6 9,17 4,12"></polyline>
+                  </svg>
+                </div>
+                <span>Data Extracted</span>
+              </div>
+              <div class="progress-step active">
+                <div class="step-icon">
+                  <div class="pulse-dot"></div>
+                </div>
+                <span>Confirm Details</span>
+              </div>
+            </div>
+
+            <!-- Modal Header -->
+            <div class="cert-modal-header">
+              <div class="success-badge">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                  <polyline points="22,4 12,14.01 9,11.01"></polyline>
+                </svg>
+                Certificate Successfully Processed
+              </div>
+              <h3>Review Training Details</h3>
+              <p>Please review and confirm the extracted information below.</p>
+              <button class="cert-close-btn" id="cert-modal-close" aria-label="Close">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="cert-modal-body">
+              <div class="form-grid">
+                <div class="form-group">
+                  <label for="cert-staff-select">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                      <circle cx="9" cy="7" r="4"></circle>
+                      <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    </svg>
+                    Staff Member
+                  </label>
+                  <select id="cert-staff-select">
+                    <option value="" disabled selected>Select staff member...</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label for="cert-person-name">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                      <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                    Full Name
+                  </label>
+                  <input type="text" id="cert-person-name" placeholder="Person name not detected">
+                  <div class="admin-name-validation" id="admin-name-validation" style="display: none;"></div>
+                  <!-- Add detected name display elements -->
+                  <div id="detected-name-info" style="display: none; margin-top: 6px; font-size: 12px; color: var(--ink); align-items: center; gap: 4px;">
+                    Detected name: <strong id="detected-person-name" style="color: var(--accent);"></strong>
+                  </div>
+                  <div id="name-match-status" style="margin-top: 4px; font-size: 12px;"></div>
+                  <div id="detected-name-display" style="display: none; margin-top: 6px;">
+                    <div style="font-size: 12px; color: var(--muted);">
+                      <span>Current user: <strong id="current-user-name"></strong></span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label for="cert-training-type">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path>
+                      <path d="M6 12v5c3 3 9 3 12 0v-5"></path>
+                    </svg>
+                    Training Type
+                  </label>
+                  <select id="cert-training-type">
+                    <option value="">Select training type...</option>
+                  </select>
+                  <div class="ai-match-indicator" id="ai-match-status" style="display: none;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M9 12l2 2 4-4"></path>
+                      <circle cx="12" cy="12" r="9"></circle>
+                    </svg>
+                    AI matched with <span id="match-confidence">90%</span> confidence
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label for="cert-completion-date">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                      <line x1="16" y1="2" x2="16" y2="6"></line>
+                      <line x1="8" y1="2" x2="8" y2="6"></line>
+                      <line x1="3" y1="10" x2="21" y2="10"></line>
+                    </svg>
+                    Completion Date
+                  </label>
+                  <input type="date" id="cert-completion-date">
+                </div>
+
+                <div class="form-group">
+                  <label for="cert-validity-years">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <polyline points="12,6 12,12 16,14"></polyline>
+                    </svg>
+                    Valid For
+                  </label>
+                  <select id="cert-validity-years">
+                    <option value="">Auto-calculated...</option>
+                    <option value="1">1 Year</option>
+                    <option value="2">2 Years</option>
+                    <option value="3">3 Years</option>
+                    <option value="5">5 Years</option>
+                    <option value="never">Never Expires</option>
+                  </select>
+                  <div class="expiry-preview" id="expiry-preview"></div>
+                </div>
+
+                <div class="form-group">
+                  <label for="cert-provider">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+                      <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+                    </svg>
+                    Training Provider
+                  </label>
+                  <input type="text" id="cert-provider" placeholder="Provider not detected">
+                </div>
+
+                <div class="form-group">
+                  <label for="cert-id">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14,2 14,8 20,8"></polyline>
+                      <line x1="16" y1="13" x2="8" y2="13"></line>
+                      <line x1="16" y1="17" x2="8" y2="17"></line>
+                    </svg>
+                    Certificate ID
+                  </label>
+                  <input type="text" id="cert-id" placeholder="Certificate ID not detected">
+                </div>
+              </div>
+
+              <div class="form-group full-width">
+                <label for="cert-notes">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                    <path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                  </svg>
+                  Additional Notes
+                </label>
+                <textarea id="cert-notes" rows="3" placeholder="Add any additional notes here..."></textarea>
+              </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="cert-modal-footer">
+              <button class="cert-btn cert-btn-secondary" id="cert-cancel-btn">Cancel</button>
+              <button class="cert-btn cert-btn-primary" id="cert-save-btn">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                  <polyline points="17,21 17,13 7,13 7,21"></polyline>
+                  <polyline points="7,3 7,8 15,8"></polyline>
+                </svg>
+                Save Training Record
+              </button>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section class="view" id="view-calendar">
@@ -10899,6 +11355,88 @@ window.PIR_DEFINITIONS_DATA = [
         currentTrainingTab = 'clinical';
         document.querySelectorAll('#view-training .tab-controls button').forEach(btn => btn.classList.remove('active'));
         document.getElementById('tab-clinical')?.classList.add('active');
+        
+        // Initialize certificate uploader for admin mode (like staff-training.html)
+        if (typeof initCertificateUploaderPDFToImage === 'function' && !window.__certUploaderInited) {
+          try {
+            // Make sure we have a currentUser object with siteId for the certificate uploader
+            if (window.ctx && (window.ctx.site_id || window.ctx.siteId)) {
+              window.currentUser = window.currentUser || {};
+              window.currentUser.siteId = window.ctx.site_id || window.ctx.siteId;
+              window.currentUser.isAdmin = true;
+              console.log('[DEBUG] Set currentUser with siteId:', window.currentUser.siteId);
+            } else {
+              console.warn('[DEBUG] Cannot set currentUser, site_id not available in ctx:', window.ctx);
+            }
+            
+            // Ensure training types are loaded
+            if (!window.trainingTypes || window.trainingTypes.length === 0) {
+              console.log('[DEBUG] Loading training types before initializing certificate uploader');
+              if (typeof loadTrainingTypes === 'function') {
+                loadTrainingTypes();
+              } else if (typeof window.loadTrainingTypes === 'function') {
+                window.loadTrainingTypes();
+              }
+            }
+            
+            window.isAdminMode = true;  // Set admin mode flag
+            window.certificateUploaderAPI = initCertificateUploaderPDFToImage();
+            window.__certUploaderInited = true;
+            console.log('[DEBUG] Certificate uploader initialized (admin mode) with', 
+              window.trainingTypes ? window.trainingTypes.length : 0, 'training types');
+            
+            // Connect admin certificate upload zone to the uploader
+            const uploadButton = document.getElementById('btn-upload-certificates');
+            const fileInput = document.getElementById('admin-cert-file-input');
+            const uploadZone = document.getElementById('admin-cert-upload-zone'); // Now hidden but kept for API
+            const certificateInput = document.getElementById('certificate-upload');
+            
+            if (uploadButton && fileInput) {
+              // Click on upload button triggers file input
+              uploadButton.addEventListener('click', function(e) {
+                e.preventDefault(); // Prevent any default action
+                e.stopPropagation(); // Stop event bubbling
+                fileInput.click();
+              });
+              
+              // File input change triggers certificate processing by transferring files to the hidden certificate-upload input
+              fileInput.addEventListener('change', function() {
+                if (this.files && this.files.length > 0) {
+                  console.log(`[ADMIN] Selected ${this.files.length} certificate files`);
+                  
+                  // Ensure currentUser is set before processing
+                  if (window.ctx && (window.ctx.site_id || window.ctx.siteId)) {
+                    window.currentUser = window.currentUser || {};
+                    window.currentUser.siteId = window.ctx.site_id || window.ctx.siteId;
+                    window.currentUser.isAdmin = true;
+                  }
+                  
+                  // Transfer files to the hidden certificate upload input that the uploader is listening to
+                  if (window.certificateUploaderAPI && window.certificateUploaderAPI.processFile) {
+                    window.certificateUploaderAPI.processFile(this.files);
+                    
+                    // Reset file input after processing so it can be used again
+                    setTimeout(() => {
+                      fileInput.value = '';
+                      if (certificateInput) certificateInput.value = '';
+                      console.log('[ADMIN] Reset file inputs for next upload');
+                    }, 1000);
+                  } else {
+                    console.error('[ADMIN] Certificate uploader API not available');
+                  }
+                }
+              });
+              
+              // We no longer need drag and drop UI since we now use a button
+              // but we'll keep the certificate-dropzone element for the API
+              
+              console.log('[DEBUG] Admin certificate upload zone initialized');
+            }
+          } catch (err) {
+            console.warn('[DEBUG] Certificate uploader init failed', err);
+          }
+        }
+        
         // Check if loadTrainingMatrix is defined, otherwise wait for it
         if (typeof loadTrainingMatrix === 'function') {
           loadTrainingMatrix();
@@ -18814,6 +19352,10 @@ for (const f of (crudState.entity.fields || [])) {
         isDemoData: false,  // Clear demo data flag
         isDataLoaded: true  // Mark that we've loaded data from database
       };
+      
+      // Make training types available for certificate uploader
+      window.trainingTypes = typesRes.data || [];
+      console.log('Made training types available globally:', window.trainingTypes.length, 'types');
 
       // Update local reference
       trainingData = window.trainingData;
@@ -18841,7 +19383,12 @@ for (const f of (crudState.entity.fields || [])) {
 
       // Initialize controls
       initializeTrainingControls();
-      
+
+      // Load pending training records if we're in admin mode
+      if (typeof loadPendingTrainingRecords === 'function') {
+        loadPendingTrainingRecords();
+      }
+
       // Ensure we render with a slight delay to allow DOM to be ready
       setTimeout(() => renderTrainingMatrix(), 10);
     } catch (err) {
@@ -18856,6 +19403,9 @@ for (const f of (crudState.entity.fields || [])) {
       };
       window.trainingData.isDataLoaded = true;
       trainingData = window.trainingData;
+      
+      // Ensure we have empty training types array for certificate uploader even on error
+      window.trainingTypes = window.trainingTypes || [];
       document.getElementById('training-tbody').innerHTML =
         '<tr><td colspan="100%" class="muted">Failed to load training data: ' + (err?.message || err) + '</td></tr>';
     }
@@ -24974,10 +25524,13 @@ window.refreshStaffData = refreshStaffData;
       if (error) throw error;
 
       trainingTypes = data || [];
+      // Make training types available to certificate uploader
+      window.trainingTypes = trainingTypes;
       console.log('Loaded training types:', trainingTypes.length);
     } catch (error) {
       console.error('Failed to load training types:', error);
       trainingTypes = [];
+      window.trainingTypes = [];
     }
   }
 
@@ -25814,6 +26367,316 @@ window.refreshStaffData = refreshStaffData;
   window.autoMatchAllTraining = autoMatchAllTraining;
   window.matchSelectedTraining = matchSelectedTraining;
 
+  // Pending Training Records Functions
+  async function loadPendingTrainingRecords() {
+    try {
+      if (!window.supabase || !window.ctx || !window.ctx.site_id) {
+        console.log('Cannot load pending records - missing dependencies');
+        return;
+      }
+
+      // First try to load from pending_training_records table
+      let { data: pendingRecords, error } = await window.supabase
+        .from('pending_training_records')
+        .select('*')
+        .eq('site_id', window.ctx.site_id)
+        .eq('status', 'pending_user')
+        .order('created_at', { ascending: false });
+
+      // If table doesn't exist, load from training_records with null user_id
+      if (error && error.message.includes('relation')) {
+        const result = await window.supabase
+          .from('training_records')
+          .select('*')
+          .eq('site_id', window.ctx.site_id)
+          .is('user_id', null)
+          .order('created_at', { ascending: false });
+
+        pendingRecords = result.data;
+        error = result.error;
+      }
+
+      if (error) {
+        console.error('Error loading pending records:', error);
+        return;
+      }
+
+      // Display pending records if any exist
+      if (pendingRecords && pendingRecords.length > 0) {
+        displayPendingRecords(pendingRecords);
+        document.getElementById('pending-training-section').style.display = 'block';
+      } else {
+        document.getElementById('pending-training-section').style.display = 'none';
+      }
+    } catch (err) {
+      console.error('Failed to load pending training records:', err);
+    }
+  }
+
+  function displayPendingRecords(records) {
+    const listContainer = document.getElementById('pending-records-list');
+    if (!listContainer) return;
+
+    listContainer.innerHTML = '';
+
+    records.forEach(record => {
+      const userName = record.pending_user_name || record.certificate_person_name ||
+                      (record.notes && record.notes.match(/PENDING USER: (.+?)\\n/)?.[1]) || 'Unknown';
+
+      const trainingType = window.trainingTypes?.find(t => t.id === record.training_type_id);
+      const trainingName = trainingType?.name || `Training ID ${record.training_type_id}`;
+
+      const recordCard = document.createElement('div');
+      recordCard.style.cssText = 'background: var(--white); border: 1px solid var(--border); border-radius: 8px; padding: 16px;';
+      recordCard.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: start; gap: 16px;">
+          <div style="flex: 1;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+              <strong style="color: var(--text);">${userName}</strong>
+              <span style="padding: 2px 6px; background: #fef3c7; color: #92400e; border-radius: 4px; font-size: 11px; font-weight: 600;">PENDING</span>
+            </div>
+            <div style="font-size: 13px; color: var(--muted); margin-bottom: 4px;">
+              <strong>Training:</strong> ${trainingName}
+            </div>
+            <div style="font-size: 13px; color: var(--muted); margin-bottom: 4px;">
+              <strong>Completed:</strong> ${new Date(record.completion_date).toLocaleDateString()}
+            </div>
+            ${record.expiry_date ? `
+              <div style="font-size: 13px; color: var(--muted); margin-bottom: 4px;">
+                <strong>Expires:</strong> ${new Date(record.expiry_date).toLocaleDateString()}
+              </div>
+            ` : ''}
+            <div style="font-size: 12px; color: var(--muted); margin-top: 8px;">
+              Uploaded ${new Date(record.created_at || record.created).toLocaleDateString()}
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <button class="btn primary" onclick="showMatchUserDialog('${record.id}', '${userName.replace(/'/g, "\\'")}', '${trainingName.replace(/'/g, "\\'")}')" style="padding: 6px 12px; font-size: 12px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="8.5" cy="7" r="4"></circle>
+                <polyline points="17 11 19 13 23 9"></polyline>
+              </svg>
+              Match User
+            </button>
+            ${record.certificate_url ? `
+              <button class="btn secondary" onclick="viewCertificate('${record.certificate_url}')" style="padding: 6px 12px; font-size: 12px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                </svg>
+                View Cert
+              </button>
+            ` : ''}
+            <button class="btn secondary" onclick="deletePendingRecord('${record.id}')" style="padding: 6px 12px; font-size: 12px; border-color: var(--stat-4-bg); color: var(--stat-4);">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              Delete
+            </button>
+          </div>
+        </div>
+      `;
+
+      listContainer.appendChild(recordCard);
+    });
+  }
+
+  async function showMatchUserDialog(recordId, userName, trainingName) {
+    // Create a modal to select which user to match
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.display = 'flex';
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width: 500px;">
+        <div class="modal-header">
+          <h3>Match Training Certificate</h3>
+          <button class="close-btn" onclick="this.closest('.modal').remove()">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div style="margin-bottom: 16px; padding: 12px; background: var(--glass); border-radius: 8px;">
+            <div style="font-size: 14px; color: var(--muted); margin-bottom: 4px;">Certificate for:</div>
+            <div style="font-weight: 600; color: var(--text);">${userName}</div>
+            <div style="font-size: 13px; color: var(--muted); margin-top: 4px;">Training: ${trainingName}</div>
+          </div>
+          <div class="form-group">
+            <label>Select Staff Member to Match</label>
+            <select id="match-user-select" style="width: 100%;">
+              <option value="">Select a staff member...</option>
+            </select>
+          </div>
+          <div style="margin-top: 8px; font-size: 12px; color: var(--muted);">
+            Select the staff member this certificate belongs to. The training record will be transferred to them.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn secondary" onclick="this.closest('.modal').remove()">Cancel</button>
+          <button class="btn primary" onclick="applyPendingToUser('${recordId}')">Match & Apply</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Populate staff dropdown
+    const select = document.getElementById('match-user-select');
+    if (window.trainingData && window.trainingData.staff) {
+      window.trainingData.staff.forEach(staff => {
+        const option = document.createElement('option');
+        option.value = staff.id;
+        option.textContent = staff.name;
+        select.appendChild(option);
+      });
+    }
+  }
+
+  async function applyPendingToUser(recordId) {
+    try {
+      const select = document.getElementById('match-user-select');
+      const userId = select?.value;
+
+      if (!userId) {
+        alert('Please select a staff member to match');
+        return;
+      }
+
+      // First, try pending_training_records table
+      let { data: pendingRecord, error } = await window.supabase
+        .from('pending_training_records')
+        .select('*')
+        .eq('id', recordId)
+        .single();
+
+      // If not found in pending table, try training_records
+      if (error && error.message.includes('relation')) {
+        const result = await window.supabase
+          .from('training_records')
+          .select('*')
+          .eq('id', recordId)
+          .single();
+
+        pendingRecord = result.data;
+        error = result.error;
+      }
+
+      if (error || !pendingRecord) {
+        console.error('Failed to fetch pending record:', error);
+        alert('Failed to fetch pending record');
+        return;
+      }
+
+      // Update the record with the matched user_id
+      const { error: updateError } = await window.supabase
+        .from('training_records')
+        .update({ user_id: userId })
+        .eq('id', recordId);
+
+      if (!updateError) {
+        // If it was in pending_training_records, mark it as matched
+        await window.supabase
+          .from('pending_training_records')
+          .update({ status: 'matched', matched_user_id: userId })
+          .eq('id', recordId);
+      }
+
+      if (updateError) {
+        console.error('Failed to update record:', updateError);
+        alert('Failed to apply training record to user');
+        return;
+      }
+
+      // Success
+      if (typeof window.showToast === 'function') {
+        window.showToast('Training record successfully matched and applied!', 'success', 3000);
+      } else {
+        alert('Training record successfully matched and applied!');
+      }
+
+      // Close modal and refresh
+      document.querySelector('.modal').remove();
+      loadPendingTrainingRecords();
+
+      // Refresh training matrix if visible
+      if (typeof window.renderTrainingMatrix === 'function') {
+        window.renderTrainingMatrix();
+      }
+    } catch (err) {
+      console.error('Error applying pending record:', err);
+      alert('Failed to apply training record: ' + err.message);
+    }
+  }
+
+  async function deletePendingRecord(recordId) {
+    if (!confirm('Are you sure you want to delete this pending training record?')) {
+      return;
+    }
+
+    try {
+      // Try to delete from pending_training_records first
+      let { error } = await window.supabase
+        .from('pending_training_records')
+        .delete()
+        .eq('id', recordId);
+
+      // If table doesn't exist, delete from training_records
+      if (error && error.message.includes('relation')) {
+        const result = await window.supabase
+          .from('training_records')
+          .delete()
+          .eq('id', recordId);
+        error = result.error;
+      }
+
+      if (error) {
+        console.error('Failed to delete record:', error);
+        alert('Failed to delete record');
+        return;
+      }
+
+      if (typeof window.showToast === 'function') {
+        window.showToast('Pending record deleted', 'success', 2000);
+      }
+
+      loadPendingTrainingRecords();
+    } catch (err) {
+      console.error('Error deleting pending record:', err);
+      alert('Failed to delete record: ' + err.message);
+    }
+  }
+
+  function viewCertificate(certificateUrl) {
+    // Generate signed URL and open in new tab
+    if (window.supabase && certificateUrl) {
+      window.supabase.storage
+        .from('training_certificates')
+        .createSignedUrl(certificateUrl, 3600)
+        .then(({ data, error }) => {
+          if (!error && data?.signedUrl) {
+            window.open(data.signedUrl, '_blank');
+          } else {
+            console.error('Failed to create signed URL:', error);
+          }
+        });
+    }
+  }
+
+  function refreshPendingRecords() {
+    loadPendingTrainingRecords();
+  }
+
+  // Export new functions
+  window.loadPendingTrainingRecords = loadPendingTrainingRecords;
+  window.showMatchUserDialog = showMatchUserDialog;
+  window.applyPendingToUser = applyPendingToUser;
+  window.deletePendingRecord = deletePendingRecord;
+  window.viewCertificate = viewCertificate;
+  window.refreshPendingRecords = refreshPendingRecords;
+
   // Export functions
   window.loadHolidayEntitlements = loadHolidayEntitlements;
   window.loadHolidayRequests = loadHolidayRequests;
@@ -25836,6 +26699,122 @@ window.showStatusDashboard = function() {
     alert('Incorrect PIN. Access denied.');
   }
 };
+
+
+
+
+
+// Override certificate save function for admin mode
+window.originalSaveTrainingRecord = window.saveTrainingRecord;
+
+// Admin-specific certificate save handler
+window.adminSaveCertificateRecord = async function(certificateData) {
+  try {
+    const personName = document.getElementById('cert-person-name').value.trim();
+    const trainingTypeId = document.getElementById('cert-training-type').value;
+    const completionDate = document.getElementById('cert-completion-date').value;
+    const validityYears = document.getElementById('cert-validity-years').value;
+    const provider = document.getElementById('cert-provider').value.trim();
+    const certificateId = document.getElementById('cert-id').value.trim();
+    const notes = document.getElementById('cert-notes').value.trim();
+    
+    if (!personName || !trainingTypeId || !completionDate) {
+      throw new Error('Please fill in all required fields');
+    }
+    
+    // Validate staff member exists
+    const staffMember = window.staffMembers.find(s => 
+      s.full_name.toLowerCase().trim() === personName.toLowerCase().trim()
+    );
+    
+    if (!staffMember) {
+      throw new Error(`Staff member "${personName}" not found in the system. Please check the name spelling or add them to the staff directory first.`);
+    }
+    
+    // Calculate expiry date
+    let expiryDate = null;
+    if (validityYears && validityYears !== 'never') {
+      const completion = new Date(completionDate);
+      expiryDate = new Date(completion);
+      expiryDate.setFullYear(completion.getFullYear() + parseInt(validityYears));
+    }
+    
+    // Save to training_records table
+    const { error } = await supabase
+      .from('training_records')
+      .insert({
+        staff_id: staffMember.id,
+        training_type_id: trainingTypeId,
+        completion_date: completionDate,
+        expiry_date: expiryDate?.toISOString().split('T')[0] || null,
+        provider: provider || null,
+        certificate_id: certificateId || null,
+        notes: notes || null,
+        evidence: 'Certificate uploaded via admin panel',
+        verified: true,
+        created_by: 'admin'
+      });
+    
+    if (error) throw error;
+    
+    console.log('Certificate saved for:', personName);
+    
+    // Show success message
+    showAdminSuccessMessage(`Certificate successfully added to ${personName}'s training record!`);
+    
+    // Refresh training matrix
+    if (window.loadTrainingMatrix) {
+      await window.loadTrainingMatrix();
+    }
+    
+    return true;
+    
+  } catch (error) {
+    console.error('Error saving certificate:', error);
+    showAdminErrorMessage(error.message);
+    return false;
+  }
+};
+
+// Admin-specific validation for staff names  
+window.validateAdminStaffName = function(name) {
+  // Use existing validation elements in the training section
+  const nameField = document.getElementById('cert-person-name');
+  if (!nameField) return;
+  
+  const trimmedName = name.trim();
+  if (!trimmedName) {
+    nameField.style.borderColor = '';
+    return;
+  }
+  
+  const staffMember = window.staffMembers.find(s => 
+    s.full_name.toLowerCase().trim() === trimmedName.toLowerCase().trim()
+  );
+  
+  if (staffMember) {
+    nameField.style.borderColor = '#10b981';
+    nameField.style.backgroundColor = 'rgba(16,185,129,0.05)';
+  } else {
+    nameField.style.borderColor = '#ef4444';
+    nameField.style.backgroundColor = 'rgba(239,68,68,0.05)';
+  }
+};
+
+// Helper functions for admin messages
+function showAdminSuccessMessage(message) {
+  // Show success message in the training section
+  alert(`✅ ${message}`);
+}
+
+function showAdminErrorMessage(message) {
+  // Show error message in the training section  
+  alert(`❌ ${message}`);
+}
+
+
+
+// Admin certificate upload functionality now handled in training section initialization
 
 </script>
 

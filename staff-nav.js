@@ -78,7 +78,6 @@ function getStandardNavHTML(activePage = 'staff.html') {
           <a href="#" class="nav-link dropdown-toggle">More ▼</a>
           <div class="dropdown-menu">
             <a href="staff-welcome.html" class="dropdown-item ${activePage === 'staff-welcome.html' ? 'active' : ''}">Welcome</a>
-            <a href="staff-meetings.html" class="dropdown-item ${activePage === 'staff-meetings.html' ? 'active' : ''}">Meetings</a>
             <a href="achievements.html" class="dropdown-item ${activePage === 'achievements.html' ? 'active' : ''}">Achievements</a>
           </div>
         </div>

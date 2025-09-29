@@ -71,7 +71,7 @@ async function setupNavigation(role) {
   const navItems = [
     { page: 'home', href: 'staff.html', label: 'Home' },
     { page: 'welcome', href: 'staff-welcome.html', label: 'Welcome' },
-    { page: 'meetings', href: 'staff-meetings.html', label: 'Meetings' },
+    // { page: 'meetings', href: 'staff-meetings.html', label: 'Meetings' },
     { page: 'scans', href: 'staff-scans.html', label: 'My Scans' },
     { page: 'training', href: 'staff-training.html', label: 'My Training' },
     { page: 'achievements', href: 'achievements.html', label: 'Achievements' },
