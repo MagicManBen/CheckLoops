@@ -1,0 +1,168 @@
+// Fix holiday request user names
+// This script will sync missing user information in the holiday requests system
+
+(async function() {
+  try {
+    console.log('Starting holiday request user name fix...');
+    
+    // 1. First, ensure we have Supabase initialized
+    const supabase = window.supabase;
+    
+    if (!supabase) {
+      console.error('Supabase not initialized. Please run this script from the admin dashboard.');
+      return;
+    }
+
+    // 2. Get all holiday requests
+    console.log('Fetching holiday requests...');
+    const { data: requests, error: requestsError } = await supabase
+      .from('4_holiday_requests')
+      .select('*');
+
+    if (requestsError) {
+      console.error('Error fetching holiday requests:', requestsError);
+      return;
+    }
+
+    console.log(`Found ${requests.length} holiday requests`);
+
+    // 3. For each request, ensure there's a valid master_users entry
+    const userIds = [...new Set(requests.map(r => r.user_id))];
+    console.log(`Found ${userIds.length} unique user IDs in requests`);
+
+    // 4. Check which users are already in master_users
+    const { data: existingUsers, error: existingError } = await supabase
+      .from('master_users')
+      .select('auth_user_id, full_name, email, site_id')
+      .in('auth_user_id', userIds);
+
+    if (existingError) {
+      console.error('Error checking existing users:', existingError);
+      return;
+    }
+
+    const existingUserIds = existingUsers.map(u => u.auth_user_id);
+    console.log(`Found ${existingUsers.length} users already in master_users`);
+
+    // 5. Find the missing users
+    const missingUserIds = userIds.filter(id => !existingUserIds.includes(id));
+    console.log(`Found ${missingUserIds.length} users missing from master_users`);
+
+    if (missingUserIds.length === 0) {
+      console.log('All users already exist in master_users. No sync needed.');
+      return;
+    }
+
+    // 6. Get auth data for missing users
+    console.log('Fetching auth data for missing users...');
+    const { data: authUsers, error: authError } = await supabase.rpc('admin_get_users', {
+      user_ids: missingUserIds
+    });
+
+    if (authError) {
+      console.error('Error fetching auth users:', authError);
+      // Try a different approach - get profile data from auth metadata
+      const { data: userMetadata } = await supabase.rpc('get_auth_user_metadata', {
+        p_user_ids: missingUserIds
+      });
+      
+      if (userMetadata && userMetadata.length > 0) {
+        console.log(`Retrieved ${userMetadata.length} user metadata records`);
+        // Use this data instead
+        authUsers = userMetadata;
+      } else {
+        console.error('Could not retrieve user metadata');
+        return;
+      }
+    }
+
+    if (!authUsers || authUsers.length === 0) {
+      console.error('No auth data found for missing users');
+      return;
+    }
+
+    console.log(`Retrieved ${authUsers.length} auth users`);
+
+    // 7. Create entries in master_users for each missing user
+    for (const user of authUsers) {
+      // Find a holiday request for this user to get the site_id
+      const userRequests = requests.filter(r => r.user_id === user.id);
+      if (userRequests.length === 0) continue;
+      
+      const siteId = userRequests[0].site_id;
+      if (!siteId) {
+        console.warn(`No site_id for user ${user.id}, skipping`);
+        continue;
+      }
+
+      const fullName = user.raw_user_meta_data?.full_name || 
+                      user.user_metadata?.full_name || 
+                      `User ${user.id.substring(0, 8)}`;
+      
+      const email = user.email;
+      
+      console.log(`Adding master_users entry for ${email} (${fullName})`);
+      
+      const { data: inserted, error: insertError } = await supabase
+        .from('master_users')
+        .insert({
+          auth_user_id: user.id,
+          email: email,
+          full_name: fullName,
+          site_id: siteId,
+          access_type: 'staff',
+          active: true
+        })
+        .select()
+        .single();
+      
+      if (insertError) {
+        // If insert fails, try to update an existing record by email
+        console.warn(`Insert failed, checking for existing record by email: ${insertError.message}`);
+        const { data: existing } = await supabase
+          .from('master_users')
+          .select('id, email')
+          .eq('email', email)
+          .eq('site_id', siteId)
+          .maybeSingle();
+        
+        if (existing) {
+          console.log(`Updating existing master_users entry for ${email}`);
+          const { error: updateError } = await supabase
+            .from('master_users')
+            .update({
+              auth_user_id: user.id,
+              full_name: fullName,
+              active: true
+            })
+            .eq('id', existing.id);
+            
+          if (updateError) {
+            console.error(`Error updating existing user ${email}:`, updateError);
+          } else {
+            console.log(`Successfully updated ${email}`);
+          }
+        } else {
+          console.error(`Could not add or update master_users for ${email}:`, insertError);
+        }
+      } else {
+        console.log(`Successfully added ${email} to master_users`);
+      }
+    }
+
+    // 8. Final verification
+    console.log('Verifying holiday requests now have user names...');
+    const { data: verifyData } = await supabase
+      .from('v_holiday_requests_with_user')
+      .select('id, user_id, full_name, email')
+      .limit(10);
+
+    console.log('Sample of holiday requests with user names:');
+    console.table(verifyData);
+    
+    console.log('Holiday request user name fix complete!');
+
+  } catch (error) {
+    console.error('Unexpected error during holiday user name fix:', error);
+  }
+})();

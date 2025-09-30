@@ -1,0 +1,1227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Staff Sign In — CheckLoop" />
+  <meta name="theme-color" content="#0b4fb3" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.supabase.co https://*.supabase.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.supabase.com wss://*.supabase.co wss://*.supabase.com https:;">
+  <title>Staff Sign In — CheckLoop</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="config.js"></script>
+  <script src="rls-fix.js"></script>
+  <script>
+    // MAGIC LINK REDIRECT HANDLER - MUST BE AT TOP OF PAGE
+    (function() {
+      // Check if this is a magic link callback
+      const urlParams = new URLSearchParams(window.location.search);
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+
+      // Handle various Supabase callback patterns
+      if (urlParams.has('code') ||
+          urlParams.has('token') ||
+          hashParams.has('access_token') ||
+          hashParams.has('confirmation_token')) {
+
+        // This is an invitation/magic link - redirect to password setup
+        console.log('Magic link detected, redirecting to password setup...');
+
+        // Build an absolute redirect URL that works in any environment
+        try {
+          const base = (typeof CONFIG !== 'undefined' && CONFIG.passwordRedirectUrl)
+            ? CONFIG.passwordRedirectUrl
+            : `${window.location.origin}/simple-set-password.html`;
+          const qs = window.location.search || '';
+          const hs = window.location.hash || '';
+          const redirectUrl = `${base}${qs}${hs}`;
+          window.location.replace(redirectUrl);
+        } catch(_) {
+          window.location.replace('simple-set-password.html');
+        }
+      }
+    })();
+  </script>
+  <style>
+    :root {
+      /* Primary color palette - matching homepage */
+      --primary: #0b4fb3;
+      --primary-dark: #062b6f;
+      --primary-light: #2b6ecc;
+      --primary-lightest: #e8f2ff;
+
+      /* Accent colors */
+      --accent: #76a7ff;
+      --accent-2: #5f96ff;
+      --success: #2bd4a7;
+      --success-light: #e8fdf8;
+      --warning: #ffca28;
+      --warning-light: #fffbeb;
+      --danger: #ff6b6b;
+      --danger-light: #fef2f2;
+
+      /* Neutral colors */
+      --white: #ffffff;
+      --gray-50: #f8fafc;
+      --gray-100: #f1f5f9;
+      --gray-200: #e2e8f0;
+      --gray-300: #cbd5e1;
+      --gray-400: #94a3b8;
+      --gray-500: #64748b;
+      --gray-600: #475569;
+      --gray-700: #334155;
+      --gray-800: #1e293b;
+      --gray-900: #0f172a;
+
+      /* Shadows */
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+      --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+      --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+      --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1);
+      --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+
+      /* Border radius */
+      --radius-sm: 0.375rem;
+      --radius: 0.5rem;
+      --radius-lg: 0.75rem;
+      --radius-xl: 1rem;
+      --radius-2xl: 1.5rem;
+
+      /* Typography */
+      --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+      --font-display: 'Plus Jakarta Sans', 'Inter', sans-serif;
+
+      /* Transitions */
+      --transition: all 0.2s ease-in-out;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      height: 100%;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background: linear-gradient(135deg, var(--primary-lightest) 0%, var(--white) 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* Subtle background pattern */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="%23e2e8f0" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+      opacity: 0.3;
+      z-index: -1;
+    }
+
+    /* Main card container */
+    .login-container {
+      width: 100%;
+      max-width: 400px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .card {
+      background: var(--white);
+      border-radius: var(--radius-2xl);
+      box-shadow: var(--shadow-2xl);
+      border: 1px solid var(--gray-200);
+      padding: 2rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: linear-gradient(90deg, var(--primary), var(--accent), var(--success));
+      border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+    }
+
+    /* Brand section */
+    .brand {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      margin-bottom: 2rem;
+    }
+
+    .logo-icon {
+      width: 2.5rem;
+      height: 2.5rem;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      border-radius: var(--radius-lg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 700;
+      font-size: 1.25rem;
+    }
+
+    .brand-text {
+      font-size: 1.75rem;
+      font-weight: 800;
+      color: var(--gray-900);
+      font-family: var(--font-display);
+    }
+
+    /* Form styling */
+    .form-container {
+      position: relative;
+    }
+
+    .form-step {
+      transition: all 0.3s ease;
+    }
+
+    .form-step.hidden {
+      opacity: 0;
+      transform: translateX(20px);
+      pointer-events: none;
+      position: absolute;
+      inset: 0;
+    }
+
+    .form-header {
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .form-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--gray-900);
+      margin-bottom: 0.5rem;
+      font-family: var(--font-display);
+    }
+
+    .form-subtitle {
+      color: var(--gray-600);
+      font-size: 0.9375rem;
+    }
+
+    /* Form fields */
+    .field {
+      margin-bottom: 1rem;
+    }
+
+    .field label {
+      display: block;
+      font-weight: 600;
+      font-size: 0.875rem;
+      color: var(--gray-700);
+      margin-bottom: 0.5rem;
+    }
+
+    .field input {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      border: 1px solid var(--gray-300);
+      border-radius: var(--radius);
+      font-size: 1rem;
+      background: var(--white);
+      color: var(--gray-900);
+      transition: var(--transition);
+    }
+
+    .field input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(11, 79, 179, 0.1);
+    }
+
+    .field input:disabled,
+    .field input[readonly] {
+      background: var(--gray-50);
+      color: var(--gray-600);
+      cursor: not-allowed;
+    }
+
+    .field input::placeholder {
+      color: var(--gray-400);
+    }
+
+    /* Extra options row */
+    .extra-options {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 1rem 0;
+      font-size: 0.875rem;
+    }
+
+    .checkbox-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--gray-600);
+    }
+
+    .checkbox-wrapper input[type="checkbox"] {
+      width: auto;
+      margin: 0;
+    }
+
+    .forgot-link {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 500;
+      transition: var(--transition);
+    }
+
+    .forgot-link:hover {
+      color: var(--primary-dark);
+      text-decoration: underline;
+    }
+
+    /* Buttons */
+    .btn {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      border: none;
+      border-radius: var(--radius);
+      font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: var(--transition);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 0.75rem;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: white;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .btn-primary:hover {
+      background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .btn-secondary {
+      background: var(--gray-100);
+      color: var(--gray-700);
+      border: 1px solid var(--gray-300);
+    }
+
+    .btn-secondary:hover {
+      background: var(--gray-200);
+      border-color: var(--gray-400);
+    }
+
+    /* Alert messages */
+    .alert {
+      padding: 0.75rem 1rem;
+      border-radius: var(--radius);
+      font-size: 0.875rem;
+      margin-top: 1rem;
+      display: none;
+    }
+
+    .alert.error {
+      background: var(--danger-light);
+      color: #b91c1c;
+      border: 1px solid #fca5a5;
+    }
+
+    .alert.success {
+      background: var(--success-light);
+      color: #059669;
+      border: 1px solid #6ee7b7;
+    }
+
+    /* Footer links */
+    .form-footer {
+      margin-top: 1.5rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--gray-200);
+      text-align: center;
+    }
+
+    .footer-link {
+      color: var(--gray-600);
+      font-size: 0.9375rem;
+      text-decoration: none;
+      transition: var(--transition);
+      display: inline-block;
+      padding: 0.375rem 0;
+    }
+
+    .footer-link:hover {
+      color: var(--primary);
+    }
+
+    .footer-link.primary {
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    .footer-link.primary:hover {
+      color: var(--primary-dark);
+      text-decoration: underline;
+    }
+
+    /* Security badge */
+    .security-badge {
+      margin-top: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      font-size: 0.8125rem;
+      color: var(--gray-500);
+    }
+
+    .ssl-badge {
+      display: inline-flex;
+      align-items: center;
+      text-decoration: none;
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid var(--gray-300);
+      transition: var(--transition);
+    }
+
+    .ssl-badge:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .ssl-badge-left {
+      background: var(--gray-100);
+      color: var(--gray-600);
+      padding: 0.25rem 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+    }
+
+    .ssl-badge-right {
+      background: var(--success);
+      color: white;
+      padding: 0.25rem 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    /* Back to homepage link */
+    .back-link {
+      position: absolute;
+      top: 1.5rem;
+      left: 1.5rem;
+      color: var(--gray-500);
+      text-decoration: none;
+      font-size: 0.875rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: var(--transition);
+    }
+
+    .back-link:hover {
+      color: var(--gray-700);
+    }
+
+    /* Loading state */
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    .btn.loading {
+      position: relative;
+      color: transparent;
+    }
+
+    .btn.loading::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 1rem;
+      height: 1rem;
+      margin: -0.5rem 0 0 -0.5rem;
+      border: 2px solid transparent;
+      border-top-color: currentColor;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* Status badges */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      border-radius: 999px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      background: var(--warning-light);
+      color: #b45309;
+      border: 1px solid #fcd34d;
+    }
+
+    /* Divider */
+    .divider {
+      display: flex;
+      align-items: center;
+      margin: 1rem 0;
+    }
+
+    .divider::before,
+    .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--gray-300);
+    }
+
+    .divider span {
+      padding: 0 1rem;
+      color: var(--gray-500);
+      font-size: 0.875rem;
+    }
+
+    /* Responsive design */
+    @media (max-width: 480px) {
+      body {
+        padding: 1rem;
+      }
+
+      .card {
+        padding: 1.5rem;
+      }
+
+      .form-title {
+        font-size: 1.25rem;
+      }
+
+      .extra-options {
+        flex-direction: column;
+        gap: 0.75rem;
+        align-items: flex-start;
+      }
+
+      .back-link {
+        position: static;
+        margin-bottom: 1rem;
+        justify-content: center;
+      }
+    }
+
+    /* Animations */
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-1rem);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(1rem);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .card {
+      animation: slideUp 0.5s ease-out;
+    }
+  </style>
+</head>
+<body>
+  <a href="LandingPage.html" class="back-link">
+    ← Back to Homepage
+  </a>
+
+  <div class="login-container">
+    <div class="card">
+      <div class="brand">
+        <div class="logo-icon">✓</div>
+        <span class="brand-text">CheckLoop</span>
+      </div>
+
+      <div class="form-container">
+        <!-- Sign In Form -->
+        <div class="form-step" id="signin-form-container">
+          <div class="form-header">
+            <h1 class="form-title" id="signin-title">Welcome Back</h1>
+            <p class="form-subtitle" id="signin-hint">Enter your credentials to access your account.</p>
+          </div>
+
+          <form id="signin-form" method="POST" action="#" onsubmit="return false;">
+            <div class="field">
+              <label for="email">Email Address</label>
+              <input type="email" id="email" name="email" placeholder="you@practice.com" required />
+            </div>
+            <div class="field">
+              <label for="password">Password</label>
+              <input type="password" id="password" name="password" placeholder="••••••••" required />
+            </div>
+
+            <div class="extra-options">
+              <label class="checkbox-wrapper" for="remember-me">
+                <input type="checkbox" id="remember-me" name="remember-me">
+                Remember me
+              </label>
+              <a href="#" class="forgot-link" onclick="showForgotPassword()">Forgot Password?</a>
+            </div>
+
+            <button class="btn btn-primary" type="submit">Sign In</button>
+            <div class="alert error" id="auth-error" role="alert"></div>
+            <div class="alert success" id="auth-success"></div>
+          </form>
+
+          <div class="form-footer">
+            <div style="margin-bottom: 0.75rem;">
+              Don't have an account? <a href="signup.html" class="footer-link primary">Sign up here</a>
+            </div>
+
+            <div class="divider">
+              <span>or</span>
+            </div>
+
+            <div style="margin-top: 0.75rem;">
+              <a href="admin-login.html" class="btn btn-secondary">Admin Login</a>
+            </div>
+
+            <div class="security-badge">
+              <a class="ssl-badge" href="https://www.ssllabs.com/ssltest/analyze.html?d=checkloops.co.uk&s=185.199.108.153" target="_blank" rel="noopener noreferrer" aria-label="SSL Labs report for checkloops.co.uk (Grade A)" title="View our live SSL Labs report">
+                <span class="ssl-badge-left">SSL</span>
+                <span class="ssl-badge-right">A</span>
+              </a>
+              <span>Qualys SSL Labs</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Forgot Password Form -->
+        <div class="form-step hidden" id="forgot-form-container">
+          <div class="form-header">
+            <h2 class="form-title">Reset Password</h2>
+            <p class="form-subtitle">Enter your email address and we'll send you a link to reset your password.</p>
+          </div>
+
+          <form id="forgot-form" method="POST" action="#" onsubmit="return false;">
+            <div class="field">
+              <label for="reset-email">Email Address</label>
+              <input type="email" id="reset-email" name="reset-email" placeholder="you@practice.com" required />
+            </div>
+            <button type="submit" class="btn btn-primary">Send Reset Link</button>
+            <button type="button" class="btn btn-secondary" onclick="showSignIn()">Back to Sign In</button>
+            <div class="alert error" id="reset-error"></div>
+            <div class="alert success" id="reset-success"></div>
+          </form>
+        </div>
+
+        <!-- Reset Password Form (when coming from email link) -->
+        <div class="form-step hidden" id="reset-form-container">
+          <div class="form-header">
+            <h2 class="form-title">Set New Password</h2>
+            <p class="form-subtitle">Choose a strong password for your account.</p>
+          </div>
+
+          <form id="reset-form" method="POST" action="#" onsubmit="return false;">
+            <div class="field">
+              <label for="new-password">New Password</label>
+              <input type="password" id="new-password" name="new-password" placeholder="Enter new password" required minlength="6" />
+            </div>
+            <div class="field">
+              <label for="confirm-password">Confirm Password</label>
+              <input type="password" id="confirm-password" name="confirm-password" placeholder="Confirm new password" required minlength="6" />
+            </div>
+            <button type="submit" class="btn btn-primary">Update Password</button>
+            <div class="alert error" id="update-error"></div>
+            <div class="alert success" id="update-success"></div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="supabase-js.js"></script>
+  <script type="module">
+    const { createClient } = supabase;
+
+    // Check if CONFIG is loaded
+    if (typeof CONFIG === 'undefined') {
+      console.error('CONFIG not loaded! Check config.js');
+      alert('Configuration error. Please contact support.');
+      throw new Error('CONFIG not loaded');
+    }
+
+    const SUPABASE_URL = CONFIG.SUPABASE_URL;
+    const SUPABASE_ANON_KEY = CONFIG.SUPABASE_ANON_KEY;
+    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        flowType: 'pkce',
+        storage: window.localStorage,
+        storageKey: `sb-${SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`,
+        // Session will persist until user explicitly signs out
+        // or browser storage is cleared
+        persistSessionOnWindowClose: true
+      }
+    });
+
+    // Make the client available to non-module scripts like login-redirect.js
+    try { window.supabase = supabaseClient; } catch(_) {}
+
+    // Helper: Clear any stale auth data that might cause session confusion
+    function clearStaleAuthData() {
+      console.log('Checking for stale auth data...');
+      try {
+        // We only want to clear manually logged out sessions
+        // Don't clear auth data if there's a valid session
+        const sessionStr = localStorage.getItem(`sb-${SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`);
+        if (sessionStr && sessionStr.includes('"access_token"')) {
+          // Valid session exists, don't clear anything
+          console.log('Valid session exists, preserving auth data');
+          return;
+        }
+
+        // Clear remember me data if user manually logged out from another page
+        const entries = Object.keys(localStorage);
+        const authKeys = entries.filter(key =>
+          key.startsWith('sb-') ||
+          key.includes('supabase') ||
+          key === 'rememberMe' ||
+          key === 'rememberedEmail'
+        );
+
+        // Only clear if we detect inconsistent state - i.e., auth tokens without remember me setting
+        if (authKeys.some(key => key.startsWith('sb-')) && !localStorage.getItem('rememberMe')) {
+          // Don't clear rememberedEmail even if logged out (user convenience)
+          authKeys.filter(key => key !== 'rememberedEmail')
+                 .forEach(key => localStorage.removeItem(key));
+          console.log('Cleared stale auth data from localStorage');
+        }
+
+        // SECURITY: Remove any stored passwords from localStorage
+        localStorage.removeItem('rememberedPassword');
+        localStorage.removeItem('cl_default_password');
+      } catch (error) {
+        console.error('Error clearing stale auth data:', error);
+      }
+    }
+
+    // Determine redirect target from URL
+    const urlParamsTop = new URLSearchParams(window.location.search);
+    const redirectTarget = (urlParamsTop.get('redirect') || '').toLowerCase();
+
+    // If admin flow requested, tweak UI copy
+    if (redirectTarget === 'admin') {
+      try {
+        const t = document.getElementById('signin-title');
+        const h = document.getElementById('signin-hint');
+        if (t) t.textContent = 'Admin Sign In';
+        if (h) h.textContent = 'Admins and Owners only. Use your admin credentials to continue.';
+      } catch(_) {}
+    }
+
+    // Helper: check if user is admin/owner
+    async function isAdminUser(userId){
+      try {
+        const { data: profile } = await supabase
+          .from('master_users')
+          .select('access_type')
+          .eq('auth_user_id', userId)
+          .maybeSingle();
+        const accessType = String(profile?.access_type || '').toLowerCase();
+        return accessType === 'admin' || accessType === 'owner';
+      } catch(_) { return false; }
+    }
+
+    // Helper: redirect the current user appropriately
+    async function redirectByRole(user) {
+      console.log('redirectByRole called with user:', user?.email || 'no user provided');
+      try {
+        let theUser = user;
+        if (!theUser) {
+          console.log('No user provided, fetching from auth...');
+          const res = await supabaseClient.auth.getUser();
+          theUser = res?.data?.user;
+        }
+        if (!theUser) {
+          console.log('Cannot determine user, staying on login page');
+          return;
+        }
+
+        // If admin portal requested, route accordingly
+        if (redirectTarget === 'admin') {
+          if (await isAdminUser(theUser.id)) {
+            window.location.href = 'admin-dashboard.html';
+            return;
+          } else {
+            // Not an admin user; send to staff portal
+            window.location.href = 'staff.html';
+            return;
+          }
+        }
+
+        // Default staff flow
+        console.log('Redirecting to staff.html (staff portal)');
+        window.location.href = 'staff.html';
+      } catch (err) {
+        console.error('redirectByRole failed', err);
+        // Default to staff-welcome for safety
+        window.location.href = 'staff-welcome.html';
+      }
+    }
+
+    // DOM elements
+    const signinForm = document.getElementById("signin-form");
+    const forgotForm = document.getElementById("forgot-form");
+    const resetForm = document.getElementById("reset-form");
+    const authErr = document.getElementById("auth-error");
+    const authSuccess = document.getElementById("auth-success");
+    const emailInput = document.getElementById("email");
+    const passwordInput = document.getElementById("password");
+    const rememberMeCheckbox = document.getElementById("remember-me");
+
+    // Form switching functions
+    window.showForgotPassword = function() {
+      document.getElementById('signin-form-container').classList.add('hidden');
+      document.getElementById('forgot-form-container').classList.remove('hidden');
+      document.getElementById('reset-email').value = emailInput.value;
+    };
+
+    window.showSignIn = function() {
+      document.getElementById('forgot-form-container').classList.add('hidden');
+      document.getElementById('reset-form-container').classList.add('hidden');
+      document.getElementById('signin-form-container').classList.remove('hidden');
+    };
+
+    function showResetPassword() {
+      document.getElementById('signin-form-container').classList.add('hidden');
+      document.getElementById('forgot-form-container').classList.add('hidden');
+      document.getElementById('reset-form-container').classList.remove('hidden');
+    }
+
+    function showMessage(element, message, isError = false) {
+      element.textContent = message;
+      element.style.display = 'block';
+      if (!isError) {
+        setTimeout(() => {
+          element.style.display = 'none';
+        }, 5000);
+      }
+    }
+
+    // Loading state helper
+    function setLoading(button, isLoading) {
+      if (isLoading) {
+        button.disabled = true;
+        button.classList.add('loading');
+        button.textContent = 'Loading...';
+      } else {
+        button.disabled = false;
+        button.classList.remove('loading');
+        button.textContent = button.getAttribute('data-original-text') || 'Sign In';
+      }
+    }
+
+    // Check URL for invite token or password recovery
+    async function handleUrlParams() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const token = urlParams.get('invite');
+      const type = urlParams.get('type');
+      const accessToken = urlParams.get('access_token');
+      const refreshToken = urlParams.get('refresh_token');
+      const testEmail = urlParams.get('test_email');
+      const testMode = urlParams.get('test_mode') === 'true';
+
+      // Handle test mode (from admin dashboard)
+      if (testMode && testEmail) {
+        // Pre-fill email for test login
+        emailInput.value = testEmail;
+        const defaultPassword = localStorage.getItem('cl_default_password');
+        if (defaultPassword) {
+          passwordInput.value = defaultPassword;
+        }
+        // Show test mode indicator
+        document.getElementById('signin-title').textContent = 'Test Login Mode';
+        document.getElementById('signin-hint').textContent = `Testing account: ${testEmail}. Password has been pre-filled.`;
+        document.getElementById('signin-hint').style.color = '#fbbf24';
+        document.getElementById('signin-hint').style.background = '#451a0315';
+        document.getElementById('signin-hint').style.padding = '10px';
+        document.getElementById('signin-hint').style.borderRadius = '8px';
+        return;
+      }
+
+      // Handle password recovery
+      if (type === 'recovery' || (accessToken && refreshToken)) {
+        showResetPassword();
+        return 'recovery';
+      }
+
+      // Handle invite
+      if (!token) return false;
+
+      try {
+        const { data: invite, error: inviteError } = await supabase
+          .from('site_invites')
+          .select('*')
+          .eq('token', token)
+          .eq('status', 'pending')
+          .gte('expires_at', new Date().toISOString())
+          .single();
+
+        if (inviteError || !invite) {
+          showMessage(authErr, 'Invalid or expired invitation', true);
+          return false;
+        }
+
+        // Pre-fill email and update UI for invited user
+        emailInput.value = invite.email;
+        emailInput.readOnly = true;
+        document.getElementById('signin-title').textContent = 'Welcome to CheckLoop';
+        document.getElementById('signin-hint').textContent = 'Please create your password to complete registration';
+
+        signinForm.setAttribute('data-invite', token);
+        return 'invite';
+      } catch (err) {
+        console.error('Failed to verify invite:', err);
+        showMessage(authErr, 'Failed to verify invitation', true);
+        return false;
+      }
+    }
+
+  // Initialize page
+    supabaseClient.auth.getSession().then(async ({ data: { session } }) => {
+      // Clear any stale auth data first
+      clearStaleAuthData();
+
+      // Check for URL parameters first to handle invitations properly
+      const urlParams = new URLSearchParams(window.location.search);
+      const inviteToken = urlParams.get('invite');
+
+      if (session) {
+        // Signed-in user: honor redirect target if present
+        await redirectByRole(session.user);
+        return;
+      }
+
+      const urlType = await handleUrlParams();
+
+      if (urlType !== 'recovery' && urlType !== 'invite' && localStorage.getItem('rememberMe') === 'true') {
+        // Only prefill email, NEVER password
+        emailInput.value = localStorage.getItem('rememberedEmail') || '';
+        rememberMeCheckbox.checked = true;
+      }
+    });
+
+    // As a safety net, redirect on auth state changes too
+    try {
+      supabaseClient.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'SIGNED_IN' && session?.user) {
+          await redirectByRole(session.user);
+        }
+      });
+    } catch (e) {
+      console.warn('Auth state listener setup failed:', e);
+    }
+
+    // Store original button text
+    document.querySelectorAll('.btn').forEach(btn => {
+      btn.setAttribute('data-original-text', btn.textContent);
+    });
+
+  // Sign in form handler
+    signinForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      console.log('Form submitted');
+
+      // Extra safety: ensure form doesn't submit
+      if (e.target.method) {
+        e.target.method = 'POST';
+      }
+
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+
+      // Validate inputs
+      const email = emailInput.value.trim();
+      const password = passwordInput.value;
+
+      console.log('Attempting login with email:', email);
+
+      if (!email || !password) {
+        showMessage(authErr, "Please enter both email and password", true);
+        return false;
+      }
+
+      setLoading(submitBtn, true);
+      authErr.style.display = 'none';
+      authSuccess.style.display = 'none';
+      const inviteToken = signinForm.getAttribute('data-invite');
+
+      try {
+        let authResponse;
+
+        if (inviteToken) {
+          // Handle invitation signup
+          console.log('Handling invitation signup for token:', inviteToken);
+
+          // Get the invite details first
+          const { data: invite, error: inviteError } = await supabase
+            .from('site_invites')
+            .select('*')
+            .eq('token', inviteToken)
+            .single();
+
+          if (inviteError || !invite) {
+            console.error('Failed to get invite details:', inviteError);
+            showMessage(authErr, "Invalid or expired invitation. Please contact support.", true);
+            return;
+          }
+
+          if (invite.status === 'accepted') {
+            showMessage(authErr, "This invitation has already been accepted. Please try signing in.", true);
+            return;
+          }
+
+          // Try to sign up the user
+          console.log('Creating new user account...');
+          authResponse = await supabaseClient.auth.signUp({
+            email,
+            password,
+          });
+        } else {
+          // Handle normal sign in
+          // Race sign-in with a timeout to surface network stalls
+          const signInPromise = supabaseClient.auth.signInWithPassword({ email, password });
+          const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Sign-in timed out. Please check your connection and try again.')), 10000));
+          authResponse = await Promise.race([signInPromise, timeoutPromise]);
+        }
+
+        if (authResponse?.error) {
+          showMessage(authErr, authResponse.error.message, true);
+          return;
+        }
+
+        // Ensure a session exists; poll briefly if needed (handles slow localStorage writes)
+        let session = authResponse?.data?.session || null;
+        if (!session) {
+          const start = Date.now();
+          while (!session && (Date.now() - start) < 2500) {
+            await new Promise(r => setTimeout(r, 100));
+            try {
+              const res = await supabaseClient.auth.getSession();
+              session = res?.data?.session || null;
+            } catch(_) { break; }
+          }
+        }
+
+        if (!session) {
+          showMessage(authErr, "Authenticated but no session established. Please retry or use the magic link.", true);
+          return;
+        }
+
+        // Handle "Remember me" - only store email, NEVER store password
+        if (rememberMeCheckbox.checked) {
+          localStorage.setItem('rememberMe', 'true');
+          localStorage.setItem('rememberedEmail', email);
+          // Configure Supabase to persist the session
+          await supabaseClient.auth.updateSession(authResponse.data.session);
+        } else {
+          localStorage.removeItem('rememberMe');
+          localStorage.removeItem('rememberedEmail');
+          // Session will expire when browser closes
+        }
+
+        showMessage(authSuccess, "Login successful! Redirecting...");
+        console.log('Login successful, redirecting to staff portal...');
+
+        // Redirect after successful authentication honoring redirect target
+        setTimeout(() => {
+          window.location.href = 'staff.html';
+        }, 500);
+
+      } catch (err) {
+        console.error('Authentication error:', err);
+        showMessage(authErr, "An unexpected error occurred. Please try again.", true);
+      } finally {
+        setLoading(submitBtn, false);
+      }
+
+      return false; // Ensure form never submits traditionally
+    });
+
+    // Forgot password form handler
+    forgotForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      const resetError = document.getElementById('reset-error');
+      const resetSuccess = document.getElementById('reset-success');
+
+      setLoading(submitBtn, true);
+      resetError.style.display = 'none';
+      resetSuccess.style.display = 'none';
+
+      const email = document.getElementById('reset-email').value.trim();
+
+      try {
+        const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/home.html`
+        });
+
+        if (error) {
+          showMessage(resetError, error.message, true);
+        } else {
+          showMessage(resetSuccess, `Password reset instructions have been sent to ${email}. Please check your email.`);
+        }
+      } catch (err) {
+        console.error('Password reset error:', err);
+        showMessage(resetError, "An unexpected error occurred. Please try again.", true);
+      } finally {
+        setLoading(submitBtn, false);
+      }
+    });
+
+    // Reset password form handler
+    resetForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      const updateError = document.getElementById('update-error');
+      const updateSuccess = document.getElementById('update-success');
+
+      setLoading(submitBtn, true);
+      updateError.style.display = 'none';
+      updateSuccess.style.display = 'none';
+
+      const newPassword = document.getElementById('new-password').value;
+      const confirmPassword = document.getElementById('confirm-password').value;
+
+      if (newPassword !== confirmPassword) {
+        showMessage(updateError, "Passwords do not match", true);
+        setLoading(submitBtn, false);
+        return;
+      }
+
+      if (newPassword.length < 6) {
+        showMessage(updateError, "Password must be at least 6 characters long", true);
+        setLoading(submitBtn, false);
+        return;
+      }
+
+      try {
+        const { error } = await supabaseClient.auth.updateUser({
+          password: newPassword
+        });
+
+        if (error) {
+          showMessage(updateError, error.message, true);
+        } else {
+          showMessage(updateSuccess, "Password updated successfully! Redirecting...");
+          // After password reset, redirect according to role
+          setTimeout(() => {
+            redirectByRole();
+          }, 2000);
+        }
+      } catch (err) {
+        console.error('Password update error:', err);
+        showMessage(updateError, "An unexpected error occurred. Please try again.", true);
+      } finally {
+        setLoading(submitBtn, false);
+      }
+    });
+  </script>
+
+  <!-- Debug Console - Persistent across all pages -->
+  <script src="debug-console.js"></script>
+  <script src="supabase-debug.js"></script>
+  <script>
+    // Auto-enable Debug Console when URL contains ?debug
+    (function() {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const debugParam = params.get('debug');
+        if (!debugParam) return;
+
+        function startDebugConsoleIfReady(attempts = 0) {
+          const container = document.getElementById('debug-console-container');
+          const toggleBtn = document.getElementById('debug-toggle');
+          const panel = document.getElementById('debug-panel');
+          const startBtn = document.getElementById('debug-start');
+
+          if (container && toggleBtn && panel && startBtn) {
+            try {
+              // Show panel if hidden
+              if (panel.style.display === 'none') {
+                toggleBtn.click();
+              }
+              // Start recording if not already started
+              if (startBtn && startBtn.style.display !== 'none') {
+                startBtn.click();
+              }
+            } catch (_) { /* no-op */ }
+            return;
+          }
+
+          if (attempts < 50) {
+            setTimeout(() => startDebugConsoleIfReady(attempts + 1), 100);
+          }
+        }
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', () => startDebugConsoleIfReady());
+        } else {
+          startDebugConsoleIfReady();
+        }
+      } catch (_) { /* ignore */ }
+    })();
+  </script>
+</body>
+</html>

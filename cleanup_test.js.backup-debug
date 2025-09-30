@@ -1,0 +1,83 @@
+// Clean up test records and prepare for new test
+import { createClient } from '@supabase/supabase-js';
+
+const CONFIG = {
+  SUPABASE_URL: 'https://unveoqnlqnobufhublyw.supabase.co',
+  SUPABASE_SERVICE_KEY: 'sb_secret_nV3xSrLVHL50Zqp_DeZsgA_lLAYAaQs'
+};
+
+const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_SERVICE_KEY);
+
+async function cleanupTestRecords() {
+  const testEmail = 'ben.howard@stoke.nhs.uk';
+  console.log('\n🧹 Cleaning up test records');
+  console.log('============================');
+  console.log(`Target: ${testEmail}\n`);
+
+  // 1. Check current state
+  console.log('1. Checking current state...');
+  try {
+    const { data: existing, error } = await supabase
+      .from('master_users')
+      .select('*')
+      .eq('email', testEmail);
+
+    if (error) {
+      console.log(`   ❌ Error: ${error.message}`);
+    } else {
+      console.log(`   📊 Found ${existing.length} records`);
+      existing.forEach((user, idx) => {
+        console.log(`      ${idx + 1}. ID: ${user.id}`);
+        console.log(`         Auth ID: ${user.auth_user_id || 'null'}`);
+        console.log(`         Status: ${user.invite_status}`);
+        console.log(`         Token: ${user.invite_token ? user.invite_token.substring(0, 8) + '...' : 'null'}`);
+      });
+    }
+  } catch (error) {
+    console.log(`   ❌ Exception: ${error.message}`);
+  }
+
+  // 2. Clean up database records
+  console.log('\n2. Cleaning up database records...');
+  try {
+    const { error: deleteError } = await supabase
+      .from('master_users')
+      .delete()
+      .eq('email', testEmail);
+
+    if (deleteError) {
+      console.log(`   ❌ Delete error: ${deleteError.message}`);
+    } else {
+      console.log(`   ✅ Deleted all database records for ${testEmail}`);
+    }
+  } catch (error) {
+    console.log(`   ❌ Exception: ${error.message}`);
+  }
+
+  // 3. Verify cleanup
+  console.log('\n3. Verifying cleanup...');
+  try {
+    const { data: verify, error } = await supabase
+      .from('master_users')
+      .select('*')
+      .eq('email', testEmail);
+
+    if (error) {
+      console.log(`   ❌ Error: ${error.message}`);
+    } else {
+      console.log(`   ✅ Verification: ${verify.length} records remaining`);
+      if (verify.length === 0) {
+        console.log(`   🎯 Database is clean for ${testEmail}`);
+      }
+    }
+  } catch (error) {
+    console.log(`   ❌ Exception: ${error.message}`);
+  }
+
+  console.log('\n🎉 CLEANUP COMPLETE');
+  console.log('===================');
+  console.log('The database is now clean and ready for testing');
+  console.log('the new invitation system with auth user creation.\n');
+}
+
+cleanupTestRecords().catch(console.error);

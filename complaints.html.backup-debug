@@ -1,0 +1,1207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complaints Management</title>
+    
+    <!-- Optional libraries for client-side file processing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js" defer></script>
+    
+    <style>
+        :root{
+            --bg1:#0b4fb3; --bg2:#062b6f; --glass:#ffffff12; --glass-2:#ffffff1a;
+            --white:#e6f0ff; --muted:#b8c7e8; --ink:#eaf1ff;
+            --accent:#76a7ff; --accent-2:#5f96ff; --success:#2bd4a7; --danger:#ff6b6b;
+            --warning: #ffca28;
+            --shadow: 0 10px 30px rgba(6,43,111,.35);
+            --round:18px;
+            --panel-bg: linear-gradient(145deg, #133b8a, #0c275e);
+            --border-color: #ffffff1f;
+        }
+        
+        * { box-sizing: border-box; }
+        
+        body {
+            font-family: Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #0b3a86;
+            min-height: 100vh;
+            color: var(--ink);
+            overflow-x: hidden;
+        }
+
+        /* Silky animated background matching homepage.html */
+        .bg{
+            position:fixed; inset:0; z-index:-1; overflow:hidden; background: radial-gradient(1200px 700px at 20% -10%, #6aa0ff33, transparent),
+                radial-gradient(900px 600px at 90% 10%, #3566ff2e, transparent),
+                linear-gradient(180deg, #0e3f93 0%, #082a69 100%);
+        }
+        .wave{ position:absolute; width:160%; height:160%; left:-30%; top:-30%; background: conic-gradient(from 180deg at 50% 50%, #2c63ff22, #143a9622, #2c63ff22); filter: blur(60px); animation: drift 22s ease-in-out infinite alternate; transform-origin: 50% 50%; }
+        .wave2{ animation-duration: 28s; mix-blend-mode: screen; }
+        @keyframes drift{ 0%{ transform: rotate(0deg) scale(1.0); } 100%{ transform: rotate(25deg) scale(1.08); } }
+
+        /* Extra animated mesh and orbs for depth */
+        .mesh{ position: fixed; inset: -20% -20% -20% -20%; z-index:-1; pointer-events:none; filter: blur(40px) saturate(120%); opacity:.55; }
+        .m1, .m2, .m3 { position:absolute; border-radius:50%; }
+        .m1{ width:55vw; height:55vw; left:-10%; top:-10%; background:radial-gradient(closest-side, #4f89ff55, transparent 70%); animation: blobA 26s ease-in-out infinite alternate; }
+        .m2{ width:45vw; height:45vw; right:-8%; top:10%; background:radial-gradient(closest-side, #2bd4a755, transparent 70%); animation: blobB 32s ease-in-out infinite alternate; }
+        .m3{ width:60vw; height:60vw; left:20%; bottom:-15%; background:radial-gradient(closest-side, #ffca2850, transparent 70%); animation: blobC 38s ease-in-out infinite alternate; }
+        @keyframes blobA{ from{ transform: translate(0,0) rotate(0deg); } to{ transform: translate(6%,4%) rotate(30deg); } }
+        @keyframes blobB{ from{ transform: translate(0,0) rotate(0deg); } to{ transform: translate(-4%,6%) rotate(-25deg); } }
+        @keyframes blobC{ from{ transform: translate(0,0) rotate(0deg); } to{ transform: translate(4%,-3%) rotate(18deg); } }
+        
+        /* Floating particles animation */
+        .particles { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+        .particle { position: absolute; width: 4px; height: 4px; background: rgba(118, 167, 255, 0.6); border-radius: 50%; animation: floatUp 15s linear infinite; }
+        .particle:nth-child(odd) { background: rgba(43, 212, 167, 0.6); animation-duration: 18s; }
+        .particle:nth-child(3n) { background: rgba(255, 202, 40, 0.6); animation-duration: 20s; }
+        @keyframes floatUp { 
+            0% { transform: translateY(100vh) scale(0); opacity: 0; } 
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateY(-100vh) scale(1.5); opacity: 0; } 
+        }
+
+        /* Glowing orbs */
+        .orb { position: fixed; border-radius: 50%; filter: blur(40px); opacity: 0.3; animation: orbFloat 20s ease-in-out infinite; pointer-events: none; z-index: -1; }
+        .orb1 { width: 300px; height: 300px; background: radial-gradient(circle, #7db1ff, transparent); top: 10%; left: 10%; animation-delay: 0s; }
+        .orb2 { width: 200px; height: 200px; background: radial-gradient(circle, #2bd4a7, transparent); bottom: 20%; right: 10%; animation-delay: 5s; }
+        .orb3 { width: 250px; height: 250px; background: radial-gradient(circle, #ffca28, transparent); top: 50%; left: 50%; animation-delay: 10s; }
+        @keyframes orbFloat { 0%, 100% { transform: translate(0, 0); } 33% { transform: translate(30px, -30px); } 66% { transform: translate(-20px, 20px); } }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: var(--panel-bg);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(6px);
+            border: 1px solid var(--border-color);
+        }
+
+        h1 {
+            color: var(--white);
+            text-align: center;
+            margin-bottom: 30px;
+            font-weight: 700;
+            font-size: 2.2em;
+            background: linear-gradient(135deg, #e6f0ff, #76a7ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .section {
+            margin-bottom: 40px;
+            background: var(--panel-bg);
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(6px);
+            border: 1px solid var(--border-color);
+        }
+
+        .section h2 {
+            color: var(--white);
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-weight: 600;
+            border-bottom: 2px solid var(--accent);
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: var(--white);
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+            box-sizing: border-box;
+            background: var(--glass);
+            color: var(--white);
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 4px rgba(118, 167, 255, 0.13);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #7db1ff, #4f89ff);
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: transform 0.2s ease, background 0.2s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: var(--glass);
+            border: 1px solid var(--border-color);
+            color: var(--white);
+        }
+
+        .btn-secondary:hover {
+            background: var(--glass-2);
+        }
+
+        .btn:disabled {
+            background: var(--muted);
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .ai-extract-btn {
+            background: var(--warning);
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .ai-extract-btn:hover:not(:disabled) {
+            background: #e6b800;
+            transform: translateY(-2px);
+        }
+
+        .ai-status {
+            font-size: 14px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-top: 8px;
+        }
+
+        .ai-processing {
+            background: #ebf5ff;
+            color: #2980b9;
+            border: 1px solid #bde0ff;
+        }
+
+        .ai-error {
+            background: #fdf2f2;
+            color: #e53e3e;
+            border: 1px solid #fed7d7;
+        }
+
+        .ai-success {
+            background: #f0fff4;
+            color: #38a169;
+            border: 1px solid #c6f6d5;
+        }
+
+        .complaints-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .complaints-table th,
+        .complaints-table td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #ecf0f1;
+        }
+
+        .complaints-table th {
+            background: #34495e;
+            color: white;
+            font-weight: 500;
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 0.5px;
+        }
+
+        .complaints-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .status-new { background: #e74c3c; color: white; }
+        .status-investigating { background: #f39c12; color: white; }
+        .status-resolved { background: #27ae60; color: white; }
+        .status-closed { background: #95a5a6; color: white; }
+
+        .priority-high { color: #e74c3c; font-weight: 600; }
+        .priority-medium { color: #f39c12; font-weight: 600; }
+        .priority-low { color: #27ae60; font-weight: 600; }
+
+        .no-complaints {
+            text-align: center;
+            color: #7f8c8d;
+            font-style: italic;
+            padding: 40px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #3498db;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 20px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        .loading {
+            text-align: center;
+            color: #7f8c8d;
+            padding: 20px;
+        }
+
+        .error {
+            background: #ffe6e6;
+            border: 1px solid #ff9999;
+            color: #d63031;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+
+        @media (max-width: 768px) {
+            .form-row {
+                flex-direction: column;
+            }
+            
+            .container {
+                padding: 20px;
+            }
+            
+            h1 {
+                font-size: 1.8em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg"><div class="wave"></div><div class="wave wave2"></div></div>
+    <div class="mesh" aria-hidden="true"><div class="m1"></div><div class="m2"></div><div class="m3"></div></div>
+    
+    <!-- Floating orbs for extra depth -->
+    <div class="orb orb1"></div>
+    <div class="orb orb2"></div>
+    <div class="orb orb3"></div>
+    
+    <!-- Particle system -->
+    <div class="particles" aria-hidden="true">
+        <div class="particle" style="left: 10%; animation-delay: 0s;"></div>
+        <div class="particle" style="left: 20%; animation-delay: 2s;"></div>
+        <div class="particle" style="left: 30%; animation-delay: 4s;"></div>
+        <div class="particle" style="left: 40%; animation-delay: 6s;"></div>
+        <div class="particle" style="left: 50%; animation-delay: 8s;"></div>
+        <div class="particle" style="left: 60%; animation-delay: 10s;"></div>
+        <div class="particle" style="left: 70%; animation-delay: 12s;"></div>
+        <div class="particle" style="left: 80%; animation-delay: 14s;"></div>
+        <div class="particle" style="left: 90%; animation-delay: 16s;"></div>
+    </div>
+    
+    <div class="container">
+        <a href="admin-dashboard.html" class="back-link">← Back to Dashboard</a>
+        
+        <h1>Complaints Management</h1>
+
+        <!-- Submit New Complaint Section -->
+        <div class="section">
+            <h2>Submit New Complaint</h2>
+            <form id="complaintForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="patientInitials">Patient Initials:</label>
+                        <input type="text" id="patientInitials" name="patientInitials" required maxlength="10">
+                    </div>
+                    <div class="form-group">
+                        <label for="category">Category:</label>
+                        <select id="category" name="category" required>
+                            <option value="">Loading categories...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="priority">Priority:</label>
+                        <select id="priority" name="priority" required>
+                            <option value="">Select Priority</option>
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <!-- File Upload for AI Processing -->
+                <div class="form-group">
+                    <label for="complaintFile">Upload Complaint Correspondence (Optional):</label>
+                    <input type="file" id="complaintFile" name="complaintFile" 
+                           accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" 
+                           style="margin-bottom: 10px;">
+                    <button type="button" id="ai-populate-btn" class="ai-extract-btn" disabled>
+                        🤖 Optional: Populate with AI
+                    </button>
+                    <div id="ai-status" class="ai-status" style="display: none;"></div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="originalComplaint">Original Complaint:</label>
+                    <textarea id="originalComplaint" name="originalComplaint" required 
+                        placeholder="Describe the complaint in detail..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="response">Response/Action Taken:</label>
+                    <textarea id="response" name="response" 
+                        placeholder="Describe what action was taken or response given..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="lessonsLearned">Lessons Learned:</label>
+                    <textarea id="lessonsLearned" name="lessonsLearned" 
+                        placeholder="What was learned from this complaint? Any process improvements?"></textarea>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="shareWithTeam">Share with Team:</label>
+                        <select id="shareWithTeam" name="shareWithTeam">
+                            <option value="false">No</option>
+                            <option value="true">Yes</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="status">Status:</label>
+                        <select id="status" name="status" required>
+                            <option value="pending">Pending</option>
+                            <option value="investigating">Investigating</option>
+                            <option value="resolved">Resolved</option>
+                            <option value="closed">Closed</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn">Submit Complaint</button>
+            </form>
+            <div id="submitError" class="error" style="display: none;"></div>
+        </div>
+
+        <!-- View All Complaints Section -->
+        <div class="section">
+            <h2>All Complaints</h2>
+            <div id="complaintsTableContainer">
+                <div class="loading">Loading complaints...</div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+        // Initialize Supabase client
+        const SUPABASE_URL = "https://unveoqnlqnobufhublyw.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME";
+        const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+            auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+        });
+
+        // Context for site information
+        let ctx = { site_id: null, user: null };
+
+        // Load user context
+        async function loadContext() {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) {
+                window.location.href = 'home.html';
+                return;
+            }
+            ctx.user = user;
+
+            // Get profile to get site_id
+            const { data: prof, error } = await supabase.from('master_users')
+                .select("site_id, role, full_name")
+                .eq('auth_user_id', user.id)
+                .maybeSingle();
+            
+            if (error) {
+                console.warn("Error loading profile:", error);
+            }
+            
+            if (prof) {
+                ctx.site_id = prof.site_id;
+                ctx.role = prof.role;
+            }
+
+            // Fallback to first site if no profile
+            if (!ctx.site_id) {
+                const { data: sites } = await supabase.from("sites")
+                    .select("id,name")
+                    .limit(1);
+                ctx.site_id = sites?.[0]?.id ?? null;
+            }
+        }
+
+        // Escape HTML to prevent XSS
+        function escapeHtml(unsafe) {
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // Format date for display
+        function formatDate(dateString) {
+            if (!dateString) return 'N/A';
+            const date = new Date(dateString);
+            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        }
+
+        // Load and display all complaints
+        async function loadComplaints() {
+            const container = document.getElementById('complaintsTableContainer');
+            
+            debugLog('Loading complaints started', {site_id: ctx.site_id});
+
+            try {
+                // Load complaints for the current site (site_id 2) - this should show your existing data
+                const { data: complaints, error } = await supabase
+                    .from('complaints')
+                    .select('*')
+                    .eq('site_id', ctx.site_id || 2) // Use current site or default to 2
+                    .order('datetime', { ascending: false });
+
+                debugLog('Supabase query completed', {error, complaintsCount: complaints?.length || 0});
+
+                if (error) {
+                    console.error('Error loading complaints:', error);
+                    debugLog('Error loading complaints', error);
+                    container.innerHTML = '<div class="error">Error loading complaints: ' + escapeHtml(error.message) + '</div>';
+                    return;
+                }
+
+                if (!complaints || complaints.length === 0) {
+                    debugLog('No complaints found in database');
+                    container.innerHTML = '<div class="no-complaints">No complaints found</div>';
+                    return;
+                }
+
+                debugLog('Complaints loaded successfully', {count: complaints.length, siteId: ctx.site_id});
+
+                // Get creator names
+                const creatorIds = [...new Set((complaints||[]).map(r=>r.created_by).filter(Boolean))];
+                let creators = {};
+                if(creatorIds.length){
+                    const { data: staff } = await supabase.from('master_users').select("id,full_name").in("id", creatorIds);
+                    (staff||[]).forEach(s => { creators[s.id] = s.full_name; });
+                }
+
+                // Add creator names to complaints data
+                complaints.forEach(complaint => {
+                    complaint.created_by_name = creators[complaint.created_by] || null;
+                });
+
+                // Build table HTML
+                let tableHtml = `
+                    <table class="complaints-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Patient</th>
+                                <th>Category</th>
+                                <th>Complaint</th>
+                                <th>Status</th>
+                                <th>Response</th>
+                                <th>Lessons Learned</th>
+                                <th>Team Share</th>
+                                <th>Created By</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+
+                complaints.forEach(complaint => {
+                    tableHtml += `
+                        <tr>
+                            <td>${formatDate(complaint.datetime)}</td>
+                            <td>${escapeHtml(complaint.patient_initials || 'N/A')}</td>
+                            <td>${escapeHtml(complaint.category || 'N/A')}</td>
+                            <td title="${escapeHtml(complaint.original_complaint || '')}">${escapeHtml((complaint.original_complaint || '').substring(0, 50) + ((complaint.original_complaint || '').length > 50 ? '...' : ''))}</td>
+                            <td><span class="status-badge status-${(complaint.status || '').toLowerCase().replace(' ', '')}">${escapeHtml(complaint.status || 'N/A')}</span></td>
+                            <td title="${escapeHtml(complaint.response || 'No response')}">${escapeHtml((complaint.response || 'No response').substring(0, 30) + ((complaint.response || '').length > 30 ? '...' : ''))}</td>
+                            <td title="${escapeHtml(complaint.lessons_learned || 'None')}">${escapeHtml((complaint.lessons_learned || 'None').substring(0, 30) + ((complaint.lessons_learned || '').length > 30 ? '...' : ''))}</td>
+                            <td>${complaint.share_with_team ? 'Yes' : 'No'}</td>
+                            <td>${escapeHtml(complaint.created_by_name || complaint.created_by || 'N/A')}</td>
+                        </tr>`;
+                });
+
+                tableHtml += '</tbody></table>';
+                container.innerHTML = tableHtml;
+
+            } catch (error) {
+                console.error('Error loading complaints:', error);
+                container.innerHTML = '<div class="error">Error loading complaints: ' + escapeHtml(error.message) + '</div>';
+            }
+        }
+
+        // Load complaint categories into the dropdown
+        async function loadCategories() {
+            const categorySelect = document.getElementById('category');
+            
+            const { data: categories, error } = await supabase
+                .from('complaint_categories')
+                .select('name')
+                .or(`site_id.eq.${ctx.site_id},site_id.eq.0`) // site-specific or global
+                .order('name');
+
+            if (error) {
+                console.error('Error loading categories:', error);
+                categorySelect.innerHTML = '<option value="">Error loading</option>';
+                return;
+            }
+
+            categorySelect.innerHTML = '<option value="">Select Category</option>';
+            categories.forEach(category => {
+                const option = document.createElement('option');
+                option.value = category.name;
+                option.textContent = category.name;
+                categorySelect.appendChild(option);
+            });
+        }
+
+        // Handle form submission
+        async function handleSubmit(event) {
+            event.preventDefault();
+            
+            const errorDiv = document.getElementById('submitError');
+            errorDiv.style.display = 'none';
+
+            if (!ctx.site_id) {
+                errorDiv.textContent = 'No site selected. Please log in again.';
+                errorDiv.style.display = 'block';
+                return;
+            }
+
+            const formData = new FormData(event.target);
+
+            // Normalize and validate priority/status to match DB constraints (lowercase expected)
+            const rawPriority = (formData.get('priority') || '').toString().trim();
+            const rawStatus = (formData.get('status') || '').toString().trim();
+            const normalizedStatus = rawStatus.toLowerCase() === 'new' ? 'pending' : rawStatus.toLowerCase();
+            const priority = rawPriority ? rawPriority.toLowerCase() : null;
+            const status = normalizedStatus || null;
+
+            const allowedPriorities = ['low', 'medium', 'high'];
+            const allowedStatus = ['pending', 'investigating', 'resolved', 'closed'];
+
+            if (!priority || !allowedPriorities.includes(priority)) {
+                errorDiv.textContent = 'Invalid priority. Choose Low, Medium or High.';
+                errorDiv.style.display = 'block';
+                return;
+            }
+
+            if (!status || !allowedStatus.includes(status)) {
+                errorDiv.textContent = 'Invalid status. Choose Pending, Investigating, Resolved or Closed.';
+                errorDiv.style.display = 'block';
+                return;
+            }
+
+            const complaintData = {
+                site_id: ctx.site_id,
+                datetime: new Date().toISOString(),
+                patient_initials: formData.get('patientInitials'),
+                category: formData.get('category'),
+                original_complaint: formData.get('originalComplaint'),
+                response: formData.get('response'),
+                lessons_learned: formData.get('lessonsLearned'),
+                status: status,
+                priority: priority,
+                share_with_team: formData.get('shareWithTeam') === 'true'
+            };
+
+            try {
+                const { data, error } = await supabase
+                    .from('complaints')
+                    .insert([complaintData])
+                    .select();
+
+                if (error) {
+                    throw error;
+                }
+
+                // Clear form
+                event.target.reset();
+                
+                // Reload complaints table
+                await loadComplaints();
+                
+                // Show success message (you could add a success div if desired)
+                alert('Complaint submitted successfully!');
+
+            } catch (error) {
+                console.error('Error submitting complaint:', error);
+                errorDiv.textContent = 'Error submitting complaint: ' + error.message;
+                errorDiv.style.display = 'block';
+            }
+        }
+
+        // Handle AI-powered complaint extraction
+        async function handleAIExtraction() {
+            const fileInput = document.getElementById('complaintFile');
+            const aiBtn = document.getElementById('ai-populate-btn');
+            const aiStatus = document.getElementById('ai-status');
+            
+            debugLog('AI extraction started');
+            
+            if (!fileInput.files || fileInput.files.length === 0) {
+                aiStatus.textContent = 'Please select a file first.';
+                aiStatus.className = 'ai-status ai-error';
+                aiStatus.style.display = 'block';
+                return;
+            }
+
+            const file = fileInput.files[0];
+            debugLog('Processing file', {name: file.name, size: file.size, type: file.type});
+
+            // Show processing state
+            aiBtn.disabled = true;
+            aiBtn.innerHTML = '⏳ Processing...';
+            aiStatus.textContent = 'Processing file with AI...';
+            aiStatus.className = 'ai-status ai-processing';
+            aiStatus.style.display = 'block';
+
+            try {
+                let textContent = '';
+
+                // Extract text based on file type
+                if (file.type === 'text/plain') {
+                    textContent = await file.text();
+                } else if (file.type === 'application/pdf') {
+                    textContent = await extractTextFromPDF(file);
+                } else if (file.type.includes('word') || file.name.endsWith('.docx') || file.name.endsWith('.doc')) {
+                    textContent = await extractTextFromWord(file);
+                } else if (file.type.startsWith('image/')) {
+                    // For images, we'll just use a placeholder - OCR would be needed here
+                    textContent = 'Image uploaded - OCR processing not yet implemented. Please manually enter complaint details.';
+                } else {
+                    throw new Error('Unsupported file type. Please upload PDF, Word document, text file, or image.');
+                }
+
+                debugLog('Text extracted', {length: textContent.length});
+
+                if (!textContent || textContent.length < 10) {
+                    throw new Error('Could not extract enough text from the file. Please try a different file or enter details manually.');
+                }
+
+                // Call the edge function
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session) {
+                    throw new Error('Not authenticated');
+                }
+
+                debugLog('Calling edge function');
+
+                const response = await fetch(`${SUPABASE_URL}/functions/v1/extract-complaint`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${session.access_token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ text: textContent })
+                });
+
+                debugLog('Edge function response', {status: response.status, ok: response.ok});
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || `HTTP ${response.status}`);
+                }
+
+                const result = await response.json();
+                debugLog('AI extraction result', result);
+
+                if (!result.success) {
+                    throw new Error(result.error || 'AI extraction failed');
+                }
+
+                // Populate form with extracted data
+                const data = result.data || {};
+                
+                if (data.patient_initials) {
+                    document.getElementById('patientInitials').value = data.patient_initials;
+                }
+                
+                if (data.category) {
+                    const categorySelect = document.getElementById('category');
+                    // Try to find matching category (case-insensitive)
+                    for (let option of categorySelect.options) {
+                        if (option.value.toLowerCase() === data.category.toLowerCase()) {
+                            categorySelect.value = option.value;
+                            break;
+                        }
+                    }
+                }
+                
+                if (data.priority && ['low', 'medium', 'high'].includes(data.priority.toLowerCase())) {
+                    document.getElementById('priority').value = data.priority.toLowerCase();
+                }
+                
+                if (data.original_complaint) {
+                    document.getElementById('originalComplaint').value = data.original_complaint;
+                }
+                
+                if (data.response) {
+                    document.getElementById('response').value = data.response;
+                }
+                
+                if (data.lessons_learned) {
+                    document.getElementById('lessonsLearned').value = data.lessons_learned;
+                }
+
+                // Success message
+                aiStatus.textContent = 'AI extraction completed! Please review and edit the populated fields as needed.';
+                aiStatus.className = 'ai-status ai-success';
+                
+                debugLog('Form populated with AI data');
+
+            } catch (error) {
+                console.error('AI extraction error:', error);
+                debugLog('AI extraction error', error);
+                aiStatus.textContent = 'Error: ' + error.message;
+                aiStatus.className = 'ai-status ai-error';
+            } finally {
+                // Reset button
+                aiBtn.disabled = false;
+                aiBtn.innerHTML = '🤖 Optional: Populate with AI';
+                
+                // Hide status after 10 seconds if success
+                if (aiStatus.className.includes('ai-success')) {
+                    setTimeout(() => {
+                        aiStatus.style.display = 'none';
+                    }, 10000);
+                }
+            }
+        }
+
+        // Extract text from PDF using PDF.js
+        async function extractTextFromPDF(file) {
+            if (typeof window.pdfjsLib === 'undefined') {
+                throw new Error('PDF.js not loaded. Please refresh the page and try again.');
+            }
+
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            let fullText = '';
+
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                const pageText = textContent.items.map(item => item.str).join(' ');
+                fullText += pageText + '\n';
+            }
+
+            return fullText.trim();
+        }
+
+        // Extract text from Word document using Mammoth.js
+        async function extractTextFromWord(file) {
+            if (typeof window.mammoth === 'undefined') {
+                throw new Error('Mammoth.js not loaded. Please refresh the page and try again.');
+            }
+
+            const arrayBuffer = await file.arrayBuffer();
+            const result = await mammoth.extractRawText({ arrayBuffer });
+            return result.value;
+        }
+
+        // Initialize PDF.js worker if available
+        if (typeof window.pdfjsLib !== 'undefined') {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+
+        // Initialize page
+        async function init() {
+            try {
+                // Check if user is authenticated
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session) {
+                    window.location.href = 'home.html';
+                    return;
+                }
+
+                await loadContext();
+                await loadCategories(); // Load categories before complaints
+                await loadComplaints();
+
+                // Add form submit handler
+                document.getElementById('complaintForm').addEventListener('submit', handleSubmit);
+
+                // Add AI button handler
+                const aiBtn = document.getElementById('ai-populate-btn');
+                const fileInput = document.getElementById('complaintFile');
+                
+                aiBtn.addEventListener('click', handleAIExtraction);
+                
+                // Enable AI button when file is selected
+                fileInput.addEventListener('change', function() {
+                    aiBtn.disabled = !this.files || this.files.length === 0;
+                });
+
+            } catch (error) {
+                console.error('Error initializing complaints page:', error);
+                const container = document.getElementById('complaintsTableContainer');
+                container.innerHTML = '<div class="error">Error initializing page: ' + escapeHtml(error.message) + '</div>';
+            }
+        }
+
+        // --- Debug panel & instrumentation (enhanced) ---
+        (function(){
+            // Create debug panel UI
+            try {
+                const panel = document.createElement('div');
+                panel.id = 'debugPanel';
+                panel.style.position = 'fixed';
+                panel.style.right = '20px';
+                panel.style.bottom = '20px';
+                panel.style.width = '500px';
+                panel.style.maxHeight = '70vh';
+                panel.style.overflow = 'auto';
+                panel.style.background = 'rgba(0,0,0,0.85)';
+                panel.style.color = '#e6e6e6';
+                panel.style.fontSize = '11px';
+                panel.style.zIndex = '99999';
+                panel.style.borderRadius = '8px';
+                panel.style.boxShadow = '0 8px 30px rgba(0,0,0,0.5)';
+                panel.style.padding = '8px';
+                panel.style.border = '1px solid #333';
+
+                panel.innerHTML = `
+                    <div style="display:flex; gap:8px; align-items:center; justify-content:space-between; margin-bottom:6px; border-bottom: 1px solid #444; padding-bottom: 6px;">
+                      <strong style="color:#fff; font-size: 13px;">DEBUG CONSOLE</strong>
+                      <div style="display:flex; gap:6px;">
+                        <button id="dbgClear" style="background:#c0392b;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer; font-size: 10px;">Clear</button>
+                        <button id="dbgCopy" style="background:#16a085;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer; font-size: 10px;">Copy</button>
+                        <button id="dbgInfo" style="background:#2980b9;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer; font-size: 10px;">Info</button>
+                        <button id="dbgToggle" style="background:#8e44ad;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer; font-size: 10px;">Hide</button>
+                      </div>
+                    </div>
+                    <div id="debugLog" style="white-space:pre-wrap; font-family:'Courier New',monospace; line-height:1.3; color:#e6e6e6; max-height: 50vh; overflow-y: auto;">(logs appear here)</div>
+                `;
+
+                document.body.appendChild(panel);
+
+                const logEl = document.getElementById('debugLog');
+                const clearBtn = document.getElementById('dbgClear');
+                const copyBtn = document.getElementById('dbgCopy');
+                const infoBtn = document.getElementById('dbgInfo');
+                const toggleBtn = document.getElementById('dbgToggle');
+
+                function timeStamp(){ return new Date().toISOString().replace('T',' ').replace('Z','').substring(11,19); }
+                
+                function debugLog(msg, obj){
+                    try{
+                        const line = `[${timeStamp()}] ${msg}` + (obj!==undefined ? ' ' + safeStringify(obj) : '');
+                        if (!logEl) return console.log(line);
+                        if (logEl.textContent === '(logs appear here)') logEl.textContent = '';
+                        logEl.textContent += line + '\n';
+                        logEl.scrollTop = logEl.scrollHeight;
+                        console.log('[DEBUG]', msg, obj);
+                    }catch(e){ console.log('debugLog failed', e); }
+                }
+
+                function safeStringify(o){
+                    try{ return JSON.stringify(o, replacer, 2); } catch(e){ return String(o); }
+                }
+                function replacer(key, value){
+                    if (typeof value === 'function') return `[Function ${value.name||'anon'}]`;
+                    if (value instanceof Element) return `[Element:${value.tagName.toLowerCase()}#${value.id||''}.${value.className||''}]`;
+                    if (key && /token|secret|key|password/i.test(key)) return '[REDACTED]';
+                    if (value && typeof value === 'object' && value.constructor === Object && Object.keys(value).length > 10) {
+                        return `[Object with ${Object.keys(value).length} keys]`;
+                    }
+                    return value;
+                }
+
+                // Button handlers
+                clearBtn.addEventListener('click', ()=>{ logEl.textContent = ''; debugLog('🧹 Logs cleared'); });
+                copyBtn.addEventListener('click', ()=>{ 
+                    navigator.clipboard?.writeText(logEl.textContent||'')
+                        .then(()=> debugLog('📋 Copied logs to clipboard'))
+                        .catch(err=> debugLog('❌ Copy failed', err)); 
+                });
+                
+                toggleBtn.addEventListener('click', ()=>{
+                    const isHidden = logEl.style.display === 'none';
+                    logEl.style.display = isHidden ? 'block' : 'none';
+                    toggleBtn.textContent = isHidden ? 'Hide' : 'Show';
+                    if (isHidden) debugLog('👁️ Debug panel restored');
+                });
+                
+                infoBtn.addEventListener('click', ()=>{
+                    try{
+                        const info = {
+                            pageUrl: location.href,
+                            supabaseUrl: typeof SUPABASE_URL !== 'undefined' ? SUPABASE_URL : '(unknown)',
+                            hasSupabase: !!window.supabase,
+                            contextInfo: {site_id: ctx?.site_id, user_id: ctx?.user?.id, role: ctx?.role},
+                            domElements: {
+                                complaintForm: !!document.getElementById('complaintForm'),
+                                complaintsTable: !!document.querySelector('.complaints-table'),
+                                fileInputs: document.querySelectorAll('input[type=file]').length,
+                                buttons: document.querySelectorAll('button').length,
+                                selects: document.querySelectorAll('select').length
+                            },
+                            currentTime: new Date().toISOString()
+                        };
+                        debugLog('ℹ️ Runtime info', info);
+                    }catch(e){ debugLog('❌ Info button error', e); }
+                });
+
+                // Make debugLog globally available
+                window.debugLog = debugLog;
+
+                // Enhanced supabase monitoring
+                try{
+                    if (supabase && supabase.from){
+                        const origFrom = supabase.from.bind(supabase);
+                        supabase.from = function(table){
+                            debugLog('🗄️ supabase.from', {table});
+                            const query = origFrom(table);
+                            
+                            // Wrap common query methods
+                            const origSelect = query.select?.bind(query);
+                            const origInsert = query.insert?.bind(query);
+                            const origUpdate = query.update?.bind(query);
+                            const origDelete = query.delete?.bind(query);
+                            
+                            if (origSelect) {
+                                query.select = function(...args){
+                                    debugLog('📊 supabase.select', {table, args});
+                                    const result = origSelect(...args);
+                                    
+                                    // Wrap the promise to log results
+                                    const origThen = result.then?.bind(result);
+                                    if (origThen) {
+                                        result.then = function(onResolve, onReject){
+                                            return origThen((data) => {
+                                                debugLog('✅ select result', {table, success: !data.error, count: data.data?.length, error: data.error});
+                                                return onResolve(data);
+                                            }, onReject);
+                                        };
+                                    }
+                                    return result;
+                                };
+                            }
+                            
+                            if (origInsert) {
+                                query.insert = function(data){
+                                    debugLog('➕ supabase.insert', {table, recordCount: Array.isArray(data) ? data.length : 1});
+                                    return origInsert(data);
+                                };
+                            }
+                            
+                            if (origUpdate) {
+                                query.update = function(data){
+                                    debugLog('✏️ supabase.update', {table, fields: Object.keys(data || {})});
+                                    return origUpdate(data);
+                                };
+                            }
+                            
+                            if (origDelete) {
+                                query.delete = function(){
+                                    debugLog('🗑️ supabase.delete', {table});
+                                    return origDelete();
+                                };
+                            }
+                            
+                            return query;
+                        };
+                        debugLog('🔧 Wrapped supabase.from');
+                    }
+                }catch(e){ debugLog('❌ Error wrapping supabase.from', e); }
+
+                // Monitor all button clicks
+                document.addEventListener('click', function(ev){
+                    try{
+                        const t = ev.target;
+                        if (!t) return;
+                        
+                        if (t.tagName === 'BUTTON') {
+                            debugLog('🖱️ Button clicked', {
+                                id: t.id || '(no id)', 
+                                text: (t.textContent||'').trim().substring(0, 30),
+                                className: t.className || '(no class)',
+                                type: t.type
+                            });
+                        } else if (t.tagName === 'A') {
+                            debugLog('🔗 Link clicked', {
+                                href: t.href || '(no href)',
+                                text: (t.textContent||'').trim().substring(0, 30)
+                            });
+                        } else if (t.tagName === 'INPUT' && t.type === 'submit') {
+                            debugLog('📤 Submit input clicked', {id: t.id, form: t.form?.id});
+                        }
+                    }catch(e){ /* ignore click monitoring errors */ }
+                }, true);
+
+                // Monitor form submissions
+                document.addEventListener('submit', function(ev){
+                    try{
+                        const form = ev.target;
+                        if (form.tagName === 'FORM') {
+                            const formData = new FormData(form);
+                            const data = {};
+                            for (let [key, value] of formData.entries()) {
+                                data[key] = value && typeof value === 'string' ? value.substring(0, 50) : '[File/Other]';
+                            }
+                            debugLog('📝 Form submitted', {
+                                id: form.id || '(no id)',
+                                action: form.action || '(no action)',
+                                method: form.method || 'get',
+                                fields: Object.keys(data)
+                            });
+                        }
+                    }catch(e){ debugLog('❌ Form submit monitor error', e); }
+                }, true);
+
+                // Monitor select changes
+                document.addEventListener('change', function(ev){
+                    try{
+                        const t = ev.target;
+                        if (t.tagName === 'SELECT') {
+                            debugLog('🔄 Select changed', {
+                                id: t.id || '(no id)',
+                                value: t.value,
+                                text: t.selectedOptions[0]?.textContent || t.value
+                            });
+                        } else if (t.tagName === 'INPUT' && t.type === 'file') {
+                            const files = Array.from(t.files || []);
+                            debugLog('📁 Files selected', {
+                                id: t.id || '(no id)',
+                                count: files.length,
+                                files: files.map(f => ({name: f.name, size: f.size, type: f.type}))
+                            });
+                        }
+                    }catch(e){ /* ignore change monitoring errors */ }
+                });
+
+                // Monitor table loading
+                const originalInnerHTML = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+                Object.defineProperty(Element.prototype, 'innerHTML', {
+                    get: originalInnerHTML.get,
+                    set: function(value) {
+                        if (this.id === 'complaintsTableContainer' && value && value.includes('complaints-table')) {
+                            debugLog('📋 Complaints table loaded', {
+                                rowCount: (value.match(/<tr>/g) || []).length - 1, // -1 for header row
+                                hasError: value.includes('error'),
+                                hasNoComplaints: value.includes('no-complaints')
+                            });
+                        }
+                        return originalInnerHTML.set.call(this, value);
+                    }
+                });
+
+                // Monitor network requests (fetch)
+                const origFetch = window.fetch;
+                window.fetch = function(...args) {
+                    const url = args[0];
+                    debugLog('🌐 Fetch request', {
+                        url: typeof url === 'string' ? url : url?.url || '[Request object]',
+                        method: args[1]?.method || 'GET'
+                    });
+                    
+                    return origFetch.apply(this, args).then(response => {
+                        debugLog('🌐 Fetch response', {
+                            url: typeof url === 'string' ? url.substring(0, 50) + '...' : '[Request object]',
+                            status: response.status,
+                            ok: response.ok
+                        });
+                        return response;
+                    }).catch(error => {
+                        debugLog('❌ Fetch error', {
+                            url: typeof url === 'string' ? url.substring(0, 50) + '...' : '[Request object]',
+                            error: error.message
+                        });
+                        throw error;
+                    });
+                };
+
+                // Initial diagnostics
+                debugLog('🚀 Enhanced debug panel initialized');
+                debugLog('📊 Initial DOM snapshot', {
+                    forms: document.querySelectorAll('form').length,
+                    buttons: document.querySelectorAll('button').length,
+                    fileInputs: document.querySelectorAll('input[type=file]').length,
+                    selects: document.querySelectorAll('select').length,
+                    tables: document.querySelectorAll('table').length,
+                    scripts: document.querySelectorAll('script').length
+                });
+
+            } catch (err) {
+                console.error('Failed to create enhanced debug panel', err);
+            }
+        })();
+
+        // Start the app
+        init();
+    </script>
+
+    <!-- Debug Console - Persistent across all pages -->
+    <script src="debug-console.js"></script>
+    <script src="supabase-debug.js"></script>
+</body>
+</html>

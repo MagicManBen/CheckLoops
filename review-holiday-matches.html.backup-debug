@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CheckLoop — Review Holiday Matches</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://img.icons8.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <script src="config.js"></script>
+  <link rel="stylesheet" href="staff.css">
+  <style>
+    .review-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      min-height: calc(100vh - 100px);
+    }
+
+    .alert-banner {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 30px;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      box-shadow: 0 10px 30px rgba(102, 126, 234, 0.2);
+    }
+
+    .alert-icon {
+      font-size: 32px;
+    }
+
+    .alert-content h2 {
+      margin: 0 0 5px 0;
+      font-size: 24px;
+    }
+
+    .alert-content p {
+      margin: 0;
+      opacity: 0.9;
+    }
+
+    .matches-grid {
+      display: grid;
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .match-card {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+      transition: all 0.3s ease;
+    }
+
+    .match-card:hover {
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    }
+
+    .match-card.accepted {
+      border: 2px solid #48bb78;
+      background: #f0fff4;
+    }
+
+    .match-card.rejected {
+      opacity: 0.6;
+      background: #fff5f5;
+    }
+
+    .match-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      margin-bottom: 20px;
+    }
+
+    .match-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #2d3748;
+      margin-bottom: 5px;
+    }
+
+    .match-subtitle {
+      color: #718096;
+      font-size: 14px;
+    }
+
+    .match-status {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .match-status.new {
+      background: #fef5e7;
+      color: #f39c12;
+    }
+
+    .match-status.accepted {
+      background: #e8f5e9;
+      color: #27ae60;
+    }
+
+    .match-status.rejected {
+      background: #ffebee;
+      color: #e74c3c;
+    }
+
+    .match-details {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-bottom: 20px;
+      padding: 20px;
+      background: #f7fafc;
+      border-radius: 8px;
+    }
+
+    .detail-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .detail-label {
+      font-size: 12px;
+      color: #718096;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .detail-value {
+      font-size: 16px;
+      font-weight: 600;
+      color: #2d3748;
+    }
+
+    .match-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+
+    .btn-accept {
+      background: linear-gradient(135deg, #48bb78, #38a169);
+      color: white;
+      padding: 10px 24px;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-accept:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(72, 187, 120, 0.3);
+    }
+
+    .btn-reject {
+      background: #e53e3e;
+      color: white;
+      padding: 10px 24px;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .btn-reject:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(229, 62, 62, 0.3);
+    }
+
+    .btn-accept:disabled,
+    .btn-reject:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+    }
+
+    .empty-state-icon {
+      font-size: 64px;
+      margin-bottom: 20px;
+      opacity: 0.5;
+    }
+
+    .empty-state h3 {
+      color: #2d3748;
+      margin-bottom: 10px;
+    }
+
+    .empty-state p {
+      color: #718096;
+    }
+
+    .success-message,
+    .error-message {
+      padding: 12px 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: none;
+      animation: slideInDown 0.3s ease;
+    }
+
+    .success-message {
+      background: #c6f6d5;
+      color: #22543d;
+      border: 1px solid #9ae6b4;
+    }
+
+    .error-message {
+      background: #fed7d7;
+      color: #742a2a;
+      border: 1px solid #fc8181;
+    }
+
+    @keyframes slideInDown {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .loading-spinner {
+      text-align: center;
+      padding: 40px;
+    }
+
+    .loading-spinner::after {
+      content: "";
+      display: inline-block;
+      width: 40px;
+      height: 40px;
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #667eea;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .btn-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: #667eea;
+      text-decoration: none;
+      font-weight: 600;
+      margin-bottom: 20px;
+      transition: all 0.3s ease;
+    }
+
+    .btn-back:hover {
+      transform: translateX(-5px);
+    }
+
+    /* Confirmation Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      max-width: 500px;
+      width: 90%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .modal-title {
+      font-size: 24px;
+      font-weight: 700;
+      color: #2d3748;
+      margin-bottom: 15px;
+    }
+
+    .modal-body {
+      color: #4a5568;
+      line-height: 1.6;
+      margin-bottom: 25px;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Navigation -->
+    <nav id="staff-nav"></nav>
+
+    <!-- Main Content -->
+    <main class="content">
+      <div class="review-container">
+        <a href="staff.html" class="btn-back">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+          </svg>
+          Back to Dashboard
+        </a>
+
+        <!-- Alert Banner -->
+        <div class="alert-banner" id="alert-banner" style="display: none;">
+          <div class="alert-icon">🎉</div>
+          <div class="alert-content">
+            <h2>Holiday Records Found!</h2>
+            <p>We found historical holiday records that might belong to you. Please review and confirm.</p>
+          </div>
+        </div>
+
+        <!-- Messages -->
+        <div class="success-message" id="success-message"></div>
+        <div class="error-message" id="error-message"></div>
+
+        <!-- Loading State -->
+        <div class="loading-spinner" id="loading-spinner"></div>
+
+        <!-- Matches Container -->
+        <div class="matches-grid" id="matches-container" style="display: none;">
+        </div>
+
+        <!-- Empty State -->
+        <div class="empty-state" id="empty-state" style="display: none;">
+          <div class="empty-state-icon">📅</div>
+          <h3>No Holiday Matches Found</h3>
+          <p>There are no pending holiday records to review at this time.</p>
+          <p style="margin-top: 20px;">
+            <a href="my-holidays.html" style="color: #667eea; text-decoration: none; font-weight: 600;">
+              View Your Current Holidays →
+            </a>
+          </p>
+        </div>
+      </div>
+    </main>
+
+    <!-- Confirmation Modal -->
+    <div class="modal-overlay" id="confirmation-modal">
+      <div class="modal-content">
+        <div class="modal-title">Confirm Holiday Import</div>
+        <div class="modal-body" id="modal-body">
+          Are you sure you want to accept this holiday record? It will be added to your approved holidays.
+        </div>
+        <div class="modal-actions">
+          <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+          <button class="btn-accept" id="modal-confirm">Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+    let supabase;
+    let currentUser;
+    let fuzzyMatches = [];
+
+    async function init() {
+      // Initialize Supabase
+      supabase = createClient(window.CONFIG.supabaseUrl, window.CONFIG.supabaseAnonKey);
+
+      // Check authentication
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        window.location.href = 'index.html';
+        return;
+      }
+
+      currentUser = session.user;
+
+      // Load fuzzy matches
+      await loadFuzzyMatches();
+    }
+
+    async function loadFuzzyMatches() {
+      document.getElementById('loading-spinner').style.display = 'block';
+      document.getElementById('matches-container').style.display = 'none';
+      document.getElementById('empty-state').style.display = 'none';
+
+      try {
+        // Get user's profile for name matching
+        const { data: profile } = await supabase
+          .from('master_users')
+          .select('full_name, site_id')
+          .eq('auth_user_id', currentUser.id)
+          .single();
+
+        if (!profile) {
+          showError('Unable to load user profile');
+          return;
+        }
+
+        // Load fuzzy matches (both matched to user and name matches)
+        const { data: matches, error } = await supabase
+          .from('fuzzy_match_holidays')
+          .select('*')
+          .eq('site_id', profile.site_id)
+          .or(`matched_user_id.eq.${currentUser.id},and(staff_name.ilike.${profile.full_name},match_status.eq.pending)`)
+          .order('start_date', { ascending: true });
+
+        if (error) throw error;
+
+        fuzzyMatches = matches || [];
+
+        // Filter to only show relevant matches
+        fuzzyMatches = fuzzyMatches.filter(match => {
+          // Show if directly matched to user
+          if (match.matched_user_id === currentUser.id) return true;
+
+          // Show if name matches and pending
+          if (match.match_status === 'pending' &&
+              match.staff_name.toLowerCase() === profile.full_name.toLowerCase()) {
+            return true;
+          }
+
+          return false;
+        });
+
+        displayMatches();
+
+      } catch (error) {
+        console.error('Error loading fuzzy matches:', error);
+        showError('Failed to load holiday matches');
+      } finally {
+        document.getElementById('loading-spinner').style.display = 'none';
+      }
+    }
+
+    function displayMatches() {
+      const container = document.getElementById('matches-container');
+
+      if (fuzzyMatches.length === 0) {
+        document.getElementById('empty-state').style.display = 'block';
+        return;
+      }
+
+      document.getElementById('alert-banner').style.display = 'flex';
+      container.style.display = 'grid';
+
+      container.innerHTML = fuzzyMatches.map(match => {
+        const startDate = new Date(match.start_date);
+        const endDate = new Date(match.end_date);
+        const status = match.match_status;
+        const isDisabled = status === 'transferred' || status === 'rejected';
+
+        return `
+          <div class="match-card ${status === 'transferred' ? 'accepted' : ''} ${status === 'rejected' ? 'rejected' : ''}" data-match-id="${match.id}">
+            <div class="match-header">
+              <div>
+                <div class="match-title">Holiday Record</div>
+                <div class="match-subtitle">Imported from historical data</div>
+              </div>
+              <span class="match-status ${status === 'transferred' ? 'accepted' : status === 'rejected' ? 'rejected' : 'new'}">
+                ${status === 'transferred' ? 'Accepted' : status === 'rejected' ? 'Rejected' : 'Review Required'}
+              </span>
+            </div>
+
+            <div class="match-details">
+              <div class="detail-item">
+                <span class="detail-label">Start Date</span>
+                <span class="detail-value">${startDate.toLocaleDateString('en-GB', {
+                  weekday: 'short',
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric'
+                })}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">End Date</span>
+                <span class="detail-value">${endDate.toLocaleDateString('en-GB', {
+                  weekday: 'short',
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric'
+                })}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">${match.total_hours ? 'Total Hours' : 'Total Sessions'}</span>
+                <span class="detail-value">${match.total_hours || match.total_sessions || 'N/A'}</span>
+              </div>
+              ${match.reason ? `
+              <div class="detail-item">
+                <span class="detail-label">Reason</span>
+                <span class="detail-value">${match.reason}</span>
+              </div>
+              ` : ''}
+            </div>
+
+            ${!isDisabled ? `
+            <div class="match-actions">
+              <button class="btn-reject" onclick="rejectMatch(${match.id})">
+                Reject
+              </button>
+              <button class="btn-accept" onclick="confirmAccept(${match.id})">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                Accept & Import
+              </button>
+            </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    window.confirmAccept = function(matchId) {
+      const match = fuzzyMatches.find(m => m.id === matchId);
+      if (!match) return;
+
+      const modalBody = document.getElementById('modal-body');
+      modalBody.innerHTML = `
+        <p>You are about to accept this holiday record:</p>
+        <ul style="margin: 15px 0; line-height: 1.8;">
+          <li><strong>Dates:</strong> ${new Date(match.start_date).toLocaleDateString('en-GB')} - ${new Date(match.end_date).toLocaleDateString('en-GB')}</li>
+          <li><strong>${match.total_hours ? 'Hours' : 'Sessions'}:</strong> ${match.total_hours || match.total_sessions}</li>
+          ${match.reason ? `<li><strong>Reason:</strong> ${match.reason}</li>` : ''}
+        </ul>
+        <p>This will be added to your approved holiday history and will affect your remaining allowance.</p>
+      `;
+
+      document.getElementById('modal-confirm').onclick = () => acceptMatch(matchId);
+      document.getElementById('confirmation-modal').classList.add('active');
+    };
+
+    window.closeModal = function() {
+      document.getElementById('confirmation-modal').classList.remove('active');
+    };
+
+    async function acceptMatch(matchId) {
+      closeModal();
+
+      const button = document.querySelector(`[data-match-id="${matchId}"] .btn-accept`);
+      if (button) {
+        button.disabled = true;
+        button.textContent = 'Processing...';
+      }
+
+      try {
+        // Call the transfer function
+        const { data, error } = await supabase.rpc('transfer_fuzzy_match_to_request', {
+          p_fuzzy_match_id: matchId,
+          p_user_id: currentUser.id
+        });
+
+        if (error) throw error;
+
+        showSuccess('Holiday record successfully imported!');
+
+        // Reload matches
+        await loadFuzzyMatches();
+
+      } catch (error) {
+        console.error('Error accepting match:', error);
+        showError('Failed to import holiday record: ' + error.message);
+
+        if (button) {
+          button.disabled = false;
+          button.innerHTML = `
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+            </svg>
+            Accept & Import
+          `;
+        }
+      }
+    }
+
+    window.rejectMatch = async function(matchId) {
+      if (!confirm('Are you sure you want to reject this holiday record? This cannot be undone.')) {
+        return;
+      }
+
+      const button = document.querySelector(`[data-match-id="${matchId}"] .btn-reject`);
+      if (button) {
+        button.disabled = true;
+        button.textContent = 'Rejecting...';
+      }
+
+      try {
+        const { error } = await supabase
+          .from('fuzzy_match_holidays')
+          .update({
+            match_status: 'rejected',
+            matched_auth_user_id: currentUser.id,
+            matched_at: new Date().toISOString()
+          })
+          .eq('id', matchId);
+
+        if (error) throw error;
+
+        showSuccess('Holiday record rejected');
+
+        // Reload matches
+        await loadFuzzyMatches();
+
+      } catch (error) {
+        console.error('Error rejecting match:', error);
+        showError('Failed to reject holiday record');
+
+        if (button) {
+          button.disabled = false;
+          button.textContent = 'Reject';
+        }
+      }
+    };
+
+    function showError(message) {
+      const el = document.getElementById('error-message');
+      el.textContent = message;
+      el.style.display = 'block';
+      setTimeout(() => el.style.display = 'none', 5000);
+    }
+
+    function showSuccess(message) {
+      const el = document.getElementById('success-message');
+      el.textContent = message;
+      el.style.display = 'block';
+      setTimeout(() => el.style.display = 'none', 5000);
+    }
+
+    // Initialize on load
+    init();
+  </script>
+</body>
+</html>

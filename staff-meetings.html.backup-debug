@@ -1,0 +1,3543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Permissions-Policy" content="microphone=*, camera=*">
+  <title>CheckLoop — Staff Meetings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="config.js"></script>
+  <!-- Removed staff.css - will use inline styles matching homepage -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <link rel="stylesheet" href="staff-nav.css">
+  <script src="staff-nav.js"></script>
+  <style>
+    :root {
+      --primary: #0b4fb3;
+      --primary-dark: #062b6f;
+      --primary-light: #2b6ecc;
+      --primary-lightest: #e8f2ff;
+      --accent: #76a7ff;
+      --accent-2: #5f96ff;
+      --success: #2bd4a7;
+      --success-light: #e8fdf8;
+      --warning: #ffca28;
+      --danger: #ff6b6b;
+      --white: #ffffff;
+      --gray-50: #f8fafc;
+      --gray-100: #f1f5f9;
+      --gray-200: #e2e8f0;
+      --gray-300: #cbd5e1;
+      --gray-400: #94a3b8;
+      --gray-500: #64748b;
+      --gray-600: #475569;
+      --gray-700: #334155;
+      --gray-800: #1e293b;
+      --gray-900: #0f172a;
+      --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.08);
+      --shadow: 0 8px 24px rgb(15 23 42 / 0.12);
+      --shadow-lg: 0 18px 44px rgb(15 23 42 / 0.14);
+      --shadow-xl: 0 24px 60px rgb(15 23 42 / 0.18);
+      --radius-sm: 10px;
+      --radius: 14px;
+      --radius-lg: 18px;
+      --radius-xl: 22px;
+      --radius-2xl: 28px;
+      --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+      --font-display: 'Plus Jakarta Sans', 'Inter', sans-serif;
+      --transition: all 0.25s ease;
+      --glass-surface: rgba(255, 255, 255, 0.88);
+      --glass-soft: rgba(255, 255, 255, 0.72);
+      --glass-border: rgba(148, 163, 184, 0.28);
+      --glass-dark: rgba(15, 23, 42, 0.65);
+      --hero-gradient: linear-gradient(135deg, #0b4fb3 0%, #4c2ddb 45%, #051537 100%);
+      --hero-highlight: linear-gradient(145deg, rgba(96, 55, 255, 0.16), rgba(37, 117, 252, 0.08));
+      --grid-line: rgba(148, 163, 184, 0.18);
+      --card-bg: var(--white);
+      --subtle-1: var(--gray-50);
+      --subtle-2: var(--primary-lightest);
+      --subtle-3: var(--success-light);
+      --ink: var(--gray-900);
+      --muted: var(--gray-500);
+      --line: var(--gray-200);
+      --ring: rgba(11, 79, 179, 0.1);
+      --panel: var(--gray-900);
+      --panel-soft: var(--gray-800);
+      --glass: rgba(255, 255, 255, 0.95);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      height: 100%;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background:
+        radial-gradient(circle at 15% 80%, rgba(96, 37, 245, 0.18) 0%, rgba(96, 37, 245, 0) 60%),
+        radial-gradient(circle at 80% 20%, rgba(13, 110, 253, 0.18) 0%, rgba(13, 110, 253, 0) 55%),
+        linear-gradient(180deg, #eef3ff 0%, #f9fbff 45%, #f4f7ff 100%);
+      min-height: 100vh;
+      color: var(--gray-900);
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        linear-gradient(90deg, var(--grid-line) 1px, transparent 1px) 0 0 / 70px 70px,
+        linear-gradient(0deg, var(--grid-line) 1px, transparent 1px) 0 0 / 70px 70px;
+      opacity: 0.24;
+      z-index: -2;
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      width: 540px;
+      height: 540px;
+      bottom: -200px;
+      right: -140px;
+      background: radial-gradient(circle at center, rgba(96, 37, 245, 0.32) 0%, rgba(96, 37, 245, 0) 70%);
+      opacity: 0.9;
+      z-index: -1;
+      filter: blur(0px);
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    button, input, select, textarea {
+      font-family: inherit;
+    }
+
+    .page-container {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      z-index: 0;
+    }
+
+    .content {
+      flex: 1;
+      width: 100%;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 120px 32px 64px;
+      position: relative;
+      z-index: 1;
+    }
+
+    @media (max-width: 768px) {
+      .content {
+        padding: 110px 20px 48px;
+      }
+    }
+
+    .meetings-page {
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+
+    .hero-banner {
+      position: relative;
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+      gap: 44px;
+      padding: 48px;
+      border-radius: var(--radius-2xl);
+      background: var(--hero-gradient);
+      color: #f8fbff;
+      box-shadow: var(--shadow-xl);
+      overflow: hidden;
+      isolation: isolate;
+    }
+
+    .hero-banner::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.18), transparent 55%);
+      opacity: 0.8;
+      z-index: -1;
+    }
+
+    .hero-banner::after {
+      content: '';
+      position: absolute;
+      width: 320px;
+      height: 320px;
+      bottom: -140px;
+      left: 40%;
+      transform: translateX(-50%);
+      background: radial-gradient(circle at center, rgba(124, 94, 255, 0.35), transparent 70%);
+      filter: blur(24px);
+      opacity: 0.9;
+      z-index: -1;
+    }
+
+    .hero-column {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .hero-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      font-weight: 700;
+      color: rgba(243, 248, 255, 0.85);
+    }
+
+    .hero-kicker::before {
+      content: '';
+      width: 36px;
+      height: 2px;
+      background: rgba(243, 248, 255, 0.65);
+    }
+
+    .hero-banner h1 {
+      font-family: var(--font-display);
+      font-size: clamp(2.4rem, 2.6vw, 3.2rem);
+      font-weight: 800;
+      line-height: 1.1;
+    }
+
+    .hero-blurb {
+      font-size: 1.05rem;
+      line-height: 1.6;
+      color: rgba(243, 248, 255, 0.85);
+      max-width: 560px;
+    }
+
+    .hero-metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 18px;
+    }
+
+    .metric-card {
+      background: rgba(8, 18, 46, 0.48);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: var(--radius-lg);
+      padding: 20px 22px;
+      box-shadow: 0 18px 38px rgba(5, 14, 34, 0.35);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      backdrop-filter: blur(12px);
+    }
+
+    .metric-card.alt {
+      background: rgba(255, 255, 255, 0.12);
+      color: rgba(10, 29, 75, 0.92);
+      border-color: rgba(255, 255, 255, 0.4);
+      color: #0d1d4b;
+    }
+
+    .metric-label {
+      font-size: 0.75rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: rgba(243, 248, 255, 0.65);
+    }
+
+    .metric-card.alt .metric-label {
+      color: rgba(8, 18, 46, 0.55);
+    }
+
+    .metric-value {
+      font-family: var(--font-display);
+      font-size: 1.45rem;
+      font-weight: 800;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .metric-sub {
+      font-size: 0.95rem;
+      color: rgba(243, 248, 255, 0.75);
+    }
+
+    .metric-card.alt .metric-sub {
+      color: rgba(8, 18, 46, 0.6);
+    }
+
+    .metric-countdown {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: rgba(137, 176, 255, 0.85);
+    }
+
+    .metric-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      width: max-content;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(8, 18, 46, 0.12);
+      border: 1px solid rgba(8, 18, 46, 0.1);
+      font-weight: 700;
+    }
+
+    .metric-card.alt .metric-chip {
+      background: rgba(255, 255, 255, 0.85);
+      border: none;
+      box-shadow: 0 12px 28px rgba(15, 36, 98, 0.18);
+    }
+
+    .metric-subtle {
+      font-size: 0.85rem;
+      color: rgba(8, 18, 46, 0.55);
+    }
+
+    .hero-visual {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      align-items: flex-end;
+    }
+
+    .hero-orb {
+      position: relative;
+      width: min(320px, 90%);
+      padding: 28px 26px;
+      border-radius: 26px;
+      background: rgba(4, 11, 28, 0.55);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #f8fbff;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      align-items: stretch;
+      box-shadow: 0 20px 40px rgba(4, 11, 28, 0.5);
+      backdrop-filter: blur(18px);
+    }
+
+    .hero-orb::after {
+      content: '';
+      position: absolute;
+      inset: 12px;
+      border-radius: 22px;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      opacity: 0.6;
+      pointer-events: none;
+    }
+
+    .orb-date {
+      font-size: 0.85rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: rgba(243, 248, 255, 0.6);
+    }
+
+    .orb-time {
+      font-size: 2.5rem;
+      font-family: var(--font-display);
+      font-weight: 800;
+    }
+
+    .orb-divider {
+      height: 1px;
+      background: linear-gradient(90deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0.05));
+      margin: 8px 0;
+    }
+
+    .orb-metric {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 0.9rem;
+      color: rgba(243, 248, 255, 0.7);
+    }
+
+    .orb-metric strong {
+      font-size: 1.6rem;
+      color: #f8fbff;
+      font-family: var(--font-display);
+    }
+
+    .orb-metric.light strong {
+      color: rgba(173, 197, 255, 0.95);
+    }
+
+    .hero-badges {
+      list-style: none;
+      display: grid;
+      gap: 10px;
+      padding: 0;
+      width: 100%;
+    }
+
+    .hero-badges li {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.18);
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      color: #f8fbff;
+      font-weight: 600;
+      font-size: 0.85rem;
+      backdrop-filter: blur(12px);
+    }
+
+    .command-deck {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 28px 32px;
+      border-radius: var(--radius-2xl);
+      background: var(--glass-surface);
+      border: 1px solid var(--glass-border);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .command-left {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      flex: 1 1 520px;
+    }
+
+    .command-right {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+
+    .searchbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 18px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      background: rgba(255, 255, 255, 0.72);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    }
+
+    .searchbar input {
+      border: none;
+      background: transparent;
+      font-size: 1rem;
+      color: var(--gray-700);
+      width: 100%;
+    }
+
+    .searchbar input::placeholder {
+      color: var(--gray-400);
+    }
+
+    .searchbar input:focus {
+      outline: none;
+    }
+
+    .search-icon {
+      font-size: 1.1rem;
+    }
+
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .filter-chip {
+      padding: 8px 16px;
+      border-radius: 999px;
+      border: 1px solid rgba(99, 102, 241, 0.12);
+      background: rgba(99, 102, 241, 0.08);
+      color: var(--primary-dark);
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: var(--transition);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    }
+
+    .filter-chip:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 24px rgba(11, 79, 179, 0.12);
+    }
+
+    .filter-chip.active {
+      background: linear-gradient(135deg, #6366f1, #4f46e5);
+      color: #fff;
+      border-color: transparent;
+      box-shadow: 0 14px 30px rgba(79, 70, 229, 0.35);
+    }
+
+    .pill-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 20px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 0.95rem;
+      border: 1px solid rgba(11, 79, 179, 0.18);
+      background: rgba(255, 255, 255, 0.72);
+      color: var(--primary-dark);
+      cursor: pointer;
+      transition: var(--transition);
+      box-shadow: 0 10px 22px rgba(11, 79, 179, 0.12);
+    }
+
+    .pill-btn.primary {
+      background: linear-gradient(135deg, var(--primary), var(--accent-2));
+      border-color: transparent;
+      color: #fff;
+      box-shadow: 0 16px 32px rgba(11, 79, 179, 0.35);
+    }
+
+    .pill-btn.ghost {
+      background: rgba(255, 255, 255, 0.22);
+      border: 1px solid rgba(255, 255, 255, 0.45);
+      color: #0f172a;
+      box-shadow: none;
+    }
+
+    .pill-btn:hover {
+      transform: translateY(-1px);
+    }
+
+    .experience-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.85fr) minmax(0, 1fr);
+      gap: 28px;
+    }
+
+    .experience-main {
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    .experience-side {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      position: sticky;
+      top: 120px;
+      align-self: flex-start;
+    }
+
+    .glass-panel {
+      background: var(--glass-surface);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-2xl);
+      padding: 28px 30px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .panel-heading {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .panel-heading.compact {
+      margin-bottom: 20px;
+    }
+
+    .panel-kicker {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.22em;
+      color: var(--gray-400);
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .panel-heading h2 {
+      font-family: var(--font-display);
+      font-size: 1.55rem;
+      font-weight: 800;
+      color: var(--gray-800);
+    }
+
+    .view-tabs {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.04);
+      border: 1px solid rgba(148, 163, 184, 0.28);
+    }
+
+    .view-tab {
+      border: none;
+      background: transparent;
+      padding: 6px 16px;
+      border-radius: 999px;
+      font-weight: 700;
+      color: var(--gray-500);
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .view-tab.active {
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: #fff;
+      box-shadow: 0 14px 28px rgba(11, 79, 179, 0.28);
+    }
+
+    .view {
+      display: none;
+    }
+
+    .view.active {
+      display: block;
+    }
+
+    #calendar {
+      background: rgba(255, 255, 255, 0.85);
+      border-radius: var(--radius-xl);
+      padding: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    }
+
+    .list-view-shell {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .list-card {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: center;
+      padding: 18px 22px;
+      border-radius: var(--radius-xl);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 14px 28px rgba(15, 23, 42, 0.08);
+      transition: var(--transition);
+      cursor: pointer;
+    }
+
+    .list-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12);
+    }
+
+    .list-card-main {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .list-card-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      font-size: 0.85rem;
+      color: var(--gray-500);
+    }
+
+    .list-type {
+      padding: 4px 12px;
+      border-radius: 999px;
+      background: rgba(99, 102, 241, 0.1);
+      color: var(--primary-dark);
+      font-weight: 600;
+    }
+
+    .list-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .list-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 0.85rem;
+      color: var(--gray-500);
+    }
+
+    .meta-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.12);
+    }
+
+    .list-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .action-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 18px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      background: rgba(255, 255, 255, 0.82);
+      font-weight: 600;
+      color: var(--primary);
+      cursor: pointer;
+      transition: var(--transition);
+      box-shadow: 0 10px 22px rgba(11, 79, 179, 0.12);
+    }
+
+    .action-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 16px 26px rgba(11, 79, 179, 0.18);
+    }
+
+    .action-btn.primary {
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      border-color: transparent;
+      color: #fff;
+    }
+
+    .action-btn.success {
+      background: linear-gradient(135deg, var(--success), var(--success));
+      border-color: transparent;
+      color: #fff;
+      box-shadow: 0 12px 22px rgba(34, 197, 143, 0.24);
+    }
+
+    .action-btn.subtle {
+      background: rgba(148, 163, 184, 0.1);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      color: var(--gray-700);
+      box-shadow: none;
+    }
+
+    .upcoming-card {
+      padding: 26px 28px;
+    }
+
+    .upcoming-list {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      max-height: 360px;
+      overflow-y: auto;
+      padding-right: 6px;
+    }
+
+    .upcoming-item {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 16px 18px;
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .upcoming-item:hover {
+      transform: translateX(4px);
+      box-shadow: 0 20px 36px rgba(15, 23, 42, 0.12);
+    }
+
+    .upcoming-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      color: var(--gray-400);
+    }
+
+    .upcoming-remaining {
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(99, 102, 241, 0.12);
+      color: var(--primary-dark);
+      font-weight: 700;
+      letter-spacing: normal;
+    }
+
+    .upcoming-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .upcoming-time {
+      font-size: 0.88rem;
+      color: var(--gray-500);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 24px;
+      border-radius: var(--radius-xl);
+      border: 1px dashed rgba(148, 163, 184, 0.45);
+      background: rgba(248, 250, 255, 0.7);
+      text-align: center;
+      color: var(--gray-500);
+    }
+
+    .empty-emoji {
+      font-size: 2rem;
+    }
+
+    .stats-card {
+      padding: 26px 28px;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .stat-item {
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: var(--radius-lg);
+      padding: 18px 16px;
+      text-align: left;
+      box-shadow: 0 12px 24px rgba(15, 23, 42, 0.07);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .stat-label {
+      font-size: 0.8rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--gray-400);
+    }
+
+    .stat-value {
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: var(--ink);
+      font-family: var(--font-display);
+    }
+
+    .recordings-card {
+      padding: 26px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .recordings-card p {
+      font-size: 0.92rem;
+      color: var(--gray-500);
+      line-height: 1.5;
+    }
+
+    .muted {
+      color: var(--gray-500);
+    }
+
+    .ritual-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .ritual-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .ritual-item {
+      display: flex;
+      gap: 16px;
+      padding: 16px 18px;
+      border-radius: var(--radius-xl);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      background: rgba(255, 255, 255, 0.88);
+      box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+    }
+
+    .ritual-icon {
+      font-size: 1.4rem;
+      width: 48px;
+      height: 48px;
+      border-radius: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(99, 102, 241, 0.12);
+    }
+
+    .ritual-item h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .ritual-item p {
+      font-size: 0.92rem;
+      color: var(--gray-500);
+      line-height: 1.5;
+    }
+
+    .upcoming-list::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .upcoming-list::-webkit-scrollbar-track {
+      background: rgba(241, 245, 249, 0.75);
+      border-radius: 999px;
+    }
+
+    .upcoming-list::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.55);
+      border-radius: 999px;
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(2, 6, 23, 0.45);
+      backdrop-filter: blur(6px);
+      z-index: 9998;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+
+    .modal-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.96);
+      background: #ffffff;
+      padding: 0;
+      border-radius: 24px;
+      box-shadow: 0 28px 80px rgba(15, 23, 42, 0.25);
+      z-index: 9999;
+      max-width: 820px;
+      width: 92%;
+      max-height: 92vh;
+      overflow: hidden;
+      display: none;
+    }
+
+    .modal.active {
+      display: block;
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    .modal-header {
+      padding: 28px 32px 24px;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: #fff;
+    }
+
+    .modal-title {
+      font-size: 1.6rem;
+      font-family: var(--font-display);
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+
+    .modal-subtitle {
+      font-size: 0.95rem;
+      color: rgba(255, 255, 255, 0.75);
+    }
+
+    .modal-close {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      border: none;
+      background: rgba(255, 255, 255, 0.2);
+      color: #fff;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      font-size: 1.4rem;
+      cursor: pointer;
+    }
+
+    .modal-body {
+      padding: 28px 32px;
+      overflow-y: auto;
+      max-height: calc(92vh - 160px);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .modal-tabs {
+      display: inline-flex;
+      gap: 10px;
+      background: rgba(15, 23, 42, 0.05);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      border-radius: 999px;
+      padding: 6px;
+      width: max-content;
+    }
+
+    .modal-tab {
+      border: none;
+      background: transparent;
+      padding: 8px 18px;
+      border-radius: 999px;
+      font-weight: 700;
+      color: var(--gray-500);
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .modal-tab.active {
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: #fff;
+      box-shadow: 0 14px 24px rgba(11, 79, 179, 0.25);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .notes-container {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .notes-textarea {
+      width: 100%;
+      min-height: 200px;
+      border-radius: 18px;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      padding: 18px;
+      font-size: 1rem;
+      line-height: 1.6;
+      resize: vertical;
+      background: rgba(250, 252, 255, 0.9);
+    }
+
+    .recording-section {
+      margin-top: 16px;
+      padding: 18px;
+      border-radius: 18px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: rgba(248, 250, 255, 0.9);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .recording-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .record-btn {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: #fff;
+    }
+
+    .record-btn.record {
+      background: linear-gradient(135deg, #f43f5e, #ef4444);
+    }
+
+    .record-btn.stop {
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+    }
+
+    .record-btn:hover {
+      transform: translateY(-1px);
+    }
+
+    .recording-indicator {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.9);
+      font-weight: 600;
+      color: #ef4444;
+    }
+
+    .recording-indicator.active {
+      display: inline-flex;
+    }
+
+    .recording-dot {
+      width: 12px;
+      height: 12px;
+      background: #ef4444;
+      border-radius: 50%;
+      animation: recordPulse 1.5s infinite;
+    }
+
+    #audio-visualizer {
+      width: 100%;
+      height: 80px;
+      border-radius: 12px;
+      background: rgba(15, 23, 42, 0.06);
+    }
+
+    .fc {
+      --fc-page-bg-color: transparent;
+      --fc-neutral-bg-color: rgba(248, 250, 255, 0.65);
+      --fc-border-color: rgba(148, 163, 184, 0.3);
+      color: var(--ink);
+    }
+
+    .fc .fc-toolbar-title {
+      font-size: 1.2rem;
+      font-weight: 800;
+      font-family: var(--font-display);
+      color: var(--ink);
+    }
+
+    .fc .fc-button {
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      background: rgba(255, 255, 255, 0.9);
+      color: var(--gray-600);
+      font-weight: 600;
+      padding: 6px 12px;
+      transition: var(--transition);
+    }
+
+    .fc .fc-button-primary:hover,
+    .fc .fc-button-primary.fc-button-active {
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      border-color: transparent;
+      color: #fff;
+      box-shadow: 0 12px 24px rgba(11, 79, 179, 0.22);
+    }
+
+    .fc .fc-daygrid-event,
+    .fc .fc-timegrid-event {
+      background: linear-gradient(135deg, var(--primary), var(--accent)) !important;
+      border-radius: 10px !important;
+      color: #fff !important;
+      border: none !important;
+      box-shadow: 0 14px 28px rgba(11, 79, 179, 0.18);
+    }
+
+    .fc-day-today {
+      background: rgba(99, 102, 241, 0.12) !important;
+    }
+
+    .meeting-detail-grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .meeting-detail-grid label {
+      font-weight: 600;
+      color: var(--gray-600);
+      font-size: 0.9rem;
+    }
+
+    .meeting-detail-grid input,
+    .meeting-detail-grid textarea,
+    .meeting-detail-grid select {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(148, 163, 184, 0.32);
+      background: rgba(248, 250, 255, 0.9);
+      font-size: 0.95rem;
+    }
+
+    .agenda-items {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .agenda-item {
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      background: rgba(255, 255, 255, 0.9);
+    }
+
+    .agenda-item-title {
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .agenda-controls {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+
+    @keyframes recordPulse {
+      0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+      50% {
+        opacity: 0.5;
+        transform: scale(1.2);
+      }
+    }
+
+    @media (max-width: 1220px) {
+      .hero-banner {
+        grid-template-columns: 1fr;
+        padding: 44px;
+      }
+
+      .hero-visual {
+        width: 100%;
+        align-items: flex-start;
+      }
+
+      .experience-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .experience-side {
+        position: static;
+      }
+    }
+
+    @media (max-width: 900px) {
+      .command-deck {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .command-right {
+        justify-content: flex-start;
+      }
+
+      .hero-banner {
+        padding: 36px;
+      }
+
+      .glass-panel {
+        padding: 24px;
+      }
+    }
+
+    @media (max-width: 600px) {
+      .hero-banner {
+        padding: 30px;
+        gap: 28px;
+      }
+
+      .metric-card,
+      .metric-card.alt {
+        padding: 18px;
+      }
+
+      .command-deck {
+        padding: 24px;
+      }
+
+      .filters {
+        gap: 8px;
+      }
+
+      .list-card {
+        grid-template-columns: 1fr;
+      }
+
+      .list-actions {
+        justify-content: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page-container">
+    <div id="navbar-root"></div>
+
+    <main class="content meetings-page">
+  <section class="hero-banner">
+    <div class="hero-column">
+      <span class="hero-kicker">Mission Control</span>
+      <h1>Meetings Mission Control</h1>
+      <p class="hero-blurb">Take the chaos out of collaboration and give every meeting a cinematic finish, from agenda to transcript.</p>
+      <div class="hero-metrics">
+        <div class="metric-card">
+          <span class="metric-label">Next meeting</span>
+          <div class="metric-value" id="hero-next-time">Set your next gathering</div>
+          <div class="metric-sub" id="hero-next-title">Create a meeting to launch your next mission.</div>
+          <div class="metric-countdown" id="hero-next-countdown"></div>
+        </div>
+        <div class="metric-card alt">
+          <span class="metric-label">Focus lens</span>
+          <div class="metric-chip" id="hero-active-filter">All missions</div>
+          <div class="metric-subtle" id="hero-search-term">Showing every session</div>
+        </div>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <div class="hero-orb">
+        <div class="orb-date" id="hero-today-date">Today</div>
+        <div class="orb-time" id="hero-today-time">--:--</div>
+        <div class="orb-divider"></div>
+        <div class="orb-metric">
+          <span>Sessions this month</span>
+          <strong id="hero-month-count">0</strong>
+        </div>
+        <div class="orb-metric light">
+          <span>Total logged</span>
+          <strong id="hero-total-count">0</strong>
+        </div>
+      </div>
+      <ul class="hero-badges">
+        <li>Auto agendas &amp; notes</li>
+        <li>Calendar and list views in sync</li>
+        <li>Recordings + transcripts in one click</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="command-deck">
+    <div class="command-left">
+      <div class="searchbar command-search">
+        <span class="search-icon">🔎</span>
+        <input id="meeting-search-input" type="search" placeholder="Search title, description, or location…" />
+      </div>
+      <div class="filters command-filters">
+        <button class="filter-chip active" data-type="all">All missions</button>
+        <button class="filter-chip" data-type="partners">Partner forum</button>
+        <button class="filter-chip" data-type="staff">Staff sync</button>
+        <button class="filter-chip" data-type="training">Training lab</button>
+        <button class="filter-chip" data-type="pcn">PCN alignment</button>
+        <button class="filter-chip" data-type="clinical">Clinical focus</button>
+      </div>
+    </div>
+    <div class="command-right">
+      <button class="pill-btn ghost" onclick="startMeetingNow()">🚀 Start instant huddle</button>
+      <button class="pill-btn primary" onclick="openCreateMeetingModal()">➕ New meeting</button>
+    </div>
+  </section>
+
+  <section class="experience-grid">
+    <div class="experience-main">
+      <div class="glass-panel view-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="panel-kicker">Live calendar</p>
+            <h2>Your meeting universe</h2>
+          </div>
+          <div class="view-tabs">
+            <button class="view-tab active" data-view="calendar">Calendar</button>
+            <button class="view-tab" data-view="list">List</button>
+          </div>
+        </div>
+        <div id="calendar-view" class="view active">
+          <div id="calendar"></div>
+        </div>
+        <div id="list-view" class="view">
+          <div id="meetings-list" class="list-view-shell"></div>
+        </div>
+      </div>
+
+      <div class="glass-panel ritual-panel">
+        <div class="panel-heading compact">
+          <div>
+            <p class="panel-kicker">Team rituals</p>
+            <h2>Keep every session unforgettable</h2>
+          </div>
+        </div>
+        <div class="ritual-list">
+          <div class="ritual-item">
+            <span class="ritual-icon">📝</span>
+            <div>
+              <h3>Beautiful meeting notes</h3>
+              <p>Capture insights live, sync them to every attendee, then export polished PDFs in one click.</p>
+            </div>
+          </div>
+          <div class="ritual-item">
+            <span class="ritual-icon">🎯</span>
+            <div>
+              <h3>Dynamic agendas</h3>
+              <p>Build collaborative agendas that evolve with the conversation and keep your team aligned.</p>
+            </div>
+          </div>
+          <div class="ritual-item">
+            <span class="ritual-icon">🎙️</span>
+            <div>
+              <h3>Integrated recording</h3>
+              <p>Record meetings, generate transcripts, and circulate recap PDFs without leaving this hub.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="experience-side">
+      <div class="glass-panel upcoming-card">
+        <div class="panel-heading compact">
+          <div>
+            <p class="panel-kicker">Next up</p>
+            <h2>Upcoming missions</h2>
+          </div>
+        </div>
+        <div class="upcoming-list" id="upcoming-list"></div>
+      </div>
+
+      <div class="glass-panel stats-card">
+        <div class="panel-heading compact">
+          <div>
+            <p class="panel-kicker">Team pulse</p>
+            <h2>Momentum metrics</h2>
+          </div>
+        </div>
+        <div class="stats-grid">
+          <div class="stat-item">
+            <span class="stat-label">Upcoming</span>
+            <span class="stat-value" id="stat-upcoming">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">This month</span>
+            <span class="stat-value" id="stat-month">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Total logged</span>
+            <span class="stat-value" id="stat-total">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Completed</span>
+            <span class="stat-value" id="stat-past">0</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="sidebar-footer" class="glass-panel recordings-card">
+        <div class="panel-heading compact">
+          <div>
+            <p class="panel-kicker">Replay vault</p>
+            <h2>Past recordings</h2>
+          </div>
+        </div>
+        <p class="muted">Jump back into any recorded session, download transcripts, and share recap PDFs with your team.</p>
+        <button id="view-recordings-btn" class="pill-btn primary" onclick="openPastRecordingsModal()">🎙️ View past recordings</button>
+      </div>
+    </aside>
+  </section>
+
+  <div class="muted" style="text-align:center; font-size:12px; padding:10px 0;">© CheckLoop • Meetings Mission Control</div>
+</main>
+
+  <!-- Enhanced Meeting Details Modal -->
+  <div class="modal-overlay" id="meeting-modal-overlay" onclick="closeMeetingModal(event)"></div>
+  <div id="meeting-modal" class="modal">
+    <div class="modal-header">
+      <button class="modal-close" onclick="closeMeetingModal()">×</button>
+      <h3 class="modal-title" id="modal-meeting-title">Meeting Title</h3>
+      <div class="modal-subtitle" id="modal-meeting-date">Date & Time</div>
+    </div>
+
+    <div class="modal-body">
+      <div class="modal-tabs">
+        <button class="modal-tab active" data-tab="notes" onclick="switchModalTab('notes')">Notes</button>
+        <button class="modal-tab" data-tab="agenda" onclick="switchModalTab('agenda')">Agenda</button>
+        <button class="modal-tab" data-tab="manage" onclick="switchModalTab('manage')">Manage</button>
+      </div>
+
+      <!-- Notes (with recording) -->
+      <div class="tab-content active" id="tab-notes">
+        <div class="notes-container">
+          <textarea class="notes-textarea" id="meeting-notes-textarea" placeholder="Type your meeting notes here..."></textarea>
+          <div style="display: flex; gap: 12px; margin-top: 16px;">
+            <button class="action-btn primary" onclick="saveMeetingNotes()" style="flex: 1;">
+              <span>💾 Save Notes</span>
+            </button>
+            <button class="action-btn" onclick="generateMeetingPDF()" style="flex: 1;">
+              <span>📄 Generate PDF</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="recording-section">
+          <div class="recording-controls">
+            <button id="start-recording" class="record-btn record" onclick="startRecording()">
+              <span>🔴</span>
+              <span>Start Recording</span>
+            </button>
+            <button id="stop-recording" class="record-btn stop" onclick="stopRecording()" style="display: none;">
+              <span>⏹️</span>
+              <span>Stop Recording</span>
+            </button>
+            <div class="recording-indicator" id="recording-indicator">
+              <span class="recording-dot"></span>
+              <span>Recording: <span id="recording-time">00:00</span></span>
+            </div>
+          </div>
+          <canvas id="audio-visualizer" width="400" height="80" style="display: none;"></canvas>
+          <div id="recorded-audio-container" style="display: none; margin-top: 16px;">
+            <audio id="recorded-audio" controls style="width: 100%;"></audio>
+            <div style="display: flex; gap: 12px; margin-top: 12px;">
+              <button class="action-btn success" onclick="saveRecording()" style="flex: 1;">
+                <span>💾 Save & Transcribe</span>
+              </button>
+              <button class="action-btn" onclick="discardRecording()" style="flex: 1;">
+                <span>🗑️ Discard</span>
+              </button>
+            </div>
+          </div>
+          <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(0,0,0,0.1);">
+            <label style="display: block; margin-bottom: 8px; font-weight: 600;">Or upload existing recording:</label>
+            <input type="file" id="meeting-recording" accept="audio/*,video/*" onchange="handleRecordingUpload(event)" style="width: 100%;">
+            <div style="margin-top: 8px; font-size: 12px; color: #666;">
+              Supported formats: MP3, WAV, MP4, WebM, M4A files (max 500MB)
+            </div>
+            <div style="margin-top: 5px; font-size: 12px; color: #4f89ff;">
+              💡 If direct recording doesn't work, you can record using your device's recorder app and upload the file.
+            </div>
+          </div>
+        </div>
+        <div id="recording-status" style="margin-top: 16px; padding: 16px; background: #f0f9ff; border-radius: 8px; display: none;">
+          <p style="margin: 0; color: #0369a1;">Processing...</p>
+        </div>
+      </div>
+
+      <!-- Agenda -->
+      <div class="tab-content" id="tab-agenda">
+        <div style="margin-bottom: 20px;">
+          <input type="text" id="agenda-item-title" placeholder="New agenda item..." style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 8px;">
+          <textarea id="agenda-item-description" placeholder="Description (optional)" style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; height: 80px; resize: none; margin-bottom: 12px;"></textarea>
+          <button class="action-btn primary" onclick="submitAgendaItem()" style="width: 100%;">
+            <span>➕ Add Agenda Item</span>
+          </button>
+        </div>
+        <div class="agenda-list" id="agenda-items-list"></div>
+      </div>
+
+      <!-- Manage -->
+      <div class="tab-content" id="tab-manage">
+        <div class="info-item" style="background:#f8fafc;">
+          <div class="info-label">Update meeting details</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="meeting-form-group">
+              <label style="display:block; margin-bottom:6px; font-weight:600; color:#374151;">Title</label>
+              <input type="text" id="manage-title" style="width:100%; padding:12px; border:1px solid #e2e8f0; border-radius:8px;">
+            </div>
+            <div class="meeting-form-group">
+              <label style="display:block; margin-bottom:6px; font-weight:600; color:#374151;">Type</label>
+              <select id="manage-type" style="width:100%; padding:12px; border:1px solid #e2e8f0; border-radius:8px;">
+                <option value="general">General Meeting</option>
+                <option value="partners">Partners Meeting</option>
+                <option value="staff">Staff Meeting</option>
+                <option value="training">Training Session</option>
+                <option value="pcn">PCN Meeting</option>
+                <option value="clinical">Clinical Meeting</option>
+              </select>
+            </div>
+            <div class="meeting-form-group">
+              <label style="display:block; margin-bottom:6px; font-weight:600; color:#374151;">Start</label>
+              <input type="datetime-local" id="manage-start" style="width:100%; padding:12px; border:1px solid #e2e8f0; border-radius:8px;">
+            </div>
+            <div class="meeting-form-group">
+              <label style="display:block; margin-bottom:6px; font-weight:600; color:#374151;">End</label>
+              <input type="datetime-local" id="manage-end" style="width:100%; padding:12px; border:1px solid #e2e8f0; border-radius:8px;">
+            </div>
+            <div class="meeting-form-group" style="grid-column:1 / -1;">
+              <label style="display:block; margin-bottom:6px; font-weight:600; color:#374151;">Location</label>
+              <input type="text" id="manage-location" style="width:100%; padding:12px; border:1px solid #e2e8f0; border-radius:8px;">
+            </div>
+            <div class="meeting-form-group" style="grid-column:1 / -1;">
+              <label style="display:block; margin-bottom:6px; font-weight:600; color:#374151;">Description</label>
+              <textarea id="manage-description" rows="3" style="width:100%; padding:12px; border:1px solid #e2e8f0; border-radius:8px; resize:vertical;"></textarea>
+            </div>
+          </div>
+          <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:14px;">
+            <button class="action-btn danger" onclick="deleteMeeting()">Cancel Meeting</button>
+            <button class="action-btn primary" onclick="saveMeetingChanges()">Save Changes</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Meeting Modal -->
+  <div class="modal-overlay" id="create-modal-overlay" onclick="closeCreateMeetingModal(event)"></div>
+  <div id="create-meeting-modal" class="modal">
+    <div class="modal-header">
+      <button class="modal-close" onclick="closeCreateMeetingModal()">×</button>
+      <h3 class="modal-title">Create New Meeting</h3>
+      <div class="modal-subtitle">Schedule a new meeting</div>
+    </div>
+
+    <div class="modal-body">
+      <div class="meeting-form-group">
+        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">Meeting Title *</label>
+        <input type="text" id="new-meeting-title" placeholder="Enter meeting title" style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px;" required>
+      </div>
+
+      <div class="meeting-form-group" style="margin-top: 16px;">
+        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">Description</label>
+        <textarea id="new-meeting-description" rows="3" placeholder="Meeting description" style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; resize: vertical;"></textarea>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+        <div class="meeting-form-group">
+          <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">Start Date & Time *</label>
+          <input type="datetime-local" id="new-meeting-start" style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px;" required>
+        </div>
+
+        <div class="meeting-form-group">
+          <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">End Date & Time</label>
+          <input type="datetime-local" id="new-meeting-end" style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px;">
+        </div>
+      </div>
+
+      <div class="meeting-form-group" style="margin-top: 16px;">
+        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">Location</label>
+        <input type="text" id="new-meeting-location" placeholder="Meeting location or video link" style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px;">
+      </div>
+
+      <div class="meeting-form-group" style="margin-top: 16px;">
+        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">Meeting Type</label>
+        <select id="new-meeting-type" style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <option value="general">General Meeting</option>
+          <option value="partners">Partners Meeting</option>
+          <option value="staff">Staff Meeting</option>
+          <option value="training">Training Session</option>
+          <option value="pcn">PCN Meeting</option>
+          <option value="clinical">Clinical Meeting</option>
+        </select>
+      </div>
+
+      <button class="action-btn success" onclick="createMeeting()" style="width: 100%; margin-top: 24px; padding: 14px;">
+        <span>✅ Create Meeting</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Past Recordings Modal -->
+  <div class="modal-overlay" id="recordings-modal-overlay" onclick="closePastRecordingsModal(event)"></div>
+  <div id="past-recordings-modal" class="modal" style="max-width: 900px;">
+    <div class="modal-header">
+      <button class="modal-close" onclick="closePastRecordingsModal()">×</button>
+      <h3 class="modal-title">Past Meeting Recordings</h3>
+      <div class="modal-subtitle">View and generate PDFs from past recordings</div>
+    </div>
+
+    <div class="modal-body">
+      <!-- Toggle for saved vs all recordings -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 12px; background: #f1f5f9; border-radius: 12px;">
+        <div style="display: flex; gap: 12px; align-items: center;">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <input type="checkbox" id="show-all-recordings" onchange="toggleRecordingsView()" style="width: 18px; height: 18px;">
+            <span style="font-weight: 600; color: #0f172a;">Show all recordings (including unsaved)</span>
+          </label>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center; font-size: 12px; color: #64748b;">
+          <span id="recordings-count">0 recordings</span>
+        </div>
+      </div>
+
+      <!-- Search for specific recording -->
+      <div style="margin-bottom: 16px; display: flex; gap: 8px;">
+        <input
+          type="text"
+          id="recording-search"
+          placeholder="Search for recording (e.g., recording_1758113963778)"
+          style="flex: 1; padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px;"
+          onkeypress="if(event.key === 'Enter') searchRecording()"
+        >
+        <button class="action-btn primary" onclick="searchRecording()">
+          <span>🔍 Search</span>
+        </button>
+        <button class="action-btn" onclick="document.getElementById('recording-search').value = 'recording_1758113963778'; searchRecording()">
+          <span>Find Your Recording</span>
+        </button>
+      </div>
+
+      <div id="recordings-list" style="display: flex; flex-direction: column; gap: 16px;">
+        <!-- Dynamically populated -->
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, clearAuthData, attachLogout } from './staff-common.js';
+    import { MeetingsManager } from './meetings-module.js';
+
+    const supabase = await initSupabase();
+    // Make supabase available globally for Admin Portal button
+    window.supabase = supabase;
+    handleAuthState(supabase);
+    if (typeof window.renderStandardStaffNav === 'function') {
+      window.renderStandardStaffNav('staff-meetings.html');
+    }
+    navActivate('meetings');
+
+    // Make MeetingsManager globally available
+    window.meetingsManager = null;
+    window.supabase = supabase;
+
+    attachLogout(supabase);
+
+    requireStaffSession(supabase).then(async ({ session, profileRow }) => {
+      const siteId = profileRow?.site_id || session.user?.raw_user_meta_data?.site_id || null;
+      const accessType = profileRow?.access_type || session.user?.raw_user_meta_data?.access_type || null;
+      const role = (accessType || profileRow?.role || session.user?.raw_user_meta_data?.role || 'Staff');
+      setTopbar({ siteText: await getSiteText(supabase, siteId), email: session.user.email, role, access_type: accessType || profileRow?.role });
+
+      // Show admin portal button for admins/owners
+      const adminRole = (accessType || profileRow?.role || '').toLowerCase();
+      const adminPortalBtn = document.getElementById('adminPortalBtn');
+      if (adminPortalBtn) {
+        if (adminRole === 'admin' || adminRole === 'owner') {
+          adminPortalBtn.style.display = 'inline-flex';
+        } else {
+          adminPortalBtn.style.display = 'none';
+        }
+      }
+
+      // Hide "View Past Recordings" for non‑admin roles (hide entire footer for non-admin)
+  const recordingsBtn = document.getElementById('view-recordings-btn');
+  const recordingsFooter = document.getElementById('sidebar-footer');
+  const isAdmin = (accessType || role || '').toString().toLowerCase() === 'admin';
+
+      if (recordingsBtn) {
+        recordingsBtn.style.display = isAdmin ? 'block' : 'none';
+      }
+      if (recordingsFooter) {
+        recordingsFooter.style.display = isAdmin ? 'block' : 'none';
+      }
+
+      // Initialize MeetingsManager
+      window.meetingsManager = new MeetingsManager(supabase);
+      await window.meetingsManager.setContext(session);
+
+      // Initialize the meetings UI
+      await initializeMeetings();
+    }).catch(e => {
+      if (String(e.message).includes('NO_SESSION')) { window.location.replace('home.html'); return; }
+      if (String(e.message).includes('NOT_STAFF')) { window.location.replace('home.html'); return; }
+      console.error(e);
+    });
+  </script>
+
+  <script>
+    // Check browser compatibility for MediaRecorder/getUserMedia features
+    function checkRecordingCompatibility() {
+      const issues = [];
+      
+      // Check if we're in a secure context
+      if (!window.isSecureContext && !CONFIG.isLocal) {
+        issues.push('Site is not running in a secure context (HTTPS). Media recording requires HTTPS.');
+      }
+      
+      // Check for MediaDevices API
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        issues.push('MediaDevices API is not supported in this browser.');
+      }
+      
+      // Check for MediaRecorder API
+      if (!window.MediaRecorder) {
+        issues.push('MediaRecorder API is not supported in this browser.');
+      }
+      
+      // Check for AudioContext API (for visualization)
+      if (!window.AudioContext && !window.webkitAudioContext) {
+        issues.push('AudioContext API is not supported (audio visualization will be disabled).');
+      }
+      
+      return {
+        isCompatible: issues.length === 0,
+        issues: issues
+      };
+    }
+    
+    // Global variables
+    let calendar = null;
+    let currentMeetingId = null;
+    let currentMeeting = null;
+    let meetings = [];
+    let meetingFilter = 'all';
+    let meetingView = 'calendar';
+    let searchQuery = '';
+    let searchDisplayQuery = '';
+    let heroClockInterval = null;
+
+    // Initialize meetings functionality
+    async function initializeMeetings() {
+      // Check recording compatibility and log any issues
+      const compatibility = checkRecordingCompatibility();
+      if (!compatibility.isCompatible) {
+        console.warn('Recording compatibility issues detected:', compatibility.issues);
+        
+        // Add a warning to the recording section if available
+        const recordingSection = document.querySelector('.recording-section');
+        if (recordingSection) {
+          const warningDiv = document.createElement('div');
+          warningDiv.style.backgroundColor = '#fff3cd';
+          warningDiv.style.color = '#856404';
+          warningDiv.style.padding = '10px';
+          warningDiv.style.borderRadius = '6px';
+          warningDiv.style.marginTop = '10px';
+          warningDiv.style.marginBottom = '10px';
+          warningDiv.style.fontSize = '14px';
+          warningDiv.innerHTML = `
+            <strong>⚠️ Recording limitations detected:</strong>
+            <ul style="margin: 5px 0 0 20px; padding: 0;">
+              ${compatibility.issues.map(issue => `<li>${issue}</li>`).join('')}
+            </ul>
+            <p style="margin: 5px 0 0;">You may need to use Chrome/Firefox and ensure you're using HTTPS.</p>
+          `;
+          recordingSection.prepend(warningDiv);
+        }
+      }
+     
+      initializeHeroEnvironment();
+
+      // Initialize calendar
+      await new Promise(r => setTimeout(r, 50));
+      const calendarEl = document.getElementById('calendar');
+      if (calendarEl && typeof FullCalendar !== 'undefined') {
+        calendar = new FullCalendar.Calendar(calendarEl, {
+          initialView: 'dayGridMonth',
+          headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,timeGridWeek,timeGridDay'
+          },
+          events: async (fetchInfo, success, fail) => {
+            try {
+              const events = await loadMeetings();
+              success(events);
+            } catch (e) {
+              console.error(e);
+              fail(e);
+            }
+          },
+          eventClick: (info) => {
+            showMeetingDetails(info.event.id);
+          },
+          editable: true,
+          eventDrop: async (info) => {
+            await window.meetingsManager.updateMeeting(info.event.id, {
+              start: info.event.start.toISOString(),
+              end: info.event.end ? info.event.end.toISOString() : null
+            });
+          },
+          height: 'auto',
+          contentHeight: 680,
+          expandRows: true,
+          eventColor: '#6366f1'
+        });
+        calendar.render();
+      }
+
+      // Load initial data
+      await loadMeetings();
+      await loadUpcomingMeetings();
+      updateStats();
+      bindMeetingsUI();
+      updateHeroFilterLabel();
+      updateHeroSearchTerm();
+    }
+
+    // Load meetings from storage
+    async function loadMeetings() {
+      if (!window.meetingsManager) return [];
+
+      meetings = await window.meetingsManager.getMeetings();
+      const filtered = applyMeetingFilters(meetings);
+      const events = window.meetingsManager.formatForFullCalendar(filtered);
+      // Update list + upcoming after calendar finishes
+      setTimeout(() => { renderMeetingList(); loadUpcomingMeetings(); }, 50);
+      return events;
+    }
+
+    // Load upcoming meetings sidebar
+    async function loadUpcomingMeetings() {
+      if (!window.meetingsManager) return;
+
+      let upcomingMeetings = await window.meetingsManager.getUpcomingMeetings(5);
+      upcomingMeetings = applyMeetingFilters(upcomingMeetings);
+      const listEl = document.getElementById('upcoming-list');
+
+      if (!listEl) {
+        updateHeroNextMeeting(upcomingMeetings);
+        return;
+      }
+
+      if (!upcomingMeetings || upcomingMeetings.length === 0) {
+        listEl.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-emoji">🪐</div>
+            <p>No upcoming missions.</p>
+            <button class="pill-btn primary" onclick="openCreateMeetingModal()">Schedule one</button>
+          </div>`;
+        updateHeroNextMeeting([]);
+        return;
+      }
+
+      listEl.innerHTML = upcomingMeetings.map(meeting => {
+        const startDate = meeting.start ? new Date(meeting.start) : null;
+        const when = startDate ? formatMeetingDate(startDate) : 'No date set';
+        const countdownRaw = startDate ? describeTimeUntil(startDate) : '';
+        const countdown = countdownRaw
+          ? (countdownRaw === 'Now' ? 'Happening now' : `In ${countdownRaw}`)
+          : '';
+        const type = formatMeetingType((meeting.meeting_type || 'general').toLowerCase());
+        const location = meeting.location ? `<span class="meta-chip">📍 ${escapeHtml(meeting.location)}</span>` : '';
+        const safeTitle = escapeHtml(meeting.title || 'Untitled meeting');
+
+        return `
+          <article class="upcoming-item" onclick="showMeetingDetails('${meeting.id}')">
+            <div class="upcoming-head">
+              <span>${type}</span>
+              ${countdown ? `<span class="upcoming-remaining">${countdown}</span>` : ''}
+            </div>
+            <h3 class="upcoming-title">${safeTitle}</h3>
+            <div class="upcoming-time">
+              <span>🗓️ ${when}</span>
+              ${location}
+            </div>
+          </article>
+        `;
+      }).join('');
+
+      updateHeroNextMeeting(upcomingMeetings);
+    }
+
+    // === New UI Filter & List Helpers ===
+    function bindMeetingsUI(){
+      // View tabs
+      document.querySelectorAll('.view-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.view-tab').forEach(b=>b.classList.remove('active'));
+          btn.classList.add('active');
+          meetingView = btn.dataset.view;
+          document.getElementById('calendar-view').classList.toggle('active', meetingView==='calendar');
+          document.getElementById('list-view').classList.toggle('active', meetingView==='list');
+          if (meetingView==='calendar') { calendar?.updateSize?.(); }
+        });
+      });
+
+      // Filters
+      document.querySelectorAll('.filter-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+          document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));
+          chip.classList.add('active');
+          meetingFilter = chip.dataset.type || 'all';
+          refreshMeetingsUI();
+        });
+      });
+
+      // Search
+      const searchEl = document.getElementById('meeting-search-input');
+      if (searchEl){
+        searchEl.addEventListener('input', () => {
+          searchDisplayQuery = searchEl.value.trim();
+          searchQuery = searchDisplayQuery.toLowerCase();
+          updateHeroSearchTerm();
+          refreshMeetingsUI();
+        });
+      }
+    }
+
+    function refreshMeetingsUI(){
+      // Re-pull events via calendar callback
+      try { calendar?.refetchEvents?.(); } catch(_){ }
+      renderMeetingList();
+      loadUpcomingMeetings();
+      updateStats();
+      updateHeroFilterLabel();
+      updateHeroSearchTerm();
+    }
+
+    function applyMeetingFilters(list){
+      if (!Array.isArray(list)) return [];
+      let out = list.slice();
+      out = out.filter(m => (m.status || 'scheduled') !== 'cancelled');
+      if (meetingFilter && meetingFilter !== 'all') {
+        out = out.filter(m => (m.meeting_type||'general').toLowerCase() === meetingFilter);
+      }
+      if (searchQuery){
+        const q = searchQuery;
+        out = out.filter(m => {
+          const t = (m.title||'').toLowerCase();
+          const d = (m.description||'').toLowerCase();
+          const l = (m.location||'').toLowerCase();
+          return t.includes(q) || d.includes(q) || l.includes(q);
+        });
+      }
+      // sort by start ascending
+      out.sort((a,b)=> new Date(a.start) - new Date(b.start));
+      return out;
+    }
+
+    function renderMeetingList(){
+      const listEl = document.getElementById('meetings-list');
+      if (!listEl) return;
+      const data = applyMeetingFilters(meetings||[]);
+      if (!data.length){
+        listEl.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-emoji">✨</div>
+            <p>No meetings match your filters.</p>
+            <button class="pill-btn primary" onclick="openCreateMeetingModal()">Plan a meeting</button>
+          </div>`;
+        return;
+      }
+      listEl.innerHTML = data.map(m => {
+        const start = m.start ? new Date(m.start) : null;
+        const when = start ? formatMeetingDate(start) : 'No date scheduled';
+        const type = formatMeetingType((m.meeting_type || 'general').toLowerCase());
+        const safeTitle = escapeHtml(m.title || 'Untitled meeting');
+        const locationChip = m.location ? `<span class="meta-chip">📍 ${escapeHtml(m.location)}</span>` : '<span class="meta-chip">🛰️ Virtual / TBD</span>';
+        const descriptionChip = m.description ? `<span class="meta-chip">🗒️ ${escapeHtml(truncateText(m.description))}</span>` : '';
+
+        return `
+          <article class="list-card" onclick="showMeetingDetails('${m.id}')">
+            <div class="list-card-main">
+              <div class="list-card-meta">
+                <span class="list-type">${type}</span>
+                <span>🗓️ ${when}</span>
+              </div>
+              <h3 class="list-title">${safeTitle}</h3>
+              <div class="list-meta">
+                ${locationChip}
+                ${descriptionChip}
+              </div>
+            </div>
+            <div class="list-actions">
+              <button class="action-btn subtle" onclick="event.stopPropagation(); showMeetingDetails('${m.id}')">Open</button>
+            </div>
+          </article>`;
+      }).join('');
+    }
+
+    function initializeHeroEnvironment() {
+      initializeHeroClock();
+      updateHeroFilterLabel();
+      updateHeroSearchTerm();
+      updateHeroNextMeeting([]);
+    }
+
+    function initializeHeroClock() {
+      if (heroClockInterval) {
+        clearInterval(heroClockInterval);
+      }
+
+      const dateEl = document.getElementById('hero-today-date');
+      const timeEl = document.getElementById('hero-today-time');
+      if (!dateEl || !timeEl) return;
+
+      const dateFormatter = new Intl.DateTimeFormat([], {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric'
+      });
+      const timeFormatter = new Intl.DateTimeFormat([], {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
+      const render = () => {
+        const now = new Date();
+        dateEl.textContent = dateFormatter.format(now);
+        timeEl.textContent = timeFormatter.format(now);
+      };
+
+      render();
+      heroClockInterval = setInterval(render, 1000);
+    }
+
+    function updateHeroFilterLabel() {
+      const filterEl = document.getElementById('hero-active-filter');
+      if (!filterEl) return;
+
+      const label = formatMeetingType(meetingFilter);
+      filterEl.textContent = label;
+    }
+
+    function updateHeroSearchTerm() {
+      const searchTermEl = document.getElementById('hero-search-term');
+      if (!searchTermEl) return;
+
+      if (!searchDisplayQuery) {
+        searchTermEl.textContent = 'Showing every session';
+      } else {
+        searchTermEl.textContent = `Filtering by “${searchDisplayQuery}”`;
+      }
+    }
+
+    function updateHeroNextMeeting(upcoming) {
+      const timeEl = document.getElementById('hero-next-time');
+      const titleEl = document.getElementById('hero-next-title');
+      const countdownEl = document.getElementById('hero-next-countdown');
+      if (!timeEl || !titleEl || !countdownEl) return;
+
+      if (!upcoming || !upcoming.length) {
+        timeEl.textContent = 'Set your next gathering';
+        titleEl.textContent = 'Create a meeting to launch your next mission.';
+        countdownEl.textContent = '';
+        return;
+      }
+
+      const next = upcoming[0];
+      const startDate = next.start ? new Date(next.start) : null;
+      titleEl.textContent = next.title ? next.title : 'Untitled meeting';
+
+      if (startDate) {
+        timeEl.textContent = formatMeetingDate(startDate);
+        const countdownRaw = describeTimeUntil(startDate);
+        countdownEl.textContent = countdownRaw === 'Now' ? 'Happening now' : `Launching in ${countdownRaw}`;
+      } else {
+        timeEl.textContent = 'No start date set';
+        countdownEl.textContent = '';
+      }
+    }
+
+    function describeTimeUntil(date) {
+      const now = new Date();
+      const diffMs = date.getTime() - now.getTime();
+      if (diffMs <= 0) return 'Now';
+
+      const diffMinutes = Math.round(diffMs / 60000);
+      if (diffMinutes < 60) {
+        return `${diffMinutes} minute${diffMinutes === 1 ? '' : 's'}`;
+      }
+
+      const diffHours = Math.round(diffMinutes / 60);
+      if (diffHours < 24) {
+        return `${diffHours} hour${diffHours === 1 ? '' : 's'}`;
+      }
+
+      const diffDays = Math.round(diffHours / 24);
+      if (diffDays < 7) {
+        return `${diffDays} day${diffDays === 1 ? '' : 's'}`;
+      }
+
+      const diffWeeks = Math.round(diffDays / 7);
+      return `${diffWeeks} week${diffWeeks === 1 ? '' : 's'}`;
+    }
+
+    function formatMeetingDate(date) {
+      const datePart = date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+      const timePart = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return `${datePart} • ${timePart}`;
+    }
+
+    function formatMeetingType(type) {
+      const labels = {
+        all: 'All missions',
+        partners: 'Partner forum',
+        staff: 'Staff sync',
+        training: 'Training lab',
+        pcn: 'PCN alignment',
+        clinical: 'Clinical focus',
+        general: 'General meeting'
+      };
+
+      const normalized = (type || '').toLowerCase();
+      if (labels[normalized]) return labels[normalized];
+      return normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : 'General meeting';
+    }
+
+    function truncateText(text, limit = 60) {
+      const value = (text ?? '').toString();
+      if (value.length <= limit) return value;
+      return `${value.slice(0, Math.max(0, limit - 1)).trimEnd()}…`;
+    }
+
+    function escapeHtml(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // Show meeting details modal
+  async function showMeetingDetails(meetingId) {
+      if (!window.meetingsManager) return;
+
+      currentMeetingId = meetingId;
+      currentMeeting = meetings.find(m => m.id === meetingId);
+
+      if (!currentMeeting) return;
+
+      // Update modal header
+      document.getElementById('modal-meeting-title').textContent = currentMeeting.title;
+      const startDate = new Date(currentMeeting.start);
+      document.getElementById('modal-meeting-date').textContent = startDate.toLocaleString();
+
+      // Populate Manage tab fields
+      try {
+        document.getElementById('manage-title').value = currentMeeting.title || '';
+        document.getElementById('manage-type').value = (currentMeeting.meeting_type || 'general').toLowerCase();
+        document.getElementById('manage-start').value = startDate.toISOString().slice(0,16);
+        document.getElementById('manage-end').value = currentMeeting.end ? new Date(currentMeeting.end).toISOString().slice(0,16) : '';
+        document.getElementById('manage-location').value = currentMeeting.location || '';
+        document.getElementById('manage-description').value = currentMeeting.description || '';
+      } catch(e) { /* ignore if fields not present */ }
+
+      // Load notes
+      await loadMeetingNotes();
+
+      // Load agenda items
+      await loadAgendaItems();
+
+      // Show modal
+      document.getElementById('meeting-modal').classList.add('active');
+      document.getElementById('meeting-modal-overlay').classList.add('active');
+
+      // Default to Notes tab
+      switchModalTab('notes');
+    }
+
+    // Modal tab switching
+    function switchModalTab(tabName) {
+      // Update tab buttons
+      document.querySelectorAll('.modal-tab').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      document.querySelector(`[data-tab="${tabName}"]`)?.classList.add('active');
+
+      // Update content
+      document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
+      });
+      document.getElementById(`tab-${tabName}`)?.classList.add('active');
+    }
+
+    // Quick action handlers
+    function startMeetingNow() {
+      alert('Starting meeting... (Integration with video conferencing platform would go here)');
+    }
+
+    function openNotesTab() { switchModalTab('notes'); }
+    function openAgendaTab() { switchModalTab('agenda'); }
+
+    // Close meeting modal
+    function closeMeetingModal(event) {
+      if (event && event.target !== event.currentTarget) return;
+
+      document.getElementById('meeting-modal').classList.remove('active');
+      document.getElementById('meeting-modal-overlay').classList.remove('active');
+    }
+
+    async function saveMeetingChanges() {
+      if (!window.meetingsManager || !currentMeetingId) return;
+
+      const title = document.getElementById('manage-title').value.trim();
+      const meeting_type = document.getElementById('manage-type').value;
+      const startVal = document.getElementById('manage-start').value;
+      const endVal = document.getElementById('manage-end').value;
+      const location = document.getElementById('manage-location').value.trim();
+      const description = document.getElementById('manage-description').value.trim();
+
+      if (!title || !startVal) { alert('Please provide a title and start time'); return; }
+
+      const payload = {
+        title,
+        meeting_type,
+        start: new Date(startVal).toISOString(),
+        end: endVal ? new Date(endVal).toISOString() : null,
+        location,
+        description
+      };
+
+      try {
+        await window.meetingsManager.updateMeeting(currentMeetingId, payload);
+        await loadMeetings();
+        calendar?.refetchEvents?.();
+        loadUpcomingMeetings();
+        updateStats();
+        alert('✅ Meeting updated');
+        // Refresh header title/date
+        currentMeeting = meetings.find(m => m.id === currentMeetingId) || currentMeeting;
+        document.getElementById('modal-meeting-title').textContent = currentMeeting.title;
+        document.getElementById('modal-meeting-date').textContent = new Date(currentMeeting.start).toLocaleString();
+      } catch (e) {
+        console.error('Update meeting failed', e);
+        alert('Failed to update meeting');
+      }
+    }
+
+    // Create meeting modal functions
+    function openCreateMeetingModal() {
+      // Set default date/time to next hour
+      const now = new Date();
+      now.setHours(now.getHours() + 1, 0, 0, 0);
+      const dateStr = now.toISOString().slice(0, 16);
+      document.getElementById('new-meeting-start').value = dateStr;
+
+      const end = new Date(now);
+      end.setHours(end.getHours() + 1);
+      document.getElementById('new-meeting-end').value = end.toISOString().slice(0, 16);
+
+      document.getElementById('create-meeting-modal').classList.add('active');
+      document.getElementById('create-modal-overlay').classList.add('active');
+    }
+
+    function closeCreateMeetingModal(event) {
+      if (event && event.target !== event.currentTarget) return;
+
+      document.getElementById('create-meeting-modal').classList.remove('active');
+      document.getElementById('create-modal-overlay').classList.remove('active');
+
+      // Clear form
+      document.getElementById('new-meeting-title').value = '';
+      document.getElementById('new-meeting-description').value = '';
+      document.getElementById('new-meeting-location').value = '';
+    }
+
+    // Create new meeting
+    async function createMeeting() {
+      if (!window.meetingsManager) return;
+
+      const title = document.getElementById('new-meeting-title').value;
+      const description = document.getElementById('new-meeting-description').value;
+      const start = document.getElementById('new-meeting-start').value;
+      const end = document.getElementById('new-meeting-end').value;
+      const location = document.getElementById('new-meeting-location').value;
+      const meetingType = document.getElementById('new-meeting-type').value;
+
+      if (!title || !start) {
+        alert('Please enter a title and start time');
+        return;
+      }
+
+      const meeting = await window.meetingsManager.createMeeting({
+        title,
+        description,
+        start: new Date(start).toISOString(),
+        end: end ? new Date(end).toISOString() : null,
+        location,
+        meeting_type: meetingType
+      });
+
+      // Refresh calendar
+      calendar.refetchEvents();
+      loadUpcomingMeetings();
+      updateStats();
+
+      closeCreateMeetingModal();
+
+      // Show the new meeting
+      setTimeout(() => showMeetingDetails(meeting.id), 300);
+    }
+
+    // Cancel / delete meeting — verify deletion actually sticks server‑side
+    async function deleteMeeting() {
+      if (!currentMeetingId || !supabase) return;
+
+      // Confirm with user
+      if (!confirm('Are you sure you want to cancel this meeting? This will remove it for all users.')) {
+        return;
+      }
+
+      // Resolve site_id for RLS scoping
+      const siteId =
+        currentMeeting?.site_id ||
+        window.activeSiteId ||
+        window.site_id ||
+        window.currentSiteId ||
+        null;
+
+      // Attempt hard delete scoped by id + site_id
+      let deleteError = null;
+      try {
+        const { error } = await supabase
+          .from('meetings')
+          .delete()
+          .match({ id: currentMeetingId, site_id: siteId });
+
+        if (error) deleteError = error;
+      } catch (err) {
+        deleteError = err;
+      }
+
+      // Verify deletion actually happened (row should no longer exist)
+      let stillExists = false;
+      try {
+        const { data: chkData, error: chkErr } = await supabase
+          .from('meetings')
+          .select('id')
+          .eq('id', currentMeetingId)
+          .limit(1)
+          .maybeSingle();
+
+        stillExists = !!chkData && !chkErr;
+      } catch (_) {
+        /* ignore network errors here */
+      }
+
+      if (deleteError || stillExists) {
+        console.error('Delete failed or row still present:', deleteError);
+        alert('❌ Unable to cancel meeting (server permissions). Please contact an admin.');
+        return;
+      }
+
+      /* ---------- Front‑end cleanup for instant feedback ---------- */
+      try {
+        // Remove from local cache
+        meetings = (meetings || []).filter(m => String(m.id) !== String(currentMeetingId));
+
+        // Remove from FullCalendar (string and numeric just in case)
+        const ev =
+          calendar?.getEventById?.(String(currentMeetingId)) ||
+          calendar?.getEventById?.(Number(currentMeetingId));
+        if (ev) ev.remove();
+
+        // Refresh dependent UI sections
+        renderMeetingList?.();
+        loadUpcomingMeetings?.();
+        updateStats?.();
+
+        // Close modal & notify
+        closeMeetingModal?.();
+        alert('✅ Meeting cancelled');
+      } catch (uiErr) {
+        console.error('UI cleanup failed:', uiErr);
+      }
+    }
+
+    // Submit agenda item
+    async function submitAgendaItem() {
+      if (!window.meetingsManager || !currentMeetingId) return;
+
+      const title = document.getElementById('agenda-item-title').value;
+      const description = document.getElementById('agenda-item-description').value;
+
+      if (!title) {
+        alert('Please enter an agenda item title');
+        return;
+      }
+
+      await window.meetingsManager.createAgendaItem({
+        meeting_id: currentMeetingId,
+        title,
+        description
+      });
+
+      // Clear form
+      document.getElementById('agenda-item-title').value = '';
+      document.getElementById('agenda-item-description').value = '';
+
+      // Reload agenda items
+      loadAgendaItems();
+    }
+
+    // Load agenda items
+    async function loadAgendaItems() {
+      if (!window.meetingsManager || !currentMeetingId) return;
+
+      const items = await window.meetingsManager.getAgendaItems(currentMeetingId);
+      const agendaList = document.getElementById('agenda-items-list');
+
+      if (items.length === 0) {
+        agendaList.innerHTML = '<div style="text-align: center; color: #94a3b8; padding: 20px;">No agenda items yet</div>';
+        return;
+      }
+
+      agendaList.innerHTML = items.map(item => `
+        <div class="agenda-item">
+          <div class="agenda-title">${item.title}</div>
+          ${item.description ? `<div class="agenda-description">${item.description}</div>` : ''}
+          <div style="margin-top: 8px; font-size: 12px; color: #94a3b8;">
+            Submitted by ${item.submitter_name}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Load meeting notes
+    async function loadMeetingNotes() {
+      if (!window.meetingsManager || !currentMeetingId) return;
+
+      const notes = await window.meetingsManager.getMeetingNotes(currentMeetingId);
+      // Show transcript if available, otherwise show regular notes
+      const content = notes?.transcript || notes?.content || '';
+      document.getElementById('meeting-notes-textarea').value = content;
+    }
+
+    // Save meeting notes
+    async function saveMeetingNotes() {
+      if (!window.meetingsManager || !currentMeetingId) return;
+
+      const content = document.getElementById('meeting-notes-textarea').value;
+      await window.meetingsManager.saveMeetingNotes(currentMeetingId, content);
+
+      // Show feedback
+      const textarea = document.getElementById('meeting-notes-textarea');
+      textarea.style.borderColor = '#10b981';
+      textarea.style.boxShadow = '0 0 0 3px rgba(16, 185, 129, 0.1)';
+      setTimeout(() => {
+        textarea.style.borderColor = '';
+        textarea.style.boxShadow = '';
+      }, 2000);
+    }
+
+    // Generate PDF
+    async function generateMeetingPDF(meetingId = null, useExistingNotes = false) {
+      if (!window.meetingsManager) return;
+
+      const targetMeetingId = meetingId || currentMeetingId;
+      if (!targetMeetingId) return;
+
+      let notes = '';
+      if (useExistingNotes) {
+        // Get notes from database for past recordings
+        const meetingNotes = await window.meetingsManager.getMeetingNotes(targetMeetingId);
+        notes = meetingNotes?.transcript || meetingNotes?.content || '';
+      } else {
+        // Get notes from textarea for current meeting
+        notes = document.getElementById('meeting-notes-textarea').value;
+      }
+
+      if (!notes) {
+        alert('No notes available for PDF generation');
+        return;
+      }
+
+      try {
+        const pdfContent = await window.meetingsManager.exportMeetingToPDF(targetMeetingId);
+
+        // Parse notes to extract structured information - use the actual notes content
+        const parsedNotes = parseNotesContent(notes);
+        
+        // Generate PDF using jsPDF
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({
+          unit: 'pt',
+          format: 'a4',
+          orientation: 'portrait'
+        });
+
+        const margin = 48;
+        const pageWidth = doc.internal.pageSize.width - (margin * 2);
+        let y = margin;
+        
+        // Title - use parsed title if available, otherwise fall back to meeting title
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(20);
+        const meetingTitle = parsedNotes.title || pdfContent.title;
+        doc.text(meetingTitle, margin, y);
+        y += 30;
+        
+        // Date and Location
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(12);
+        const meetingDate = parsedNotes.date || pdfContent.date;
+        doc.text('Date: ' + meetingDate, margin, y);
+        y += 20;
+        doc.text('Location: ' + pdfContent.location, margin, y);
+        y += 30;
+        
+        // Attendees
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(16);
+        doc.text('Attendees:', margin, y);
+        y += 25;
+        
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(12);
+        
+        // Use parsed attendees if available, otherwise fall back to meeting attendees
+        const attendeesList = parsedNotes.attendees && parsedNotes.attendees.length > 0 
+          ? parsedNotes.attendees 
+          : pdfContent.attendees.map(a => a.replace(/\([^)]*\)/g, '').trim());
+        
+        attendeesList.forEach((attendee, index) => {
+          doc.text((index + 1) + '. ' + attendee, margin, y);
+          y += 20;
+        });
+        
+        y += 10;
+        
+        // Main Discussion Points
+        if (parsedNotes.discussionPoints && parsedNotes.discussionPoints.length > 0) {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(16);
+          doc.text('Main Discussion Points:', margin, y);
+          y += 25;
+          
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(12);
+          
+          parsedNotes.discussionPoints.forEach((point, index) => {
+            // Handle multi-line discussion points properly
+            const cleanPoint = point.replace(/\n+/g, ' ').trim();
+            const lines = doc.splitTextToSize((index + 1) + '. ' + cleanPoint, pageWidth);
+            doc.text(lines, margin, y);
+            y += lines.length * 20 + 5; // Add extra spacing between discussion points
+          });
+          
+          y += 10;
+        }
+        
+        // Action Items
+        if (parsedNotes.actionItems && parsedNotes.actionItems.length > 0) {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(16);
+          doc.text('Action Items:', margin, y);
+          y += 25;
+          
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(12);
+          
+          parsedNotes.actionItems.forEach((action, index) => {
+            const lines = doc.splitTextToSize((index + 1) + '. ' + action, pageWidth);
+            doc.text(lines, margin, y);
+            y += lines.length * 20;
+          });
+          
+          y += 10;
+        }
+        
+        // Key Decisions
+        if (parsedNotes.decisions && parsedNotes.decisions.length > 0) {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(16);
+          doc.text('Key Decisions Made:', margin, y);
+          y += 25;
+          
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(12);
+          
+          parsedNotes.decisions.forEach((decision, index) => {
+            const lines = doc.splitTextToSize((index + 1) + '. ' + decision, pageWidth);
+            doc.text(lines, margin, y);
+            y += lines.length * 20;
+          });
+          
+          y += 10;
+        }
+        
+        // Next Steps
+        if (parsedNotes.nextSteps && parsedNotes.nextSteps.length > 0) {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(16);
+          doc.text('Next Steps:', margin, y);
+          y += 25;
+          
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(12);
+          
+          parsedNotes.nextSteps.forEach((step, index) => {
+            const lines = doc.splitTextToSize((index + 1) + '. ' + step, pageWidth);
+            doc.text(lines, margin, y);
+            y += lines.length * 20;
+          });
+          
+          y += 10;
+        }
+        
+        // Check if we need a new page for additional content
+        if (y > doc.internal.pageSize.height - 100) {
+          doc.addPage();
+          y = margin;
+        }
+        
+        // Agenda Items
+        if (pdfContent.agenda && pdfContent.agenda.length > 0) {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(16);
+          doc.text('Agenda Items:', margin, y);
+          y += 25;
+          
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(12);
+          
+          pdfContent.agenda.forEach((item, index) => {
+            const cleanItem = item.replace(/^•\s*/, '');
+            const lines = doc.splitTextToSize(cleanItem, pageWidth);
+            doc.text(lines, margin, y);
+            y += lines.length * 20;
+          });
+          
+          y += 10;
+        }
+        
+        // If there are any other sections in parsedNotes that aren't covered, add them
+        if (parsedNotes.otherSections) {
+          for (const section of parsedNotes.otherSections) {
+            if (section.items && section.items.length > 0) {
+              // Check if we need a new page
+              if (y > doc.internal.pageSize.height - 100) {
+                doc.addPage();
+                y = margin;
+              }
+              
+              doc.setFont('helvetica', 'bold');
+              doc.setFontSize(16);
+              doc.text(section.title, margin, y);
+              y += 25;
+              
+              doc.setFont('helvetica', 'normal');
+              doc.setFontSize(12);
+              
+              section.items.forEach((item, index) => {
+                const lines = doc.splitTextToSize((index + 1) + '. ' + item, pageWidth);
+                doc.text(lines, margin, y);
+                y += lines.length * 20;
+              });
+              
+              y += 10;
+            }
+          }
+        }
+
+        // Save the PDF
+        doc.save(`meeting-${targetMeetingId}.pdf`);
+        alert('✅ PDF generated successfully!');
+      } catch (e) {
+        console.error(e);
+        alert('Error generating PDF');
+      }
+    }
+    
+    // Parse structured information from meeting notes
+    function parseNotesContent(notes) {
+      const result = {
+        title: '',
+        date: '',
+        attendees: [],
+        discussionPoints: [],
+        actionItems: [],
+        decisions: [],
+        nextSteps: [],
+        otherSections: []
+      };
+      
+      // Extract meeting title if present
+      const titleMatch = notes.match(/Meeting Title: ([^\n]+)/i);
+      if (titleMatch) {
+        result.title = titleMatch[1].trim();
+      }
+      
+      // Extract title and date if present
+      const dateMatch = notes.match(/Date: ([^\n]+)/i);
+      if (dateMatch) {
+        result.date = dateMatch[1].trim();
+      }
+      
+      // Extract attendees - look for the pattern after "Attendees:"
+      const attendeesMatch = notes.match(/Attendees:\s*\n([\s\S]*?)(?=\n\s*\n|\nMain Discussion Points:|\nAction Items:|\nKey Decisions|\nNext Steps:|$)/i);
+      if (attendeesMatch && attendeesMatch[1]) {
+        const attendeeSection = attendeesMatch[1].trim();
+        // Look for numbered list (1. Name)
+        const attendeesList = attendeeSection.match(/\d+\.\s+([^\n]+)/g);
+        if (attendeesList) {
+          result.attendees = attendeesList.map(item => item.replace(/^\d+\.\s+/, '').trim());
+        }
+      }
+      
+      // Extract main discussion points
+      const discussionMatch = notes.match(/Main Discussion Points:\s*\n([\s\S]*?)(?=\n\s*\nAction Items:|\n\s*\nKey Decisions|\n\s*\nNext Steps:|$)/i);
+      if (discussionMatch && discussionMatch[1]) {
+        const discussionSection = discussionMatch[1].trim();
+        // Look for numbered list with potential sub-content
+        const discussionItems = discussionSection.split(/(?=\n\d+\.)/);
+        result.discussionPoints = discussionItems.map(item => {
+          // Clean up the item by removing leading numbers and whitespace
+          return item.replace(/^\n*\d+\.\s*/, '').trim();
+        }).filter(item => item.length > 0);
+      }
+      
+      // Extract action items
+      const actionMatch = notes.match(/Action Items:\s*\n([\s\S]*?)(?=\n\s*\nKey Decisions|\n\s*\nNext Steps:|$)/i);
+      if (actionMatch && actionMatch[1]) {
+        const actionSection = actionMatch[1].trim();
+        // Look for numbered list
+        const actionList = actionSection.match(/\d+\.\s+([^\n]+)/g);
+        if (actionList) {
+          result.actionItems = actionList.map(item => item.replace(/^\d+\.\s+/, '').trim());
+        }
+      }
+      
+      // Extract key decisions
+      const decisionsMatch = notes.match(/Key Decisions Made:\s*\n([\s\S]*?)(?=\n\s*\nNext Steps:|$)/i);
+      if (decisionsMatch && decisionsMatch[1]) {
+        const decisionSection = decisionsMatch[1].trim();
+        // Look for numbered list
+        const decisionList = decisionSection.match(/\d+\.\s+([^\n]+)/g);
+        if (decisionList) {
+          result.decisions = decisionList.map(item => item.replace(/^\d+\.\s+/, '').trim());
+        }
+      }
+      
+      // Extract next steps
+      const nextStepsMatch = notes.match(/Next Steps:\s*\n([\s\S]*?)(?=\n\s*\n|$)/i);
+      if (nextStepsMatch && nextStepsMatch[1]) {
+        const nextStepsSection = nextStepsMatch[1].trim();
+        // Look for numbered list
+        const nextStepsList = nextStepsSection.match(/\d+\.\s+([^\n]+)/g);
+        if (nextStepsList) {
+          result.nextSteps = nextStepsList.map(item => item.replace(/^\d+\.\s+/, '').trim());
+        }
+      }
+      
+      // Look for any other sections with a colon format
+      const sectionRegex = /([A-Za-z\s]+):([\s\S]*?)(?=\n\n[A-Za-z\s]+:|$)/g;
+      let match;
+      while ((match = sectionRegex.exec(notes)) !== null) {
+        const sectionTitle = match[1].trim();
+        // Skip sections we've already processed
+        if (['Meeting Title', 'Date', 'Attendees', 'Main Discussion Points', 'Action Items', 'Key Decisions Made', 'Next Steps'].includes(sectionTitle)) {
+          continue;
+        }
+        
+        const sectionContent = match[2].trim();
+        // Look for numbered or bulleted list
+        const listItems = sectionContent.match(/(?:\d+\.|•|\*)\s+([^\n]+)/g);
+        if (listItems && listItems.length > 0) {
+          result.otherSections.push({
+            title: sectionTitle,
+            items: listItems.map(item => item.replace(/(?:\d+\.|•|\*)\s+/, '').trim())
+          });
+        }
+      }
+      
+      return result;
+    }
+
+    // Handle recording upload
+    async function handleRecordingUpload(event) {
+      if (!window.meetingsManager || !currentMeetingId) return;
+
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      console.log('Processing uploaded file:', {
+        name: file.name,
+        size: file.size,
+        type: file.type
+      });
+
+      const statusDiv = document.getElementById('recording-status');
+      statusDiv.style.display = 'block';
+      statusDiv.innerHTML = '<p style="margin: 0; color: #0369a1;">📁 Processing uploaded recording...</p>';
+
+      try {
+        // Upload file to storage
+        statusDiv.innerHTML = '<p style="margin: 0; color: #0369a1;">⬆️ Uploading to Supabase storage...</p>';
+        const url = await window.meetingsManager.uploadMeetingRecording(currentMeetingId, file);
+        
+        console.log('File uploaded successfully:', url);
+
+        // Transcribe with meeting ID
+        statusDiv.innerHTML = '<p style="margin: 0; color: #0369a1;">🎙️ Transcribing recording...</p>';
+        const transcript = await window.meetingsManager.transcribeRecording(file, currentMeetingId);
+
+        // Replace notes with full transcript (don't append to avoid duplication)
+        document.getElementById('meeting-notes-textarea').value = transcript;
+
+        // Auto-save the transcribed notes
+        statusDiv.innerHTML = '<p style="margin: 0; color: #0369a1;">💾 Saving transcript...</p>';
+        await window.meetingsManager.saveMeetingNotes(currentMeetingId, transcript);
+
+        statusDiv.innerHTML = '<p style="margin: 0; color: #16a34a;">✅ Recording uploaded and transcribed successfully!</p>';
+        setTimeout(() => { statusDiv.style.display = 'none'; }, 3000);
+        
+      } catch (error) {
+        console.error('Recording processing error:', error);
+        const errorMsg = error.message || 'Unknown error occurred';
+        statusDiv.innerHTML = `<p style="margin: 0; color: #dc2626;">❌ Error: ${errorMsg}</p>`;
+        setTimeout(() => { statusDiv.style.display = 'none'; }, 8000);
+      }
+    }
+
+    // Update statistics
+    async function updateStats() {
+      if (!window.meetingsManager) return;
+
+      const stats = await window.meetingsManager.getMeetingStats();
+
+      // Animate the numbers
+      animateValue('stat-total', 0, stats.total, 1000);
+      animateValue('stat-upcoming', 0, stats.upcoming, 1000);
+      animateValue('stat-past', 0, stats.past, 1000);
+      animateValue('stat-month', 0, stats.thisMonth, 1000);
+
+      const monthEl = document.getElementById('hero-month-count');
+      const totalEl = document.getElementById('hero-total-count');
+      if (monthEl) monthEl.textContent = stats.thisMonth;
+      if (totalEl) totalEl.textContent = stats.total;
+    }
+
+    // Animate number counting
+    function animateValue(id, start, end, duration) {
+      const element = document.getElementById(id);
+      const range = end - start;
+      const increment = range / (duration / 10);
+      let current = start;
+
+      const timer = setInterval(() => {
+        current += increment;
+        if (current >= end) {
+          element.textContent = end;
+          clearInterval(timer);
+        } else {
+          element.textContent = Math.floor(current);
+        }
+      }, 10);
+    }
+
+    // Microphone Recording Functions
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let recordingStartTime = null;
+    let recordingTimer = null;
+    let audioContext = null;
+    let analyser = null;
+    let microphone = null;
+    let animationId = null;
+
+    async function startRecording() {
+      // First, check if we're in a secure context (HTTPS or localhost)
+      if (!window.isSecureContext && !CONFIG.isLocal) {
+        console.error('MediaRecorder requires a secure context (HTTPS)');
+        alert('Recording requires HTTPS. Please ensure you\'re using a secure connection.');
+        return;
+      }
+      
+      // Check if mediaDevices is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.error('MediaDevices API not available');
+        alert('Audio recording is not supported in your browser. Try using Chrome, Firefox, or Safari.');
+        return;
+      }
+
+      try {
+        // Request microphone permissions with error handling
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        });
+
+        // Check if MediaRecorder is available
+        if (!window.MediaRecorder) {
+          console.error('MediaRecorder API not available');
+          alert('Recording is not supported in your browser. Try using Chrome, Firefox, or Safari.');
+          return;
+        }
+        
+        // Check for supported mime types
+        let mimeType = 'audio/webm';
+        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+          mimeType = 'audio/webm;codecs=opus';
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          mimeType = 'audio/mp4';
+        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+          mimeType = 'audio/webm';
+        }
+
+        mediaRecorder = new MediaRecorder(stream, { mimeType });
+        audioChunks = [];
+
+        setupAudioVisualization(stream);
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunks.push(event.data);
+          }
+        };
+
+        mediaRecorder.onstop = () => {
+          const audioBlob = new Blob(audioChunks, { type: mimeType });
+          const audioUrl = URL.createObjectURL(audioBlob);
+
+          const audioElement = document.getElementById('recorded-audio');
+          audioElement.src = audioUrl;
+          document.getElementById('recorded-audio-container').style.display = 'block';
+
+          window.currentRecordingBlob = audioBlob;
+
+          if (animationId) {
+            cancelAnimationFrame(animationId);
+            animationId = null;
+          }
+
+          if (audioContext) {
+            audioContext.close();
+            audioContext = null;
+          }
+        };
+
+        mediaRecorder.start(1000);
+        recordingStartTime = Date.now();
+
+        document.getElementById('start-recording').style.display = 'none';
+        document.getElementById('stop-recording').style.display = 'flex';
+        document.getElementById('recording-indicator').classList.add('active');
+        document.getElementById('audio-visualizer').style.display = 'block';
+
+        updateRecordingTimer();
+
+      } catch (error) {
+        console.error('Error starting recording:', error);
+        
+        // Provide more specific error message based on the error type
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+          alert('Microphone access was denied. Please check your browser settings and ensure CheckLoops has permission to use your microphone.');
+        } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+          alert('No microphone found. Please connect a microphone and try again.');
+        } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+          alert('Your microphone is busy or not readable. Please close other applications that might be using it.');
+        } else if (error.name === 'OverconstrainedError') {
+          alert('Cannot satisfy the media constraints. Please try again with different settings.');
+        } else {
+          alert('Unable to access microphone. Please check your permissions and try again.');
+        }
+      }
+    }
+
+    function stopRecording() {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        mediaRecorder.stream.getTracks().forEach(track => track.stop());
+
+        if (recordingTimer) {
+          clearInterval(recordingTimer);
+          recordingTimer = null;
+        }
+
+        document.getElementById('start-recording').style.display = 'flex';
+        document.getElementById('stop-recording').style.display = 'none';
+        document.getElementById('recording-indicator').classList.remove('active');
+        document.getElementById('audio-visualizer').style.display = 'none';
+      }
+    }
+
+    function updateRecordingTimer() {
+      recordingTimer = setInterval(() => {
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+          const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+          const minutes = Math.floor(elapsed / 60).toString().padStart(2, '0');
+          const seconds = (elapsed % 60).toString().padStart(2, '0');
+          document.getElementById('recording-time').textContent = `${minutes}:${seconds}`;
+        }
+      }, 1000);
+    }
+
+    function setupAudioVisualization(stream) {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = audioContext.createAnalyser();
+      microphone = audioContext.createMediaStreamSource(stream);
+
+      analyser.fftSize = 256;
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      microphone.connect(analyser);
+
+      const canvas = document.getElementById('audio-visualizer');
+      const canvasCtx = canvas.getContext('2d');
+
+      function draw() {
+        animationId = requestAnimationFrame(draw);
+
+        analyser.getByteFrequencyData(dataArray);
+
+        canvasCtx.fillStyle = '#f8fafc';
+        canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const barWidth = (canvas.width / bufferLength) * 2.5;
+        let barHeight;
+        let x = 0;
+
+        for (let i = 0; i < bufferLength; i++) {
+          barHeight = (dataArray[i] / 255) * canvas.height;
+
+          const gradient = canvasCtx.createLinearGradient(0, canvas.height, 0, 0);
+          gradient.addColorStop(0, '#6366f1');
+          gradient.addColorStop(0.5, '#8b5cf6');
+          gradient.addColorStop(1, '#a78bfa');
+
+          canvasCtx.fillStyle = gradient;
+          canvasCtx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+
+          x += barWidth + 1;
+        }
+      }
+
+      draw();
+    }
+
+    async function saveRecording() {
+      if (!window.currentRecordingBlob || !currentMeetingId) {
+        alert('No recording to save');
+        return;
+      }
+
+      if (!window.meetingsManager) {
+        alert('Meetings system not initialized');
+        return;
+      }
+
+      // Show saving status
+      const statusDiv = document.getElementById('recording-status');
+      statusDiv.style.display = 'block';
+      statusDiv.innerHTML = '<p style="margin: 0; color: #0369a1;">💾 Saving recording to storage...</p>';
+
+      try {
+        // Get meeting title for filename
+        const meetingTitle = currentMeeting?.title || 'meeting';
+        const safeTitle = meetingTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const timestamp = Date.now();
+        const filename = `${safeTitle}_${timestamp}.webm`;
+
+        // Create proper File object from blob
+        const file = new File([window.currentRecordingBlob], filename, {
+          type: window.currentRecordingBlob.type || 'audio/webm'
+        });
+
+        console.log('Saving recording:', {
+          filename,
+          size: file.size,
+          type: file.type,
+          meetingId: currentMeetingId
+        });
+
+        // First upload the recording
+        statusDiv.innerHTML = '<p style="margin: 0; color: #0369a1;">⬆️ Uploading to Supabase storage...</p>';
+        const recordingUrl = await window.meetingsManager.uploadMeetingRecording(currentMeetingId, file);
+        
+        console.log('Recording uploaded successfully:', recordingUrl);
+
+        // Then transcribe it
+        statusDiv.innerHTML = '<p style="margin: 0; color: #0369a1;">🎙️ Transcribing audio...</p>';
+        const transcript = await window.meetingsManager.transcribeRecording(file, currentMeetingId);
+
+        // Update the notes textarea with transcript
+        document.getElementById('meeting-notes-textarea').value = transcript;
+
+        // Auto-save the transcribed notes
+        statusDiv.innerHTML = '<p style="margin: 0; color: #0369a1;">💾 Saving transcript...</p>';
+        await window.meetingsManager.saveMeetingNotes(currentMeetingId, transcript);
+
+        // Success message
+        statusDiv.innerHTML = '<p style="margin: 0; color: #16a34a;">✅ Recording saved and transcribed successfully!</p>';
+        
+        // Hide status after 3 seconds
+        setTimeout(() => { statusDiv.style.display = 'none'; }, 3000);
+
+        // Clear the temporary recording
+        discardRecording();
+
+      } catch (error) {
+        console.error('Recording save error:', error);
+        const errorMsg = error.message || 'Unknown error occurred';
+        statusDiv.innerHTML = `<p style="margin: 0; color: #dc2626;">❌ Failed to save recording: ${errorMsg}</p>`;
+        
+        // Show error longer
+        setTimeout(() => { statusDiv.style.display = 'none'; }, 8000);
+      }
+    }
+
+    function discardRecording() {
+      window.currentRecordingBlob = null;
+      document.getElementById('recorded-audio-container').style.display = 'none';
+      document.getElementById('recorded-audio').src = '';
+    }
+
+    // Make functions globally available
+    window.showMeetingDetails = showMeetingDetails;
+    window.closeMeetingModal = closeMeetingModal;
+    window.openCreateMeetingModal = openCreateMeetingModal;
+    window.closeCreateMeetingModal = closeCreateMeetingModal;
+    window.createMeeting = createMeeting;
+    window.deleteMeeting = deleteMeeting;
+    window.submitAgendaItem = submitAgendaItem;
+    window.loadMeetingNotes = loadMeetingNotes;
+    window.saveMeetingNotes = saveMeetingNotes;
+    window.generateMeetingPDF = generateMeetingPDF;
+    window.handleRecordingUpload = handleRecordingUpload;
+    window.initializeMeetings = initializeMeetings;
+    window.switchModalTab = switchModalTab;
+    window.startMeetingNow = startMeetingNow;
+  window.openNotesTab = openNotesTab;
+  window.openAgendaTab = openAgendaTab;
+  window.saveMeetingChanges = saveMeetingChanges;
+    window.startRecording = startRecording;
+    window.stopRecording = stopRecording;
+    window.saveRecording = saveRecording;
+    window.discardRecording = discardRecording;
+
+    // Past Recordings Functions
+    let showAllRecordings = false;
+
+    async function openPastRecordingsModal() {
+      if (!window.meetingsManager) return;
+
+      // Reset toggle
+      showAllRecordings = false;
+      document.getElementById('show-all-recordings').checked = false;
+
+      await loadRecordings(false);
+
+      document.getElementById('past-recordings-modal').classList.add('active');
+      document.getElementById('recordings-modal-overlay').classList.add('active');
+    }
+
+    async function toggleRecordingsView() {
+      showAllRecordings = document.getElementById('show-all-recordings').checked;
+      await loadRecordings(showAllRecordings);
+    }
+
+    async function loadRecordings(includeUnsaved) {
+      if (!window.meetingsManager) return;
+
+      const listEl = document.getElementById('recordings-list');
+      const countEl = document.getElementById('recordings-count');
+
+      listEl.innerHTML = '<div style="text-align: center; color: #64748b; padding: 20px;">Loading recordings...</div>';
+
+      try {
+        const recordings = await window.meetingsManager.getMeetingsWithRecordings(includeUnsaved);
+
+        // Update count
+        countEl.textContent = `${recordings.length} recording${recordings.length !== 1 ? 's' : ''}`;
+
+        if (!recordings || recordings.length === 0) {
+          listEl.innerHTML = '<div style="text-align: center; color: #94a3b8; padding: 20px;">No recordings found</div>';
+        } else {
+          listEl.innerHTML = recordings.map(recording => {
+            const startDate = new Date(recording.start_time || recording.created_at);
+            const hasTranscript = recording.has_transcript;
+            const isSaved = recording.is_saved;
+            const isUnsaved = recording.id.startsWith('unsaved_');
+
+            return `
+              <div style="background: ${isSaved ? '#f8fafc' : '#fef3c7'}; border: 1px solid ${isSaved ? '#e2e8f0' : '#fde68a'}; border-radius: 12px; padding: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                  <div>
+                    <h4 style="margin: 0; color: #0f172a; font-weight: 700;">
+                      ${recording.title}
+                      ${!isSaved ? '<span style="color: #d97706; font-size: 12px; margin-left: 8px;">(Unsaved)</span>' : ''}
+                    </h4>
+                    <div style="color: #64748b; font-size: 14px; margin-top: 4px;">
+                      ${startDate.toLocaleDateString()} at ${startDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    </div>
+                    <div style="color: #64748b; font-size: 14px;">
+                      Type: ${recording.meeting_type || 'General'} | Location: ${recording.location || 'Not specified'}
+                    </div>
+                    ${recording.file_name ? `<div style="color: #94a3b8; font-size: 12px; margin-top: 4px;">File: ${recording.file_name}</div>` : ''}
+                  </div>
+                  <div style="display: flex; gap: 8px;">
+                    ${hasTranscript ? '<span style="background: #10b981; color: white; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600;">Transcribed</span>' : '<span style="background: #ef4444; color: white; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600;">No Transcript</span>'}
+                    ${isSaved ? '<span style="background: #3b82f6; color: white; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600;">Saved</span>' : ''}
+                  </div>
+                </div>
+                <div style="display: flex; gap: 12px;">
+                  ${!isUnsaved ? `
+                    <button class="action-btn" onclick="viewRecordingNotes('${recording.id}')" style="flex: 1;">
+                      <span>📝 View Notes</span>
+                    </button>
+                  ` : ''}
+                  ${isUnsaved ? `
+                    <button class="action-btn success" onclick="transcribeUnsavedRecording('${recording.id}', '${recording.recording_url}', '${recording.file_name}')" style="flex: 1;">
+                      <span>🎙️ Transcribe</span>
+                    </button>
+                  ` : ''}
+                  <button class="action-btn primary" onclick="generatePDFFromRecording('${recording.id}', '${recording.recording_url}')" style="flex: 1;">
+                    <span>📄 Generate PDF</span>
+                  </button>
+                  ${recording.recording_url ? `
+                    <a href="${recording.recording_url}" target="_blank" class="action-btn" style="flex: 1; text-align: center; text-decoration: none;">
+                      <span>⬇️ Download</span>
+                    </a>
+                  ` : ''}
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+      } catch (error) {
+        console.error('Error loading recordings:', error);
+        listEl.innerHTML = '<div style="text-align: center; color: #ef4444; padding: 20px;">Error loading recordings. Please try again.</div>';
+      }
+    }
+
+    function closePastRecordingsModal(event) {
+      if (event && event.target !== event.currentTarget) return;
+      document.getElementById('past-recordings-modal').classList.remove('active');
+      document.getElementById('recordings-modal-overlay').classList.remove('active');
+    }
+
+    async function viewRecordingNotes(meetingId) {
+      closePastRecordingsModal();
+      await showMeetingDetails(meetingId);
+    }
+
+    async function generatePDFFromRecording(recordingId, recordingUrl = null) {
+      if (recordingId.startsWith('unsaved_')) {
+        // For unsaved recordings, we need to transcribe first
+        alert('Please transcribe this recording first before generating a PDF.');
+        return;
+      }
+      await generateMeetingPDF(recordingId, true);
+    }
+
+    async function transcribeUnsavedRecording(recordingId, recordingUrl, fileName) {
+      if (!window.meetingsManager || !recordingUrl) return;
+
+      const confirmed = confirm(`Transcribe recording: ${fileName}?\n\nThis will process the audio and generate meeting notes.`);
+      if (!confirmed) return;
+
+      try {
+        // Show loading state
+        alert('Transcribing recording... This may take a moment.');
+
+        // Transcribe the unsaved recording
+        const transcript = await window.meetingsManager.transcribeUnsavedRecording(recordingUrl, fileName);
+
+        // Show the transcript
+        const viewTranscript = confirm('Transcription complete! Would you like to view the transcript?');
+        if (viewTranscript) {
+          // Create a temporary modal to show the transcript
+          const modal = document.createElement('div');
+          modal.innerHTML = `
+            <div class="modal-overlay active" onclick="this.parentElement.remove()">
+              <div class="modal active" style="max-width: 800px;" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                  <button class="modal-close" onclick="this.closest('div').remove()">×</button>
+                  <h3 class="modal-title">Transcript: ${fileName}</h3>
+                </div>
+                <div class="modal-body">
+                  <textarea style="width: 100%; height: 400px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-family: inherit;" readonly>${transcript}</textarea>
+                  <div style="margin-top: 16px; display: flex; gap: 12px;">
+                    <button class="action-btn primary" onclick="navigator.clipboard.writeText(this.parentElement.previousElementSibling.value).then(() => alert('Copied to clipboard!')); " style="flex: 1;">
+                      <span>📋 Copy to Clipboard</span>
+                    </button>
+                    <button class="action-btn" onclick="this.closest('div').remove()" style="flex: 1;">
+                      <span>Close</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+          document.body.appendChild(modal);
+        }
+
+        // Reload the recordings list to show updated status
+        await loadRecordings(showAllRecordings);
+      } catch (error) {
+        console.error('Error transcribing recording:', error);
+        alert('Error transcribing recording. Please try again.');
+      }
+    }
+
+    // Search for specific recording
+    async function searchRecording() {
+      const searchTerm = document.getElementById('recording-search').value.trim();
+      if (!searchTerm) {
+        alert('Please enter a recording name to search');
+        return;
+      }
+
+      const listEl = document.getElementById('recordings-list');
+      listEl.innerHTML = '<div style="text-align: center; color: #64748b; padding: 20px;">Searching for recording...</div>';
+
+      try {
+        // First ensure we have all recordings loaded (including unsaved)
+        if (!showAllRecordings) {
+          document.getElementById('show-all-recordings').checked = true;
+          showAllRecordings = true;
+        }
+
+        // Get all recordings
+        const recordings = await window.meetingsManager.getMeetingsWithRecordings(true);
+
+        // Filter for matching recordings
+        const matchingRecordings = recordings.filter(r =>
+          r.file_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          r.file_path?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          r.title?.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+
+        if (matchingRecordings.length === 0) {
+          // Try direct search in storage
+          const result = await window.meetingsManager.findRecording(searchTerm);
+
+          if (result.found) {
+            alert(`Found recording! URL: ${result.url}\n\nClick OK to open the transcription dialog.`);
+
+            // Create a temporary recording object for transcription
+            const tempRecording = {
+              id: `unsaved_${searchTerm}`,
+              recording_url: result.url,
+              file_name: searchTerm
+            };
+
+            await transcribeUnsavedRecording(tempRecording.id, tempRecording.recording_url, tempRecording.file_name);
+          } else {
+            listEl.innerHTML = `<div style="text-align: center; color: #ef4444; padding: 20px;">
+              Recording "${searchTerm}" not found.
+              <br><br>
+              Make sure you've checked "Show all recordings" and the file exists in the storage bucket.
+            </div>`;
+          }
+        } else {
+          // Display matching recordings
+          listEl.innerHTML = matchingRecordings.map(recording => {
+            const startDate = new Date(recording.start_time || recording.created_at);
+            const hasTranscript = recording.has_transcript;
+            const isSaved = recording.is_saved;
+            const isUnsaved = recording.id.startsWith('unsaved_');
+
+            return `
+              <div style="background: #fef3c7; border: 2px solid #f59e0b; border-radius: 12px; padding: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                  <div>
+                    <h4 style="margin: 0; color: #0f172a; font-weight: 700;">
+                      🎯 ${recording.title}
+                      ${!isSaved ? '<span style="color: #d97706; font-size: 12px; margin-left: 8px;">(Unsaved)</span>' : ''}
+                    </h4>
+                    <div style="color: #64748b; font-size: 14px; margin-top: 4px;">
+                      ${startDate.toLocaleDateString()} at ${startDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    </div>
+                    <div style="color: #64748b; font-size: 14px;">
+                      File: <strong>${recording.file_name}</strong>
+                    </div>
+                  </div>
+                </div>
+                <div style="display: flex; gap: 12px;">
+                  ${isUnsaved ? `
+                    <button class="action-btn success" onclick="transcribeUnsavedRecording('${recording.id}', '${recording.recording_url}', '${recording.file_name}')" style="flex: 1;">
+                      <span>🎙️ Transcribe Now</span>
+                    </button>
+                  ` : `
+                    <button class="action-btn" onclick="viewRecordingNotes('${recording.id}')" style="flex: 1;">
+                      <span>📝 View Notes</span>
+                    </button>
+                  `}
+                  ${recording.recording_url ? `
+                    <a href="${recording.recording_url}" target="_blank" class="action-btn" style="flex: 1; text-align: center; text-decoration: none;">
+                      <span>⬇️ Download</span>
+                    </a>
+                  ` : ''}
+                </div>
+              </div>
+            `;
+          }).join('');
+
+          document.getElementById('recordings-count').textContent = `${matchingRecordings.length} matching recording${matchingRecordings.length !== 1 ? 's' : ''}`;
+        }
+      } catch (error) {
+        console.error('Error searching recording:', error);
+        listEl.innerHTML = '<div style="text-align: center; color: #ef4444; padding: 20px;">Error searching for recording. Please try again.</div>';
+      }
+    }
+
+    window.openPastRecordingsModal = openPastRecordingsModal;
+    window.closePastRecordingsModal = closePastRecordingsModal;
+    window.viewRecordingNotes = viewRecordingNotes;
+    window.generatePDFFromRecording = generatePDFFromRecording;
+    window.toggleRecordingsView = toggleRecordingsView;
+    window.transcribeUnsavedRecording = transcribeUnsavedRecording;
+    window.searchRecording = searchRecording;
+  </script>
+
+  <script>
+    // Minimal icons8 loader for any data-i8 icons
+    (function(){
+      function i8(name, opts){
+        opts = opts || {}; var style = opts.style || 'fluency';
+        var size = (opts.size == null) ? 48 : opts.size; var base = 'https://img.icons8.com';
+        var path = [style, String(size||48), encodeURIComponent(name)+'.png'].join('/');
+        return base + '/' + path;
+      }
+      function setIcon(el){
+        var name = el.getAttribute('data-i8'); var size = el.getAttribute('data-i8-size');
+        var style = el.getAttribute('data-i8-style') || 'fluency';
+        var url = i8(name, {style, size: size ? parseInt(size,10) : undefined});
+        el.src = url; if (!el.alt) el.alt = (name||'').replace(/[\-\_]/g,' ');
+      }
+      function wire(){ document.querySelectorAll('img[data-i8]').forEach(setIcon); }
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire); else wire();
+    })();
+  </script>
+
+    <!-- Debug Console - Persistent across all pages -->
+    <script src="debug-console.js"></script>
+    <script src="supabase-debug.js"></script>
+  </div> <!-- End page-container -->
+<!-- Staff Profile Fix -->
+<script src="staff-profile-fix.js"></script>
+</body>
+</html>

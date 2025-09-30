@@ -788,8 +788,11 @@
       <div class="pad"><button class="btn" id="btnClearPin">Clear</button></div>
       <div class="art"><img src="WristBand.png" alt="Wrist band / safety reminder"></div>
       <p id="pinMsg" class="muted"></p>
+      <p class="muted center" style="margin-top: 10px; font-size: 0.9em;">
+        Need to set or reset your PIN? Click the + button below
+      </p>
     </div>
-    <button class="fab fab-add" id="btnPinSetup" aria-label="Set or Reset PIN">+</button>
+    <button class="fab fab-add" id="btnPinSetup" aria-label="Set or Reset PIN" style="background: linear-gradient(135deg, #76a7ff, #5f96ff); box-shadow: 0 4px 12px rgba(118,167,255,0.4);">+</button>
   </div>
 
   <div class="wrap hidden" id="screen-pin-setup">
@@ -858,6 +861,11 @@
           <button class="btn primary big" id="btnSubmit">Submit</button>
           <span id="submitMsg" class="muted"></span>
         </div>
+        <!-- Debug Panel -->
+        <div style="margin-top: 20px;">
+          <button onclick="updateDebugPanel()" style="margin-bottom: 10px; padding: 8px 16px; background: rgba(255,255,0,0.2); color: white; border: 1px solid yellow; border-radius: 4px; cursor: pointer;">🔄 Refresh Debug Info</button>
+          <div id="debugPanel" style="padding: 15px; background: rgba(255,255,0,0.1); border: 2px dashed yellow; border-radius: 8px; font-family: monospace; font-size: 12px; white-space: pre-wrap; max-height: 300px; overflow-y: auto; color: white;"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -908,6 +916,47 @@
 
     // State
     const S = { siteId: null, user: null, staff: null, scans: [], itemsById: new Map(), types: [], typesByCategory: {} };
+
+    // Debug logging function
+    function debugLog(message, data = null) {
+      const timestamp = new Date().toLocaleTimeString();
+      const logEntry = `[${timestamp}] ${message}${data ? '\n' + JSON.stringify(data, null, 2) : ''}`;
+      console.log(message, data);
+
+      // Also display in debug panel if on review screen
+      const debugPanel = document.getElementById('debugPanel');
+      if (debugPanel) {
+        const existingContent = debugPanel.textContent;
+        debugPanel.textContent = existingContent + (existingContent ? '\n' : '') + logEntry;
+        debugPanel.scrollTop = debugPanel.scrollHeight;
+      }
+    }
+
+    // Update debug panel with current state
+    function updateDebugPanel() {
+      const debugPanel = document.getElementById('debugPanel');
+      if (!debugPanel) return;
+
+      const debugInfo = {
+        '=== CURRENT STATE ===': '',
+        'User ID': S.user?.id || 'Not logged in',
+        'User Email': S.user?.email || 'N/A',
+        'Site ID': S.siteId || 'Not set',
+        'Staff Authenticated': S.staff ? 'YES' : 'NO',
+        'Staff Name': S.staff?.name || 'N/A',
+        'Staff master_user_id': S.staff?.master_user_id || 'N/A',
+        'Staff user_id': S.staff?.user_id || 'N/A',
+        'Items Scanned': S.scans.length,
+        'Scan IDs': S.scans.join(', ') || 'None'
+      };
+
+      let debugText = '';
+      for (const [key, value] of Object.entries(debugInfo)) {
+        debugText += `${key}: ${value}\n`;
+      }
+
+      debugPanel.textContent = debugText;
+    }
 
     // Helpers
     function $(id) { return document.getElementById(id); }
@@ -1136,7 +1185,7 @@
       resetInterval = setInterval(tick, 1000);
     }
     function focusUploadInput(){ const u=$('uploadInput'); if(!u) return; u.value=''; u.focus(); }
-    function scheduleUploadAutoContinue(){ if(uploadQuietTimer) clearTimeout(uploadQuietTimer); uploadQuietTimer = setTimeout(async ()=>{ await refreshReview(); show('screen-review'); }, 2000); }
+    function scheduleUploadAutoContinue(){ if(uploadQuietTimer) clearTimeout(uploadQuietTimer); uploadQuietTimer = setTimeout(async ()=>{ await refreshReview(); show('screen-review'); updateDebugPanel(); }, 2000); }
     function startDoubleDeepCycle(){
   const img = $('imgDoubleDeep');
   if (!img) return;
@@ -1229,13 +1278,31 @@ function stopScanTrollyCycle(){
     }
 
     async function init() {
+      debugLog('=== INIT STARTED ===');
       const { data: { session } } = await sb.auth.getSession();
-      if (!session) { show('screen-login'); $('status').textContent = 'Not signed in'; return; }
+      if (!session) {
+        debugLog('No session found, showing login screen');
+        show('screen-login');
+        $('status').textContent = 'Not signed in';
+        return;
+      }
       S.user = session.user;
+      debugLog('User session found', { userId: S.user.id, email: S.user.email });
+
+      // CRITICAL: Clear any previous staff authentication to prevent cross-session contamination
+      S.staff = null;
+      debugLog('Cleared staff authentication');
+
       // Fetch profile -> site id
       const { data: prof, error } = await sb.from('master_users').select('site_id, full_name, role').eq('auth_user_id', session.user.id).limit(1);
-      if (error || !prof || !prof.length) { show('screen-login'); $('loginMsg').textContent = 'No profile/site. Please onboard first.'; return; }
+      if (error || !prof || !prof.length) {
+        debugLog('Profile error or no profile found', { error, prof });
+        show('screen-login');
+        $('loginMsg').textContent = 'No profile/site. Please onboard first.';
+        return;
+      }
       S.siteId = prof[0].site_id;
+      debugLog('Profile loaded', { siteId: S.siteId, fullName: prof[0].full_name });
       $('footerWho').textContent = prof[0].full_name || session.user.email || '—';
 
       // Lookup site name and display it in the top-left pill (replace email + site id)
@@ -1251,61 +1318,27 @@ function stopScanTrollyCycle(){
       }
 
       await preloadCache();
+      debugLog('Init complete, showing PIN screen');
       show('screen-pin');
     }
 
     // Preload items and types for fast lookup
     async function preloadCache() {
-  // Load items for this site
-  const i = await readClient()
-    .from('items')
-    .select('item_id, item_name, room, default_check_type, category')
-    .eq('site_id', S.siteId)
-    .order('item_name');
-
-  if (!i.error) {
-    S.itemsById.clear();
-    (i.data || []).forEach(r => S.itemsById.set(r.item_id, r));
-  }
-
-  // Try to load explicit check types first (new schema)
-  const t = await readClient()
-    .from('check_types')
-    .select('name, category')
-    .eq('site_id', S.siteId)
-    .order('name');
-
-  if (!t.error && t.data && t.data.length) {
-    S.types = t.data.map(r => r.name);
-    S.typesByCategory = {};
-    t.data.forEach(r => {
-      if (!S.typesByCategory[r.category]) S.typesByCategory[r.category] = [];
-      S.typesByCategory[r.category].push(r.name);
-    });
-  } else {
-    // Fallback: derive types from items (legacy / different schema)
-    const items = (i && i.data) ? i.data : [];
-    const typeSet = new Set();
-    const byCat = {};
-
-    items.forEach(r => {
-      const type = r.default_check_type;
-      if (type) {
-        typeSet.add(type);
-        const cat = r.category || 'general';
-        if (!byCat[cat]) byCat[cat] = new Set();
-        byCat[cat].add(type);
+      const i = await readClient().from('items').select('item_id, item_name, room, default_check_type, category').eq('site_id', S.siteId).order('item_name');
+      if (!i.error) { S.itemsById.clear(); (i.data||[]).forEach(r=>S.itemsById.set(r.item_id, r)); }
+      // Load all active check types for this site
+      const t = await readClient().from('check_types').select('name, category').eq('site_id', S.siteId).order('name');
+      if (!t.error) {
+        S.types = (t.data || []).map(r => r.name);
+        // keep grouped map available if needed elsewhere
+        S.typesByCategory = {};
+        (t.data || []).forEach(r => {
+          if (!S.typesByCategory[r.category]) S.typesByCategory[r.category] = [];
+          S.typesByCategory[r.category].push(r.name);
+        });
       }
-    });
-
-    S.types = Array.from(typeSet).sort();
-    S.typesByCategory = Object.fromEntries(
-      Object.entries(byCat).map(([k, v]) => [k, Array.from(v).sort()])
-    );
-  }
-
-  guardSubmitForTypes();
-}
+      guardSubmitForTypes();
+    }
 
     // Login
     $('doLogin').addEventListener('click', async ()=>{
@@ -1327,6 +1360,7 @@ function stopScanTrollyCycle(){
         if (!confirm('Are you sure? All progress will be lost.')) return;
         // Reset audit state
         S.scans = [];
+        S.staff = null;  // Clear staff authentication when exiting audit
         pin = '';
         pinDots(0);
         resetUploadUI();
@@ -1351,25 +1385,53 @@ function stopScanTrollyCycle(){
 
     async function tryPin(p) {
       $('pinMsg').textContent = 'Checking…';
+      console.log(`=== PIN AUTHENTICATION ATTEMPT ===`);
+      console.log(`Site ID: ${S.siteId}, PIN entered: ${p}`);
+      console.log(`Current user: ${S.user?.email}`);
+
       try {
+        // Direct authentication using master_users table
+        console.log('Attempting PIN authentication with master_users...');
         const { data, error } = await sb
           .from('master_users')
-          .select('id, full_name, role')
+          .select('id, auth_user_id, full_name, access_type, role_detail, pin_hash')
           .eq('site_id', S.siteId)
-          .eq('pin', p)
-          .limit(1);
-        if (error) { $('pinMsg').textContent = error.message; await glowPinError(500); pin=''; pinDots(0); return; }
-        if (!data || !data.length) { $('pinMsg').textContent = 'Invalid PIN'; await glowPinError(500); pin=''; pinDots(0); return; }
+          .eq('pin_hash', p)  // Direct PIN comparison (consider proper hashing in production)
+          .eq('active', true)  // Only active users
+          .single();
 
-        S.staff = { name: data[0].full_name, role: data[0].role || 'staff' };
+        console.log('master_users PIN check response:', { data, error });
+
+        if (error || !data) {
+          console.log('Invalid PIN - no matching user found');
+          $('pinMsg').textContent = 'Invalid PIN. Click + to reset.';
+          await glowPinError(500);
+          pin='';
+          pinDots(0);
+          return;
+        }
+
+        // Store the complete staff information
+        console.log('Authentication successful, storing staff data...');
+        S.staff = {
+          name: data.full_name,
+          role: data.access_type || 'staff',
+          master_user_id: data.id,  // Store the master_users UUID ID for reference
+          user_id: data.auth_user_id  // The actual auth user ID
+        };
+
+        console.log('Staff authenticated:', S.staff);
+
         $('footerWho').textContent = S.staff.name;
         $('pinMsg').textContent = '';
+        console.log('PIN authentication complete, proceeding...');
         // Flash bright green, show welcome popup, then navigate
         await glowPinSuccess(2000);
         pin = '';
         pinDots(0);
         // glowPinSuccess will navigate after showing the welcome popup
       } catch (e) {
+        console.error('PIN authentication error:', e);
         $('pinMsg').textContent = e.message || String(e);
         await glowPinError(500);
         pin=''; pinDots(0);
@@ -1395,34 +1457,70 @@ function stopScanTrollyCycle(){
     }
 
     // Finish -> upload
-    $('uploadInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); const raw=e.target.value.trim(); e.target.value=''; const m=raw.match(/^\d{10}$/); if(!m){ scheduleUploadAutoContinue(); return; } const code=m[0]; if(!S.scans.includes(code)){ const wasEmpty = S.scans.length === 0; S.scans.push(code); if (wasEmpty) { showUploadCounter(); } updateUploadCounter(); } scheduleUploadAutoContinue(); }});
+    $('uploadInput').addEventListener('keydown', (e)=>{
+      if(e.key==='Enter'){
+        e.preventDefault();
+        const raw=e.target.value.trim();
+        e.target.value='';
+        const m=raw.match(/^\d{10}$/);
+        if(!m){
+          debugLog('Invalid scan format', { input: raw });
+          scheduleUploadAutoContinue();
+          return;
+        }
+        const code=m[0];
+        if(!S.scans.includes(code)){
+          const wasEmpty = S.scans.length === 0;
+          S.scans.push(code);
+          debugLog('Item scanned', { code, totalScans: S.scans.length });
+          if (wasEmpty) {
+            showUploadCounter();
+          }
+          updateUploadCounter();
+        } else {
+          debugLog('Duplicate scan ignored', { code });
+        }
+        scheduleUploadAutoContinue();
+      }
+    });
     $('btnResetDone').addEventListener('click', () => { if (resetInterval) { clearInterval(resetInterval); resetInterval = null; } show('screen-pin'); });
 
     // --- PIN Setup Screen Logic ---
     async function populateKioskUsers() {
-        const selectEl = $('pinSetupUser');
-        selectEl.innerHTML = '<option value="">Select Staff Member...</option>';
-        if (!S.siteId) {
-            $('pinSetupMsg').textContent = 'Error: Site not loaded.';
-            return;
-        }
-        const { data: users, error } = await readClient()
-            .from('master_users')
-            .select('id, full_name')
-            .eq('site_id', S.siteId)
-            .order('full_name');
-        if (error) {
-            $('pinSetupMsg').textContent = 'Could not load staff list.';
-            return;
-        }
-        if (users) {
-            users.forEach(user => {
-                const option = document.createElement('option');
-                option.value = user.id;
-                option.textContent = user.full_name;
-                selectEl.appendChild(option);
-            });
-        }
+      const selectEl = $('pinSetupUser');
+      selectEl.innerHTML = '<option value="">Select Staff Member...</option>';
+      if (!S.siteId) {
+          $('pinSetupMsg').textContent = 'Error: Site not loaded.';
+          return;
+      }
+      
+      // Get ALL staff from master_users for this site
+      console.log('Loading staff from master_users for site:', S.siteId);
+      const { data: users, error } = await readClient()
+          .from('master_users')
+          .select('auth_user_id, full_name, email')
+          .eq('site_id', S.siteId)
+          .not('full_name', 'is', null)  // Only get users with names
+          .eq('active', true)  // Only active users
+          .order('full_name');
+
+      console.log('Loaded master_users:', users);
+      if (error) {
+          console.error('Error loading master_users:', error);
+          $('pinSetupMsg').textContent = 'Could not load staff list.';
+          return;
+      }
+
+      if (users && users.length > 0) {
+          users.forEach(user => {
+              const option = document.createElement('option');
+              option.value = user.auth_user_id;  // Use auth_user_id as the identifier
+              option.textContent = user.full_name;
+              selectEl.appendChild(option);
+          });
+      } else {
+          $('pinSetupMsg').textContent = 'No staff found for this site.';
+      }
     }
 
     $('btnPinSetup').addEventListener('click', () => {
@@ -1439,44 +1537,50 @@ function stopScanTrollyCycle(){
     });
 
     $('btnPinSetupSave').addEventListener('click', async () => {
-        const msgEl = $('pinSetupMsg');
-        msgEl.textContent = 'Saving...';
-        const userId = $('pinSetupUser').value;
-        const newPin = $('pinSetupNew').value;
-        const confirmPin = $('pinSetupConfirm').value;
+      const msgEl = $('pinSetupMsg');
+      msgEl.textContent = 'Saving...';
+      const userId = $('pinSetupUser').value;  // This is the auth_user_id from master_users
+      const newPin = $('pinSetupNew').value;
+      const confirmPin = $('pinSetupConfirm').value;
 
-        if (!userId) {
-            msgEl.textContent = 'Please select a staff member.';
-            return;
-        }
-        if (!/^\d{4}$/.test(newPin)) {
-            msgEl.textContent = 'PIN must be exactly 4 digits.';
-            return;
-        }
-        if (newPin !== confirmPin) {
-            msgEl.textContent = 'PINs do not match.';
-            return;
-        }
+      if (!userId) {
+          msgEl.textContent = 'Please select a staff member.';
+          return;
+      }
+      if (!/^\d{4}$/.test(newPin)) {
+          msgEl.textContent = 'PIN must be exactly 4 digits.';
+          return;
+      }
+      if (newPin !== confirmPin) {
+          msgEl.textContent = 'PINs do not match.';
+          return;
+      }
 
-        const { error } = await sb
-            .from('master_users')
-            .update({ pin: newPin })
-            .eq('id', userId)
-            .eq('site_id', S.siteId);
+      // Update the PIN directly in master_users table
+      const { error: pinError } = await sb
+          .from('master_users')
+          .update({
+              pin_hash: newPin,  // Store PIN in pin_hash column (consider hashing in production)
+              updated_at: new Date().toISOString()
+          })
+          .eq('auth_user_id', userId)
+          .eq('site_id', S.siteId);
 
-        if (error) {
-            msgEl.textContent = `Error: ${error.message}`;
-        } else {
-            msgEl.textContent = 'PIN updated successfully!';
-            toast('PIN Saved!');
-            setTimeout(() => {
-                $('pinSetupUser').selectedIndex = 0;
-                $('pinSetupNew').value = '';
-                $('pinSetupConfirm').value = '';
-                msgEl.textContent = '';
-                show('screen-pin');
-            }, 1500);
-        }
+      if (pinError) {
+          console.error('PIN save error:', pinError);
+          msgEl.textContent = `Error: ${pinError.message}`;
+      } else {
+          console.log('PIN saved successfully for user:', userId);
+          msgEl.textContent = 'PIN updated successfully!';
+          toast('PIN Saved!');
+          setTimeout(() => {
+              $('pinSetupUser').selectedIndex = 0;
+              $('pinSetupNew').value = '';
+              $('pinSetupConfirm').value = '';
+              msgEl.textContent = '';
+              show('screen-pin');
+          }, 1500);
+      }
     });
 
     async function refreshReview() {
@@ -1595,17 +1699,104 @@ function stopScanTrollyCycle(){
     // Submit
     $('btnSubmit').addEventListener('click', async()=>{
       $('submitMsg').textContent='Submitting…';
-      if (!S.scans.length) { $('submitMsg').textContent='No scans.'; return; }
+      updateDebugPanel();
+      debugLog('=== STARTING SUBMISSION PROCESS ===');
+      debugLog('Current state before submission', {
+        user: S.user,
+        staff: S.staff,
+        siteId: S.siteId,
+        scans: S.scans
+      });
+
+      if (!S.scans.length) {
+        $('submitMsg').textContent='No scans.';
+        debugLog('Submission aborted: No items scanned');
+        return;
+      }
       // Scope selects to within the review list and require data-item-id
       const reviewContainer = document.getElementById('reviewGroups');
       const selects = reviewContainer ? Array.from(reviewContainer.querySelectorAll('.rowType[data-item-id]')) : [];
       const staffName = S.staff?.name || 'Staff';
 
       const sessionId = (crypto.randomUUID && crypto.randomUUID()) || String(Date.now());
+
+      // Build submission object with proper user/staff linking
+      const submissionData = {
+        site_id: S.siteId,
+        session_id: sessionId,
+        staff_name: staffName
+      };
+
+      debugLog('Initial submission data', submissionData);
+
+      // Handle staff_id and user_id based on PIN authentication
+      // Since kiosk_users table no longer exists, we'll rely on staff_name and submitted_by_user_id
+      // for tracking instead of the numeric staff_id field
+      if (S.staff && S.staff.master_user_id) {
+        debugLog('Staff object found with master_user_id', S.staff);
+
+        // Don't set staff_id - leave it as null since kiosk_users table is gone
+        // The staff_name and submitted_by_user_id will track who did the audit
+        debugLog(`Staff identified via master_users UUID: ${S.staff.master_user_id}`);
+        debugLog(`Staff will be tracked by name: ${S.staff.name}`);
+
+        if (S.staff.user_id) {
+          submissionData.user_id = S.staff.user_id;
+          debugLog(`User ID from staff set: ${S.staff.user_id}`);
+        }
+      } else {
+        debugLog('No staff authenticated via PIN');
+        // Don't set staff_id - it will be NULL in database
+      }
+
+      debugLog('Submission data after staff processing', submissionData);
+
+      // ALWAYS add submitted_by_user_id from the logged-in user
+      // This is critical for my-scans.html to find the submissions
+      if (S.user && S.user.id) {
+        submissionData.submitted_by_user_id = S.user.id;
+        debugLog(`Submitted by user ID set: ${S.user.id}`);
+      } else {
+        debugLog('WARNING: No user ID available for submitted_by_user_id');
+      }
+
+      // FINAL SAFEGUARD: Clean up staff_id if invalid
+      if ('staff_id' in submissionData) {
+        const staffId = submissionData.staff_id;
+        if (!staffId || staffId === '' ||
+            (typeof staffId === 'number' && (isNaN(staffId) || staffId <= 0))) {
+          delete submissionData.staff_id;
+          debugLog(`Removed invalid staff_id: ${staffId}`);
+        }
+      }
+
+      debugLog('FINAL submission data to be sent', submissionData);
+
+      // Show final data in debug panel
+      const debugPanel = document.getElementById('debugPanel');
+      if (debugPanel) {
+        debugPanel.textContent += '\n\n=== SUBMISSION DATA ===\n' + JSON.stringify(submissionData, null, 2);
+        debugPanel.scrollTop = debugPanel.scrollHeight;
+      }
+
       const { data: sub, error: e1 } = await sb.from('submissions')
-        .insert({ site_id: S.siteId, session_id: sessionId, staff_name: staffName })
+        .insert(submissionData)
         .select('id').single();
-      if (e1) { $('submitMsg').textContent = e1.message; return; }
+
+      if (e1) {
+        debugLog('SUBMISSION ERROR', { error: e1, dataSent: submissionData });
+        $('submitMsg').textContent = `ERROR: ${e1.message}`;
+
+        // Show detailed error in debug panel
+        if (debugPanel) {
+          debugPanel.style.background = 'rgba(255,0,0,0.1)';
+          debugPanel.style.borderColor = 'red';
+          debugPanel.textContent += '\n\n!!! ERROR !!!\n' + e1.message + '\n\nData sent:\n' + JSON.stringify(submissionData, null, 2);
+        }
+        return;
+      }
+
+      debugLog('Submission created successfully', { submissionId: sub.id });
       const sid = sub.id;
       const rows = [];
       for (const s of selects) {
@@ -1617,10 +1808,25 @@ function stopScanTrollyCycle(){
       }
       if (rows.length === 0) { $('submitMsg').textContent = 'No items to submit.'; return; }
       const { error: e2 } = await sb.from('submission_rows').insert(rows);
-      if (e2) { $('submitMsg').textContent = e2.message; return; }
+      if (e2) {
+        debugLog('ERROR inserting submission rows', { error: e2, rows });
+        $('submitMsg').textContent = e2.message;
+        return;
+      }
+
+      debugLog('Submission rows inserted successfully', { rowCount: rows.length });
       $('submitMsg').textContent='Submitted!';
       toast('Submission uploaded');
+
+      // Show success in debug panel
+      if (debugPanel) {
+        debugPanel.style.background = 'rgba(0,255,0,0.1)';
+        debugPanel.style.borderColor = 'green';
+        debugPanel.textContent += '\n\n✅ SUCCESS! Submission ID: ' + sid;
+      }
+
       S.scans = [];
+      debugLog('Submission complete, resetting state');
       show('screen-reset');
       showResetQR();
       startResetCountdown(30);
@@ -1630,5 +1836,8 @@ function stopScanTrollyCycle(){
     init();
 </script>
 
+    <!-- Debug Console - Persistent across all pages -->
+    <script src="debug-console.js"></script>
+    <script src="supabase-debug.js"></script>
 </body>
 </html>
