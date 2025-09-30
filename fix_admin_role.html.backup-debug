@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fix Admin Role</title>
+</head>
+<body>
+    <h1>Fixing Admin Role</h1>
+    <div id="output"></div>
+
+    <script type="module">
+        import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+        const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME';
+
+        const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const output = document.getElementById('output');
+
+        function log(message) {
+            console.log(message);
+            output.innerHTML += message + '<br>';
+        }
+
+        async function fixAdminRole() {
+            const email = 'benhowardmagic@hotmail.com';
+            const userId = '55f1b6e6-01f4-4524-8d66-617677794373';
+
+            log(`Fixing admin role for user: ${email}`);
+
+            try {
+                // Update the master_users table to change role from "site_hd" to "admin"
+                const { data, error } = await supabase
+                    .from('master_users')
+                    .update({ role: 'admin' })
+                    .eq('auth_user_id', userId)
+                    .select();
+
+                if (error) {
+                    log(`Error updating role: ${JSON.stringify(error)}`);
+                } else {
+                    log(`<br><strong>✅ Successfully updated role to admin!</strong>`);
+                    log(`Updated records: ${JSON.stringify(data, null, 2)}`);
+
+                    // Verify the change
+                    const { data: verification, error: verifyError } = await supabase
+                        .from('master_users')
+                        .select('role, full_name')
+                        .eq('auth_user_id', userId);
+
+                    if (verifyError) {
+                        log(`Error verifying change: ${JSON.stringify(verifyError)}`);
+                    } else {
+                        log(`<br><strong>Verification:</strong>`);
+                        verification.forEach(profile => {
+                            log(`- Name: ${profile.full_name}, Role: ${profile.role}`);
+                        });
+                        log(`<br><strong>🎉 Admin login should now work!</strong>`);
+                    }
+                }
+            } catch (error) {
+                log(`Error fixing admin role: ${JSON.stringify(error)}`);
+            }
+        }
+
+        fixAdminRole();
+    </script>
+
+    <!-- Debug Console - Persistent across all pages -->
+    <script src="debug-console.js"></script>
+</body>
+</html>

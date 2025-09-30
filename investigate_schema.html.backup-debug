@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Supabase Schema Investigation</title>
+    <style>
+        body { font-family: monospace; margin: 20px; background: #1a1a1a; color: #00ff00; }
+        .output { background: #000; padding: 15px; border-radius: 5px; white-space: pre-wrap; }
+        .section { margin: 20px 0; padding: 10px; border-left: 3px solid #00ff00; }
+        .error { color: #ff6b6b; }
+        .success { color: #51cf66; }
+        .warning { color: #ffd43b; }
+        button { padding: 10px 20px; background: #333; color: #00ff00; border: 1px solid #666; cursor: pointer; }
+        button:hover { background: #555; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Supabase Database Schema Investigation</h1>
+    <div id="status">Initializing...</div>
+    <div id="output" class="output"></div>
+    
+    <script type="module">
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+        
+        const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
+        const output = document.getElementById('output');
+        const status = document.getElementById('status');
+        const SERVICE_ROLE_KEY = (typeof process !== 'undefined' && process.env?.SUPABASE_SERVICE_ROLE_KEY)
+            || window.prompt('Enter SUPABASE_SERVICE_ROLE_KEY (never commit this value)', '')?.trim()
+            || '';
+
+        if (!SERVICE_ROLE_KEY) {
+            status.textContent = '⚠️ Service role key not provided. Set SUPABASE_SERVICE_ROLE_KEY in your environment or supply it when prompted.';
+            output.textContent += 'Service role key not provided. Investigation stopped.\n';
+            throw new Error('SUPABASE_SERVICE_ROLE_KEY not set');
+        }
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'warning' ? 'warning' : '';
+            output.innerHTML += `<span class="${className}">[${timestamp}] ${message}</span>\n`;
+            console.log(message);
+        }
+        
+        async function investigate() {
+            try {
+                status.textContent = '🔄 Connecting to Supabase...';
+                const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+                
+                log('🔍 Starting database schema investigation...', 'success');
+                log('');
+                
+                // 1. Check master_users table columns
+                log('📋 1. Investigating master_users table structure...');
+                try {
+                    const { data: masterUsersData, error: masterError } = await supabase
+                        .from('master_users')
+                        .select('*')
+                        .limit(1);
+                    
+                    if (masterError) {
+                        log(`   ❌ master_users error: ${masterError.message}`, 'error');
+                    } else {
+                        log('   ✅ master_users table exists', 'success');
+                        if (masterUsersData && masterUsersData.length > 0) {
+                            const columns = Object.keys(masterUsersData[0]);
+                            log(`   📝 Columns found (${columns.length}): ${columns.join(', ')}`);
+                            
+                            // Check for PIN-related columns
+                            const pinColumns = columns.filter(col => col.toLowerCase().includes('pin'));
+                            if (pinColumns.length > 0) {
+                                log(`   🔑 PIN columns: ${pinColumns.join(', ')}`, 'success');
+                            } else {
+                                log('   ⚠️  No PIN columns found', 'warning');
+                            }
+                        } else {
+                            log('   📝 Table exists but no data found');
+                        }
+                    }
+                } catch (e) {
+                    log(`   💥 Exception checking master_users: ${e.message}`, 'error');
+                }
+                
+                log('');
+                
+                // 2. Check master_users table and holiday_approved column
+                log('📋 2. Investigating master_users table...');
+                try {
+                    const { data: kioskData, error: kioskError } = await supabase
+                        .from('master_users')
+                        .select('*')
+                        .limit(1);
+                    
+                    if (kioskError) {
+                        log(`   ❌ kiosk_users error: ${kioskError.message}`, 'error');
+                        log(`   🔍 Error code: ${kioskError.code}`, 'error');
+                    } else {
+                        log('   ✅ master_users table exists', 'success');
+                        if (kioskData && kioskData.length > 0) {
+                            const columns = Object.keys(kioskData[0]);
+                            log(`   📝 Columns: ${columns.join(', ')}`);
+                            
+                            if (columns.includes('holiday_approved')) {
+                                log('   ✅ holiday_approved column EXISTS', 'success');
+                                log(`   📄 Sample data: ${JSON.stringify(kioskData[0], null, 2)}`);
+                            } else {
+                                log('   ❌ holiday_approved column MISSING', 'error');
+                            }
+                        } else {
+                            log('   📝 Table exists but no data found');
+                        }
+                    }
+                } catch (e) {
+                    log(`   💥 Exception checking kiosk_users: ${e.message}`, 'error');
+                }
+                
+                log('');
+                
+                // 3. Check master_users table for PIN columns
+                log('📋 3. Investigating master_users table...');
+                try {
+                    const { data: profilesData, error: profilesError } = await supabase
+                        .from('master_users')
+                        .select('*')
+                        .limit(1);
+                    
+                    if (profilesError) {
+                        log(`   ❌ profiles error: ${profilesError.message}`, 'error');
+                    } else {
+                        log('   ✅ master_users table exists', 'success');
+                        if (profilesData && profilesData.length > 0) {
+                            const columns = Object.keys(profilesData[0]);
+                            log(`   📝 Total columns: ${columns.length}`);
+                            
+                            // Look for PIN-related columns
+                            const pinColumns = columns.filter(col => 
+                                col.toLowerCase().includes('pin') || 
+                                col.toLowerCase().includes('hash')
+                            );
+                            
+                            if (pinColumns.length > 0) {
+                                log(`   🔑 PIN/hash columns: ${pinColumns.join(', ')}`, 'success');
+                            } else {
+                                log('   ⚠️  No PIN/hash columns found', 'warning');
+                            }
+                            
+                            // Show first few columns to give context
+                            log(`   📄 First 10 columns: ${columns.slice(0, 10).join(', ')}`);
+                        } else {
+                            log('   📝 Table exists but no data found');
+                        }
+                    }
+                } catch (e) {
+                    log(`   💥 Exception checking profiles: ${e.message}`, 'error');
+                }
+                
+                log('');
+                
+                // 4. Test UUID validation issues
+                log('📋 4. Testing UUID validation...');
+                const testUUIDs = [
+                    { value: null, description: 'null' },
+                    { value: 'null', description: 'string "null"' },
+                    { value: undefined, description: 'undefined' },
+                    { value: 'undefined', description: 'string "undefined"' },
+                    { value: '', description: 'empty string' },
+                    { value: '123', description: 'numeric string' },
+                    { value: 'not-a-uuid', description: 'invalid UUID format' }
+                ];
+                
+                for (const testCase of testUUIDs) {
+                    try {
+                        const { data, error } = await supabase
+                            .from('master_users')
+                            .select('auth_auth_user_id')
+                            .eq('auth_user_id', testCase.value)
+                            .limit(1);
+                        
+                        if (error) {
+                            log(`   ❌ ${testCase.description} -> Error: ${error.message}`, 'error');
+                            if (error.code) {
+                                log(`      Code: ${error.code}`, 'error');
+                            }
+                        } else {
+                            log(`   ✅ ${testCase.description} -> No error`, 'success');
+                        }
+                    } catch (e) {
+                        log(`   💥 ${testCase.description} -> Exception: ${e.message}`, 'error');
+                    }
+                }
+                
+                log('');
+                
+                // 5. Test holiday approval update with different user ID formats
+                log('📋 5. Testing holiday approval update...');
+                
+                // First get a real user ID to test with
+                try {
+                    const { data: testUser, error: testUserError } = await supabase
+                        .from('master_users')
+                        .select('auth_auth_user_id, holiday_approved')
+                        .limit(1)
+                        .maybeSingle();
+                    
+                    if (testUser) {
+                        log(`   📝 Test user ID: ${testUser.user_id}`);
+                        log(`   📝 Current holiday_approved: ${testUser.holiday_approved}`);
+                        
+                        // Test update (using same value to avoid changing data)
+                        const { data: updateResult, error: updateError } = await supabase
+                            .from('master_users')
+                            .update({ holiday_approved: testUser.holiday_approved })
+                            .eq('auth_user_id', testUser.user_id)
+                            .select();
+                        
+                        if (updateError) {
+                            log(`   ❌ Update error: ${updateError.message}`, 'error');
+                            log(`   🔍 Error code: ${updateError.code}`, 'error');
+                        } else {
+                            log('   ✅ Holiday approval update works fine', 'success');
+                        }
+                        
+                        // Now test with problematic values
+                        log('   🧪 Testing problematic UUID values...');
+                        const problemUUIDs = ['null', null, undefined, ''];
+                        
+                        for (const badUUID of problemUUIDs) {
+                            try {
+                                const { error: badError } = await supabase
+                                    .from('master_users')
+                                    .update({ holiday_approved: true })
+                                    .eq('auth_user_id', badUUID);
+                                
+                                if (badError) {
+                                    log(`   ❌ UUID "${badUUID}" causes: ${badError.message}`, 'error');
+                                } else {
+                                    log(`   ⚠️  UUID "${badUUID}" works (unexpected)`, 'warning');
+                                }
+                            } catch (e) {
+                                log(`   💥 UUID "${badUUID}" throws: ${e.message}`, 'error');
+                            }
+                        }
+                        
+                    } else {
+                        log('   ⚠️  No test user found', 'warning');
+                    }
+                } catch (e) {
+                    log(`   💥 Exception getting test user: ${e.message}`, 'error');
+                }
+                
+                log('');
+                log('🎯 Investigation complete!', 'success');
+                status.textContent = '✅ Investigation complete';
+                
+            } catch (error) {
+                log(`💥 Investigation failed: ${error.message}`, 'error');
+                status.textContent = '❌ Investigation failed';
+            }
+        }
+        
+        // Start investigation
+        status.textContent = '🔄 Starting investigation...';
+        investigate();
+    </script>
+</body>
+</html>

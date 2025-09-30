@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CheckLoops — Scans & Schedule</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://img.icons8.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <script src="config.js"></script>
+  <script src="admin-nav.js"></script>
+  <script src="user-utils.js"></script>
+  <link rel="stylesheet" href="staff.css">
+  <script src="fix-navigation-style.js"></script>
+  <style>
+    /* ===== New One‑Stop Scans Hub styles ===== */
+    .grid-outer { display:grid; grid-template-columns: 1.35fr .95fr 1.1fr; gap:16px; }
+    @media (max-width: 1100px){ .grid-outer{ grid-template-columns: 1fr; } }
+
+    .hero-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .seg { display:flex; gap:6px; padding:6px; border:1px solid var(--border-color); border-radius:999px; background: rgba(255,255,255,0.06); }
+    .seg button{ border:0; padding:9px 14px; border-radius:999px; font-weight:700; cursor:pointer; color: var(--white); background: transparent; }
+    .seg button.active{ background: linear-gradient(135deg,#4338ca,#3b82f6); color:#fff; box-shadow:0 8px 22px rgba(59,130,246,.18); }
+
+    .kpis { display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:12px; margin: 10px 0 20px; }
+    @media (max-width: 900px){ .kpis{ grid-template-columns: repeat(2, minmax(0,1fr)); } }
+    .kpi { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 14px; padding: 14px; position:relative; overflow:hidden; }
+    .kpi::before{ content:''; position:absolute; left:0; top:0; height:4px; right:0; background: var(--accent-gradient); }
+    .kpi .n { font-size: 24px; font-weight:900; letter-spacing:.2px; background: var(--accent-gradient); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+    .kpi .l { color: rgba(248,251,255,0.80); font-weight:700; font-size: 12px; text-transform:uppercase; letter-spacing:.05em; }
+
+    .panel.h { padding: 16px; }
+    .col { display:flex; flex-direction:column; gap: 12px; }
+
+    .list { display:flex; flex-direction:column; }
+    .list .row { display:grid; grid-template-columns: 24px 1fr auto; gap:10px; align-items:center; padding:10px; border-bottom:1px solid rgba(255,255,255,.06); }
+    .row .dot{ width:10px; height:10px; border-radius:50%; background:#94a3b8; }
+    .row.overdue .dot{ background:#ef4444; }
+    .row.duesoon .dot{ background:#f59e0b; }
+    .row.due .dot{ background:#3b82f6; }
+    .row .title{ font-weight:800; color:#f8fbff; }
+    .row .meta{ font-size:12px; color: var(--muted); font-weight:700; }
+    .row .actions{ display:flex; gap:8px; align-items:center; }
+
+    .pill-act { padding:8px 10px; border-radius:10px; border:1px solid var(--border-color); background: rgba(255,255,255,0.06); color: var(--white); font-weight:700; cursor:pointer; }
+    .pill-act.primary{ background: linear-gradient(135deg,#4338ca,#3b82f6); border-color: transparent; }
+
+    .subtle{ color: var(--muted); font-weight:700; }
+
+    .mini-avatar { width:24px; height:24px; border-radius:50%; object-fit:cover; border:1px solid rgba(255,255,255,.6); box-shadow:0 1px 4px rgba(0,0,0,.2); }
+    .person-chip { display:inline-flex; gap:6px; align-items:center; padding:5px 10px; border-radius:999px; border:1px solid var(--border-color); background: rgba(255,255,255,0.9); color:#0f172a; font-weight:700; }
+
+    .timeline { display:flex; flex-direction:column; gap:10px; }
+    .tl-item { display:grid; grid-template-columns:32px 1fr auto; gap:10px; align-items:flex-start; background: rgba(255,255,255,0.03); border:1px solid var(--border-color); padding:10px; border-radius:12px; }
+    .tl-ico { width:32px; height:32px; border-radius:50%; display:grid; place-items:center; background: rgba(255,255,255,0.9); color:#0f172a; font-weight:800; }
+    .tl-title{ font-weight:800; color:#f8fbff; }
+
+    .table-wrap { background: var(--panel-bg); border:1px solid var(--border-color); border-radius:12px; overflow:hidden; }
+    .table-head{ display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid rgba(255,255,255,.06); }
+    .table-foot{ padding:10px 14px; text-align:right; border-top:1px solid rgba(255,255,255,.06); }
+
+    .badge { display:inline-block; padding:4px 8px; font-size:11px; border-radius:999px; font-weight:800; border:1px solid transparent; }
+    .b-overdue{ background: rgba(239,68,68,.18); color:#fecaca; border-color: rgba(239,68,68,.35); }
+    .b-due{ background: rgba(59,130,246,.18); color:#bfdbfe; border-color: rgba(59,130,246,.35); }
+    .b-soon{ background: rgba(245,158,11,.18); color:#fde68a; border-color: rgba(245,158,11,.35); }
+
+    .chart-container{ background: var(--panel-bg); border:1px solid var(--border-color); border-radius:12px; padding:16px; }
+    .chart-title{ font-weight:800; color:#f8fbff; margin-bottom:8px; }
+
+    .muted-small{ font-size:12px; color: var(--muted); font-weight:700; }
+
+    /* Tabs + Leaderboard styles */
+    .tabs { display:flex; gap:6px; padding:6px; border:1px solid var(--border-color); border-radius:10px; background: rgba(255,255,255,0.04); margin-bottom:10px; }
+    .tabs .tab { border:0; background:transparent; padding:8px 12px; font-weight:800; border-radius:8px; color: var(--white); cursor:pointer; }
+    .tabs .tab.active { background: linear-gradient(135deg,#4338ca,#3b82f6); box-shadow:0 8px 22px rgba(59,130,246,.18); }
+
+    .leaderboard { display:flex; flex-direction:column; }
+    .lb-row { display:grid; grid-template-columns: 28px 40px 1fr auto; align-items:center; gap:10px; padding:10px; border-bottom:1px solid rgba(255,255,255,.06); }
+    .lb-rank { font-weight:900; opacity:.85; width:28px; text-align:center; }
+    .lb-avatar { width:36px; height:36px; border-radius:50%; object-fit:cover; border:2px solid rgba(255,255,255,.65); box-shadow:0 2px 8px rgba(0,0,0,.35); }
+    .lb-avatar.rank1{ border-color:#fbbf24; box-shadow:0 0 0 3px rgba(251,191,36,.25); }
+    .lb-avatar.rank2{ border-color:#e5e7eb; box-shadow:0 0 0 3px rgba(229,231,235,.2); }
+    .lb-avatar.rank3{ border-color:#a78bfa; box-shadow:0 0 0 3px rgba(167,139,250,.25); }
+    .lb-name { font-weight:800; color:#f8fbff; }
+    .lb-meta { font-size:12px; color: var(--muted); font-weight:700; }
+    .lb-bar { position:relative; height:8px; border-radius:6px; background: rgba(255,255,255,.08); overflow:hidden; margin-top:6px; }
+    .lb-bar > span { position:absolute; left:0; top:0; bottom:0; border-radius:6px; background: linear-gradient(135deg,#60a5fa,#a78bfa); }
+    .lb-count { font-weight:900; }
+
+    .pill-note { font-size:11px; padding:2px 8px; background: rgba(255,255,255,.08); border:1px solid var(--border-color); border-radius:999px; display:inline-block; margin-left:8px; }
+  </style>
+</head>
+<body>
+  <div class="bg"><div class="wave"></div><div class="wave wave2"></div></div>
+  <main class="content">
+    <div class="topbar panel" style="position:relative;">
+      <div class="halo"></div>
+      <div class="nav seg-nav"></div>
+      <div class="spacer"></div>
+      <div class="pill" id="email-pill">—</div>
+      <div class="pill" id="role-pill">—</div>
+      <button class="btn" id="logout-btn">Sign Out</button>
+    </div>
+
+    <section class="panel g-12" style="margin:0; position:relative; overflow:visible;">
+      <div class="halo"></div>
+
+      <div class="hero" style="margin-bottom:14px; gap:12px; align-items:flex-start;">
+        <div>
+          <div class="h1" style="font-size:28px;">Scans Hub</div>
+          <div class="subtitle">Plan what’s due, see what’s happening live, and review what’s done.</div>
+        </div>
+        <div class="spacer"></div>
+        <div class="hero-actions">
+          <div class="seg" id="scope-seg">
+            <button data-scope="me" class="active">My Queue</button>
+            <button data-scope="team">Team</button>
+            <button data-scope="site">All Site</button>
+          </div>
+          <button class="bubble" id="start-scan-btn">
+            <div class="i c-green"><img data-i8="nfc-n" data-i8-size="48" alt="Scan"/></div>
+            <div class="t">Start Scan</div>
+          </button>
+          <button class="bubble" id="export-btn">
+            <div class="i c-blue"><img data-i8="download" data-i8-size="48" alt="Export"/></div>
+            <div class="t">Export</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- KPIs -->
+      <div class="kpis">
+        <div class="kpi"><div class="n" id="kpi-overdue">0</div><div class="l">Overdue</div><div class="muted-small" id="kpi-overdue-note">—</div></div>
+        <div class="kpi"><div class="n" id="kpi-today">0</div><div class="l">Due Today</div><div class="muted-small" id="kpi-today-note">—</div></div>
+        <div class="kpi"><div class="n" id="kpi-week">0</div><div class="l">Due This Week</div><div class="muted-small" id="kpi-week-note">—</div></div>
+        <div class="kpi"><div class="n" id="kpi-done-today">0</div><div class="l">Completed Today</div><div class="muted-small" id="kpi-done-note">—</div></div>
+      </div>
+
+      <div class="grid-outer">
+        <!-- Column 1: Upcoming queue -->
+        <div class="col">
+          <div class="panel h">
+            <div class="table-head">
+              <div class="table-title">Upcoming & Required</div>
+              <div class="muted">Sorted by due date</div>
+            </div>
+            <div class="list" id="queue-list">
+              <div class="subtle" style="padding:16px;">Loading queue…</div>
+            </div>
+            <div class="table-foot"><span class="muted-small" id="queue-count">—</span></div>
+          </div>
+
+          <div class="panel h">
+            <div class="table-head">
+              <div class="table-title">Overdue & Due Soon</div>
+              <div>
+                <span class="badge b-overdue" id="badge-overdue">0 Overdue</span>
+                <span class="badge b-soon" id="badge-soon">0 Due Soon</span>
+              </div>
+            </div>
+            <div class="list" id="alerts-list"><div class="subtle" style="padding:16px;">—</div></div>
+          </div>
+        </div>
+
+        <!-- Column 2: Live activity + chart -->
+        <div class="col">
+          <div class="panel h">
+            <div class="table-head">
+              <div class="table-title">Live Team Activity</div>
+              <div class="muted-small" id="live-note">Last 30 minutes</div>
+            </div>
+            <div class="timeline" id="live-timeline"><div class="subtle" style="padding:8px 10px;">Listening…</div></div>
+          </div>
+
+          <div class="panel h">
+            <div class="table-head">
+              <div class="table-title">Top Scanners</div>
+              <div class="seg" id="leaderboard-range">
+                <button data-range="today" class="active">Today</button>
+                <button data-range="week">This Week</button>
+              </div>
+            </div>
+            <div class="leaderboard" id="leaderboard"><div class="subtle" style="padding:12px 14px;">Loading…</div></div>
+          </div>
+        </div>
+
+        <!-- Column 3: History table (existing) -->
+        <div class="col">
+          <div class="panel h">
+            <div class="table-head">
+              <div class="table-title">Planner</div>
+              <span class="pill-note">Focus on what matters next</span>
+            </div>
+            <div class="tabs" id="history-tabs">
+              <button class="tab active" data-tab="missed">Missed</button>
+              <button class="tab" data-tab="today">Due Today</button>
+              <button class="tab" data-tab="week">Due This Week</button>
+            </div>
+            <div class="list" id="missed-list"><div class="subtle" style="padding:10px 12px;">Loading…</div></div>
+            <div class="list" id="today-list" style="display:none;"><div class="subtle" style="padding:10px 12px;">Loading…</div></div>
+            <div class="list" id="week-list" style="display:none;"><div class="subtle" style="padding:10px 12px;">Loading…</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="muted" style="text-align:center; font-size:12px; padding:10px 0;">© CheckLoops • Staff</div>
+  </main>
+
+  <script type="module">
+    import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, fmtDate, clearAuthData } from './staff-common.js';
+
+    const supabase = await initSupabase();
+    window.supabase = supabase;
+    handleAuthState(supabase);
+    navActivate('scans');
+
+    let currentUser = null;
+    let currentProfile = null;
+
+    let allScans = [];           // history rows
+    let filteredScans = [];
+    let currentPage = 1;
+    let itemsPerPage = 20;
+    let currentSort = { field: 'submitted_at', direction: 'desc' };
+
+    // New data stores
+    let scope = 'me';            // me | team | site
+    let checkTypeMap = new Map(); // id -> name
+    let allowed = [];            // item_allowed_types joined with items/check types
+    let queue = [];              // computed upcoming with due dates
+    let liveEvents = [];         // recent + realtime submissions
+    let profiles = new Map();    // user_id -> {full_name, avatar_url}
+
+    // Logout handling
+    let isLoggingOut = false;
+    function cleanupAndRedirect(){ try{ clearAuthData(true); }catch{} try{ sessionStorage.clear(); }catch{} try{ document.cookie.split(';').forEach(c => document.cookie = c.replace(/^ +/, '').replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`)); }catch{} window.location.replace('home.html?_=' + Date.now()); }
+    async function forceLogout(){ if(isLoggingOut) return; isLoggingOut=true; try{ const { data } = await supabase.auth.getSession(); if(data?.session) await supabase.auth.signOut(); }catch(e){ console.error('signOut failed', e);} cleanupAndRedirect(); }
+  document.getElementById('logout-btn').addEventListener('click', async e => { e.preventDefault(); e.stopPropagation(); if (window.signOut) return window.signOut(); await forceLogout(); });
+
+    // Helpers
+    const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+    function rel(from, to){ const ms = (to - from); const abs = Math.abs(ms); const s = 1000, m = 60*s, h = 60*m, d = 24*h; if(abs < m) return rtf.format(Math.round(ms/s), 'seconds'); if(abs < h) return rtf.format(Math.round(ms/m), 'minutes'); if(abs < d) return rtf.format(Math.round(ms/h), 'hours'); return rtf.format(Math.round(ms/d), 'days'); }
+
+    function parseInterval(str){
+      if(!str) return { days:0, months:0, ms:0 };
+      // supports e.g. "7 days", "1 day", "1 mon"
+      const parts = String(str).trim().toLowerCase();
+      let days=0, months=0;
+      const m = parts.match(/(\d+)\s*(day|days|week|weeks|mon|month|months)/);
+      if(m){ const n = parseInt(m[1],10); const unit = m[2];
+        if(unit.startsWith('week')) days = n*7; else if(unit.startsWith('day')) days = n; else months = n; }
+      return { days, months, ms: days*86400000 };
+    }
+
+    function addMonths(date, months){ const d = new Date(date.getTime()); const day = d.getDate(); d.setMonth(d.getMonth()+months); // handle month roll-over
+      if(d.getDate() !== day){ d.setDate(0); } return d; }
+
+    function nextDue(lastAt, freq){ const now = new Date(); if(!lastAt){ return new Date(now); } if(freq.months){ return addMonths(lastAt, freq.months); } return new Date(lastAt.getTime() + (freq.ms||0)); }
+
+    function fmtDue(dt){ const now = new Date(); const diff = dt - now; const cls = diff < 0 ? 'overdue' : diff < 3*24*3600*1000 ? 'duesoon' : 'due'; return { text: (diff<0? 'Overdue ' : 'Due ')+ rel(now, dt), cls, diff } }
+
+    function avatarUrlFor(user){ const a = profiles.get(user) || {}; return a.avatar_url || `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(user||'anon')}`; }
+
+    function chip(text){ return `<span class="badge b-due">${text}</span>`; }
+
+    function normRoom(room){ return room || '—'; }
+
+    // Leaderboard data
+    let leaderboardData = new Map(); // user_id -> { today: number, week: number, staff_name: string }
+    let leaderboardRange = 'today';
+
+    async function loadLeaderboard(siteId){
+      try{
+        const weekAgo = new Date(Date.now() - 7*24*60*60*1000).toISOString();
+        const { data: subs } = await supabase
+          .from('submissions')
+          .select('id, submitted_at, submitted_by_user_id, staff_name, site_id')
+          .eq('site_id', siteId)
+          .gte('submitted_at', weekAgo)
+          .order('submitted_at', { ascending:false })
+          .limit(500);
+        const submissionIds = (subs||[]).map(s=>s.id);
+        let rowCounts = new Map();
+        if(submissionIds.length){
+          const { data: srows } = await supabase
+            .from('submission_rows')
+            .select('submission_id')
+            .in('submission_id', submissionIds);
+          (srows||[]).forEach(r => rowCounts.set(r.submission_id, (rowCounts.get(r.submission_id)||0)+1));
+        }
+        const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+        leaderboardData = new Map();
+        (subs||[]).forEach(s => {
+          const uid = s.submitted_by_user_id || 'anon';
+          const checks = rowCounts.get(s.id) || 1; // fallback: 1 per submission
+          const entry = leaderboardData.get(uid) || { today:0, week:0, staff_name: s.staff_name || 'Unknown' };
+          entry.week += checks;
+          if(new Date(s.submitted_at) >= todayStart) entry.today += checks;
+          leaderboardData.set(uid, entry);
+        });
+        const ids = [...leaderboardData.keys()].filter(k=>k && k!=='anon');
+        if(ids.length){ const { data: profs } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', ids); (profs||[]).forEach(p => profiles.set(p.id, p)); }
+      }catch(e){ console.error('loadLeaderboard error', e); }
+    }
+
+    function renderLeaderboard(){
+      const wrap = document.getElementById('leaderboard'); if(!wrap) return;
+      const rows = [...leaderboardData.entries()].map(([uid, v]) => ({ uid, value: (leaderboardRange==='today'? v.today : v.week), name: profiles.get(uid)?.full_name || v.staff_name || 'Unknown', avatar: (profiles.get(uid)||{}).avatar_url }));
+      const filtered = rows.filter(r=>r.value>0).sort((a,b)=> b.value - a.value).slice(0,10);
+      if(!filtered.length){ wrap.innerHTML = `<div class="subtle" style="padding:12px 14px;">No activity yet for this ${leaderboardRange==='today'?'day':'week'}.</div>`; return; }
+      const max = Math.max(...filtered.map(r=>r.value));
+      wrap.innerHTML = filtered.map((r,idx)=>{
+        const cls = idx===0?'rank1': (idx===1?'rank2': (idx===2?'rank3':''));
+        const pct = Math.max(8, Math.round((r.value/max)*100));
+        const avatar = r.avatar || `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(r.uid)}`;
+        return `<div class="lb-row"><div class="lb-rank">${idx+1}</div><img class="lb-avatar ${cls}" src="${avatar}" alt=""/><div><div class="lb-name">${r.name}</div><div class="lb-meta">${leaderboardRange==='today'?'today':'7 days'}</div><div class="lb-bar"><span style="width:${pct}%"></span></div></div><div class="lb-count">${r.value} checks</div></div>`;
+      }).join('');
+    }
+
+    // Planner tabs (missed / today / week)
+    function renderHistorySections(){
+      const missed = queue.filter(q=>q.is_overdue);
+      const startOfToday = new Date(); startOfToday.setHours(0,0,0,0);
+      const endOfToday = new Date(startOfToday.getTime()+86400000);
+      const today = queue.filter(q=> q.due_at>=startOfToday && q.due_at<endOfToday);
+      const withinWeek = new Date(startOfToday.getTime()+7*86400000);
+      const week = queue.filter(q=> q.due_at>=endOfToday && q.due_at<withinWeek && !q.is_overdue);
+
+      const mk = (arr)=> arr.length ? arr.map(q=>`
+        <div class="row ${q.due_cls}">
+          <div class="dot"></div>
+          <div>
+            <div class="title">${q.item_name} <span class="subtle">• ${q.check_type}</span></div>
+            <div class="meta">${normRoom(q.room)} ${q.scheduled_day? '• '+q.scheduled_day : ''}</div>
+          </div>
+          <div class="actions">
+            <span class="badge ${q.is_overdue?'b-overdue': (q.is_soon?'b-soon':'b-due')}">${q.due_text}</span>
+            <button class="pill-act primary" data-action="start" data-key="${q.key}">Start</button>
+          </div>
+        </div>`).join('') : `<div class="subtle" style="padding:10px 12px;">Nothing here 🎉</div>`;
+
+      const elMissed = document.getElementById('missed-list'); if(elMissed){ elMissed.innerHTML = mk(missed); elMissed.querySelectorAll('button[data-action="start"]').forEach(b=>b.addEventListener('click',()=>openScannerForKey(b.dataset.key))); }
+      const elToday = document.getElementById('today-list'); if(elToday){ elToday.innerHTML = mk(today); elToday.querySelectorAll('button[data-action="start"]').forEach(b=>b.addEventListener('click',()=>openScannerForKey(b.dataset.key))); }
+      const elWeek = document.getElementById('week-list'); if(elWeek){ elWeek.innerHTML = mk(week); elWeek.querySelectorAll('button[data-action="start"]').forEach(b=>b.addEventListener('click',()=>openScannerForKey(b.dataset.key))); }
+    }
+
+    // Init
+    requireStaffSession(supabase).then(async ({ session, profileRow }) => {
+      currentUser = session.user;
+      currentProfile = profileRow;
+
+      const siteId = currentProfile?.site_id || null;
+      const accessType = currentProfile?.access_type || currentUser?.raw_user_meta_data?.access_type || null;
+      const role = (accessType || currentProfile?.role || 'staff');
+
+      setTopbar({ siteText: await getSiteText(supabase, siteId), email: currentUser.email, role, access_type: accessType || currentProfile?.role });
+
+      // Wire scope segment
+      document.querySelectorAll('#scope-seg button').forEach(btn => btn.addEventListener('click', () => {
+        document.querySelectorAll('#scope-seg button').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        scope = btn.dataset.scope;
+        rebuildQueue();
+        applyFilters();
+      }));
+
+      // Start scan button (best-effort navigation)
+      document.getElementById('start-scan-btn').addEventListener('click', async () => {
+        const candidates = ['scan.html','scanner.html','staff-scan.html','start-scan.html'];
+        for (const p of candidates){ try{ const r = await fetch(p, { method:'HEAD' }); if(r.ok){ window.location.href = p; return; } }catch{} }
+        alert('No scanner page found. Ask your admin to enable scanning.');
+      });
+
+      await Promise.all([
+        loadCheckTypes(),
+        loadAllowed(siteId),
+        loadHistoryForUser(),
+        loadLiveActivity(siteId),
+        loadLeaderboard(siteId)
+      ]);
+
+      // Compute queue & KPIs
+      rebuildQueue();
+      updateStatistics();
+      renderHistorySections();
+      renderLeaderboard();
+      populateRoomFilter();
+      renderTable();
+
+      // Realtime subscription to show live activity
+      supabase.channel('scans-hub')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'submissions' }, payload => {
+          const row = payload.new; // expect site_id, submitted_at, staff_name, submitted_by_user_id
+          liveEvents.unshift({
+            submission_id: row.id,
+            submitted_at: row.submitted_at,
+            staff_name: row.staff_name,
+            submitted_by_user_id: row.submitted_by_user_id,
+            site_id: row.site_id || null,
+            kind: 'submission'
+          });
+          liveEvents = liveEvents.slice(0,50);
+          renderLive();
+          loadHistoryForUser(true); // light refresh
+        })
+        .subscribe();
+    }).catch(e => {
+      console.error('[scans hub] auth failed', e);
+      if(String(e.message).includes('NO_SESSION')) { window.location.replace('home.html'); return; }
+      if(String(e.message).includes('NOT_STAFF')) { window.location.replace('home.html'); return; }
+    });
+
+    async function loadCheckTypes(){
+      const { data } = await supabase.from('check_types').select('id, name');
+      (data||[]).forEach(ct => checkTypeMap.set(ct.id, ct.name));
+    }
+
+    async function loadAllowed(siteId){
+      const { data: rows } = await supabase
+        .from('item_allowed_types')
+        .select('site_id, item_id, check_type_id, frequency, warn_before, required, scheduled_day, responsible_team_id, active')
+        .eq('site_id', siteId)
+        .eq('active', true);
+      allowed = rows || [];
+      // fetch items referenced
+      const ids = [...new Set((allowed||[]).map(r => r.item_id))];
+      if(ids.length){
+        const { data: items } = await supabase.from('items').select('id, item_id, item_name, room').in('id', ids);
+        const byId = new Map(); (items||[]).forEach(i => byId.set(i.id, i));
+        allowed.forEach(r => r.item = byId.get(r.item_id) || {});
+        // compute last submissions per item+type
+        const externalItemIds = [...new Set((items||[]).map(i => i.item_id))];
+        if(externalItemIds.length){
+          const { data: srows } = await supabase.from('submission_rows').select('submission_id, item_id, check_type');
+          const concerned = (srows||[]).filter(r => externalItemIds.includes(r.item_id));
+          const subIds = [...new Set(concerned.map(r => r.submission_id))];
+          let sMap = new Map();
+          if(subIds.length){
+            const { data: subs } = await supabase.from('submissions').select('id, submitted_at, submitted_by_user_id');
+            (subs||[]).forEach(s => sMap.set(s.id, s));
+          }
+          const lastMap = new Map(); // key `${extItemId}|${check_type}` -> submitted_at
+          concerned.forEach(r => {
+            const sub = sMap.get(r.submission_id); if(!sub) return;
+            const key = `${r.item_id}|${(r.check_type||'').toLowerCase()}`;
+            const prev = lastMap.get(key);
+            const at = new Date(sub.submitted_at);
+            if(!prev || at > prev) lastMap.set(key, at);
+          });
+          allowed.forEach(a => {
+            const ext = (a.item||{}).item_id; const ctName = (checkTypeMap.get(a.check_type_id)||'').toLowerCase();
+            a._last_at = lastMap.get(`${ext}|${ctName}`) || null;
+          });
+        }
+      }
+    }
+
+    async function loadLiveActivity(siteId){
+      // last 30 minutes
+      const since = new Date(Date.now() - 30*60*1000).toISOString();
+      const { data: subs } = await supabase
+        .from('submissions')
+        .select('id, submitted_at, staff_name, submitted_by_user_id, site_id')
+        .gte('submitted_at', since)
+        .order('submitted_at', { ascending: false })
+        .limit(50);
+      liveEvents = subs || [];
+      const ids = [...new Set((subs||[]).map(s=>s.submitted_by_user_id).filter(Boolean))];
+      if(ids.length){
+        const { data: profs } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', ids);
+        (profs||[]).forEach(p => profiles.set(p.id, p));
+      }
+      renderLive();
+    }
+
+    async function loadHistoryForUser(light=false){
+      try {
+        let rows = [];
+        let { data: userSubmissions, error: submissionsError } = await supabase
+          .from('submissions')
+          .select('id, submitted_at, staff_name, comment')
+          .eq('submitted_by_user_id', (currentUser||{}).id)
+          .order('submitted_at', { ascending: false })
+          .limit(200);
+
+        if (!userSubmissions || userSubmissions.length === 0) {
+          const result = await supabase
+            .from('submissions')
+            .select('id, submitted_at, staff_name, comment')
+            .eq('user_id', (currentUser||{}).id)
+            .order('submitted_at', { ascending: false })
+            .limit(200);
+          userSubmissions = result.data; submissionsError = result.error;
+        }
+
+        if (submissionsError) { rows = []; }
+        else if (userSubmissions && userSubmissions.length > 0) {
+          const submissionIds = userSubmissions.map(s => s.id);
+          const { data: submissionRows, error: rowsError } = await supabase
+            .from('submission_rows')
+            .select('submission_id, item_id, check_type, check_value, row_comment')
+            .in('submission_id', submissionIds);
+          if (rowsError) { rows = []; }
+          else if (submissionRows && submissionRows.length > 0) {
+            const itemIds = [...new Set(submissionRows.map(r => r.item_id))];
+            const { data: itemDetails } = await supabase
+              .from('items')
+              .select('item_id, item_name, room')
+              .in('item_id', itemIds);
+            const itemsMap = new Map();
+            (itemDetails||[]).forEach(item => itemsMap.set(item.item_id, item));
+            const submissionsMap = new Map();
+            userSubmissions.forEach(sub => submissionsMap.set(sub.id, sub));
+            rows = submissionRows.map(row => {
+              const submission = submissionsMap.get(row.submission_id);
+              const item = itemsMap.get(row.item_id) || {};
+              return {
+                submitted_at: submission?.submitted_at,
+                item_name: item.item_name || row.item_id,
+                room: item.room || '—',
+                check_type: row.check_type || '—',
+                check_value: row.check_value || 'Done',
+                comment: row.row_comment || submission?.comment || ''
+              };
+            });
+          }
+        }
+        allScans = rows;
+        filteredScans = [...allScans];
+        if(!light){ updateStatistics(); generateChart(); populateRoomFilter(); renderTable(); }
+        else { updateStatistics(); renderTable(); }
+      } catch(e){ console.error('loadHistoryForUser error', e); }
+    }
+
+    function rebuildQueue(){
+      const myTeamId = currentProfile?.team_id || null;
+      const now = new Date();
+      queue = (allowed||[])
+        .filter(a => {
+          if(scope==='me'){ return true; } // show all required; optional: team filter
+          if(scope==='team'){ if(!myTeamId) return true; return a.responsible_team_id === myTeamId; }
+          return true; // site
+        })
+        .map(a => {
+          const freq = parseInterval(a.frequency);
+          const warn = parseInterval(a.warn_before);
+          const last = a._last_at ? new Date(a._last_at) : null;
+          const due = nextDue(last, freq);
+          const meta = fmtDue(due);
+          return {
+            key: `${a.item_id}-${a.check_type_id}`,
+            item_name: a.item?.item_name || `Item #${a.item_id}`,
+            room: a.item?.room || '—',
+            check_type: checkTypeMap.get(a.check_type_id) || 'Check',
+            due_at: due,
+            due_text: meta.text,
+            due_cls: meta.cls,
+            warn_ms: warn.ms,
+            is_overdue: due < now,
+            is_soon: due >= now && (due - now) <= (warn.ms||0),
+            responsible_team_id: a.responsible_team_id || null,
+            scheduled_day: a.scheduled_day || null,
+            required: a.required !== false
+          };
+        })
+        .sort((a,b) => a.due_at - b.due_at);
+
+      renderQueue();
+      renderAlerts();
+      renderHistorySections();
+    }
+
+    function renderQueue(){
+      const el = document.getElementById('queue-list');
+      if(!queue.length){ el.innerHTML = `<div class="subtle" style="padding:12px 14px;">Nothing queued. 🎉</div>`; document.getElementById('queue-count').textContent = '0 items'; return; }
+      el.innerHTML = queue.slice(0, 40).map(q => `
+        <div class="row ${q.due_cls}">
+          <div class="dot"></div>
+          <div>
+            <div class="title">${q.item_name} <span class="subtle">• ${q.check_type}</span></div>
+            <div class="meta">${normRoom(q.room)} • ${q.scheduled_day ? chip(q.scheduled_day) : ''} ${q.required? chip('Required') : chip('Optional')}</div>
+          </div>
+          <div class="actions">
+            <span class="badge ${q.is_overdue?'b-overdue': (q.is_soon?'b-soon':'b-due')}">${q.due_text}</span>
+            <button class="pill-act primary" data-action="start" data-key="${q.key}">Start</button>
+          </div>
+        </div>`).join('');
+      document.getElementById('queue-count').textContent = `${queue.length} total`;
+      el.querySelectorAll('button[data-action="start"]').forEach(btn => btn.addEventListener('click', () => openScannerForKey(btn.dataset.key)));
+    }
+
+    function renderAlerts(){
+      const overdue = queue.filter(q=>q.is_overdue);
+      const soon = queue.filter(q=>q.is_soon && !q.is_overdue);
+      document.getElementById('badge-overdue').textContent = `${overdue.length} Overdue`;
+      document.getElementById('badge-soon').textContent = `${soon.length} Due Soon`;
+      const el = document.getElementById('alerts-list');
+      if(!overdue.length && !soon.length){ el.innerHTML = `<div class="subtle" style="padding:12px 14px;">No alerts.</div>`; return; }
+      el.innerHTML = [...overdue.slice(0,20), ...soon.slice(0,20)].map(q => `
+        <div class="row ${q.due_cls}">
+          <div class="dot"></div>
+          <div>
+            <div class="title">${q.item_name} <span class="subtle">• ${q.check_type}</span></div>
+            <div class="meta">${normRoom(q.room)}</div>
+          </div>
+          <div class="actions">
+            <span class="badge ${q.is_overdue?'b-overdue': 'b-soon'}">${q.due_text}</span>
+            <button class="pill-act" data-action="snooze" data-key="${q.key}">Snooze</button>
+          </div>
+        </div>`).join('');
+      el.querySelectorAll('button[data-action="snooze"]').forEach(btn => btn.addEventListener('click', () => alert('Snooze coming soon')));
+    }
+
+    function renderLive(){
+      const el = document.getElementById('live-timeline');
+      if(!liveEvents.length){ el.innerHTML = `<div class="subtle" style="padding:10px;">No activity in the last 30 minutes.</div>`; return; }
+      el.innerHTML = liveEvents.slice(0,20).map(ev => {
+        const avatar = avatarUrlFor(ev.submitted_by_user_id);
+        const when = new Date(ev.submitted_at);
+        return `
+          <div class="tl-item">
+            <img class="mini-avatar" src="${avatar}" alt=""/>
+            <div>
+              <div class="tl-title">${ev.staff_name || 'Someone'} submitted a check</div>
+              <div class="muted-small">${fmtDate(when)} • ${rel(new Date(), when)}</div>
+            </div>
+            <div class="person-chip"><img class="mini-avatar" src="${avatar}" alt=""/> ${ev.staff_name || '—'}</div>
+          </div>`;
+      }).join('');
+    }
+
+    function updateStatistics(){
+      const total = allScans.length;
+      const startOfToday = new Date(); startOfToday.setHours(0,0,0,0);
+      const doneToday = allScans.filter(s => new Date(s.submitted_at) >= startOfToday).length;
+
+      // From queue
+      const now = new Date();
+      const overdue = queue.filter(q => q.is_overdue).length;
+      const dueToday = queue.filter(q => q.due_at >= startOfToday && q.due_at < new Date(startOfToday.getTime()+86400000)).length;
+      const withinWeek = new Date(startOfToday.getTime() + 7*86400000);
+      const dueWeek = queue.filter(q => q.due_at < withinWeek && !q.is_overdue).length;
+
+      document.getElementById('kpi-overdue').textContent = overdue;
+      document.getElementById('kpi-overdue-note').textContent = overdue? 'tackle these first' : 'all clear';
+      document.getElementById('kpi-today').textContent = dueToday;
+      document.getElementById('kpi-today-note').textContent = dueToday? 'due before midnight' : 'none due today';
+      document.getElementById('kpi-week').textContent = dueWeek;
+      document.getElementById('kpi-week-note').textContent = dueWeek? 'next 7 days' : 'nothing queued';
+      document.getElementById('kpi-done-today').textContent = doneToday;
+      document.getElementById('kpi-done-note').textContent = total>0? `${Math.round((doneToday/Math.max(1,total))*100)}% of your last 200` : '—';
+    }
+
+    // ==== Existing history table features (kept) ====
+    function isInvalidScan(scan) {
+      const value = (scan.check_value || '').toLowerCase();
+      return value.includes('fail') || value.includes('error') || value.includes('invalid') || value.includes('missing');
+    }
+
+
+
+    function populateRoomFilter(){
+      const roomFilter = document.getElementById('room-filter');
+      if(!roomFilter) return; // history table keeps existing filter UI
+      const rooms = [...new Set(allScans.map(scan => scan.room).filter(room => room && room !== '—'))].sort();
+      roomFilter.innerHTML = '<option value="">All Rooms</option>';
+      rooms.forEach(room => { const option=document.createElement('option'); option.value=room; option.textContent=room; roomFilter.appendChild(option); });
+    }
+
+    // Existing filters/table render from legacy block
+    function applyFilters(){ renderTable(); }
+
+    function renderTable(){
+      const tbody = document.getElementById('scans-tbody');
+      const resultsCount = document.getElementById('results-count');
+      if(!tbody) return;
+      if (filteredScans.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="empty-state"><div class="empty-icon">📋</div><div>No scans found</div><div style="font-size: 0.875rem; margin-top: 8px;">Try adjusting your filters</div></td></tr>`;
+        if(resultsCount) resultsCount.textContent = 'No results';
+        const pag = document.getElementById('pagination'); if(pag) pag.style.display='none';
+        return;
+      }
+      const sortedScans = [...filteredScans].sort((a,b)=>{
+        const aVal=a[currentSort.field]||''; const bVal=b[currentSort.field]||'';
+        if(currentSort.field==='submitted_at'){ const aDate=new Date(aVal); const bDate=new Date(bVal); return currentSort.direction==='asc'? aDate-bDate : bDate-aDate; }
+        const cmp = aVal.toString().localeCompare(bVal.toString()); return currentSort.direction==='asc'? cmp : -cmp;
+      });
+      const totalPages = Math.ceil(sortedScans.length / itemsPerPage);
+      const startIndex = (currentPage-1)*itemsPerPage; const endIndex = startIndex + itemsPerPage; const pageData = sortedScans.slice(startIndex, endIndex);
+      tbody.innerHTML = pageData.map(scan => {
+        const isInvalid = isInvalidScan(scan); const statusClass = isInvalid ? 'status-invalid' : 'status-valid'; const statusText = isInvalid ? 'Issue' : 'Valid';
+        return `<tr><td>${fmtDate(scan.submitted_at)}</td><td>${scan.item_name||'—'}</td><td>${scan.room||'—'}</td><td>${scan.check_type||'—'}</td><td><span class="status-badge ${statusClass}">${statusText}</span><div style="margin-top: 4px; font-size: 0.875rem;">${scan.check_value||'—'}</div></td><td>${scan.comment||'—'}</td></tr>`;
+      }).join('');
+      if(resultsCount) resultsCount.textContent = `${filteredScans.length} result${filteredScans.length!==1?'s':''}`;
+      renderPagination(totalPages);
+    }
+
+    function renderPagination(totalPages){ const pagination=document.getElementById('pagination'); if(!pagination) return; if(totalPages<=1){ pagination.style.display='none'; return; } pagination.style.display='flex'; pagination.innerHTML=''; const prevBtn=document.createElement('button'); prevBtn.className='pagination-btn'; prevBtn.textContent='←'; prevBtn.disabled=currentPage===1; prevBtn.onclick=()=>{ currentPage--; renderTable(); }; pagination.appendChild(prevBtn); for(let i=1;i<=totalPages;i++){ if(i===1 || i===totalPages || (i>=currentPage-2 && i<=currentPage+2)){ const b=document.createElement('button'); b.className=`pagination-btn ${i===currentPage?'active':''}`; b.textContent=i; b.onclick=()=>{ currentPage=i; renderTable(); }; pagination.appendChild(b); } else if (i===currentPage-3 || i===currentPage+3){ const s=document.createElement('span'); s.textContent='...'; s.style.padding='8px'; pagination.appendChild(s); } } const nextBtn=document.createElement('button'); nextBtn.className='pagination-btn'; nextBtn.textContent='→'; nextBtn.disabled=currentPage===totalPages; nextBtn.onclick=()=>{ currentPage++; renderTable(); }; pagination.appendChild(nextBtn); }
+
+    // Actions
+    function openScannerForKey(key){
+      // Key is `${itemId}-${checkTypeId}`
+      const [iid, ctid] = key.split('-');
+      const a = allowed.find(r => String(r.item_id)===iid && String(r.check_type_id)===ctid);
+      const item = a?.item; const checkName = checkTypeMap.get(a?.check_type_id) || '';
+      const q = new URLSearchParams({ item: item?.item_id || '', check: checkName }).toString();
+      const path = `scan.html?${q}`;
+      window.location.href = path;
+    }
+
+    // Export
+    document.getElementById('export-btn').addEventListener('click', () => {
+      if (filteredScans.length === 0) { alert('No data to export'); return; }
+      const headers = ['Date','Item','Room','Check Type','Result','Comment'];
+      const csvContent = [ headers.join(','), ...filteredScans.map(s => [ fmtDate(s.submitted_at), `"${(s.item_name||'').replace(/"/g,'""')}"`, `"${(s.room||'').replace(/"/g,'""')}"`, `"${(s.check_type||'').replace(/"/g,'""')}"`, `"${(s.check_value||'').replace(/"/g,'""')}"`, `"${(s.comment||'').replace(/"/g,'""')}"` ].join(',')) ].join('\n');
+      const blob = new Blob([csvContent], { type:'text/csv' }); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`scans-${new Date().toISOString().split('T')[0]}.csv`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    });
+
+    // Sorting listeners
+    document.querySelectorAll('.sortable').forEach(th => {
+      th.addEventListener('click', () => {
+        const field = th.dataset.sort; if (currentSort.field === field) { currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc'; } else { currentSort.field = field; currentSort.direction = 'desc'; }
+        document.querySelectorAll('.sortable').forEach(h => h.classList.remove('sort-asc','sort-desc')); th.classList.add(currentSort.direction==='asc'?'sort-asc':'sort-desc'); renderTable();
+      });
+    });
+
+    // Debounce helper
+    function debounce(func, wait){ let timeout; return function(...args){ const later = ()=>{ clearTimeout(timeout); func(...args); }; clearTimeout(timeout); timeout = setTimeout(later, wait); }; }
+  </script>
+
+  <script>
+    // Icons8 helper
+    (function(){ function i8(name,opts={}){var base='https://img.icons8.com'; var style=opts.style||'cute-color'; var size=opts.size||48; var path=[style,String(size),encodeURIComponent(name)+'.png'].join('/'); return base+'/'+path;} function setIcon(el){ var name=el.getAttribute('data-i8'); var size=el.getAttribute('data-i8-size'); var style=el.getAttribute('data-i8-style')||'fluency'; var fallback=(el.getAttribute('data-i8-fallback')||'').toLowerCase(); if(fallback==='auto'){ var stylesToTry=[style,'fluency','color']; var idx=0; function tryNext(){ if(idx>=stylesToTry.length){ el.onerror=null; return; } var url=i8(name,{style:stylesToTry[idx++],size:size?parseInt(size,10):undefined}); if(el.src!==url) el.src=url; else tryNext(); } el.onerror=tryNext; tryNext(); } else { el.src=i8(name,{style:style,size:size?parseInt(size,10):undefined}); } } function wireIcons(){ document.querySelectorAll('img[data-i8]').forEach(setIcon); } if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', wireIcons); } else { wireIcons(); } window.i8=i8; window.setIcon=setIcon; window.wireIcons=wireIcons; })();
+  </script>
+
+  <script src="debug-console.js"></script>
+</body>
+</html>
+
+      // Tabs switching
+      document.querySelectorAll('#history-tabs .tab').forEach(btn=>{
+        btn.addEventListener('click',()=>{
+          document.querySelectorAll('#history-tabs .tab').forEach(b=>b.classList.remove('active'));
+          btn.classList.add('active');
+          const tab = btn.dataset.tab;
+          document.getElementById('missed-list').style.display = (tab==='missed')?'block':'none';
+          document.getElementById('today-list').style.display  = (tab==='today') ?'block':'none';
+          document.getElementById('week-list').style.display   = (tab==='week')  ?'block':'none';
+        });
+      });
+
+      // Leaderboard range switching
+      document.querySelectorAll('#leaderboard-range button').forEach(btn=>{
+        btn.addEventListener('click',()=>{
+          document.querySelectorAll('#leaderboard-range button').forEach(b=>b.classList.remove('active'));
+          btn.classList.add('active');
+          leaderboardRange = btn.dataset.range;
+          renderLeaderboard();
+        });
+      });

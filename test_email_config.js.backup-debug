@@ -1,0 +1,69 @@
+// Check Supabase Auth configuration to ensure emails can be sent
+import { createClient } from '@supabase/supabase-js';
+
+const CONFIG = {
+  SUPABASE_URL: 'https://unveoqnlqnobufhublyw.supabase.co',
+  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnViaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME'
+};
+
+const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+
+async function testEmailConfiguration() {
+  console.log('\n🔧 Testing Supabase Email Configuration');
+  console.log('=======================================\n');
+
+  // Test with a simple signup to see if emails work
+  const testEmail = 'ben.howard@stoke.nhs.uk';
+  
+  console.log(`Testing email delivery with: ${testEmail}`);
+  console.log('This will help us determine if Supabase can send emails.\n');
+
+  try {
+    console.log('1. Attempting test signup...');
+    
+    const { data, error } = await supabase.auth.signUp({
+      email: testEmail,
+      password: 'TestPassword123!',
+      options: {
+        emailRedirectTo: 'http://localhost:8081/setup-password.html',
+        data: {
+          test: true
+        }
+      }
+    });
+
+    if (error) {
+      console.log(`   ❌ Signup Error: ${error.message}`);
+      
+      if (error.message.includes('Email not confirmed') || 
+          error.message.includes('already registered')) {
+        console.log('   💡 This suggests email confirmation is enabled');
+      } else if (error.message.includes('SMTP') || 
+                 error.message.includes('email')) {
+        console.log('   ⚠️  Email delivery might be disabled or misconfigured');
+      }
+    } else {
+      console.log('   ✅ Signup successful!');
+      console.log(`   📧 Email confirmation required: ${!data.user?.email_confirmed_at}`);
+      console.log(`   🆔 User ID: ${data.user?.id}`);
+      console.log(`   📨 Session created: ${!!data.session}`);
+      
+      if (!data.user?.email_confirmed_at) {
+        console.log('\n   🎯 SUCCESS! Confirmation email should be sent to your inbox.');
+        console.log('   Check your email (including spam folder) for the confirmation link.');
+        console.log('   The invitation system should now work correctly.');
+      } else {
+        console.log('\n   ⚠️  User was immediately confirmed (email confirmation disabled)');
+      }
+    }
+  } catch (error) {
+    console.log(`   ❌ Exception: ${error.message}`);
+  }
+
+  console.log('\n🔍 CONFIGURATION CHECK COMPLETE');
+  console.log('================================');
+  console.log('If a confirmation email was sent, the invitation system will work.');
+  console.log('If not, we may need to check Supabase Auth email settings.\n');
+}
+
+testEmailConfiguration().catch(console.error);

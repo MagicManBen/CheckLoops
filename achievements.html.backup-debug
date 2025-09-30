@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CheckLoop — Achievements</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.supabase.co https://*.supabase.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.supabase.com wss://*.supabase.co wss://*.supabase.com https:;">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="config.js"></script>
+  <script src="supabase-js.js"></script>
+  <script src="user-utils.js"></script>
+  <!-- Removed staff.css - will use inline styles matching homepage -->
+  <!-- Standardized Staff Navigation -->
+  <link rel="stylesheet" href="staff-nav.css">
+  <script src="staff-nav.js"></script>
+  <style>
+  :root {
+    /* Primary color palette - matching homepage */
+    --primary: #0b4fb3;
+    --primary-dark: #062b6f;
+    --primary-light: #2b6ecc;
+    --primary-lightest: #e8f2ff;
+
+    /* Accent colors */
+    --accent: #76a7ff;
+    --accent-2: #5f96ff;
+    --accent-strong: #5f96ff;
+    --success: #2bd4a7;
+    --success-light: #e8fdf8;
+    --warning: #ffca28;
+    --warning-light: #fffbeb;
+    --danger: #ff6b6b;
+    --danger-light: #fef2f2;
+
+    /* Neutral colors */
+    --white: #ffffff;
+    --gray-50: #f8fafc;
+    --gray-100: #f1f5f9;
+    --gray-200: #e2e8f0;
+    --gray-300: #cbd5e1;
+    --gray-400: #94a3b8;
+    --gray-500: #64748b;
+    --gray-600: #475569;
+    --gray-700: #334155;
+    --gray-800: #1e293b;
+    --gray-900: #0f172a;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1);
+    --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+    --shadow-soft: var(--shadow-lg);
+    --shadow-card: var(--shadow-md);
+    --shadow-chip: var(--shadow-sm);
+
+    /* Border radius */
+    --radius-sm: 0.375rem;
+    --radius: 0.5rem;
+    --radius-lg: 0.75rem;
+    --radius-xl: 1rem;
+    --radius-2xl: 1.5rem;
+
+    /* Typography */
+    --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+    --font-display: 'Plus Jakarta Sans', 'Inter', sans-serif;
+
+    /* Transitions */
+    --transition: all 0.2s ease-in-out;
+
+    /* Achievements specific */
+    --page-bg: linear-gradient(135deg, var(--primary-lightest) 0%, var(--white) 100%);
+    --panel-bg: var(--white);
+    --panel-border: var(--gray-200);
+    --chip-bg: var(--gray-100);
+    --chip-active: linear-gradient(120deg, var(--primary), var(--accent));
+    --text-soft: var(--gray-600);
+    --text-strong: var(--gray-900);
+    --card-locked: var(--gray-100);
+    --card-unlocked: linear-gradient(150deg, var(--primary-lightest), var(--accent));
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    height: 100%;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background: linear-gradient(135deg, var(--primary-lightest) 0%, var(--white) 100%);
+    min-height: 100vh;
+    color: var(--gray-900);
+    position: relative;
+    overflow-x: hidden;
+    margin: 0;
+    padding-top: 70px;
+  }
+
+  /* Grid background pattern matching homepage */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="%23e2e8f0" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+    opacity: 0.3;
+    z-index: -1;
+  }
+
+  /* Remove old background */
+  .bg, .wave, .mesh { display: none; }
+
+  /* Navigation styles */
+  .navbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 70px;
+    background: rgba(255, 255, 255, 0.98);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--gray-200);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    padding: 0 2rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  }
+
+  .nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    text-decoration: none;
+    margin-right: auto;
+  }
+
+  .nav-logo {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+  }
+
+  .nav-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--primary);
+    font-family: var(--font-display);
+  }
+
+  .nav-links {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    margin: 0 auto;
+  }
+
+  .nav-link {
+    padding: 0.5rem 1rem;
+    color: var(--gray-700);
+    text-decoration: none;
+    border-radius: var(--radius);
+    transition: var(--transition);
+    font-weight: 500;
+  }
+
+  .nav-link:hover {
+    background: var(--gray-100);
+    color: var(--primary);
+  }
+
+  .nav-link.active {
+    background: var(--primary);
+    color: var(--white);
+  }
+
+  .nav-user {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .admin-portal-btn {
+    display: none;
+    padding: 0.5rem 1rem;
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    color: var(--white);
+    border: none;
+    border-radius: var(--radius);
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    text-decoration: none;
+  }
+
+  .admin-portal-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .role-pill {
+    padding: 0.375rem 0.75rem;
+    background: var(--gray-100);
+    color: var(--gray-700);
+    border-radius: 999px;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  .page-container {
+    padding: 2rem;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  main {
+    padding: 24px;
+  }
+
+  .achievements-panel {
+    max-width: 1080px;
+    margin: 0 auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 28px;
+    box-shadow: var(--shadow-soft);
+    padding: 36px 36px 40px;
+    display: grid;
+    gap: 30px;
+    position: relative;
+    overflow: hidden;
+    backdrop-filter: blur(18px);
+  }
+
+  .achievements-panel::before {
+    content: '';
+    position: absolute;
+    inset: -32% 8% auto;
+    height: 320px;
+    background:
+      radial-gradient(closest-side at 30% 40%, rgba(147,197,253,0.45), transparent),
+      radial-gradient(closest-side at 70% 25%, rgba(56,189,248,0.4), transparent);
+    opacity: 0.8;
+    pointer-events: none;
+  }
+
+  .ach-header {
+    display: grid;
+    grid-template-columns: 96px 1fr auto;
+    align-items: center;
+    gap: 26px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .ach-avatar {
+    width: 96px;
+    height: 96px;
+    border-radius: 24px;
+    overflow: hidden;
+    background: rgba(30,58,138,0.75);
+    border: 1px solid rgba(191,219,254,0.55);
+    display: grid;
+    place-items: center;
+    position: relative;
+    box-shadow: 0 12px 32px rgba(30,58,138,0.32);
+  }
+
+  .ach-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .ach-title h1 {
+    margin: 0;
+    font-size: 30px;
+    font-weight: 700;
+    color: var(--text-strong);
+  }
+
+  .ach-title p {
+    margin: 6px 0 0;
+    color: var(--text-soft);
+    font-size: 14px;
+  }
+
+  .ach-stats {
+    display: flex;
+    gap: 18px;
+  }
+
+  .ach-stat {
+    min-width: 120px;
+    padding: 14px 18px;
+    border-radius: 18px;
+    border: 1px solid rgba(191,219,254,0.5);
+    background: rgba(30,64,175,0.65);
+    text-align: right;
+    box-shadow: 0 12px 32px rgba(30,64,175,0.3);
+  }
+
+  .ach-stat span {
+    display: block;
+    font-size: 12px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: rgba(226,232,240,0.7);
+  }
+
+  .ach-stat strong {
+    display: block;
+    font-size: 26px;
+    font-weight: 700;
+    margin-top: 4px;
+    color: var(--text-strong);
+  }
+
+  .ach-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    flex-wrap: wrap;
+    position: relative;
+    z-index: 1;
+  }
+
+  .filter-chips {
+    display: inline-flex;
+    padding: 5px;
+    gap: 6px;
+    border-radius: 999px;
+    background: rgba(30,64,175,0.65);
+    border: 1px solid rgba(191,219,254,0.35);
+    box-shadow: 0 14px 32px rgba(30,64,175,0.3);
+  }
+
+  .filter-chips button {
+    border: 0;
+    padding: 10px 20px;
+    border-radius: 999px;
+    background: transparent;
+    color: rgba(226,232,240,0.75);
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .filter-chips button.active {
+    background: var(--chip-active);
+    color: #0f172a;
+    box-shadow: var(--shadow-chip);
+  }
+
+  .summary-note {
+    color: rgba(226,232,240,0.75);
+    font-size: 13px;
+  }
+
+  .summary-bar {
+    position: relative;
+    z-index: 1;
+    background: rgba(37,99,235,0.55);
+    border-radius: 22px;
+    padding: 26px;
+    border: 1px solid rgba(191,219,254,0.32);
+    display: grid;
+    gap: 18px;
+    box-shadow: 0 16px 36px rgba(37,99,235,0.32);
+  }
+
+  .summary-bar .labels {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--text-soft);
+    font-size: 14px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .summary-bar .bar {
+    width: 100%;
+    height: 12px;
+    border-radius: 999px;
+    background: rgba(191,219,254,0.28);
+    overflow: hidden;
+  }
+
+  .summary-bar .bar span {
+    display: block;
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(100deg,#60a5fa,#22d3ee);
+    box-shadow: 0 8px 26px rgba(34,211,238,0.3);
+    transition: width 0.6s ease;
+  }
+
+  .ach-loading {
+    display: grid;
+    gap: 18px;
+  }
+
+  .ach-skeleton {
+    height: 160px;
+    border-radius: 22px;
+    background: linear-gradient(120deg,rgba(147,197,253,0.24),rgba(59,130,246,0.12),rgba(147,197,253,0.24));
+    background-size: 200% 100%;
+    animation: shimmer 1.4s ease infinite;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: 0% 50%; }
+    100% { background-position: -200% 50%; }
+  }
+
+  .ach-empty {
+    text-align: center;
+    padding: 60px 24px;
+    color: rgba(226,232,240,0.78);
+    border: 1px dashed rgba(191,219,254,0.35);
+    border-radius: 22px;
+    background: rgba(30,58,138,0.55);
+    box-shadow: 0 18px 36px rgba(30,58,138,0.32);
+  }
+
+  .ach-grid {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: repeat(auto-fill,minmax(260px,1fr));
+    gap: 20px;
+  }
+
+  .ach-card {
+    background: var(--card-locked);
+    border: 1px solid rgba(147,197,253,0.4);
+    border-radius: 24px;
+    padding: 22px;
+    display: grid;
+    gap: 18px;
+    min-height: 186px;
+    transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 22px 44px rgba(15,23,42,0.32);
+  }
+
+  .ach-card.unlocked {
+    background: var(--card-unlocked);
+    border-color: rgba(125,211,252,0.52);
+    box-shadow: var(--shadow-card);
+  }
+
+  .ach-card::after {
+    content: '';
+    position: absolute;
+    inset: auto -30% -40%;
+    height: 120px;
+    background: radial-gradient(circle, rgba(255,255,255,0.28), transparent 70%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  .ach-card:hover {
+    transform: translateY(-6px);
+  }
+
+  .ach-card.unlocked:hover::after {
+    opacity: 1;
+  }
+
+  .ach-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 18px;
+    background: rgba(15,23,42,0.65);
+    border: 1px solid rgba(191,219,254,0.35);
+    display: grid;
+    place-items: center;
+    font-size: 28px;
+    box-shadow: inset 0 0 18px rgba(147,197,253,0.28);
+  }
+
+  .ach-card.unlocked .ach-icon {
+    background: rgba(15,23,42,0.78);
+    border-color: rgba(125,211,252,0.65);
+  }
+
+  .ach-card h3 {
+    margin: 0;
+    font-size: 19px;
+    font-weight: 600;
+  }
+
+  .ach-card p {
+    margin: 6px 0 0;
+    color: rgba(226,232,240,0.78);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .ach-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 14px;
+    font-size: 13px;
+    flex-wrap: wrap;
+  }
+
+  .ach-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(148,163,184,0.25);
+    color: rgba(226,232,240,0.82);
+    font-weight: 500;
+  }
+
+  .ach-card.unlocked .ach-status {
+    background: rgba(125,211,252,0.3);
+    color: #0f172a;
+    font-weight: 600;
+  }
+
+  .ach-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: rgba(226,232,240,0.75);
+  }
+
+  .ach-meta span:not(:first-child)::before {
+    content: '•';
+    margin-right: 10px;
+    color: rgba(226,232,240,0.35);
+  }
+
+  @media (max-width: 900px) {
+    .ach-header {
+      grid-template-columns: 72px 1fr;
+      grid-template-rows: auto auto;
+    }
+    .ach-stats {
+      grid-column: 1 / -1;
+    }
+  }
+
+  @media (max-width: 600px) {
+    main { padding: 16px; }
+    .achievements-panel { padding: 28px 22px; }
+    .ach-controls { flex-direction: column; align-items: flex-start; }
+    .ach-grid { grid-template-columns: 1fr; }
+  }
+</style>
+
+
+</head>
+<body>
+  <!-- Standard nav mount point -->
+  <div id="navbar-root"></div>
+
+  <div class="page-container">
+
+    <section class="achievements-panel">
+  <header class="ach-header">
+    <div class="ach-avatar">
+      <img id="ach-header-avatar" src="Icons/icons8-trophy-100.png" alt="Avatar">
+    </div>
+    <div class="ach-title">
+      <h1>My Achievements</h1>
+      <p id="ach-hero-subtitle">Track your progress across quizzes, onboarding, and training.</p>
+    </div>
+    <div class="ach-stats">
+      <div class="ach-stat">
+        <span>Unlocked</span>
+        <strong id="stat-unlocked">0</strong>
+      </div>
+      <div class="ach-stat">
+        <span>Points</span>
+        <strong id="stat-points">0</strong>
+      </div>
+    </div>
+  </header>
+
+  <div class="ach-controls">
+    <div class="filter-chips" role="tablist" aria-label="Filter achievements">
+      <button class="active" data-filter="all" role="tab" aria-selected="true">All</button>
+      <button data-filter="unlocked" role="tab" aria-selected="false">Unlocked</button>
+      <button data-filter="locked" role="tab" aria-selected="false">Locked</button>
+    </div>
+    <div class="summary-note" id="summary-last" aria-live="polite"></div>
+  </div>
+
+  <div class="summary-bar">
+    <div class="labels">
+      <span>Overall progress</span>
+      <span id="summary-count">0 / 0 unlocked</span>
+    </div>
+    <div class="bar" aria-hidden="true">
+      <span id="summary-bar"></span>
+    </div>
+  </div>
+
+  <div id="ach-loading" class="ach-loading">
+    <div class="ach-skeleton"></div>
+    <div class="ach-skeleton"></div>
+    <div class="ach-skeleton"></div>
+  </div>
+
+  <div id="ach-empty" class="ach-empty" hidden>No achievements yet. Complete a quiz or training to get started.</div>
+
+  <div id="ach-grid" class="ach-grid" hidden></div>
+</section>
+
+  </div> <!-- End page-container -->
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script type="module">
+  import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, attachLogout, fmtDate, createAchievementClient } from './staff-common.js';
+
+  const supabase = await initSupabase();
+  window.supabase = supabase;
+  handleAuthState(supabase);
+  if (typeof window.renderStandardStaffNav === 'function') {
+    window.renderStandardStaffNav('achievements.html');
+  }
+  navActivate('achievements');
+  attachLogout(supabase);
+
+    const iconMap = {
+      trophy: '🏆',
+      star: '⭐',
+      certificate: '🎓',
+      medal: '🥇',
+      'academic-cap': '🎓',
+      sparkles: '✨',
+      target: '🎯',
+      quiz: '🧠',
+      books: '📚',
+      scanner: '📱',
+      default: '🏅'
+    };
+
+  const esc = (value = '') => String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+  const $ = (selector, root = document) => root.querySelector(selector);
+
+  const filterButtons = Array.from(document.querySelectorAll('.filter-chips button'));
+  const loadingEl = $('#ach-loading');
+  const emptyEl = $('#ach-empty');
+  const gridEl = $('#ach-grid');
+  const summaryBarEl = $('#summary-bar');
+  const summaryCountEl = $('#summary-count');
+  const summaryLastEl = $('#summary-last');
+  const statUnlockedEl = $('#stat-unlocked');
+  const statPointsEl = $('#stat-points');
+  const heroSubtitleEl = $('#ach-hero-subtitle');
+
+  let toastTimer = null;
+  let currentFilter = 'unlocked';
+  let achievementClient = null;
+
+  function toast(message) {
+    const el = $('#toast');
+    if (!el) return;
+    el.textContent = message;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2300);
+  }
+
+  function setFilter(filter) {
+    currentFilter = filter;
+    filterButtons.forEach(btn => {
+      const isActive = btn.dataset.filter === filter;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-selected', String(isActive));
+    });
+    renderAchievements();
+  }
+
+  filterButtons.forEach(btn => {
+    btn.addEventListener('click', () => setFilter(btn.dataset.filter || 'all'));
+  });
+
+  const sessionCtx = await requireStaffSession(supabase).catch(error => {
+    const message = String(error?.message || error || '');
+    if (message.includes('NO_SESSION') || message.includes('NOT_STAFF')) {
+      window.location.replace('staff.html');
+      return null;
+    }
+    console.error('[achievements] session error', error);
+    return null;
+  });
+  if (!sessionCtx) throw new Error('No session context');
+
+  const { session, profileRow } = sessionCtx;
+  const user = session.user;
+  const siteId = profileRow?.site_id || user?.raw_user_meta_data?.site_id || null;
+  const accessType = profileRow?.access_type || user?.raw_user_meta_data?.access_type || null;
+  const displayRole = accessType || profileRow?.role || user?.raw_user_meta_data?.role || 'Staff';
+
+  setTopbar({ siteText: await getSiteText(supabase, siteId), email: user.email, role: displayRole, access_type: accessType || profileRow?.role });
+
+  (async () => {
+    try {
+      let avatarUrl = user?.raw_user_meta_data?.avatar_url || null;
+      if (!avatarUrl && siteId) {
+        const { data } = await supabase
+          .from('master_users')
+          .select('avatar_url, updated_at')
+          .eq('auth_user_id', user.id)
+          .eq('site_id', siteId)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        avatarUrl = data?.avatar_url || avatarUrl;
+      }
+      if (!avatarUrl) {
+        const { data } = await supabase
+          .from('master_users')
+          .select('avatar_url')
+          .eq('auth_user_id', user.id)
+          .maybeSingle();
+        avatarUrl = data?.avatar_url || avatarUrl;
+      }
+      const initials = (() => {
+        const name = profileRow?.full_name || user?.raw_user_meta_data?.full_name || user?.email || '';
+        const parts = name.trim().split(/\s+/).filter(Boolean);
+        const first = parts[0]?.[0] || name[0] || '?';
+        const last = parts.length > 1 ? parts[parts.length - 1][0] : '';
+        const combo = (first + last) || first || '?';
+        return combo.toUpperCase().slice(0, 2);
+      })();
+      const fallbackSvg = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='256' height='256'><rect width='100%' height='100%' rx='64' fill='#475569'/><text x='50%' y='50%' font-size='110' font-family='Inter, Arial, sans-serif' fill='#f8fafc' dominant-baseline='middle' text-anchor='middle'>${initials}</text></svg>`)}`;
+      const avatarEl = $('#ach-header-avatar');
+      if (avatarEl) {
+        avatarEl.onerror = () => { avatarEl.src = fallbackSvg; };
+        avatarEl.src = avatarUrl || fallbackSvg;
+      }
+    } catch (err) {
+      console.warn('[achievements] avatar load skipped', err);
+    }
+  })();
+
+  achievementClient = await createAchievementClient({
+    supabase,
+    session,
+    profile: profileRow,
+    showToasts: false
+  });
+
+  const unlockedOnboarding = await achievementClient.ensureUnlocked('onboarding_completion', {
+    condition: Boolean(profileRow?.onboarding_complete),
+    notify: false
+  });
+  if (unlockedOnboarding) {
+    await achievementClient.refresh();
+  }
+
+  function latestUnlockedMessage(unlocked) {
+    if (!unlocked.length) {
+      return 'Complete a quiz or upload training to start unlocking achievements.';
+    }
+    const [latest] = [...unlocked].sort((a, b) => new Date(b.unlocked_at || 0) - new Date(a.unlocked_at || 0));
+    return latest?.unlocked_at
+      ? `Latest unlock: ${latest.name} · ${fmtDate(latest.unlocked_at)}`
+      : `Latest unlock: ${latest.name}`;
+  }
+
+  function updateHeroSubtitle(summary) {
+    if (!heroSubtitleEl) return;
+    if (!summary.total) {
+      heroSubtitleEl.textContent = 'Achievements will appear as they become available for your site.';
+    } else if (summary.unlocked === summary.total) {
+      heroSubtitleEl.textContent = 'All achievements unlocked — outstanding work!';
+    } else {
+      heroSubtitleEl.textContent = `You're ${summary.percentage}% of the way to completing every achievement.`;
+    }
+  }
+
+  function renderAchievements() {
+    if (!achievementClient) return;
+    const all = achievementClient.getAll();
+    const unlocked = all.filter(item => item.status === 'unlocked');
+    const locked = all.filter(item => item.status !== 'unlocked');
+
+    const summary = {
+      total: all.length,
+      unlocked: unlocked.length,
+      percentage: all.length ? Math.round((unlocked.length / all.length) * 100) : 0
+    };
+
+    updateHeroSubtitle(summary);
+
+    statUnlockedEl.textContent = String(summary.unlocked);
+    const points = unlocked.reduce((acc, item) => acc + (Number(item.points) || 0), 0);
+    statPointsEl.textContent = String(points);
+
+    summaryCountEl.textContent = `${summary.unlocked} / ${summary.total} unlocked`;
+    summaryBarEl.style.width = summary.total ? `${summary.percentage}%` : '0%';
+    summaryLastEl.textContent = latestUnlockedMessage(unlocked);
+
+    const dataset = currentFilter === 'unlocked'
+      ? unlocked
+      : currentFilter === 'locked'
+        ? locked
+        : all;
+
+    loadingEl.hidden = true;
+
+    if (!dataset.length) {
+      const emptyMessage = currentFilter === 'unlocked'
+        ? 'No achievements unlocked yet — try a practice quiz or upload training.'
+        : currentFilter === 'locked'
+          ? 'All achievements unlocked. Keep the streak going!'
+          : 'No achievements available yet for your role.';
+      emptyEl.textContent = emptyMessage;
+      emptyEl.hidden = false;
+      gridEl.hidden = true;
+      gridEl.innerHTML = '';
+      return;
+    }
+
+    emptyEl.hidden = true;
+    gridEl.hidden = false;
+    gridEl.innerHTML = dataset.map(renderCard).join('');
+  }
+
+  function renderCard(row) {
+    const unlocked = row.status === 'unlocked';
+    const icon = iconMap[row.icon] || iconMap[row.metadata?.icon] || iconMap[row.key] || iconMap.default;
+    const unlockedAt = unlocked && row.unlocked_at ? fmtDate(row.unlocked_at) : '';
+    const points = Number(row.points) || 0;
+    const metaParts = [];
+    if (points) metaParts.push(`${points} pts`);
+    if (unlockedAt) metaParts.push(unlockedAt);
+    const metaHtml = metaParts.length
+      ? `<div class="ach-meta">${metaParts.map(part => `<span>${esc(part)}</span>`).join('')}</div>`
+      : '<div class="ach-meta"></div>';
+
+    return `
+      <article class="ach-card ${unlocked ? 'unlocked' : ''}" data-key="${esc(row.key)}">
+        <div class="ach-icon" aria-hidden="true">${esc(icon)}</div>
+        <div>
+          <h3>${esc(row.name)}</h3>
+          <p>${esc(row.description || '')}</p>
+        </div>
+        <div class="ach-footer">
+          <span class="ach-status">${unlocked ? 'Unlocked' : 'Locked'}</span>
+          ${metaHtml}
+        </div>
+      </article>
+    `;
+  }
+
+  achievementClient.onUnlock(async ({ definition }) => {
+    await achievementClient.refresh();
+    renderAchievements();
+    if (definition?.name) {
+      toast(`Achievement unlocked: ${definition.name}`);
+    }
+  });
+
+  setFilter(currentFilter);
+
+  // Standard nav sets pills and admin button via setTopbar; no extra role wiring needed here.
+</script>
+
+    <!-- Debug Console - Persistent across all pages -->
+    <script src="debug-console.js"></script>
+    <script src="supabase-debug.js"></script>
+<!-- Staff Profile Fix -->
+<script src="staff-profile-fix.js"></script>
+</body>
+</html>

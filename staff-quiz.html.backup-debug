@@ -1,0 +1,2128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CheckLoops — Weekly Knowledge Check</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.supabase.co https://*.supabase.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.supabase.com wss://*.supabase.co wss://*.supabase.com https:;">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://img.icons8.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="config.js"></script>
+  <script src="supabase-js.js"></script>
+  <!-- Standardized Staff Navigation -->
+  <link rel="stylesheet" href="staff-nav.css">
+  <script src="staff-nav.js"></script>
+  <style>
+    :root {
+      /* Primary color palette - matching homepage */
+      --primary: #0b4fb3;
+      --primary-dark: #062b6f;
+      --primary-light: #2b6ecc;
+      --primary-lightest: #e8f2ff;
+
+      /* Accent colors */
+      --accent: #76a7ff;
+      --accent-2: #5f96ff;
+      --success: #2bd4a7;
+      --success-light: #e8fdf8;
+      --warning: #ffca28;
+      --warning-light: #fffbeb;
+      --danger: #ff6b6b;
+      --danger-light: #fef2f2;
+
+      /* Neutral colors */
+      --white: #ffffff;
+      --gray-50: #f8fafc;
+      --gray-100: #f1f5f9;
+      --gray-200: #e2e8f0;
+      --gray-300: #cbd5e1;
+      --gray-400: #94a3b8;
+      --gray-500: #64748b;
+      --gray-600: #475569;
+      --gray-700: #334155;
+      --gray-800: #1e293b;
+      --gray-900: #0f172a;
+
+      /* Shadows */
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+      --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+      --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+      --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1);
+      --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+
+      /* Border radius */
+      --radius-sm: 0.375rem;
+      --radius: 0.5rem;
+      --radius-lg: 0.75rem;
+      --radius-xl: 1rem;
+      --radius-2xl: 1.5rem;
+
+      /* Typography */
+      --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+      --font-display: 'Plus Jakarta Sans', 'Inter', sans-serif;
+
+      /* Transitions */
+      --transition: all 0.2s ease-in-out;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      height: 100%;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background: linear-gradient(135deg, #e8f2ff 0%, #ffffff 100%) !important;
+      background-attachment: fixed;
+      min-height: 100vh;
+      color: var(--gray-900);
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* Subtle background pattern */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="%23e2e8f0" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>') !important;
+      opacity: 0.3;
+      z-index: -1;
+      pointer-events: none;
+    }
+
+    /* Remove old background animations */
+    .bg, .wave, .mesh { display: none; }
+
+    /* Page container */
+    .page-container {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    /* Main content */
+    .content {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 2rem;
+      flex: 1;
+      position: relative;
+      z-index: 1;
+    }
+    /* Modern panel styling */
+    .panel {
+      background: var(--white);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-lg);
+      border: 1px solid var(--gray-200);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .panel::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--primary), var(--accent));
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .panel-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--gray-900);
+      font-family: var(--font-display);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    /* Top navigation bar */
+    .topbar {
+      background: var(--white);
+      border-bottom: 1px solid var(--gray-200);
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      box-shadow: var(--shadow-sm);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .nav {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .nav a {
+      padding: 0.5rem 1rem;
+      border-radius: var(--radius);
+      color: var(--gray-600);
+      text-decoration: none;
+      font-weight: 500;
+      transition: var(--transition);
+    }
+
+    .nav a:hover {
+      background: var(--gray-100);
+      color: var(--gray-900);
+    }
+
+    .nav a.active {
+      background: var(--primary-lightest);
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    .spacer {
+      flex: 1;
+    }
+
+    .pill {
+      padding: 0.375rem 0.75rem;
+      border-radius: 999px;
+      background: var(--gray-100);
+      color: var(--gray-700);
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+
+    /* Modern button styles */
+    .btn {
+      padding: 0.75rem 1.25rem;
+      border-radius: var(--radius);
+      font-weight: 600;
+      font-size: 0.9375rem;
+      cursor: pointer;
+      transition: var(--transition);
+      border: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      background: var(--gray-100);
+      color: var(--gray-700);
+    }
+
+    .btn:hover {
+      background: var(--gray-200);
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-dark);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .btn-secondary {
+      background: var(--gray-100);
+      color: var(--gray-700);
+      border: 1px solid var(--gray-300);
+    }
+
+    .btn-secondary:hover {
+      background: var(--gray-200);
+      border-color: var(--gray-400);
+    }
+    /* Quiz Selection Screen */
+    .quiz-home {
+      display: grid;
+      gap: 2rem;
+      animation: fadeIn 0.6s ease;
+    }
+
+    .welcome-banner {
+      background: var(--gray-50);
+      border-radius: var(--radius-xl);
+      padding: 2.5rem;
+      text-align: center;
+      border: 1px solid var(--gray-200);
+    }
+
+    .welcome-banner h1 {
+      font-size: 2.25rem;
+      color: var(--gray-900);
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      font-family: var(--font-display);
+      font-weight: 800;
+    }
+
+    .welcome-banner p {
+      color: var(--gray-600);
+      font-size: 1.125rem;
+    }
+    .quiz-modes {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+    }
+
+    .mode-card {
+      background: var(--white);
+      border-radius: var(--radius-xl);
+      padding: 2rem;
+      box-shadow: var(--shadow-md);
+      transition: var(--transition);
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--gray-200);
+    }
+
+    .mode-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+    }
+
+    .mode-card.required::before {
+      background: linear-gradient(90deg, var(--danger), #ff8787);
+    }
+
+    .mode-card.practice::before {
+      background: linear-gradient(90deg, var(--success), #44a39f);
+    }
+
+    .mode-card:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow-lg);
+    }
+    .mode-icon {
+      width: 80px;
+      height: 80px;
+      margin: 0 auto 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.5rem;
+      border-radius: 50%;
+    }
+
+    .required .mode-icon {
+      background: linear-gradient(135deg, var(--danger-light), var(--danger));
+    }
+
+    .practice .mode-icon {
+      background: linear-gradient(135deg, var(--success-light), var(--success));
+    }
+
+    .mode-card h2 {
+      text-align: center;
+      margin-bottom: 1rem;
+      font-size: 1.5rem;
+      color: var(--gray-900);
+      font-family: var(--font-display);
+      font-weight: 700;
+    }
+
+    .mode-card p {
+      text-align: center;
+      color: var(--gray-600);
+      margin-bottom: 1.5rem;
+      line-height: 1.6;
+    }
+    .mode-status {
+      background: var(--gray-50);
+      border-radius: var(--radius-lg);
+      padding: 1rem;
+      margin-bottom: 1.25rem;
+      text-align: center;
+      border: 1px solid var(--gray-200);
+    }
+
+    .countdown-display {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--danger);
+      margin: 0.75rem 0;
+      font-family: var(--font-display);
+    }
+    /* Quiz-specific button styles */
+    .quiz-btn {
+      width: 100%;
+      padding: 0.875rem 1.5rem;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .quiz-btn-required {
+      background: var(--danger);
+      color: white;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .quiz-btn-required:hover:not(:disabled) {
+      background: #ff5252;
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .quiz-btn-practice {
+      background: var(--success);
+      color: white;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .quiz-btn-practice:hover {
+      background: #22c19a;
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .quiz-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+    /* Quiz Taking Screen */
+    .quiz-active {
+      background: var(--white);
+      border-radius: var(--radius-xl);
+      padding: 2.5rem;
+      box-shadow: var(--shadow-lg);
+      animation: slideUp 0.5s ease;
+      border: 1px solid var(--gray-200);
+    }
+
+    .quiz-header {
+      text-align: center;
+      margin-bottom: 2rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 2px solid var(--gray-200);
+    }
+
+    .quiz-header h2 {
+      font-size: 1.75rem;
+      margin-bottom: 0.75rem;
+      color: var(--gray-900);
+      font-family: var(--font-display);
+      font-weight: 700;
+    }
+
+    .quiz-header .mode-badge {
+      display: inline-block;
+      padding: 0.375rem 1rem;
+      border-radius: 999px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      margin-top: 0.75rem;
+    }
+
+    .mode-badge.required {
+      background: var(--danger-light);
+      color: #b91c1c;
+      border: 1px solid #fca5a5;
+    }
+
+    .mode-badge.practice {
+      background: var(--success-light);
+      color: #059669;
+      border: 1px solid #6ee7b7;
+    }
+    .progress-container {
+      margin-bottom: 2rem;
+    }
+
+    .progress-bar {
+      height: 10px;
+      background: var(--gray-200);
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid var(--gray-300);
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary), var(--accent));
+      transition: width 0.3s ease;
+      border-radius: 999px;
+    }
+
+    .progress-text {
+      text-align: center;
+      margin-top: 0.75rem;
+      color: var(--gray-600);
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+    .question-card {
+      background: var(--gray-50);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem;
+      margin-bottom: 1.25rem;
+      animation: fadeInUp 0.4s ease;
+      border-left: 4px solid var(--primary);
+      border: 1px solid var(--gray-200);
+      position: relative;
+    }
+
+    .question-card::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: var(--primary);
+      border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+    }
+
+    .question-number {
+      color: var(--primary);
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .question-text {
+      font-size: 1.125rem;
+      margin-bottom: 1.25rem;
+      font-weight: 500;
+      color: var(--gray-900);
+    }
+    .options {
+      display: grid;
+      gap: 0.75rem;
+    }
+
+    .option-label {
+      display: flex;
+      align-items: center;
+      padding: 1rem;
+      background: var(--white);
+      border: 2px solid var(--gray-200);
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .option-label:hover {
+      border-color: var(--primary);
+      background: var(--primary-lightest);
+    }
+
+    .option-label input[type="radio"] {
+      margin-right: 0.75rem;
+      width: 20px;
+      height: 20px;
+      accent-color: var(--primary);
+    }
+
+    .option-label.selected {
+      border-color: var(--primary);
+      background: var(--primary-lightest);
+    }
+
+    .option-label.correct {
+      border-color: var(--success);
+      background: var(--success-light);
+      animation: pulse 0.5s ease;
+    }
+
+    .option-label.incorrect {
+      border-color: var(--danger);
+      background: var(--danger-light);
+      animation: shake 0.5s ease;
+    }
+    .feedback {
+      margin-top: 1rem;
+      padding: 0.75rem;
+      border-radius: var(--radius);
+      font-size: 0.875rem;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .feedback.correct {
+      background: var(--success-light);
+      color: #059669;
+      border: 1px solid #6ee7b7;
+    }
+
+    .feedback.incorrect {
+      background: var(--danger-light);
+      color: #b91c1c;
+      border: 1px solid #fca5a5;
+    }
+    .quiz-actions {
+      display: flex;
+      justify-content: center;
+      gap: 1.25rem;
+      margin-top: 2rem;
+    }
+
+    .quiz-btn-submit {
+      background: var(--primary);
+      color: white;
+      padding: 1rem 2.5rem;
+      font-size: 1.125rem;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .quiz-btn-submit:hover:not(:disabled) {
+      background: var(--primary-dark);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+    /* Results Screen */
+    .quiz-results {
+      text-align: center;
+      padding: 2.5rem;
+      background: var(--white);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-lg);
+      animation: zoomIn 0.5s ease;
+      border: 1px solid var(--gray-200);
+    }
+
+    .score-display {
+      font-size: 4.5rem;
+      font-weight: 800;
+      margin: 1.25rem 0;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      font-family: var(--font-display);
+    }
+
+    .score-message {
+      font-size: 1.5rem;
+      margin-bottom: 1.25rem;
+      color: var(--gray-900);
+      font-weight: 600;
+    }
+
+    .quiz-result-avatar {
+      margin: 1.5rem auto 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .quiz-result-avatar img {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: #f8fafc;
+      box-shadow: 0 10px 25px rgba(15, 23, 42, 0.12);
+      border: 4px solid rgba(59, 130, 246, 0.1);
+    }
+
+    .quiz-result-avatar .caption {
+      font-size: 0.9rem;
+      color: #64748b;
+      text-align: center;
+    }
+
+    .score-emoji {
+      font-size: 4rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .quiz-btn-home {
+      background: var(--primary);
+      color: white;
+      padding: 1rem 2.5rem;
+      margin-top: 1.25rem;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .quiz-btn-home:hover {
+      background: var(--primary-dark);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .quiz-btn-secondary {
+      background: var(--gray-100);
+      color: var(--gray-700);
+      border: 2px solid var(--gray-300);
+      padding: 1rem 2rem;
+    }
+
+    .quiz-btn-secondary:hover {
+      background: var(--gray-200);
+      border-color: var(--gray-400);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+    /* Category Selector */
+    .category-selector {
+      margin-bottom: 1.25rem;
+    }
+
+    .category-dropdown {
+      width: 100%;
+      padding: 0.75rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--gray-300);
+      background-color: var(--white);
+      font-family: var(--font-sans);
+      transition: var(--transition);
+      font-size: 1rem;
+      color: var(--gray-900);
+    }
+
+    .category-dropdown:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(11, 79, 179, 0.1);
+      outline: none;
+    }
+    /* Review Mode — interactive step-through */
+.quiz-review {
+  background: var(--white);
+  border-radius: var(--radius-xl);
+  padding: 2.5rem;
+  box-shadow: var(--shadow-lg);
+  animation: slideUp 0.5s ease;
+  border: 1px solid var(--gray-200);
+}
+.review-header { text-align:center; margin-bottom:1.5rem; }
+.review-header h2 { font-size: 1.75rem; margin: 0 0 0.5rem; color: var(--gray-900); font-family: var(--font-display); font-weight: 700; }
+.review-controls { display:flex; align-items:center; justify-content:center; gap:0.75rem; margin-top:0.5rem; }
+.review-stepper { display:flex; gap:8px; justify-content:center; align-items:center; flex-wrap:wrap; max-width: 640px; }
+.review-dot { width:14px; height:14px; border-radius:50%; background:#dfe3f8; border:2px solid #cfd5ff; cursor:pointer; transition:transform .15s ease, box-shadow .15s ease; }
+.review-dot.correct { background:#e8f5e9; border-color:#4caf50; }
+.review-dot.incorrect { background:#ffebee; border-color:#f44336; }
+.review-dot.active { transform:scale(1.2); box-shadow:0 0 0 4px rgba(102,126,234,.15); }
+.review-card { background:var(--gray-50); border-radius:var(--radius-lg); padding:1.5rem; border-left:4px solid var(--primary); border: 1px solid var(--gray-200); }
+.review-qnum { color:var(--primary); font-weight:700; margin-bottom:0.5rem; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.review-qtext { font-size:1.125rem; font-weight:600; margin-bottom:1rem; color:var(--gray-900); }
+.choice { display:flex; align-items:center; justify-content:space-between; gap:0.75rem; padding:0.75rem 1rem; border:2px solid var(--gray-200); border-radius:var(--radius); margin-top:0.75rem; background:var(--white); }
+.choice.correct { border-color:var(--success); background:var(--success-light); }
+.choice.incorrect.user { border-color:var(--danger); background:var(--danger-light); }
+.pill { font-size:0.75rem; padding:0.25rem 0.5rem; border-radius:999px; background:var(--primary-lightest); font-weight:700; }
+.pill.correct { background:var(--success-light); color: #059669; }
+.pill.yours { background:var(--danger-light); color: #b91c1c; }
+.explainer { margin-top:1rem; padding:1rem; border-radius:var(--radius); background:var(--white); border-left:4px solid var(--primary); color:var(--gray-900); border: 1px solid var(--gray-200); }
+.review-actions { display:flex; justify-content:center; gap:0.75rem; margin-top:1.5rem; }
+.review-toggles { display:flex; justify-content:center; gap:1rem; margin:0.75rem 0; color:var(--gray-600); }
+.bookmark { cursor:pointer; user-select:none; display:inline-flex; align-items:center; gap:0.5rem; font-weight:600; }
+.flashcard .correct, .flashcard .incorrect { filter: blur(6px); }
+.flashcard .pill { visibility:hidden; }
+.keyboard-hint { text-align:center; font-size:0.75rem; color:var(--gray-500); margin-top:0.5rem; }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--gray-500);
+      font-size: 0.875rem;
+    }
+
+    /* Animations */
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes zoomIn {
+      from {
+        opacity: 0;
+        transform: scale(0.9);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.02); }
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-5px); }
+      75% { transform: translateX(5px); }
+    }
+
+    .hidden { display: none !important; }
+    
+    /* Full-width layout for quiz taking mode */
+    .quiz-taking-mode .content {
+      max-width: none;
+      padding: 1rem;
+    }
+    
+    .quiz-taking-mode .panel {
+      padding: 0;
+      box-shadow: none;
+      border: none;
+      border-radius: 0;
+      background: transparent;
+    }
+    
+    .quiz-taking-mode .panel::before {
+      display: none;
+    }
+    
+    /* Sticky progress bar */
+    .quiz-active .progress-container {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: var(--white);
+      padding: 1rem 2rem;
+      margin: -2.5rem -2.5rem 2rem -2.5rem;
+      border-bottom: 1px solid var(--gray-200);
+      box-shadow: var(--shadow-sm);
+    }
+    
+    /* Adjust quiz content spacing when progress is sticky */
+    .quiz-active {
+      padding: 2.5rem;
+      background: var(--white);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-lg);
+      animation: slideUp 0.5s ease;
+      border: 1px solid var(--gray-200);
+      margin: 1rem;
+    }
+    
+    /* Full-width questions container */
+    .quiz-taking-mode #questions-container {
+      max-width: none;
+    }
+    
+    /* Wider question cards for better use of space */
+    .quiz-taking-mode .question-card {
+      max-width: none;
+      padding: 2rem;
+    }
+    
+    /* Responsive grid for options on wider screens */
+    @media (min-width: 1024px) {
+      .quiz-taking-mode .options {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+      }
+    }
+    
+    @media (max-width: 768px) {
+      .quiz-modes {
+        grid-template-columns: 1fr;
+      }
+      
+      .welcome-banner h1 {
+        font-size: 28px;
+      }
+      
+      /* Adjust for mobile in quiz mode */
+      .quiz-taking-mode .content {
+        padding: 0.5rem;
+      }
+      
+      .quiz-active {
+        margin: 0.5rem;
+        padding: 1.5rem;
+      }
+      
+      .quiz-active .progress-container {
+        margin: -1.5rem -1.5rem 1.5rem -1.5rem;
+        padding: 1rem;
+      }
+      
+      .quiz-taking-mode .question-card {
+        padding: 1.5rem;
+      }
+    }
+   /* Accessibility / Contrast Fix: ensure readable dark text inside light quiz panels
+     We keep global --ink (white) for dark backgrounds elsewhere, but explicitly
+     set legible colors for quiz content placed on white / light grey cards. */
+   .quiz-home, .quiz-active, .quiz-results { color:#1f2d3d; }
+   .quiz-home h1, .quiz-home h2, .quiz-active h2, .quiz-results h2 { color:#1c2a38; }
+   .question-card, .question-text, .question-number { color:#1f2d3d; }
+   .option-label { color:#1f2d3d; }
+   .option-label span { color:inherit; }
+   .option-label.selected { background:#f0f4ff; }
+   .option-label:hover { background:#f3f7ff; }
+   .option-label.correct { color:#1d5e24; }
+   .option-label.incorrect { color:#8d1e1e; }
+   .feedback.correct { color:#1d5e24; }
+   .feedback.incorrect { color:#8d1e1e; }
+   .progress-text { color:#465362; }
+   .quiz-header .mode-badge.required { color:#c0392b; }
+   .quiz-header .mode-badge.practice { color:#1f5e57; }
+   .score-message { color:#1f2d3d; }
+   /* Focus outline for keyboard users */
+   .option-label:focus-within { outline:3px solid #667eea; outline-offset:2px; }
+
+   /* Review contrast fixes — ensure readable dark text on light cards */
+   .quiz-review { color:#1f2d3d; }
+   .quiz-review h1, .quiz-review h2, .quiz-review h3, .quiz-review h4 { color:#1c2a38; }
+   .quiz-review .review-qnum, 
+   .quiz-review .review-qtext, 
+   .quiz-review .choice, 
+   .quiz-review .explainer, 
+   .quiz-review .bookmark, 
+   .quiz-review .pill { color:#1f2d3d; }
+   /* Make prev/next buttons readable; keep primary action buttons as-is */
+   .quiz-review .review-controls .quiz-btn { background:#e9ecef; color:#1f2d3d; }
+   .quiz-review .keyboard-hint { color:#7a8699; }
+   /* Keep semantic colors for correctness states */
+   .quiz-review .choice.correct { color:#1d5e24; }
+   .quiz-review .choice.incorrect.user { color:#8d1e1e; }
+   
+   /* Full-width review mode styling */
+   .quiz-taking-mode .quiz-review {
+     margin: 1rem;
+     padding: 2.5rem;
+   }
+   
+   .quiz-taking-mode .review-card {
+     max-width: none;
+     padding: 2rem;
+   }
+   
+   @media (max-width: 768px) {
+     .quiz-taking-mode .quiz-review {
+       margin: 0.5rem;
+       padding: 1.5rem;
+     }
+     
+     .quiz-taking-mode .review-card {
+       padding: 1.5rem;
+     }
+   }
+  </style>
+</head>
+<body>
+  <div class="page-container">
+    <!-- Standard nav mount point -->
+    <div id="navbar-root"></div>
+
+    <!-- Main Content Area -->
+    <main class="content">
+      <!-- Quiz Content Panel -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title"><img data-i8="puzzle" data-i8-size="24" alt="" style="vertical-align: middle;"> Weekly Knowledge Check</div>
+        </div>
+      
+        <!-- Quiz Home Screen -->
+        <div id="quiz-home" class="quiz-home">
+        <div class="welcome-banner">
+          <h1>
+            <img data-i8="mind-map" data-i8-size="36" alt="" style="vertical-align: middle; margin-right: 10px;">
+            Weekly Knowledge Check
+          </h1>
+          <p>Stay sharp with a quick weekly check‑in and unlimited practice sessions!</p>
+        </div>
+        
+        <div class="quiz-modes">
+          <!-- Weekly Check‑In Card -->
+          <div class="mode-card required">
+            <div class="mode-icon"><img data-i8="clipboard" data-i8-size="40" alt="Weekly Check‑In"></div>
+            <h2>Weekly Check‑In</h2>
+            <p>A short weekly check‑in to keep skills fresh. One attempt per week; your progress is recorded.</p>
+            
+            <div id="required-status" class="mode-status">
+              <!-- Status will be populated by JavaScript -->
+            </div>
+            
+            <button id="btn-required" class="quiz-btn quiz-btn-required">
+              Start Weekly Check‑In
+            </button>
+          </div>
+          
+          <!-- Practice Quiz Card -->
+          <div class="mode-card practice">
+            <div class="mode-icon"><img data-i8="target" data-i8-size="40" alt="Practice Quiz"></div>
+            <h2>Practice Mode</h2>
+            <p>Sharpen your skills anytime! Unlimited attempts, learn at your own pace.</p>
+            
+            <div class="mode-status">
+              <p style="color: var(--success); font-weight: 600;">
+                ✨ Always Available
+              </p>
+              <p style="font-size: 0.875rem; color: var(--gray-600); margin-top: 0.375rem;">
+                Practice makes perfect!
+              </p>
+            </div>
+            
+            <div class="category-selector">
+              <label for="category-select" style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: var(--success);">Select Category:</label>
+              <select id="category-select" class="category-dropdown">
+                <option value="all">All Categories (Mixed)</option>
+                <option value="Health & Safety">Health & Safety</option>
+                <option value="Fire Safety">Fire Safety</option>
+                <option value="Infection Control">Infection Control</option>
+                <option value="Equipment">Equipment</option>
+                <option value="Procedures">Procedures</option>
+              </select>
+            </div>
+            
+            <button id="btn-practice" class="quiz-btn quiz-btn-practice">
+              Start Practice Quiz
+            </button>
+          </div>
+        </div>
+        </div>
+
+        <!-- Quiz Taking Screen -->
+        <div id="quiz-active" class="quiz-active hidden">
+        <div class="quiz-header">
+          <h2 id="quiz-title">Quiz in Progress</h2>
+          <span id="mode-badge" class="mode-badge"></span>
+        </div>
+        
+        <div class="progress-container">
+          <div class="progress-bar">
+            <div id="progress-fill" class="progress-fill" style="width: 0%"></div>
+          </div>
+          <div id="progress-text" class="progress-text">Question 0 of 10</div>
+        </div>
+        
+        <div id="questions-container">
+          <!-- Questions will be populated here -->
+        </div>
+        
+        <div class="quiz-actions">
+          <button id="btn-submit" class="quiz-btn quiz-btn-submit" disabled>
+            Submit Quiz
+          </button>
+        </div>
+        </div>
+
+        <!-- Review Screen -->
+        <div id="quiz-review" class="quiz-review hidden">
+        <div class="review-header">
+          <h2>
+            <img data-i8="books" data-i8-size="24" alt="Learn" style="vertical-align: middle; margin-right: 8px;"> Review & Learn
+          </h2>
+          <div class="review-controls">
+            <button id="review-prev" class="quiz-btn" aria-label="Previous question">◀ Prev</button>
+            <button id="review-next" class="quiz-btn" aria-label="Next question">Next ▶</button>
+          </div>
+          <div class="keyboard-hint">Pro tip: use ← / → to move between questions</div>
+        </div>
+
+        <div id="review-card" class="review-card" role="region" aria-live="polite"></div>
+
+        <div class="review-actions">
+          <button id="btn-review-summary" class="quiz-btn quiz-btn-submit">
+            <img data-i8="clipboard" data-i8-size="16" alt=""> Back to Summary
+          </button>
+        </div>
+        </div>
+
+        <!-- Results Screen -->
+        <div id="quiz-results" class="quiz-results hidden">
+        <div class="score-emoji" id="score-emoji"><img data-i8="confetti" data-i8-size="64" alt="Celebration" id="score-emoji-img"></div>
+        <h2>Quiz Complete!</h2>
+        <div class="score-display" id="score-display">0/10</div>
+        <div class="score-message" id="score-message">Good effort!</div>
+        <div id="quiz-avatar-wrapper" class="quiz-result-avatar hidden">
+          <img id="quiz-avatar-image" alt="Quiz mood avatar" />
+          <div id="quiz-avatar-caption" class="caption"></div>
+        </div>
+        <div id="result-mode-info" style="margin: 20px 0; color: #666;"></div>
+        <div class="quiz-actions" style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+          <button id="btn-review-answers" class="quiz-btn quiz-btn-secondary">
+            <img data-i8="books" data-i8-size="16" alt=""> Review Answers
+          </button>
+          <button id="btn-home" class="quiz-btn quiz-btn-home">
+            Back to Quiz Home
+          </button>
+        </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <div class="footer">© CheckLoops • Weekly Knowledge Check</div>
+  </div>
+
+  <script type="module">
+  import { initSupabase, requireStaffSession, getSiteText, setTopbar, handleAuthState, navActivate, clearAuthData, createAchievementClient, attachLogout, getSiteSettings } from './staff-common.js';
+    
+    // Initialize Supabase
+  const supabase = await initSupabase();
+  attachLogout(supabase);
+    // Make supabase available globally for Admin Portal button
+    window.supabase = supabase;
+    handleAuthState(supabase);
+    if (typeof window.renderStandardStaffNav === 'function') {
+      window.renderStandardStaffNav('staff-quiz.html');
+    }
+    navActivate('quiz');
+
+    // Admin nav removed - separate staff portal
+    
+let currentUser = null;
+let currentProfile = null;
+let achievementClient = null;
+let currentQuestions = [];
+let currentMode = null;
+let userAnswers = {};
+let quizStartTime = null;
+let reviewIndex = 0;
+let reviewResults = [];
+let avatarsEnabled = false;
+let avatarVariantUrls = {};
+
+async function refreshPracticeAchievements({ scorePercent, totalQuestions }) {
+  if (!achievementClient) return;
+  try {
+    const { count } = await supabase
+      .from('quiz_practices')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', currentUser.id);
+
+    const totalPractices = count ?? 0;
+    await achievementClient.ensureUnlocked('practice_pro', {
+      condition: totalPractices >= 5,
+      metadata: {
+        totalPractices,
+        scorePercent,
+        totalQuestions,
+        mode: 'practice'
+      }
+    });
+  } catch (err) {
+    console.warn('Failed to refresh practice achievements:', err);
+  }
+}
+
+async function refreshRequiredAchievements({ scorePercent, totalQuestions }) {
+  if (!achievementClient) return;
+  try {
+    const { count } = await supabase
+      .from('quiz_attempts')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', currentUser.id)
+      .eq('is_practice', false);
+
+    const totalRequired = count ?? 0;
+    await achievementClient.ensureUnlocked('quiz_hat_trick', {
+      condition: totalRequired >= 3,
+      metadata: {
+        totalRequired,
+        scorePercent,
+        totalQuestions,
+        mode: 'required'
+      }
+    });
+  } catch (err) {
+    console.warn('Failed to refresh required-quiz achievements:', err);
+  }
+}
+
+async function loadAvatarVariants(userId) {
+  if (!userId || !avatarsEnabled) return {};
+
+  try {
+    const { data, error } = await supabase
+      .from('avatar_variants')
+      .select('variant, image_url')
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Failed to load avatar variants:', error);
+      return {};
+    }
+
+    const map = {};
+    for (const row of data || []) {
+      if (row?.variant && row?.image_url) {
+        map[row.variant] = row.image_url;
+      }
+    }
+    return map;
+  } catch (err) {
+    console.error('Unexpected avatar variants error:', err);
+    return {};
+  }
+}
+
+function updateResultAvatar(scorePercent) {
+  const wrapper = document.getElementById('quiz-avatar-wrapper');
+  const img = document.getElementById('quiz-avatar-image');
+  const caption = document.getElementById('quiz-avatar-caption');
+
+  if (!wrapper || !img || !caption || !avatarsEnabled) {
+    if (wrapper) wrapper.classList.add('hidden');
+    return;
+  }
+
+  const variant = scorePercent >= 80 ? 'happy' : 'sad';
+  const fallbackVariant = scorePercent >= 80 ? 'excited' : 'neutral';
+  const avatarUrl = avatarVariantUrls[variant] || avatarVariantUrls[fallbackVariant] || currentProfile?.avatar_url || null;
+
+  if (!avatarUrl) {
+    wrapper.classList.add('hidden');
+    return;
+  }
+
+  img.src = avatarUrl;
+  caption.textContent = scorePercent >= 80 ? 'Feeling on top of the world!' : 'Let\'s turn that score around next time!';
+  wrapper.classList.remove('hidden');
+}
+    
+    // Get start of current week (Sunday at 00:00:00)
+    function getWeekStart(date = new Date()) {
+      const d = new Date(date);
+      const day = d.getDay();
+      const diff = d.getDate() - day;
+      const weekStart = new Date(d.setDate(diff));
+      weekStart.setHours(0, 0, 0, 0);
+      return weekStart;
+    }
+    
+    // Get end of current week (Saturday at 23:59:59)
+    function getWeekEnd(date = new Date()) {
+      const start = getWeekStart(date);
+      const weekEnd = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
+      weekEnd.setHours(23, 59, 59, 999);
+      return weekEnd;
+    }
+    
+    // Get next week start (next Sunday)
+    function getNextWeekStart(date = new Date()) {
+      const end = getWeekEnd(date);
+      return new Date(end.getTime() + 24 * 60 * 60 * 1000);
+    }
+    
+    // Format countdown
+    function formatCountdown(ms) {
+      if (ms <= 0) return 'Ready now!';
+      
+      const days = Math.floor(ms / (24 * 60 * 60 * 1000));
+      const hours = Math.floor((ms % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+      const minutes = Math.floor((ms % (60 * 60 * 1000)) / (60 * 1000));
+      
+      const parts = [];
+      if (days > 0) parts.push(`${days}d`);
+      if (hours > 0) parts.push(`${hours}h`);
+      if (minutes > 0 || parts.length === 0) parts.push(`${minutes}m`);
+      
+      return parts.join(' ');
+    }
+    
+    // Check if quiz was taken this week using master_users only
+    async function checkWeeklyQuizStatus() {
+      console.log('📅 Checking weekly quiz status (master_users)…');
+      const fallback = { taken: false, lastAttempt: null, nextAvailable: new Date() };
+
+      if (!currentUser?.id) {
+        console.error('📅 No current user ID available');
+        return fallback;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('master_users')
+          .select('auth_user_id, next_quiz_due, last_required_quiz_at')
+          .eq('auth_user_id', currentUser.id)
+          .limit(1)
+          .maybeSingle();
+
+        if (error) {
+          console.error('📅 master_users read error:', error);
+          return fallback;
+        }
+
+        const now = new Date();
+        const nextDue = data?.next_quiz_due ? new Date(data.next_quiz_due) : null;
+        const last = data?.last_required_quiz_at ? new Date(data.last_required_quiz_at) : null;
+
+        if (nextDue && nextDue.getTime() > now.getTime()) {
+          return { taken: true, lastAttempt: last, nextAvailable: nextDue };
+        }
+
+        return { taken: false, lastAttempt: last, nextAvailable: now };
+      } catch (err) {
+        console.error('📅 Exception checking quiz status:', err);
+        return fallback;
+      }
+    }
+    
+    // Update required quiz status display
+    async function updateRequiredQuizStatus() {
+      const status = await checkWeeklyQuizStatus();
+      const statusEl = document.getElementById('required-status');
+      const btnRequired = document.getElementById('btn-required');
+      
+      if (status.taken) {
+        // Quiz already taken this week
+        const msUntilNext = status.nextAvailable.getTime() - Date.now();
+        statusEl.innerHTML = `
+          <p style="color: #28a745; font-weight: 600; margin-bottom: 10px;">
+            ✅ Weekly Check‑In Complete!
+          </p>
+          <p style="font-size: 14px; color: #666;">Next quiz available:</p>
+          <div class="countdown-display" id="countdown">
+            ${formatCountdown(msUntilNext)}
+          </div>
+        `;
+        btnRequired.disabled = true;
+        btnRequired.textContent = 'Completed This Week';
+        
+        // Update countdown every minute
+        setInterval(() => {
+          const ms = status.nextAvailable.getTime() - Date.now();
+          const countdownEl = document.getElementById('countdown');
+          if (countdownEl) {
+            countdownEl.textContent = formatCountdown(ms);
+            if (ms <= 0) {
+              // Refresh quiz state instead of reloading page to prevent debugger interference
+              if (typeof checkQuizAvailability === 'function') {
+                checkQuizAvailability();
+              } else if (typeof loadQuizState === 'function') {
+                loadQuizState();
+              } else if (typeof initQuiz === 'function') {
+                initQuiz();
+              }
+            }
+          }
+        }, 60000);
+      } else {
+        // Quiz available
+        statusEl.innerHTML = `
+          <p style="color: #ff6b6b; font-weight: 600;">
+            ⏰ Weekly Check‑In Available
+          </p>
+          <p style="font-size: 14px; color: #666; margin-top: 5px;">
+            Available until Saturday midnight
+          </p>
+        `;
+        btnRequired.disabled = false;
+        btnRequired.textContent = 'Start Weekly Check‑In';
+      }
+    }
+    
+    // Fetch quiz questions
+    async function fetchQuestions() {
+      console.log('🔍 fetchQuestions: Starting to fetch questions...');
+      
+      // For now, let's use the fallback questions since the database join isn't working
+      // The issue is that quiz_options join is returning 0 options for all questions
+      // This needs to be investigated with database permissions
+      console.log('🔍 fetchQuestions: Using fallback questions (database join issue)');
+      return [
+        { id: 1, question: 'What should you check first in a safety inspection?', choices: ['PPE availability', 'Kitchen menu', 'Visitor log', 'Weather forecast'], answer: 0, category: 'Health & Safety', explanation: 'Start by ensuring essential protective equipment is available and fit for purpose so staff can safely address any hazards.' },
+        { id: 2, question: 'Hand hygiene should last at least how many seconds?', choices: ['5 seconds', '10 seconds', '20 seconds', '40 seconds'], answer: 2, category: 'Infection Control', explanation: 'Rub for ≥20 seconds to cover all hand surfaces; this duration is shown to reduce microbial load effectively.' },
+        { id: 3, question: 'Which waste goes into a sharps bin?', choices: ['Used needles', 'Food scraps', 'Paper towels', 'Plastic bottles'], answer: 0, category: 'Infection Control', explanation: 'Sharps bins are for items that can puncture skin (e.g., needles, blades). Never overfill and always close properly.' },
+        { id: 4, question: 'When should you report a near-miss incident?', choices: ['End of the week', 'Immediately', 'During monthly review', 'Never'], answer: 1, category: 'Health & Safety', explanation: 'Report immediately so learning can happen quickly and the risk can be controlled before harm occurs.' },
+        { id: 5, question: 'Which is NOT a fire class?', choices: ['Class A', 'Class B', 'Class D', 'Class H'], answer: 3, category: 'Fire Safety', explanation: 'UK fire classes include A, B, C, D, and F. There is no Class H.' },
+        { id: 6, question: 'What is the correct method to lift a heavy box?', choices: ['Back bent, legs straight', 'Back straight, bend knees', 'Twist the spine', 'Hold with fingertips'], answer: 1, category: 'Health & Safety', explanation: 'Keep the back neutral, bend at the knees and hips, hold load close, and avoid twisting to protect the spine.' },
+        { id: 7, question: 'A spill kit is used to handle?', choices: ['Electrical faults', 'Chemical spills', 'Printer jams', 'Lost property'], answer: 1, category: 'Health & Safety', explanation: 'Spill kits contain absorbents and PPE designed for chemical/biological spills—always check the kit type matches the substance.' },
+        { id: 8, question: 'PAT testing refers to?', choices: ['Patient testing', 'Portable Appliance Testing', 'Public Area Testing', 'Pressure and Temperature'], answer: 1, category: 'Equipment', explanation: 'Portable Appliance Testing checks electrical safety of plug-in equipment to reduce shock and fire risks.' },
+        { id: 9, question: 'What temperature should hot food be kept at?', choices: ['Above 45°C', 'Above 55°C', 'Above 63°C', 'Above 75°C'], answer: 2, category: 'Health & Safety', explanation: 'In the UK, hot holding should be at ≥63°C to keep food out of the bacterial “danger zone”.' },
+        { id: 10, question: 'How often should fire alarms be tested?', choices: ['Daily', 'Weekly', 'Monthly', 'Yearly'], answer: 1, category: 'Fire Safety', explanation: 'A weekly functional test helps ensure the system, call points and sounders work between formal inspections.' },
+        { id: 11, question: 'What color is a CO2 fire extinguisher?', choices: ['Red', 'Black', 'Blue', 'Cream'], answer: 1, category: 'Fire Safety', explanation: 'CO₂ extinguishers are marked with a black label; they’re suitable for electrical and Class B (liquid) fires.' },
+        { id: 12, question: 'COSHH stands for?', choices: ['Control of Substances Hazardous to Health', 'Committee of Safety and Health Hazards', 'Certificate of Safe Handling and Hygiene', 'Central Office for Safety and Health'], answer: 0, category: 'Health & Safety', explanation: 'COSHH is UK regulation requiring employers to control hazardous substances exposure.' },
+        { id: 13, question: 'What is the minimum rest break for a 6-hour shift?', choices: ['10 minutes', '20 minutes', '30 minutes', '45 minutes'], answer: 1, category: 'Procedures', explanation: 'Working Time Regulations: workers are entitled to an uninterrupted 20‑minute rest if working more than 6 hours.' },
+        { id: 14, question: 'Which PPE protects against airborne particles?', choices: ['Safety glasses', 'FFP3 mask', 'Latex gloves', 'Steel toe boots'], answer: 1, category: 'Infection Control', explanation: 'FFP3 respirators filter fine aerosols; fit testing is essential for an effective seal.' },
+        { id: 15, question: 'What is the first step in risk assessment?', choices: ['Control measures', 'Identify hazards', 'Training staff', 'Document findings'], answer: 1, category: 'Health & Safety', explanation: 'Risk assessment starts by identifying hazards; then evaluate risks, control, record, and review.' }
+      ];
+    }
+    
+    // Shuffle and pick random questions
+    function pickRandomQuestions(questions, count = 10) {
+      const shuffled = [...questions].sort(() => Math.random() - 0.5);
+      return shuffled.slice(0, Math.min(count, shuffled.length));
+    }
+    
+    // Render quiz questions
+    function renderQuiz(questions) {
+      console.log('🎨 renderQuiz: Starting to render', questions?.length, 'questions');
+      const container = document.getElementById('questions-container');
+      if (!container) {
+        console.error('🎨 renderQuiz: Questions container not found!');
+        return;
+      }
+      
+      container.innerHTML = '';
+      
+      if (!questions || questions.length === 0) {
+        console.error('🎨 renderQuiz: No questions to render!');
+        container.innerHTML = '<div class="question-card"><p>No questions available. Please try again.</p></div>';
+        return;
+      }
+      
+      questions.forEach((q, index) => {
+        console.log('🎨 renderQuiz: Rendering question', index + 1, ':', q.question?.substring(0, 50) + '...');
+        const questionCard = document.createElement('div');
+        questionCard.className = 'question-card';
+        questionCard.innerHTML = `
+          <div class="question-number">Question ${index + 1}</div>
+          <div class="question-text">${q.question}</div>
+          <div class="options">
+            ${q.choices.map((choice, choiceIndex) => `
+              <label class="option-label" data-question="${index}" data-choice="${choiceIndex}">
+                <input type="radio" name="q_${index}" value="${choiceIndex}" />
+                <span>${choice}</span>
+              </label>
+            `).join('')}
+          </div>
+          <div id="feedback_${index}" class="feedback hidden"></div>
+        `;
+        container.appendChild(questionCard);
+      });
+      
+      console.log('🎨 renderQuiz: Successfully rendered', questions.length, 'questions to DOM');
+      
+      // Add event listeners
+      document.querySelectorAll('input[type="radio"]').forEach(input => {
+        input.addEventListener('change', (e) => {
+          const questionIndex = parseInt(e.target.name.split('_')[1]);
+          userAnswers[questionIndex] = parseInt(e.target.value);
+          
+          // Update option styling
+          document.querySelectorAll(`[data-question="${questionIndex}"]`).forEach(label => {
+            label.classList.remove('selected');
+          });
+          e.target.closest('.option-label').classList.add('selected');
+          
+          updateProgress();
+        });
+      });
+    }
+    
+    // Update progress
+    function updateProgress() {
+      const total = currentQuestions.length;
+      const answered = Object.keys(userAnswers).length;
+      const percentage = (answered / total) * 100;
+      
+      document.getElementById('progress-fill').style.width = `${percentage}%`;
+      document.getElementById('progress-text').textContent = `Question ${answered} of ${total} answered`;
+      
+      // Enable submit button when all questions answered
+      document.getElementById('btn-submit').disabled = answered < total;
+    }
+    
+    // Start quiz
+    async function startQuiz(mode) {
+      console.log('🎯 startQuiz: Starting quiz in mode:', mode);
+      
+      // If this is a required quiz, check if already completed this week
+      if (mode === 'required') {
+        console.log('🎯 startQuiz: Checking weekly restriction for required quiz');
+        
+        // Double-check the weekly status to prevent bypassing
+        const status = await checkWeeklyQuizStatus();
+        console.log('🎯 startQuiz: Weekly status result:', status);
+        
+        if (status.taken) {
+          console.log('🎯 startQuiz: Required quiz already completed this week, blocking');
+          const nextAvailable = status.nextAvailable;
+          const daysUntilNext = Math.ceil((nextAvailable.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          alert(`You’ve already done this week’s check‑in. It opens again on Sunday (in ${daysUntilNext} days).`);
+          return;
+        }
+        
+        console.log('🎯 startQuiz: Weekly restriction check passed, proceeding with quiz');
+      }
+      
+      currentMode = mode;
+      userAnswers = {};
+      quizStartTime = new Date();
+      
+      // Get the selected category for practice quiz
+      let selectedCategory = 'all';
+      if (mode === 'practice') {
+        selectedCategory = document.getElementById('category-select')?.value || 'all';
+        console.log('🎯 startQuiz: Selected category:', selectedCategory);
+      }
+      
+      // Fetch and prepare questions
+      console.log('🎯 startQuiz: Fetching questions...');
+      const allQuestions = await fetchQuestions();
+      console.log('🎯 startQuiz: Got questions:', allQuestions?.length);
+      
+      // Filter questions by category if one is selected
+      let filteredQuestions = allQuestions;
+      if (mode === 'practice' && selectedCategory !== 'all') {
+        filteredQuestions = allQuestions.filter(q => {
+          // Each question has a hardcoded category in its object
+          // We can extract it or match against it
+          const questionCategory = q.category || 'Unknown';
+          return questionCategory === selectedCategory;
+        });
+        console.log('🎯 startQuiz: Filtered to', filteredQuestions.length, 'questions in category:', selectedCategory);
+        
+        // If we don't have enough questions in the category, fall back to all questions
+        if (filteredQuestions.length < 5) {
+          console.log('🎯 startQuiz: Not enough questions in category, using all questions');
+          filteredQuestions = allQuestions;
+        }
+      }
+      
+      currentQuestions = pickRandomQuestions(filteredQuestions, 10);
+      console.log('🎯 startQuiz: Selected questions for quiz:', currentQuestions?.length);
+      
+      // Update UI
+      document.getElementById('quiz-home').classList.add('hidden');
+      document.getElementById('quiz-active').classList.remove('hidden');
+      document.getElementById('quiz-results').classList.add('hidden');
+      document.body.classList.add('quiz-taking-mode');
+      
+      // Set mode-specific UI
+      const titleEl = document.getElementById('quiz-title');
+      const badgeEl = document.getElementById('mode-badge');
+      
+      if (mode === 'required') {
+        titleEl.textContent = 'Weekly Check‑In';
+        badgeEl.innerHTML = '<img data-i8="clipboard" data-i8-size="16" alt="" style="vertical-align: middle; margin-right: 4px;"> Official - Progress Recorded';
+        badgeEl.className = 'mode-badge required';
+      } else {
+        const selectedCategory = document.getElementById('category-select')?.value || 'all';
+        const categoryText = selectedCategory === 'all' ? 'Mixed Categories' : selectedCategory;
+        
+        titleEl.textContent = `Practice Quiz: ${categoryText}`;
+        badgeEl.innerHTML = '<img data-i8="target" data-i8-size="16" alt="" style="vertical-align: middle; margin-right: 4px;"> Practice - Learn & Improve';
+        badgeEl.className = 'mode-badge practice';
+      }
+      
+      // Re-wire icons after setting innerHTML
+      try {
+        wireIcons();
+      } catch (e) {
+        console.error('Error wiring icons:', e);
+      }
+      
+      // Render questions
+      console.log('🎯 startQuiz: Rendering questions...');
+      renderQuiz(currentQuestions);
+      updateProgress();
+      console.log('🎯 startQuiz: Quiz started successfully');
+    }
+    
+    // Submit quiz
+    async function submitQuiz() {
+      const btnSubmit = document.getElementById('btn-submit');
+      btnSubmit.disabled = true;
+      btnSubmit.textContent = 'Submitting...';
+      
+      // Calculate score
+      let correctCount = 0;
+      currentQuestions.forEach((q, index) => {
+        const userAnswer = userAnswers[index];
+        const isCorrect = userAnswer === q.answer;
+        if (isCorrect) correctCount++;
+        
+        // Show feedback
+        const feedbackEl = document.getElementById(`feedback_${index}`);
+        const optionLabels = document.querySelectorAll(`[data-question="${index}"]`);
+        
+        optionLabels.forEach((label, choiceIndex) => {
+          if (choiceIndex === q.answer) {
+            label.classList.add('correct');
+          } else if (choiceIndex === userAnswer && !isCorrect) {
+            label.classList.add('incorrect');
+          }
+        });
+        
+        if (feedbackEl) {
+          feedbackEl.classList.remove('hidden');
+          if (isCorrect) {
+            feedbackEl.className = 'feedback correct';
+            feedbackEl.innerHTML = '✅ Correct!';
+          } else {
+            feedbackEl.className = 'feedback incorrect';
+            feedbackEl.innerHTML = `❌ Incorrect. The correct answer is: ${q.choices[q.answer]}`;
+          }
+        }
+      });
+      
+      const scorePercent = Math.round((correctCount / currentQuestions.length) * 100);
+      
+      // Save to database
+      console.log('💾 submitQuiz: Saving to database, mode:', currentMode);
+      try {
+        if (currentMode === 'required') {
+          console.log('💾 submitQuiz: Recording required quiz in master_users and quiz_attempts');
+
+          const completedAt = new Date();
+          const nextDue = new Date(completedAt);
+          nextDue.setDate(nextDue.getDate() + 7);
+
+          // 1) Update quiz metadata on master_users
+          const { error: muErr } = await supabase
+            .from('master_users')
+            .update({
+              next_quiz_due: nextDue.toISOString(),
+              last_required_quiz_at: completedAt.toISOString()
+            })
+            .eq('auth_user_id', currentUser.id);
+
+          if (muErr) {
+            console.error('💾 submitQuiz: master_users update error:', muErr);
+            showToast('⚠️ Could not record weekly check‑in. Please try again.');
+          } else {
+            console.log('💾 submitQuiz: master_users updated successfully (next_quiz_due, last_required_quiz_at)');
+            showToast('✅ Weekly check‑in saved.');
+            await refreshRequiredAchievements({ scorePercent, totalQuestions: currentQuestions.length });
+          }
+
+          // 2) Insert an official attempt row so dashboards can see the score
+          try {
+            const insertAttempt = {
+              site_id: currentProfile?.site_id || null,
+              user_id: currentUser.id,
+              started_at: quizStartTime?.toISOString?.() || completedAt.toISOString(),
+              completed_at: completedAt.toISOString(),
+              total_questions: currentQuestions.length,
+              correct_answers: correctCount,
+              score_percent: scorePercent,
+              is_practice: false
+            };
+            const { error: qaErr } = await supabase
+              .from('quiz_attempts')
+              .insert(insertAttempt);
+            if (qaErr) {
+              console.warn('💾 submitQuiz: quiz_attempts insert failed (non-blocking):', qaErr);
+            } else {
+              console.log('💾 submitQuiz: quiz_attempts row inserted');
+            }
+          } catch (qaEx) {
+            console.warn('💾 submitQuiz: quiz_attempts insert exception (non-blocking):', qaEx);
+          }
+
+        } else {
+          // Save to quiz_practices if table exists
+          console.log('💾 submitQuiz: Saving practice quiz to quiz_practices table');
+          try {
+            const insertData = {
+              user_id: currentUser.id,
+              site_id: currentProfile?.site_id || null,
+              started_at: quizStartTime.toISOString(),
+              completed_at: new Date().toISOString(),
+              score: correctCount,
+              total_questions: currentQuestions.length,
+              score_percent: scorePercent
+            };
+            console.log('💾 submitQuiz: Practice insert data:', insertData);
+
+              const { data, error } = await supabase.from('quiz_practices').insert(insertData);
+
+            if (error) {
+              console.error('💾 submitQuiz: Error saving practice quiz:', error);
+              showToast('⚠️ Could not save practice quiz; continuing.');
+              
+              // Special handling for kiosk_users not exist error
+              if (error.message && error.message.includes('kiosk_users') && error.message.includes('does not exist')) {
+                console.log('💾 submitQuiz: Detected kiosk_users migration issue in practice quiz, trying alternate approach');
+                
+                try {
+                  // Try direct insert without RLS - this avoids the kiosk_users reference
+                  const directInsert = {
+                    ...insertData,
+                    // Ensure we have the required fields
+                    created_at: new Date().toISOString()
+                  };
+                  
+                  // Get API key from supabase client
+                  const apiKey = supabase.supabaseKey || window.SUPABASE_KEY || window.SUPABASE_ANON_KEY || '';
+                  // Try with a different endpoint that bypasses RLS
+                  const directResult = await fetch(`${window.SUPABASE_URL || 'https://unveoqnlqnobufhublyw.supabase.co'}/rest/v1/quiz_practices`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${sessionData?.session?.access_token || ''}`,
+                      'apikey': apiKey
+                    },
+                    body: JSON.stringify(directInsert)
+                  });
+                  
+                  if (directResult.ok) {
+                    console.log('💾 submitQuiz: Direct practice insert successful!');
+                    // Continue with quiz completion
+                  } else {
+                    const errorText = await directResult.text();
+                    console.error('💾 submitQuiz: Direct practice insert also failed:', errorText);
+                    // Continue anyway since practice quiz is not critical
+                  }
+                } catch (directError) {
+                  console.error('💾 submitQuiz: Error with direct practice insert:', directError);
+                  // Continue anyway since practice quiz is not critical
+                }
+              }
+              // For practice quiz, we don't block the flow if saving fails
+            } else {
+              console.log('💾 submitQuiz: Practice quiz saved successfully:', data);
+              showToast('✅ Practice quiz saved.');
+
+              if (achievementClient) {
+                try {
+                  await achievementClient.ensureUnlocked('first_practice_quiz', {
+                    metadata: {
+                      mode: 'practice',
+                      scorePercent,
+                      totalQuestions: currentQuestions.length
+                    }
+                  });
+                  await refreshPracticeAchievements({ scorePercent, totalQuestions: currentQuestions.length });
+                } catch (achievementError) {
+                  console.warn('Failed to unlock first_practice_quiz achievement:', achievementError);
+                }
+              }
+            }
+          } catch (err) {
+            console.error('💾 submitQuiz: Exception saving practice quiz:', err);
+          }
+        }
+      } catch (err) {
+        console.error('💾 submitQuiz: Error saving quiz attempt:', err);
+      }
+      
+      // Build review payload and enter Review Mode first
+      if (achievementClient) {
+        try {
+          await achievementClient.ensureUnlocked('quiz_complete', {
+            condition: currentMode === 'required',
+            metadata: {
+              mode: currentMode,
+              scorePercent,
+              totalQuestions: currentQuestions.length
+            }
+          });
+          await achievementClient.ensureUnlocked('quiz_perfect', {
+            condition: scorePercent === 100,
+            metadata: {
+              mode: currentMode,
+              totalQuestions: currentQuestions.length
+            }
+          });
+        } catch (achievementErr) {
+          console.warn('Quiz achievement unlock failed:', achievementErr);
+        }
+      }
+
+      reviewResults = currentQuestions.map((q, index) => ({
+        question: q.question,
+        choices: q.choices,
+        category: q.category || 'Mixed',
+        explanation: q.explanation || null,
+        correctIndex: q.answer,
+        userIndex: userAnswers[index] ?? null,
+        isCorrect: userAnswers[index] === q.answer
+      }));
+      
+      // Show results screen first instead of going directly to review
+      showResults(correctCount, currentQuestions.length, scorePercent);
+
+      // If this was a required quiz, refresh the status and next due (UI only)
+      if (currentMode === 'required') {
+        console.log('💾 submitQuiz: Required quiz completed, refreshing status');
+        // Wait a moment so any DB writes settle
+        setTimeout(async () => { await updateRequiredQuizStatus(); }, 500);
+      }
+    }
+    
+    // Show toast notification
+    function showToast(message, duration = 3000) {
+      const existingToast = document.querySelector('.achievement-toast');
+      if (existingToast) {
+        existingToast.remove();
+      }
+
+      const toast = document.createElement('div');
+      toast.className = 'achievement-toast';
+      toast.textContent = message;
+      toast.style.cssText = `
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%) translateY(100px);
+        background: linear-gradient(135deg, #6366f1, #22d3ee);
+        color: white;
+        padding: 16px 24px;
+        border-radius: 12px;
+        font-weight: 600;
+        z-index: 10000;
+        transition: transform 0.3s ease;
+        box-shadow: 0 10px 30px rgba(99, 102, 241, 0.3);
+      `;
+      document.body.appendChild(toast);
+
+      // Animate in
+      requestAnimationFrame(() => {
+        toast.style.transform = 'translateX(-50%) translateY(0)';
+      });
+
+      // Remove after duration
+      setTimeout(() => {
+        toast.style.transform = 'translateX(-50%) translateY(100px)';
+        setTimeout(() => toast.remove(), 300);
+      }, duration);
+    }
+
+    // ===== Review Mode (interactive) =====
+    function startReview(correct, total, percentage){
+      // Show review UI
+      document.getElementById('quiz-active').classList.add('hidden');
+      document.getElementById('quiz-results').classList.add('hidden');
+      const reviewEl = document.getElementById('quiz-review');
+      reviewEl.classList.remove('hidden');
+      // Keep quiz-taking-mode for full width in review
+
+      // Wire controls
+      document.getElementById('review-prev').onclick = () => gotoReviewIndex(reviewIndex - 1);
+      document.getElementById('review-next').onclick = () => gotoReviewIndex(reviewIndex + 1);
+      document.getElementById('btn-review-summary').onclick = () => {
+        reviewEl.classList.add('hidden');
+        document.removeEventListener('keydown', reviewKeyHandler);
+        showResults(correct, total, percentage);
+      };
+      document.addEventListener('keydown', reviewKeyHandler);
+
+      // Initial render
+      reviewIndex = 0;
+      gotoReviewIndex(0);
+      try { wireIcons(); } catch(e){}
+    }
+
+    function reviewKeyHandler(e){
+      if (document.getElementById('quiz-review').classList.contains('hidden')) return;
+      if (e.key === 'ArrowLeft') { e.preventDefault(); gotoReviewIndex(reviewIndex - 1); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); gotoReviewIndex(reviewIndex + 1); }
+    }
+
+    function gotoReviewIndex(i){
+      const max = reviewResults.length - 1;
+      if (i < 0) i = 0; if (i > max) i = max;
+      reviewIndex = i;
+      renderReviewCard();
+    }
+
+    function renderReviewCard(){
+      const card = document.getElementById('review-card');
+      const r = reviewResults[reviewIndex];
+
+      const makeChoiceRow = (text, idx) => {
+        const isCorrect = idx === r.correctIndex;
+        const isUser = idx === r.userIndex;
+        const cls = ['choice'];
+        if (isCorrect) cls.push('correct');
+        if (!isCorrect && isUser) cls.push('incorrect','user');
+        const pill = isCorrect ? '<span class="pill correct">Correct</span>' : (isUser ? '<span class="pill yours">Your answer</span>' : '<span class="pill" style="visibility:hidden">&nbsp;</span>');
+        return `<div class="${cls.join(' ')}"><span>${text}</span>${pill}</div>`;
+      };
+
+      card.innerHTML = `
+        <div class="review-qnum">Question ${reviewIndex+1} • <span style="opacity:.8">${r.category}</span></div>
+        <div class="review-qtext">${r.question}</div>
+        ${r.choices.map((c, idx) => makeChoiceRow(c, idx)).join('')}
+        <div class="explainer">
+          <strong><img data-i8="light-on" data-i8-size="16" alt=""> Why this is correct</strong>
+          <div style="margin-top:8px">${r.explanation || 'This question reinforces good practice.'}</div>
+        </div>
+      `;
+
+      try { wireIcons(); } catch(e){}
+    }
+
+
+
+    // Show results
+    function showResults(correct, total, percentage) {
+      document.getElementById('quiz-active').classList.add('hidden');
+      document.getElementById('quiz-results').classList.remove('hidden');
+      // Remove quiz-taking-mode class for normal layout in results
+      document.body.classList.remove('quiz-taking-mode');
+      
+      // Set score display
+      document.getElementById('score-display').textContent = `${correct}/${total}`;
+      
+      // Set emoji and message based on score
+      const emojiImg = document.getElementById('score-emoji-img');
+      const messageEl = document.getElementById('score-message');
+      
+      if (percentage === 100) {
+        emojiImg.setAttribute('data-i8', 'trophy');
+        emojiImg.alt = 'Trophy';
+        messageEl.textContent = 'Perfect Score! Outstanding!';
+      } else if (percentage >= 80) {
+        emojiImg.setAttribute('data-i8', 'confetti');
+        emojiImg.alt = 'Celebration';
+        messageEl.textContent = 'Excellent Work!';
+      } else if (percentage >= 60) {
+        emojiImg.setAttribute('data-i8', 'thumbs-up');
+        emojiImg.alt = 'Good job';
+        messageEl.textContent = 'Good Job!';
+      } else if (percentage >= 40) {
+        emojiImg.setAttribute('data-i8', 'flexed-biceps');
+        emojiImg.alt = 'Keep trying';
+        messageEl.textContent = 'Keep Practicing!';
+      } else {
+        emojiImg.setAttribute('data-i8', 'books');
+        emojiImg.alt = 'Study more';
+        messageEl.textContent = 'Review and Try Again!';
+      }
+
+      updateResultAvatar(percentage);
+      
+      // Re-wire the icon after changing the data-i8 attribute
+      setIcon(emojiImg);
+      
+      // Set mode info
+      const modeInfoEl = document.getElementById('result-mode-info');
+      if (currentMode === 'required') {
+        modeInfoEl.innerHTML = `
+          <strong><img data-i8="checkmark" data-i8-size="16" alt="" style="vertical-align: middle; margin-right: 4px;"> Weekly Check‑In Complete</strong><br>
+          Your result has been recorded. See you next week!
+        `;
+      } else {
+        // For practice quiz, check if we used a specific category
+        const categoryName = currentQuestions.length > 0 && currentQuestions[0].category 
+          ? currentQuestions[0].category 
+          : 'Mixed Categories';
+        
+        modeInfoEl.innerHTML = `
+          <strong><img data-i8="target" data-i8-size="16" alt="" style="vertical-align: middle; margin-right: 4px;"> Practice Complete: ${categoryName}</strong><br>
+          Great practice session! Try again anytime to improve.
+        `;
+      }
+      
+      // Re-wire icons after setting innerHTML
+      try {
+        wireIcons();
+      } catch (e) {
+        console.error('Error wiring icons:', e);
+      }
+      
+      // Wire up the new buttons
+      const btnReviewAnswers = document.getElementById('btn-review-answers');
+      const btnHome = document.getElementById('btn-home');
+      
+      if (btnReviewAnswers) {
+        btnReviewAnswers.onclick = () => {
+          // Start review mode with the stored review results
+          startReview(correct, total, percentage);
+        };
+      }
+      
+      if (btnHome) {
+        btnHome.onclick = () => {
+          // Return to quiz selection screen
+          document.getElementById('quiz-results').classList.add('hidden');
+          document.getElementById('quiz-selection').classList.remove('hidden');
+          
+          // Reset quiz state
+          currentQuestions = [];
+          userAnswers = {};
+          reviewResults = [];
+          reviewIndex = 0;
+        };
+      }
+    }
+    
+    // Initialize using requireStaffSession like other staff pages
+    requireStaffSession(supabase).then(async ({ session, profileRow }) => {
+      currentUser = session.user;
+      currentProfile = profileRow;
+
+      try {
+        const siteSettings = await getSiteSettings(supabase, profileRow?.site_id || session.user?.raw_user_meta_data?.site_id);
+        avatarsEnabled = siteSettings?.enable_avatars !== false;
+        avatarVariantUrls = avatarsEnabled ? await loadAvatarVariants(session.user.id) : {};
+        console.log('Quiz avatars enabled:', avatarsEnabled, avatarVariantUrls);
+      } catch (settingsError) {
+        console.warn('Could not load site settings or avatar variants:', settingsError);
+        avatarsEnabled = false;
+        avatarVariantUrls = {};
+      }
+
+      try {
+        achievementClient = await createAchievementClient({
+          supabase,
+          session,
+          profile: profileRow
+        });
+      } catch (err) {
+        console.warn('Quiz achievement client failed to initialise', err);
+      }
+
+      // Set topbar info
+      const siteId = profileRow?.site_id;
+      const siteText = siteId ? await getSiteText(supabase, siteId) : null;
+      const accessType = profileRow?.access_type || session.user?.raw_user_meta_data?.access_type || null;
+      const role = (accessType || profileRow?.role || 'Staff');
+      setTopbar({
+        siteText,
+        email: session.user.email,
+        role: role,
+        access_type: accessType || profileRow?.role
+      });
+
+      // Show admin portal button for admins/owners
+      const adminRole = (accessType || profileRow?.role || '').toLowerCase();
+  const adminPortalBtn = document.getElementById('adminPortalBtn');
+      if (adminPortalBtn) {
+        if (adminRole === 'admin' || adminRole === 'owner') {
+          adminPortalBtn.style.display = 'inline-flex';
+        } else {
+          adminPortalBtn.style.display = 'none';
+        }
+      }
+
+      // Set up logout handler using staff-common function
+      const { attachLogout } = await import('./staff-common.js');
+      attachLogout(supabase);
+      
+      // Update required quiz status
+      await updateRequiredQuizStatus();
+      
+      // Event listeners
+      document.getElementById('btn-required').addEventListener('click', () => {
+        startQuiz('required');
+      });
+      
+      document.getElementById('btn-practice').addEventListener('click', () => {
+        startQuiz('practice');
+      });
+      
+      document.getElementById('btn-submit').addEventListener('click', submitQuiz);
+      
+      document.getElementById('btn-home').addEventListener('click', async () => {
+        // Reset to initial state and refresh status
+        document.getElementById('quiz-home').classList.remove('hidden');
+        document.getElementById('quiz-active').classList.add('hidden');
+        document.getElementById('quiz-results').classList.add('hidden');
+        document.body.classList.remove('quiz-taking-mode');
+        
+        // Force refresh the quiz status to ensure UI is up to date
+        // Add a small delay to ensure database write is complete
+        console.log('🔄 Returning to quiz home, refreshing status...');
+        setTimeout(async () => {
+          await updateRequiredQuizStatus();
+        }, 100);
+        
+        // Reset variables
+        currentMode = null;
+        userAnswers = {};
+        currentQuestions = [];
+      });
+      
+    }).catch(e => {
+      if (String(e.message).includes('NO_SESSION')) { window.location.replace('home.html'); return; }
+      if (String(e.message).includes('NOT_STAFF')) { window.location.replace('home.html'); return; }
+      console.error('Quiz page initialization error:', e);
+    });
+    
+    // Icon service functions
+    function i8(name, opts = {}) {
+      var base  = 'https://img.icons8.com';
+      var style = opts.style || 'cute-color';
+      var size  = opts.size  || 48;
+      // Icons8 OMG-IMG pattern is style/size/name.png
+      var path  = [style, String(size), encodeURIComponent(name) + '.png'].join('/');
+      return base + '/' + path;
+    }
+    
+    function setIcon(el){
+      var name  = el.getAttribute('data-i8');
+      var size  = el.getAttribute('data-i8-size');
+      var style = el.getAttribute('data-i8-style') || 'fluency';
+      var fallback = (el.getAttribute('data-i8-fallback') || '').toLowerCase();
+      
+      if (fallback === 'auto') {
+        var stylesToTry = [style, 'fluency', 'color'];
+        var idx = 0;
+        function tryNext(){
+          if (idx >= stylesToTry.length) { el.onerror = null; return; }
+          var url = i8(name, {style: stylesToTry[idx++], size: size ? parseInt(size,10) : undefined});
+          if (el.src !== url) el.src = url; else tryNext();
+        }
+        el.onerror = tryNext;
+        tryNext();
+      } else {
+        el.src = i8(name, {style: style, size: size ? parseInt(size,10) : undefined});
+      }
+    }
+    
+    function wireIcons(){
+      document.querySelectorAll('img[data-i8]').forEach(setIcon);
+    }
+    
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', wireIcons);
+    } else {
+      wireIcons();
+    }
+  </script>
+
+    <!-- Debug Console - Persistent across all pages -->
+    <script src="debug-console.js"></script>
+    <script src="supabase-debug.js"></script>
+<!-- Staff Profile Fix -->
+<script src="staff-profile-fix.js"></script>
+</body>
+</html>
