@@ -13165,21 +13165,30 @@ ${JSON.stringify(fullLog, null, 2)}
       if (sessionError) throw sessionError;
       if (!session) throw new Error('Not logged in');
 
-      const payload = {
-        email,
-        resend: true,
-        site_id: ctx?.site_id || 2,
-      };
+      // Use Supabase client API to resend the password-reset (invite) email
+      try {
+        const redirectTo = (function(){
+          try {
+            const base = 'https://checkloops.co.uk/simple-set-password.html';
+            const u = new URL(base);
+            if (ctx && ctx.site_id) u.searchParams.set('site_id', ctx.site_id);
+            u.searchParams.set('invite_email', email);
+            return u.toString();
+          } catch(e){ return 'https://checkloops.co.uk/simple-set-password.html'; }
+        })();
 
-      const { data, error } = await supabase.functions.invoke('send-invitation', {
-        body: payload,
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
+        const { data, error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
 
-      if (error) {
-        console.error('Resend invitation Edge Function error:', error);
+        if (error) {
+          console.error('Resend reset email error:', error);
+          throw error;
+        }
+
+        alert(`✅ Invitation resent to ${email} (password reset email sent)`);
+        loadPracticeUsers();
+        return;
+      } catch (err) {
+        console.error('Resend invitation error:', err);
         let resendErrorBody = null;
         if (error.context && typeof error.context.json === 'function') {
           try {
@@ -13204,12 +13213,7 @@ ${JSON.stringify(fullLog, null, 2)}
         throw new Error(resendErrorBody?.error || error.message || 'Edge Function returned an error');
       }
 
-      if (!data?.success) {
-        throw new Error(data?.error || 'Edge Function reported failure');
-      }
-
-      alert(`✅ ${data.message || 'Invitation resent successfully'}`);
-      loadPracticeUsers();
+      
     } catch (err) {
       console.error('Failed to resend invitation:', err);
       alert(`Failed to resend invitation: ${err.message}`);

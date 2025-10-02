@@ -10003,32 +10003,24 @@ window.PIR_DEFINITIONS_DATA = [
         throw new Error(`An invitation for ${formData.email} already exists`);
       }
 
-      console.log('Calling Edge Function to send invitation');
+      console.log('Sending password-reset (invite) email via Supabase client API');
 
-      // Use Edge Function for secure invitation
-      const { data: edgeResponse, error: edgeError } = await supabase.functions.invoke('invite-user', {
-        body: {
-          email: formData.email,
-          name: formData.fullName,
-          role: formData.siteRole,
-          role_detail: formData.jobRole || '',
-          reports_to_id: formData.teamId || null,
-          redirect_to: typeof CONFIG !== 'undefined' && CONFIG.passwordRedirectUrl
-            ? `${CONFIG.passwordRedirectUrl}?invite_email=${encodeURIComponent(formData.email)}&site_id=${formData.siteId}&full_name=${encodeURIComponent(formData.fullName)}&role=${formData.siteRole}&role_detail=${encodeURIComponent(formData.jobRole || '')}&reports_to_id=${formData.teamId || ''}`
-            : `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(formData.email)}&site_id=${formData.siteId}&full_name=${encodeURIComponent(formData.fullName)}&role=${formData.siteRole}&role_detail=${encodeURIComponent(formData.jobRole || '')}&reports_to_id=${formData.teamId || ''}`
-        }
+      // Build redirect URL (same shape as previous Edge Function flow)
+      const redirectTo = typeof CONFIG !== 'undefined' && CONFIG.passwordRedirectUrl
+        ? `${CONFIG.passwordRedirectUrl}?invite_email=${encodeURIComponent(formData.email)}&site_id=${formData.siteId}&full_name=${encodeURIComponent(formData.fullName)}&role=${formData.siteRole}&role_detail=${encodeURIComponent(formData.jobRole || '')}&reports_to_id=${formData.teamId || ''}`
+        : `https://checkloops.co.uk/simple-set-password.html?invite_email=${encodeURIComponent(formData.email)}&site_id=${formData.siteId}&full_name=${encodeURIComponent(formData.fullName)}&role=${formData.siteRole}&role_detail=${encodeURIComponent(formData.jobRole || '')}&reports_to_id=${formData.teamId || ''}`;
+
+      // Use Supabase client API to send reset-password email. This email will act as the invite.
+      const { data: resetData, error: resetError } = await supabase.auth.resetPasswordForEmail(formData.email, {
+        redirectTo
       });
 
-      if (edgeError) {
-        console.error('Failed to send invitation:', edgeError);
-        throw new Error(`Failed to send invitation: ${edgeError.message || 'Unknown error'}`);
+      if (resetError) {
+        console.error('Failed to send invitation (reset email):', resetError);
+        throw new Error(`Failed to send invitation email: ${resetError.message || 'Unknown error'}`);
       }
 
-      if (!edgeResponse?.success) {
-        throw new Error(edgeResponse?.error || 'Failed to send invitation');
-      }
-
-      console.log('Invitation sent successfully via Edge Function');
+      console.log('Password reset email sent successfully (used as invitation)', { email: formData.email, resetData });
 
       // Success!
       const successElement = document.getElementById('add-user-success');
