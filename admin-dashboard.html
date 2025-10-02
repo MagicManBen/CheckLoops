@@ -6632,6 +6632,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     <option value="staff">Staff - Standard user access</option>
                   </select>
                 </div>
+                <!-- Always use Supabase reset-email for invites (no checkbox) -->
+                <input type="hidden" id="add-user-use-reset" value="1">
               </div>
 
               <!-- Role and Team -->
@@ -12401,148 +12403,32 @@ window.PIR_DEFINITIONS_DATA = [
       updateDebugStep('site_invites', 'running', 'Delegating invitation record creation to Edge Function...');
 
       // STEP 5: Invoke Edge Function to send invitation
-      updateDebugStep('edge_function', 'running', 'Invoking send-invitation Edge Function...');
-      updateDebugStep('email', 'running', 'Waiting for Edge Function response...');
+      // Always send password-reset email via Supabase client API (acts as invite + reset)
+      updateDebugStep('edge_function', 'running', 'Sending password-reset email via Supabase client API...');
+      updateDebugStep('email', 'running', 'Waiting for Supabase resetPasswordForEmail response...');
 
-      const edgePayload = {
-        email,
-        fullName: fullName,
-        siteId: ctx.site_id,
-        access_type: accessType,
-        role_detail: roleDetail || null,
-        team_id: teamIdNumber,
-        reports_to_id: teamIdNumber,
-      };
-
-      const { data: edgeResponse, error: edgeError } = await supabase.functions.invoke('send-invitation', {
-        body: edgePayload,
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
-
-      if (edgeError) {
-        updateDebugStep('edge_function', 'error',
-          `Edge Function error: ${edgeError.message || 'Unknown error'}`,
-          edgeError
-        );
-
-        let errorBody = null;
-        if (edgeError.context && typeof edgeError.context.json === 'function') {
-          try {
-            errorBody = await edgeError.context.json();
-          } catch (ctxErr) {
-            updateDebugStep('edge_function', 'warning', 'Failed to read edge error response body', {
-              message: ctxErr instanceof Error ? ctxErr.message : String(ctxErr),
-            });
-          }
-        }
-
-        if (errorBody?.debug && Array.isArray(errorBody.debug)) {
-          try {
-            errorBody.debug.forEach((entry, idx) => {
-              invitationDebugLog.push({
-                timestamp: entry.timestamp || new Date().toISOString(),
-                elapsed: `edge-error-${idx}`,
-                step: `edge:${entry.step}`,
-                status: 'info',
-                detail: JSON.stringify(entry),
-                data: entry,
-              });
-            });
-            const rawLogElement = document.getElementById('debug-raw-log');
-            if (rawLogElement) {
-              rawLogElement.textContent = JSON.stringify(invitationDebugLog, null, 2);
-            }
-          } catch (traceErr) {
-            updateDebugStep('edge_function', 'warning', 'Failed to record edge error trace data', {
-              error: traceErr instanceof Error ? traceErr.message : String(traceErr),
-            });
-          }
-        }
-
-        if (errorBody) {
-          updateDebugStep('edge_function', 'warning',
-            `Edge context: ${JSON.stringify(errorBody).substring(0, 300)}`,
-            errorBody
-          );
-        }
-
-        if (errorBody?.error === 'User with this email already exists') {
-          updateDebugStep('edge_function', 'warning', 'Existing user detected — switch to Resend Invitation for this address.', {
-            email,
-          });
-        }
-
-        const finalMessage = errorBody?.error || edgeError.message || 'Edge Function returned an error';
-        updateDebugStep('email', 'error', finalMessage);
-        throw new Error(finalMessage);
-      }
-
-      updateDebugStep('edge_function', 'success',
-        `Edge Function completed<br>` +
-        `Request ID: ${edgeResponse?.requestId || 'n/a'}<br>` +
-        `Message: ${edgeResponse?.message || 'Invitation sent'}`,
-        { payload: edgePayload, response: edgeResponse }
-      );
-
-      const inviteDebugEntry = Array.isArray(edgeResponse?.debug)
-        ? edgeResponse.debug.find((entry) => entry.step === 'site-invite-inserted' || entry.step === 'site-invite-updated')
-        : null;
-
-      if (inviteDebugEntry) {
-        updateDebugStep('site_invites', 'success',
-          inviteDebugEntry.step === 'site-invite-updated'
-            ? 'Existing invitation refreshed and set back to pending.'
-            : 'New invitation record created successfully.',
-          inviteDebugEntry
-        );
-      } else {
-        updateDebugStep('site_invites', 'success',
-          'Edge Function handled invitation record creation.',
-          null
-        );
-      }
-
-      const traceCount = Array.isArray(edgeResponse?.debug) ? edgeResponse.debug.length : 0;
-      if (traceCount) {
-        updateDebugStep('edge_function', 'success',
-          `Edge debug trace entries: ${traceCount}`,
-          edgeResponse.debug
-        );
-
+      // Build redirect URL for the reset link (uses existing simple-set-password page)
+      const redirectTo = (function(){
         try {
-          edgeResponse.debug.forEach((entry, idx) => {
-            invitationDebugLog.push({
-              timestamp: entry.timestamp || new Date().toISOString(),
-              elapsed: `edge-${idx}`,
-              step: `edge:${entry.step}`,
-              status: 'info',
-              detail: JSON.stringify(entry),
-              data: entry,
-            });
-          });
-          const rawLogElement = document.getElementById('debug-raw-log');
-          if (rawLogElement) {
-            rawLogElement.textContent = JSON.stringify(invitationDebugLog, null, 2);
-          }
-        } catch (traceErr) {
-          updateDebugStep('edge_function', 'warning', 'Failed to record edge trace data', {
-            error: traceErr instanceof Error ? traceErr.message : String(traceErr),
-          });
-        }
+          const base = 'https://checkloops.co.uk/simple-set-password.html';
+          const u = new URL(base);
+          if (ctx && ctx.site_id) u.searchParams.set('site_id', ctx.site_id);
+          return u.toString();
+        } catch(e) { return 'https://checkloops.co.uk/simple-set-password.html'; }
+      })();
+
+      // Call Supabase client-side reset email function
+      const { data: resetData, error: resetError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+
+      if (resetError) {
+        updateDebugStep('edge_function', 'error', `Supabase reset email error: ${resetError.message}`, resetError);
+        throw new Error(resetError.message || 'Failed to send reset email');
       }
 
-      if (!edgeResponse?.success) {
-        updateDebugStep('email', 'error', `Edge Function reported failure: ${edgeResponse?.error || 'Unknown error'}`);
-        throw new Error(edgeResponse?.error || 'Edge Function reported failure');
-      }
-
-      updateDebugStep('email', 'success',
-        `Edge Function message: ${edgeResponse.message || 'Invitation sent'}<br>` +
-        `Email: ${email}`,
-        edgeResponse
-      );
+      updateDebugStep('edge_function', 'success', `Supabase reset email sent to ${email}`, resetData || null);
+      // We used the Supabase reset-email flow (no Edge Function). Record site_invites info
+      updateDebugStep('site_invites', 'info', 'Invitation handled via Supabase reset-email flow (no Edge Function invoked).');
+      updateDebugStep('email', 'success', `Reset email sent to ${email}`, resetData || null);
 
       // STEP 7: Complete
       // EMAIL TEMPLATE DIAGNOSTICS - Run comprehensive analysis
