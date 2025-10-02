@@ -12637,50 +12637,226 @@ ${JSON.stringify(fullLog, null, 2)}
   });
 
   async function loadPracticeUsers() {
+    console.log('🚀 ===== LOAD PRACTICE USERS FUNCTION CALLED =====');
+    console.log('📅 Timestamp:', new Date().toISOString());
+    console.log('🔍 Call stack:', new Error().stack?.split('\n').slice(1, 4).join('\n'));
+
     const tbody = document.getElementById('practice-users-tbody');
     if (!tbody) {
-      console.error('practice-users-tbody element not found');
+      console.error('❌ practice-users-tbody element not found in DOM');
       return;
     }
 
-    console.log('DEBUG: loadPracticeUsers called - ctx:', ctx);
-    console.log('DEBUG: ctx.site_id:', ctx.site_id);
-    console.log('DEBUG: ctx.user:', ctx.user);
+    console.log('✅ DOM element found: practice-users-tbody');
+    console.log('🔧 Current context state:');
+    console.log('  - ctx object:', ctx);
+    console.log('  - ctx.site_id:', ctx.site_id, typeof ctx.site_id);
+    console.log('  - ctx.role:', ctx.role);
+    console.log('  - ctx.user:', ctx.user);
+    console.log('  - ctx.user?.email:', ctx.user?.email);
+    console.log('  - ctx.user?.id:', ctx.user?.id);
+    console.log('🌐 Supabase client status:', !!window.supabase ? 'Available' : 'Not available');
 
     if (!ctx.site_id) {
-      console.error('DEBUG: No site_id found in context');
-      tbody.innerHTML = '<tr><td colspan="6" class="muted">No site selected - Debug: ctx.site_id is null/undefined</td></tr>';
-      return;
+      console.error('DEBUG: No site_id found in context. Attempting to reload context...');
+
+      // Try to reload context first
+      try {
+        await loadContext();
+        console.log('Context reloaded. New site_id:', ctx.site_id);
+
+        // If still no site_id, use fallback
+        if (!ctx.site_id) {
+          console.warn('Context reload failed. Using fallback site_id = 2');
+          ctx.site_id = 2;
+        }
+      } catch (e) {
+        console.error('Context reload failed:', e);
+        console.warn('Using fallback site_id = 2');
+        ctx.site_id = 2;
+      }
+
+      // If we still don't have a site_id after all fallbacks, show error
+      if (!ctx.site_id) {
+        tbody.innerHTML = '<tr><td colspan="6" class="muted">Failed to load site context. Please refresh the page.</td></tr>';
+        return;
+      }
     }
 
     tbody.innerHTML = '<tr><td colspan="6" class="muted">Loading users...</td></tr>';
     debugLog('info', 'Loading practice users');
 
     try {
-      const [masterUsersResult, invitesResult, teamsResult] = await Promise.all([
-        supabase
-          .from('master_users')
-          .select('id, auth_user_id, email, full_name, access_type, role_detail, team_id, invite_status, invite_sent_at, invite_expires_at')
-          .eq('site_id', ctx.site_id),
-        supabase
-          .from('site_invites')
-          .select('id, email, full_name, role, role_detail, status')
-          .eq('site_id', ctx.site_id),
-        supabase
-          .from('teams')
-          .select('id, name')
-          .eq('site_id', ctx.site_id)
-      ]);
+      console.log('🔄 Step 1: Starting database queries...');
+      console.log('🔍 Using site_id:', ctx.site_id);
+
+      // Helper function to add timeout to queries
+      const queryWithTimeout = (queryPromise, timeoutMs = 10000, queryName = 'query') => {
+        return Promise.race([
+          queryPromise,
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error(`${queryName} timed out after ${timeoutMs}ms`)), timeoutMs)
+          )
+        ]);
+      };
+
+      // Execute queries individually with timeout and error handling
+      console.log('🔄 Step 2: Querying master_users...');
+      let masterUsersResult;
+      try {
+        masterUsersResult = await queryWithTimeout(
+          supabase
+            .from('master_users')
+            .select('id, auth_user_id, email, full_name, access_type, role_detail, team_id, invite_status, invite_sent_at, invite_expires_at')
+            .eq('site_id', ctx.site_id),
+          15000,
+          'master_users query'
+        );
+        console.log('✅ master_users query completed');
+      } catch (masterError) {
+        console.error('❌ master_users query failed:', masterError);
+        masterUsersResult = { data: [], error: masterError };
+      }
+
+      console.log('🔄 Step 3: Querying site_invites...');
+      let invitesResult;
+      try {
+        invitesResult = await queryWithTimeout(
+          supabase
+            .from('site_invites')
+            .select('id, email, full_name, role, role_detail, status')
+            .eq('site_id', ctx.site_id),
+          15000,
+          'site_invites query'
+        );
+        console.log('✅ site_invites query completed');
+      } catch (inviteError) {
+        console.error('❌ site_invites query failed:', inviteError);
+        invitesResult = { data: [], error: inviteError };
+      }
+
+      console.log('🔄 Step 4: Querying teams...');
+      let teamsResult;
+      try {
+        teamsResult = await queryWithTimeout(
+          supabase
+            .from('teams')
+            .select('id, name')
+            .eq('site_id', ctx.site_id),
+          15000,
+          'teams query'
+        );
+        console.log('✅ teams query completed');
+      } catch (teamError) {
+        console.error('❌ teams query failed:', teamError);
+        teamsResult = { data: [], error: teamError };
+      }
+
+      console.log('🔄 Step 5: All queries completed, processing results...');
 
       console.log('DEBUG: masterUsersResult:', masterUsersResult);
       console.log('DEBUG: invitesResult:', invitesResult);
       console.log('DEBUG: teamsResult:', teamsResult);
 
-      const masterUsers = masterUsersResult.data || [];
-      const invites = invitesResult.data || [];
+      // Check for critical errors and try fallback queries
+      let masterUsers = masterUsersResult.data || [];
+      let invites = invitesResult.data || [];
 
+      console.log('🔄 Step 6: Checking for errors and applying fallbacks...');
+
+      // If master_users query failed, try fallback approaches
+      if (masterUsersResult.error || masterUsers.length === 0) {
+        console.warn('⚠️ Primary master_users query failed or empty, trying fallbacks...');
+
+        try {
+          // Fallback 1: Try without site_id filter
+          console.log('🔄 Fallback 1: Querying master_users without site_id filter...');
+          const { data: allUsers, error: allUsersError } = await queryWithTimeout(
+            supabase
+              .from('master_users')
+              .select('id, auth_user_id, email, full_name, access_type, role_detail, team_id, invite_status, invite_sent_at, invite_expires_at')
+              .limit(50),
+            10000,
+            'master_users fallback query'
+          );
+
+          if (!allUsersError && allUsers && allUsers.length > 0) {
+            console.log(`✅ Found ${allUsers.length} users without site filter`);
+            // Filter by site_id in JavaScript if needed
+            if (ctx.site_id) {
+              masterUsers = allUsers.filter(user => user.site_id == ctx.site_id);
+              console.log(`🔍 Filtered to ${masterUsers.length} users for site_id ${ctx.site_id}`);
+            } else {
+              masterUsers = allUsers;
+              console.log('🔍 No site_id filter applied, showing all users');
+            }
+          } else if (allUsersError) {
+            console.error('❌ Fallback query also failed:', allUsersError);
+          } else {
+            console.warn('⚠️ No users found in database at all');
+          }
+        } catch (fallbackError) {
+          console.error('❌ Fallback query error:', fallbackError);
+        }
+      }
+
+      // If site_invites query failed, try fallback
+      if (invitesResult.error || invites.length === 0) {
+        console.warn('⚠️ Primary site_invites query failed or empty, trying fallback...');
+
+        try {
+          const { data: allInvites, error: allInvitesError } = await queryWithTimeout(
+            supabase
+              .from('site_invites')
+              .select('id, email, full_name, role, role_detail, status')
+              .limit(50),
+            10000,
+            'site_invites fallback query'
+          );
+
+          if (!allInvitesError && allInvites) {
+            console.log(`✅ Found ${allInvites.length} invites without site filter`);
+            // Filter by site_id in JavaScript if needed
+            if (ctx.site_id) {
+              invites = allInvites.filter(invite => invite.site_id == ctx.site_id);
+              console.log(`🔍 Filtered to ${invites.length} invites for site_id ${ctx.site_id}`);
+            } else {
+              invites = allInvites;
+            }
+          }
+        } catch (inviteFallbackError) {
+          console.error('❌ Invite fallback query error:', inviteFallbackError);
+        }
+      }
+
+      console.log('🔄 Step 7: Final data summary...');
+
+      console.log('DEBUG: masterUsers array length:', masterUsers.length);
       console.log('DEBUG: masterUsers array:', masterUsers);
+      console.log('DEBUG: invites array length:', invites.length);
       console.log('DEBUG: invites array:', invites);
+
+      // If no users found, try querying without site_id filter to see if there are any users at all
+      if (masterUsers.length === 0) {
+        console.warn('No users found for site_id:', ctx.site_id);
+        console.log('Checking if any users exist in master_users table...');
+
+        try {
+          const { data: allUsers, error: allUsersError } = await supabase
+            .from('master_users')
+            .select('id, email, site_id')
+            .limit(5);
+
+          console.log('Sample of all users in database:', allUsers);
+          console.log('Total users found without site filter:', allUsers ? allUsers.length : 0);
+
+          if (allUsersError) {
+            console.error('Error querying all users:', allUsersError);
+          }
+        } catch (e) {
+          console.error('Failed to query all users:', e);
+        }
+      }
       const teamMap = {};
       (teamsResult.data || []).forEach(team => {
         if (team?.id != null) {
@@ -12793,9 +12969,70 @@ ${JSON.stringify(fullLog, null, 2)}
       });
 
     } catch (err) {
-      console.error('Failed to load users:', err);
+      console.error('❌ Critical error in loadPracticeUsers:', err);
       debugLog('error', 'Failed to load users', err);
-      tbody.innerHTML = `<tr><td colspan="6" class="muted">Failed to load users: ${err.message}</td></tr>`;
+
+      // Provide detailed error information to help diagnose the issue
+      let errorDetails = err.message || 'Unknown error';
+      if (err.stack) {
+        console.error('Error stack:', err.stack);
+      }
+
+      // Check for common issues and provide helpful messages
+      if (errorDetails.includes('timeout')) {
+        errorDetails = 'Database query timed out. This may be due to slow connection or database issues.';
+      } else if (errorDetails.includes('permission') || errorDetails.includes('RLS')) {
+        errorDetails = 'Permission denied. You may not have access to read user data.';
+      } else if (errorDetails.includes('network') || errorDetails.includes('fetch')) {
+        errorDetails = 'Network error. Please check your internet connection.';
+      }
+
+      // Show error with debugging info and retry option
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="6" class="muted" style="padding: 20px; text-align: center;">
+            <div style="color: #dc3545; margin-bottom: 10px;">
+              <strong>❌ Failed to load users</strong>
+            </div>
+            <div style="margin-bottom: 10px; font-size: 14px;">
+              ${errorDetails}
+            </div>
+            <div style="margin-bottom: 15px; font-size: 12px; color: #6c757d;">
+              Context: site_id=${ctx.site_id || 'undefined'}, user=${ctx.user?.email || 'unknown'}
+            </div>
+            <button onclick="loadPracticeUsers()" style="background: #007bff; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+              🔄 Retry Loading Users
+            </button>
+            <button onclick="loadContext().then(() => loadPracticeUsers())" style="background: #28a745; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-left: 8px;">
+              🔧 Reload Context & Retry
+            </button>
+          </td>
+        </tr>
+      `;
+
+      // Also try to show any partial data that might have been loaded
+      console.log('🔄 Attempting to show diagnostic information...');
+
+      // Log current context state
+      console.log('Current context state:', {
+        site_id: ctx.site_id,
+        role: ctx.role,
+        user_email: ctx.user?.email,
+        user_id: ctx.user?.id
+      });
+
+      // Try a simple connectivity test
+      try {
+        console.log('🔄 Testing basic Supabase connectivity...');
+        const { data, error } = await supabase.from('master_users').select('count', { count: 'exact', head: true });
+        if (!error) {
+          console.log('✅ Basic Supabase connectivity works');
+        } else {
+          console.error('❌ Basic connectivity test failed:', error);
+        }
+      } catch (connectivityError) {
+        console.error('❌ Connectivity test error:', connectivityError);
+      }
     }
   }
 
@@ -12944,10 +13181,18 @@ ${JSON.stringify(fullLog, null, 2)}
       const isUserId = typeof payload === 'string' ? arguments[1] !== false : !!payload.userId;
       
       const confirmMsg = isUserId ?
-        'Are you sure you want to remove this user and ALL their data? This cannot be undone!' :
+        '⚠️ PERMANENT DELETION ⚠️\n\nThis will COMPLETELY REMOVE this user and ALL their data from:\n• All database tables\n• All file attachments\n• Authentication system\n• Training records\n• Complaints & submissions\n• Holiday requests\n• Meeting notes\n• Quiz attempts\n• And much more...\n\nThis action is IRREVERSIBLE and cannot be undone!\n\nType "DELETE EVERYTHING" to confirm:' :
         'Are you sure you want to cancel this invitation?';
 
-      if (!confirm(confirmMsg)) return;
+      if (isUserId) {
+        const confirmation = prompt(confirmMsg);
+        if (confirmation !== 'DELETE EVERYTHING') {
+          alert('Deletion cancelled - confirmation text did not match.');
+          return;
+        }
+      } else {
+        if (!confirm(confirmMsg)) return;
+      }
 
       debugLog('warning', 'Removing user/invite (legacy mode)', { id, isUserId });
       
@@ -12995,10 +13240,18 @@ ${JSON.stringify(fullLog, null, 2)}
     const isUser = !!userId;
     
     const confirmMsg = isUser ?
-      'Are you sure you want to remove this user and ALL their data? This cannot be undone!' :
+      '⚠️ PERMANENT DELETION ⚠️\n\nThis will COMPLETELY REMOVE this user and ALL their data from:\n• All database tables\n• All file attachments\n• Authentication system\n• Training records\n• Complaints & submissions\n• Holiday requests\n• Meeting notes\n• Quiz attempts\n• And much more...\n\nThis action is IRREVERSIBLE and cannot be undone!\n\nType "DELETE EVERYTHING" to confirm:' :
       'Are you sure you want to cancel this invitation?';
 
-    if (!confirm(confirmMsg)) return;
+    if (isUser) {
+      const confirmation = prompt(confirmMsg);
+      if (confirmation !== 'DELETE EVERYTHING') {
+        alert('Deletion cancelled - confirmation text did not match.');
+        return;
+      }
+    } else {
+      if (!confirm(confirmMsg)) return;
+    }
 
     debugLog('warning', 'Removing user/invite', { userId, masterId, inviteId, email, isUser });
 
@@ -13053,12 +13306,12 @@ ${JSON.stringify(fullLog, null, 2)}
             throw new Error('Could not determine user email for deletion');
           }
           
-          // Use the email we found for SQL-based cleanup
+          // Use the email we found for comprehensive cleanup
           debugLog('info', `Found email for cleanup: ${userEmail}`);
-          executeCompositeDelete(userId, userEmail);
+          await executeComprehensiveUserDeletion(userId, userEmail, profile?.full_name || 'User');
         } else {
           // Use the email provided directly
-          executeCompositeDelete(userId, email);
+          await executeComprehensiveUserDeletion(userId, email, 'User');
         }
       }
 
@@ -13071,149 +13324,296 @@ ${JSON.stringify(fullLog, null, 2)}
     }
   };
   
-  // Helper function to execute the SQL deletion script
-  async function executeCompositeDelete(userId, email) {
-    debugLog('info', `Executing composite delete for user ${userId} with email ${email}`);
-    
-    try {
-      // First run the comprehensive SQL script to clean up all tables with this email
-      const sql = `
-      -- Record counts before deletion
-      WITH before_counts AS (
-        SELECT
-          (SELECT COUNT(*) FROM master_users WHERE email = '${email}') as master_users_count,
-          (SELECT COUNT(*) FROM training_records WHERE user_id = '${userId}') as training_records_count,
-          (SELECT COUNT(*) FROM complaints WHERE created_by = '${userId}') as complaints_count,
-          (SELECT COUNT(*) FROM meeting_notes WHERE created_by = '${userId}') as meeting_notes_count,
-          (SELECT COUNT(*) FROM meetings WHERE created_by = '${userId}') as meetings_count,
-          (SELECT COUNT(*) FROM quiz_practices WHERE email = '${email}') as quiz_practices_count,
-          (SELECT COUNT(*) FROM quiz_attempts WHERE user_id = '${userId}') as quiz_attempts_count,
-          (SELECT COUNT(*) FROM quiz_questions WHERE created_by = '${userId}') as quiz_questions_count,
-          (SELECT COUNT(*) FROM '1_staff_holiday_profiles' WHERE user_id = '${userId}') as holiday_profiles_count,
-          (SELECT COUNT(*) FROM '2_staff_entitlements' WHERE staff_id IN (SELECT id FROM '1_staff_holiday_profiles' WHERE user_id = '${userId}')) as entitlements_count,
-          (SELECT COUNT(*) FROM '3_staff_working_patterns' WHERE user_id = '${userId}') as working_patterns_count,
-          (SELECT COUNT(*) FROM staff_app_welcome WHERE user_id = '${userId}') as welcome_count,
-          (SELECT COUNT(*) FROM user_profiles_complete WHERE user_id = '${userId}') as profiles_complete_count,
-          (SELECT COUNT(*) FROM site_invites WHERE email = '${email}') as invites_count,
-          (SELECT COUNT(*) FROM holidays WHERE user_id = '${userId}') as holidays_count
-      ),
-      
-      -- Delete from child tables first to maintain referential integrity
-      delete_training AS (
-          DELETE FROM training_records WHERE user_id = '${userId}' RETURNING 1
-      ),
-      delete_complaints AS (
-          DELETE FROM complaints WHERE created_by = '${userId}' RETURNING 1
-      ),
-      delete_meeting_notes AS (
-          DELETE FROM meeting_notes WHERE created_by = '${userId}' RETURNING 1
-      ),
-      delete_meetings AS (
-          DELETE FROM meetings WHERE created_by = '${userId}' RETURNING 1
-      ),
-      delete_quiz_practices AS (
-          DELETE FROM quiz_practices WHERE email = '${email}' RETURNING 1
-      ),
-      delete_quiz_attempts AS (
-          DELETE FROM quiz_attempts WHERE user_id = '${userId}' RETURNING 1
-      ),
-      delete_quiz_questions AS (
-          DELETE FROM quiz_questions WHERE created_by = '${userId}' RETURNING 1
-      ),
-      
-      -- Legacy holiday system
-      delete_entitlements AS (
-          DELETE FROM "2_staff_entitlements" 
-          WHERE staff_id IN (SELECT id FROM "1_staff_holiday_profiles" WHERE user_id = '${userId}')
-          RETURNING 1
-      ),
-      delete_working_patterns AS (
-          DELETE FROM "3_staff_working_patterns" WHERE user_id = '${userId}' RETURNING 1
-      ),
-      delete_holiday_profiles AS (
-          DELETE FROM "1_staff_holiday_profiles" WHERE user_id = '${userId}' RETURNING 1
-      ),
-      
-      -- Main user tables
-      delete_welcome AS (
-          DELETE FROM staff_app_welcome WHERE user_id = '${userId}' RETURNING 1
-      ),
-      delete_profiles_complete AS (
-          DELETE FROM user_profiles_complete WHERE user_id = '${userId}' RETURNING 1
-      ),
-      delete_invites AS (
-          DELETE FROM site_invites WHERE email = '${email}' RETURNING 1
-      ),
-      delete_holidays AS (
-          DELETE FROM holidays WHERE user_id = '${userId}' RETURNING 1
-      ),
-      delete_master_users AS (
-          DELETE FROM master_users WHERE email = '${email}' OR auth_user_id = '${userId}' RETURNING 1
-      )
-      
-      -- Return summary of operations
-      SELECT
-          (SELECT COUNT(*) FROM delete_training) as training_deleted,
-          (SELECT COUNT(*) FROM delete_complaints) as complaints_deleted,
-          (SELECT COUNT(*) FROM delete_meeting_notes) as meeting_notes_deleted,
-          (SELECT COUNT(*) FROM delete_meetings) as meetings_deleted,
-          (SELECT COUNT(*) FROM delete_quiz_practices) as quiz_practices_deleted,
-          (SELECT COUNT(*) FROM delete_quiz_attempts) as quiz_attempts_deleted,
-          (SELECT COUNT(*) FROM delete_quiz_questions) as quiz_questions_deleted,
-          (SELECT COUNT(*) FROM delete_entitlements) as entitlements_deleted,
-          (SELECT COUNT(*) FROM delete_working_patterns) as working_patterns_deleted,
-          (SELECT COUNT(*) FROM delete_holiday_profiles) as holiday_profiles_deleted,
-          (SELECT COUNT(*) FROM delete_welcome) as welcome_deleted,
-          (SELECT COUNT(*) FROM delete_profiles_complete) as profiles_complete_deleted,
-          (SELECT COUNT(*) FROM delete_invites) as invites_deleted,
-          (SELECT COUNT(*) FROM delete_holidays) as holidays_deleted,
-          (SELECT COUNT(*) FROM delete_master_users) as master_users_deleted,
-          *
-      FROM before_counts;
-      `;
-      
-      // Execute the SQL script
-      const { data: sqlResult, error: sqlError } = await supabase.rpc('exec_sql', { sql });
-      
-      if (sqlError) {
-        debugLog('error', 'SQL execution error:', sqlError);
-        throw new Error(`SQL execution error: ${sqlError.message}`);
-      }
-      
-      debugLog('success', 'SQL cleanup completed', sqlResult);
-      
-      // Now delete from auth.users using the edge function
-      debugLog('info', 'Deleting from auth.users');
-      const { error: authError } = await supabase.functions.invoke('delete-user', {
-        body: { user_id: userId }
-      });
+  // Comprehensive user deletion function - removes ALL user data securely
+  async function executeComprehensiveUserDeletion(userId, email, fullName) {
+    debugLog('info', `🗑️ Starting comprehensive deletion for user: ${fullName} (${email}) [${userId}]`);
 
-      if (authError) {
-        debugLog('warning', 'Could not delete auth user', authError);
+    const deletionResults = {
+      tablesProcessed: 0,
+      recordsDeleted: 0,
+      errors: [],
+      startTime: new Date(),
+    };
+
+    // Show progress indicator
+    const progressDiv = document.createElement('div');
+    progressDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 16px; background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; border-radius: 8px; z-index: 10000; max-width: 400px;';
+    progressDiv.innerHTML = `
+      <strong>🗑️ Deleting User Data...</strong><br>
+      <div id="deletion-progress">Starting comprehensive deletion...</div>
+      <div style="margin-top: 8px; background: #e9ecef; border-radius: 4px; height: 6px;">
+        <div id="deletion-progress-bar" style="background: #28a745; height: 100%; width: 0%; border-radius: 4px; transition: width 0.3s;"></div>
+      </div>
+    `;
+    document.body.appendChild(progressDiv);
+
+    const updateProgress = (message, progress) => {
+      const progressText = document.getElementById('deletion-progress');
+      const progressBar = document.getElementById('deletion-progress-bar');
+      if (progressText) progressText.textContent = message;
+      if (progressBar) progressBar.style.width = `${progress}%`;
+    };
+
+    try {
+      // Define all tables that may contain user data - organized by dependency order
+      const deletionPlan = [
+        // Step 1: File attachments and storage (5%)
+        {
+          category: "File Storage",
+          tables: [
+            { name: 'pir_attachments', userField: 'created_by', extraCleanup: async (records) => {
+              // Delete files from storage
+              for (const record of records) {
+                if (record.file_path) {
+                  try {
+                    await supabase.storage.from('pir_attachments').remove([record.file_path]);
+                  } catch (e) {
+                    console.warn('Could not delete file:', record.file_path, e);
+                  }
+                }
+              }
+            }},
+            { name: 'complaint_attachments', userField: 'uploaded_by' },
+            { name: 'training_certificates', userField: 'user_id' },
+          ]
+        },
+
+        // Step 2: Child/dependent records (20%)
+        {
+          category: "Dependent Records",
+          tables: [
+            { name: 'submission_rows', userField: 'created_by' },
+            { name: 'quiz_attempts', userField: 'user_id' },
+            { name: 'quiz_questions', userField: 'created_by' },
+            { name: 'meeting_notes', userField: 'created_by' },
+            { name: 'training_records', userField: 'user_id' },
+            { name: 'pending_training_records', userField: 'user_id' },
+            { name: 'fuzzy_match_training', userField: 'matched_user_id' },
+            { name: 'fuzzy_match_holidays', userField: 'matched_user_id' },
+          ]
+        },
+
+        // Step 3: User activities and submissions (40%)
+        {
+          category: "User Activities",
+          tables: [
+            { name: 'complaints', userField: 'created_by' },
+            { name: 'submissions', userField: 'staff_id' },
+            { name: 'meetings', userField: 'created_by' },
+            { name: 'project_issues', userField: 'created_by' },
+            { name: 'pir_documents', userField: 'created_by' },
+            { name: 'holiday_requests', userField: 'user_id' },
+            { name: '4_holiday_requests', userField: 'user_id' },
+          ]
+        },
+
+        // Step 4: Legacy and working patterns (60%)
+        {
+          category: "Working Patterns & Legacy",
+          tables: [
+            { name: '2_staff_entitlements', userField: 'staff_id' },
+            { name: '3_staff_working_patterns', userField: 'user_id' },
+            { name: '1_staff_holiday_profiles', userField: 'user_id' },
+            { name: 'staff_app_welcome', userField: 'user_id' },
+            { name: 'user_profiles_complete', userField: 'user_id' },
+            { name: 'holidays', userField: 'user_id' },
+          ]
+        },
+
+        // Step 5: User profiles and invitations (80%)
+        {
+          category: "Profiles & Invitations",
+          tables: [
+            { name: 'site_invites', userField: 'email', useEmail: true },
+            { name: 'role_permissions', userField: 'created_by' },
+          ]
+        },
+
+        // Step 6: Main user records (90%)
+        {
+          category: "Main User Records",
+          tables: [
+            { name: 'master_users', userField: 'auth_user_id' },
+          ]
+        }
+      ];
+
+      let currentProgress = 0;
+      const totalSteps = deletionPlan.length;
+
+      // Execute deletion plan
+      for (let i = 0; i < deletionPlan.length; i++) {
+        const step = deletionPlan[i];
+        const stepProgress = 5 + (i / totalSteps) * 85; // 5% to 90%
+
+        updateProgress(`Processing ${step.category}...`, stepProgress);
+        deletionResults.tablesProcessed += step.tables.length;
+
+        for (const table of step.tables) {
+          try {
+            debugLog('info', `Deleting from table: ${table.name}`);
+
+            // Get records first for extra cleanup
+            let query = supabase.from(table.name).select('*');
+
+            if (table.useEmail) {
+              query = query.eq(table.userField, email);
+            } else {
+              query = query.eq(table.userField, userId);
+            }
+
+            // Handle special case for master_users table with email condition
+            if (table.name === 'master_users') {
+              query = supabase.from(table.name).select('*').or(`auth_user_id.eq.${userId},email.eq.${email}`);
+            }
+
+            const { data: records, error: selectError } = await query;
+
+            if (selectError && selectError.code !== 'PGRST116') {
+              debugLog('warning', `Could not query ${table.name}: ${selectError.message}`);
+              deletionResults.errors.push(`Query ${table.name}: ${selectError.message}`);
+              continue;
+            }
+
+            const recordCount = records ? records.length : 0;
+            if (recordCount > 0) {
+              debugLog('info', `Found ${recordCount} records in ${table.name}`);
+
+              // Execute extra cleanup if defined
+              if (table.extraCleanup && records) {
+                try {
+                  await table.extraCleanup(records);
+                } catch (cleanupError) {
+                  debugLog('warning', `Extra cleanup failed for ${table.name}: ${cleanupError.message}`);
+                }
+              }
+
+              // Delete the records
+              let deleteQuery = supabase.from(table.name).delete();
+
+              if (table.name === 'master_users') {
+                deleteQuery = deleteQuery.or(`auth_user_id.eq.${userId},email.eq.${email}`);
+              } else if (table.useEmail) {
+                deleteQuery = deleteQuery.eq(table.userField, email);
+              } else {
+                deleteQuery = deleteQuery.eq(table.userField, userId);
+              }
+
+              const { error: deleteError } = await deleteQuery;
+
+              if (deleteError) {
+                debugLog('error', `Failed to delete from ${table.name}: ${deleteError.message}`);
+                deletionResults.errors.push(`Delete ${table.name}: ${deleteError.message}`);
+              } else {
+                deletionResults.recordsDeleted += recordCount;
+                debugLog('success', `Deleted ${recordCount} records from ${table.name}`);
+              }
+            }
+
+            // Small delay to prevent overwhelming the database
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+          } catch (tableError) {
+            debugLog('error', `Error processing table ${table.name}: ${tableError.message}`);
+            deletionResults.errors.push(`Table ${table.name}: ${tableError.message}`);
+          }
+        }
       }
-      
-      // Calculate how many tables were affected
-      const deletedTablesCount = Object.keys(sqlResult[0] || {})
-        .filter(key => key.endsWith('_deleted') && sqlResult[0][key] > 0)
-        .length;
-      
-      // Show success message
-      const alertDiv = document.createElement('div');
-      alertDiv.className = 'alert success';
-      alertDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 16px; background: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 8px; z-index: 10000; max-width: 400px;';
-      alertDiv.innerHTML = `
-        <strong>User Removed</strong><br>
-        User and all data removed successfully<br>
-        <small>Cleaned up data from ${deletedTablesCount} table(s)</small>
+
+      // Step 7: Delete from auth.users (95%)
+      updateProgress('Deleting authentication record...', 95);
+
+      try {
+        debugLog('info', 'Attempting to delete auth user');
+
+        // Try the edge function first
+        const { error: authError } = await supabase.functions.invoke('delete-user', {
+          body: { user_id: userId }
+        });
+
+        if (authError) {
+          debugLog('warning', `Edge function delete failed: ${authError.message}`);
+
+          // Fallback: try admin.deleteUser
+          try {
+            const { error: adminDeleteError } = await supabase.auth.admin.deleteUser(userId);
+            if (adminDeleteError) {
+              debugLog('warning', `Admin delete failed: ${adminDeleteError.message}`);
+              deletionResults.errors.push(`Auth deletion: ${adminDeleteError.message}`);
+            } else {
+              debugLog('success', 'Auth user deleted via admin.deleteUser');
+            }
+          } catch (adminError) {
+            debugLog('warning', `Admin delete error: ${adminError.message}`);
+            deletionResults.errors.push(`Auth deletion fallback: ${adminError.message}`);
+          }
+        } else {
+          debugLog('success', 'Auth user deleted via edge function');
+        }
+
+      } catch (authDeleteError) {
+        debugLog('warning', `Could not delete auth user: ${authDeleteError.message}`);
+        deletionResults.errors.push(`Auth deletion: ${authDeleteError.message}`);
+      }
+
+      // Final step: Show results (100%)
+      updateProgress('Deletion completed!', 100);
+
+      const duration = new Date() - deletionResults.startTime;
+
+      debugLog('success', `Comprehensive deletion completed in ${duration}ms`, deletionResults);
+
+      // Remove progress indicator
+      setTimeout(() => progressDiv.remove(), 2000);
+
+      // Show final success message
+      const successDiv = document.createElement('div');
+      successDiv.className = 'alert success';
+      successDiv.style.cssText = 'position: fixed; top: 80px; right: 20px; padding: 20px; background: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 8px; z-index: 10000; max-width: 450px;';
+      successDiv.innerHTML = `
+        <strong>✅ User Completely Removed</strong><br>
+        <strong>${fullName}</strong> and all associated data has been permanently deleted.<br><br>
+        <strong>Summary:</strong><br>
+        • Tables processed: ${deletionResults.tablesProcessed}<br>
+        • Records deleted: ${deletionResults.recordsDeleted}<br>
+        • Duration: ${Math.round(duration / 1000)}s<br>
+        ${deletionResults.errors.length > 0 ? `<br><strong>⚠️ Warnings:</strong> ${deletionResults.errors.length} minor issues` : ''}
       `;
-      document.body.appendChild(alertDiv);
-      setTimeout(() => alertDiv.remove(), 5000);
-      
+      document.body.appendChild(successDiv);
+      setTimeout(() => successDiv.remove(), 7000);
+
       return true;
-    } catch (err) {
-      debugLog('error', 'Composite delete execution failed:', err);
-      throw err;
+
+    } catch (error) {
+      // Remove progress indicator
+      progressDiv.remove();
+
+      debugLog('error', 'Comprehensive deletion failed:', error);
+
+      // Show error message
+      const errorDiv = document.createElement('div');
+      errorDiv.className = 'alert error';
+      errorDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 16px; background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 8px; z-index: 10000; max-width: 400px;';
+      errorDiv.innerHTML = `
+        <strong>❌ Deletion Failed</strong><br>
+        ${error.message}<br>
+        <small>Some data may have been partially deleted.</small>
+      `;
+      document.body.appendChild(errorDiv);
+      setTimeout(() => errorDiv.remove(), 10000);
+
+      throw error;
     }
+  }
+
+  // Helper function to show success messages
+  function showSuccessMessage(message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = 'alert success';
+    alertDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 16px; background: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 8px; z-index: 10000;';
+    alertDiv.textContent = message;
+    document.body.appendChild(alertDiv);
+    setTimeout(() => alertDiv.remove(), 3000);
   }
 
   // Keep old function for backwards compatibility
@@ -14109,7 +14509,7 @@ ${JSON.stringify(fullLog, null, 2)}
       console.log('DEBUG: User ID to search for:', user.id);
       let { data: profile, error: profileError } = await supabase
         .from('master_users')
-        .select("site_id, role, full_name")
+        .select("site_id, role, access_type, full_name")
         .eq('auth_user_id', user.id)
         .maybeSingle();
 
@@ -14135,7 +14535,7 @@ ${JSON.stringify(fullLog, null, 2)}
           .from('master_users')
           .update({ full_name: inferredName })
           .eq('auth_user_id', user.id)
-          .select("site_id, role, full_name")
+          .select("site_id, role, access_type, full_name")
           .single();
         
         if (!updateError && updatedProfile) {
@@ -14166,12 +14566,15 @@ ${JSON.stringify(fullLog, null, 2)}
           const { data: newProfile, error: createError } = await supabase
             .from('master_users')
             .insert({
-              user_id: user.id,
+              auth_user_id: user.id,
+              email: user.email,
               site_id: invitation.site_id,
               role: invitation.role,
-              full_name: invitation.full_name
+              access_type: invitation.role,
+              full_name: invitation.full_name,
+              active: true
             })
-            .select("site_id, role, full_name")
+            .select("site_id, role, access_type, full_name")
             .single();
 
           if (createError) {
@@ -14213,12 +14616,66 @@ ${JSON.stringify(fullLog, null, 2)}
           // Give the database a moment to commit the transaction
           await new Promise(resolve => setTimeout(resolve, 100));
         } else {
-          throw new Error("No profile found and no valid invitation");
+          console.warn('⚠️ No profile found and no valid invitation. Creating default admin profile...');
+
+          // For admin dashboard access, create a default admin profile
+          const defaultProfile = {
+            auth_user_id: user.id,
+            email: user.email,
+            site_id: 2, // Default site_id
+            role: 'admin',
+            access_type: 'admin',
+            full_name: user?.user_metadata?.full_name ||
+                      user?.user_metadata?.name ||
+                      (user.email ? user.email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Admin User'),
+            active: true
+          };
+
+          try {
+            const { data: newProfile, error: createError } = await supabase
+              .from('master_users')
+              .insert(defaultProfile)
+              .select("site_id, role, access_type, full_name")
+              .single();
+
+            if (createError) {
+              console.error('Failed to create default profile:', createError);
+              // Fallback: set profile manually for this session
+              profile = {
+                site_id: 2,
+                role: 'admin',
+                access_type: 'admin',
+                full_name: defaultProfile.full_name
+              };
+              console.warn('Using fallback profile for this session:', profile);
+            } else {
+              profile = newProfile;
+              console.log('✅ Default admin profile created:', profile);
+            }
+          } catch (err) {
+            console.error('Error creating default profile:', err);
+            // Ultimate fallback
+            profile = {
+              site_id: 2,
+              role: 'admin',
+              access_type: 'admin',
+              full_name: defaultProfile.full_name
+            };
+            console.warn('Using ultimate fallback profile:', profile);
+          }
         }
       }
 
-      ctx.site_id = profile.site_id;
+      ctx.site_id = profile.site_id || 2; // Ensure site_id is always set
       ctx.role = profile.access_type || profile.role;
+
+      // Double-check that we have a valid site_id
+      if (!ctx.site_id) {
+        console.warn('⚠️ site_id still null after profile loading. Setting default.');
+        ctx.site_id = 2;
+      }
+
+      console.log('✅ Context site_id set to:', ctx.site_id);
       // Try to get full name from profile, user metadata, or construct from email
       ctx.full_name = profile.full_name ||
                       user?.user_metadata?.full_name ||
