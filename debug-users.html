@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Users Issue</title>
+    <script src="config.js"></script>
+    <script src="supabase-js.js"></script>
+</head>
+<body>
+    <h1>Debug Users Loading Issue</h1>
+    <div id="results"></div>
+
+    <button onclick="testConnection()">Test Supabase Connection</button>
+    <button onclick="checkTables()">Check Tables</button>
+    <button onclick="checkAuth()">Check Auth</button>
+    <button onclick="createTestUser()">Create Test User</button>
+
+    <script>
+        const { createClient } = supabase;
+        const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+
+        function log(message) {
+            console.log(message);
+            document.getElementById('results').innerHTML += '<div>' + JSON.stringify(message, null, 2) + '</div>';
+        }
+
+        async function testConnection() {
+            try {
+                log('Testing Supabase connection...');
+                const { data, error } = await sb.from('master_users').select('count', { count: 'exact', head: true });
+                log('Connection test result: ' + JSON.stringify({ data, error }));
+
+                if (error) {
+                    log('Connection failed: ' + error.message);
+                } else {
+                    log('Connection successful. Master users count: ' + (data || 0));
+                }
+            } catch (e) {
+                log('Connection error: ' + e.message);
+            }
+        }
+
+        async function checkTables() {
+            const tables = ['master_users', 'sites', 'site_invites', 'teams'];
+
+            for (const table of tables) {
+                try {
+                    const { data, error } = await sb.from(table).select('*').limit(5);
+                    log(`Table ${table}:`);
+                    log({ data, error, count: data ? data.length : 0 });
+                } catch (e) {
+                    log(`Error checking ${table}: ${e.message}`);
+                }
+            }
+        }
+
+        async function checkAuth() {
+            try {
+                const { data: session, error } = await sb.auth.getSession();
+                log('Auth session:');
+                log({ session, error });
+
+                if (session?.session?.user) {
+                    const userId = session.session.user.id;
+                    log('User ID: ' + userId);
+
+                    // Check if user exists in master_users
+                    const { data: profile, error: profileError } = await sb
+                        .from('master_users')
+                        .select('*')
+                        .eq('auth_user_id', userId)
+                        .maybeSingle();
+
+                    log('User profile in master_users:');
+                    log({ profile, profileError });
+                }
+            } catch (e) {
+                log('Auth check error: ' + e.message);
+            }
+        }
+
+        async function createTestUser() {
+            try {
+                log('Creating test user record...');
+
+                // First check if user is authenticated
+                const { data: session } = await sb.auth.getSession();
+                if (!session?.session?.user) {
+                    log('No authenticated user found. Please log in first.');
+                    return;
+                }
+
+                const user = session.session.user;
+                log('Current authenticated user: ' + user.email);
+
+                // Check if user already exists in master_users
+                const { data: existing } = await sb
+                    .from('master_users')
+                    .select('*')
+                    .eq('auth_user_id', user.id)
+                    .maybeSingle();
+
+                if (existing) {
+                    log('User already exists in master_users:');
+                    log(existing);
+                    return;
+                }
+
+                // Create user record
+                const newUser = {
+                    auth_user_id: user.id,
+                    email: user.email,
+                    full_name: user.user_metadata?.full_name || user.email.split('@')[0],
+                    access_type: 'admin',
+                    role: 'admin',
+                    site_id: 'TEST_SITE_001', // Default site ID for testing
+                    active: true
+                };
+
+                const { data: created, error } = await sb
+                    .from('master_users')
+                    .insert(newUser)
+                    .select()
+                    .single();
+
+                if (error) {
+                    log('Error creating user: ' + error.message);
+                } else {
+                    log('User created successfully:');
+                    log(created);
+                }
+
+            } catch (e) {
+                log('Create user error: ' + e.message);
+            }
+        }
+
+        // Auto-run basic tests on load
+        window.addEventListener('load', () => {
+            testConnection();
+        });
+    </script>
+</body>
+</html>
