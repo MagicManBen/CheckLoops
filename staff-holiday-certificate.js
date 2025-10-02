@@ -1,5 +1,30 @@
+// Preserve the original loadStaffHolidayTable function and extend it
+const originalLoadStaffHolidayTable = window.loadStaffHolidayTable;
+
 // Modified loadStaffHolidayTable function that includes certificate information
 window.loadStaffHolidayTable = async function() {
+  // If we have our new functions, use them, otherwise fallback to original
+  try {
+    // Check if the new certificate-enabled function exists
+    const { data: funcCheck, error: funcError } = await supabase.rpc('get_holidays_by_staff_with_certificates', { p_year: new Date().getFullYear() });
+    
+    // If the function exists, use our enhanced implementation
+    if (!funcError) {
+      return await loadStaffHolidayTableWithCertificates();
+    }
+  } catch (e) {
+    console.warn('Certificate functions not available, using original implementation');
+    console.error(e);
+  }
+  
+  // Use the original implementation if our new function isn't available
+  if (originalLoadStaffHolidayTable) {
+    return await originalLoadStaffHolidayTable();
+  }
+};
+
+// The new implementation that uses certificate data
+async function loadStaffHolidayTableWithCertificates() {
   // Check if table exists
   const tableBody = document.getElementById('staff-holiday-tbody');
   if (!tableBody) return; // Table doesn't exist or isn't loaded yet
@@ -160,7 +185,7 @@ window.loadStaffHolidayTable = async function() {
       <tr><td colspan="9" style="text-align:center;padding:20px;color:#666;">Error loading holidays: ${error.message}</td></tr>
     `;
   }
-};
+}
 
 // Function to view certificate from Supabase storage
 window.viewCertificate = async function(certificateUrl) {
