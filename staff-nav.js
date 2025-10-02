@@ -71,8 +71,9 @@ function getStandardNavHTML(activePage = 'staff.html') {
 
       <div class="navbar-nav nav-links" id="nav-links">
         <a href="staff.html" class="nav-link ${activePage === 'staff.html' ? 'active' : ''}">Dashboard</a>
-        <a href="staff-training.html" class="nav-link ${activePage === 'staff-training.html' ? 'active' : ''}">Training</a>
-        <a href="staff-quiz.html" class="nav-link ${activePage === 'staff-quiz.html' ? 'active' : ''}">Quiz</a>
+  <a href="staff-training.html" class="nav-link ${activePage === 'staff-training.html' ? 'active' : ''}">Training</a>
+  <a href="staff-quiz.html" class="nav-link ${activePage === 'staff-quiz.html' ? 'active' : ''}">Quiz</a>
+  <a href="staff-calendar.html" class="nav-link ${activePage === 'staff-calendar.html' ? 'active' : ''}">Calendar</a>
         <a href="my-holidays.html" class="nav-link ${activePage === 'my-holidays.html' ? 'active' : ''}">Holidays</a>
         <div class="nav-dropdown">
           <a href="#" class="nav-link dropdown-toggle">More ▼</a>

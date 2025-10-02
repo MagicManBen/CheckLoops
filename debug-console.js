@@ -13,6 +13,9 @@
     let isEnabled = false;
     let recording = false;
 
+    // DISABLED: Debug UI is hidden - uncomment the return statement below to re-enable
+    return; // Exit early to prevent debug UI from being created
+
     // Create debug console HTML (HIDDEN BY DEFAULT)
     const consoleHTML = `
         <div id="debug-console-container" style="

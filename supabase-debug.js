@@ -2,6 +2,9 @@
 (function() {
   'use strict';
 
+  // DISABLED: Debug UI is hidden - uncomment the return statement below to re-enable
+  return; // Exit early to prevent debug UI from being created
+
   console.log('🔍 Supabase Debug Tool initializing...');
 
   // Track queries and associate them with elements
