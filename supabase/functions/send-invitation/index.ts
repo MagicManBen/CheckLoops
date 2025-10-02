@@ -33,23 +33,21 @@ serve(async (req) => {
       throw new Error('No authorization header')
     }
 
-    // Create Supabase client with user's token to verify they're authenticated
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+  // Create Supabase client with user's token to verify they're authenticated
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-    // Always prefer the official Supabase service role key. Only fall back to SERVICE_KEY if explicitly needed.
-    let supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    if (!supabaseServiceKey) {
-      supabaseServiceKey = Deno.env.get('SERVICE_KEY') ?? ''
-    }
+    // Use the official Supabase service role key from the environment for admin operations.
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 
     trace('env-configuration-loaded', {
       hasUrl: Boolean(supabaseUrl),
       hasAnon: Boolean(supabaseAnonKey),
       hasService: Boolean(supabaseServiceKey),
-      serviceKeySource: supabaseServiceKey && supabaseServiceKey === (Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '')
-        ? 'SUPABASE_SERVICE_ROLE_KEY'
-        : 'SERVICE_KEY',
     })
+
+    // Log a masked version of the Authorization header for debugging
+    const maskedAuth = authHeader ? (authHeader.substring(0, 10) + '...') : 'missing'
+    trace('auth-header-debug', { maskedAuth })
 
     // Verify the user is authenticated
     const userClient = createClient(supabaseUrl, supabaseAnonKey, {
@@ -59,6 +57,7 @@ serve(async (req) => {
     })
 
     let user: any
+
     const { data: authData, error: authError } = await userClient.auth.getUser()
 
     if (authError || !authData?.user) {
