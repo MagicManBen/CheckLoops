@@ -6561,6 +6561,15 @@ document.addEventListener('DOMContentLoaded', () => {
               <h1 class="page-title">Build your team!</h1>
               <button class="help-icon" onclick="showHelp('view-users')" title="Help">?</button>
             </div>
+            <button onclick="openInviteForm()"
+                    style="display:inline-flex; align-items:center; gap:8px; padding:12px 20px; background:linear-gradient(135deg, #3b82f6, #1d4ed8); color:white; border:none; border-radius:12px; font-size:14px; font-weight:600; cursor:pointer; transition:all 0.2s ease; box-shadow:0 4px 12px rgba(59,130,246,0.3);"
+                    onmouseover="this.style.background='linear-gradient(135deg, #2563eb, #1e40af)'; this.style.transform='translateY(-2px)'"
+                    onmouseout="this.style.background='linear-gradient(135deg, #3b82f6, #1d4ed8)'; this.style.transform='translateY(0)'">
+              <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M8 9a3 3 0 100-6 3 3 0 000 6zM8 11a6 6 0 016 6H2a6 6 0 016-6zM16 7a1 1 0 10-2 0v1h-1a1 1 0 100 2h1v1a1 1 0 102 0v-1h1a1 1 0 100-2h-1V7z"></path>
+              </svg>
+              Invite Team Member
+            </button>
           </div>
 
           <!-- Team Overview Section -->
@@ -23233,6 +23242,361 @@ Type "DELETE" to confirm this permanent action.`);
   }
 }
 
+// Invite form state
+let inviteFormData = {};
+let currentInviteStep = 1;
+
+// Invite form functions
+async function openInviteForm() {
+  const modal = document.getElementById('invite-modal');
+  const form = document.getElementById('invite-form');
+
+  // Reset everything
+  form.reset();
+  inviteFormData = {};
+  currentInviteStep = 1;
+
+  // Show step 1, hide others
+  document.getElementById('invite-step-1').style.display = 'block';
+  document.getElementById('invite-step-2').style.display = 'none';
+  document.getElementById('invite-step-3').style.display = 'none';
+  document.getElementById('invite-step-4').style.display = 'none';
+  document.getElementById('invite-back-btn').style.display = 'none';
+  document.getElementById('invite-continue-btn').textContent = 'Continue →';
+
+  // Load data from database
+  await loadJobRoles();
+  await loadTeams();
+
+  // Show modal with animation
+  modal.style.display = 'flex';
+  setTimeout(() => {
+    modal.querySelector('div > div').style.transform = 'scale(1)';
+  }, 10);
+
+  // Focus on title field
+  setTimeout(() => {
+    document.getElementById('invite-title').focus();
+  }, 300);
+}
+
+function closeInviteForm() {
+  const modal = document.getElementById('invite-modal');
+  const modalContent = modal.querySelector('div > div');
+
+  // Animate out
+  modalContent.style.transform = 'scale(0.9)';
+  setTimeout(() => {
+    modal.style.display = 'none';
+  }, 300);
+}
+
+async function loadJobRoles() {
+  const roleSelect = document.getElementById('invite-role');
+
+  try {
+    const { data: roles, error } = await supabase
+      .from('kiosk_roles')
+      .select('role')
+      .order('role');
+
+    if (error) {
+      console.error('Error loading roles:', error);
+      roleSelect.innerHTML = '<option value="">Error loading roles</option>';
+      return;
+    }
+
+    if (!roles || roles.length === 0) {
+      roleSelect.innerHTML = '<option value="">No roles available</option>';
+      return;
+    }
+
+    // Populate dropdown
+    roleSelect.innerHTML = '<option value="">Select a job role</option>' +
+      roles.map(role => `<option value="${role.role}">${role.role}</option>`).join('');
+
+  } catch (err) {
+    console.error('Error loading job roles:', err);
+    roleSelect.innerHTML = '<option value="">Error loading roles</option>';
+  }
+}
+
+async function loadTeams() {
+  const teamSelect = document.getElementById('invite-team');
+
+  try {
+    const { data: teams, error } = await supabase
+      .from('teams')
+      .select('id, name')
+      .eq('site_id', ctx.site_id)
+      .order('name');
+
+    if (error) {
+      console.error('Error loading teams:', error);
+      teamSelect.innerHTML = '<option value="">Error loading teams</option>';
+      return;
+    }
+
+    if (!teams || teams.length === 0) {
+      teamSelect.innerHTML = '<option value="">No teams available</option>';
+      return;
+    }
+
+    // Populate dropdown
+    teamSelect.innerHTML = '<option value="">Select a team</option>' +
+      teams.map(team => `<option value="${team.id}">${team.name}</option>`).join('');
+
+  } catch (err) {
+    console.error('Error loading teams:', err);
+    teamSelect.innerHTML = '<option value="">Error loading teams</option>';
+  }
+}
+
+function inviteFormNext() {
+  if (currentInviteStep === 1) {
+    // Validate step 1
+    const title = document.getElementById('invite-title').value;
+    const name = document.getElementById('invite-name').value.trim();
+    const email = document.getElementById('invite-email').value.trim();
+
+    if (!title) {
+      alert('Please select a title');
+      return;
+    }
+    if (!name) {
+      alert('Please enter a name');
+      return;
+    }
+    if (!email) {
+      alert('Please enter an email address');
+      return;
+    }
+    if (!email.includes('@') || !email.includes('.')) {
+      alert('Please enter a valid email address');
+      return;
+    }
+
+    // Store step 1 data
+    inviteFormData.title = title;
+    inviteFormData.name = name;
+    inviteFormData.email = email;
+
+    // Move to step 2
+    currentInviteStep = 2;
+    document.getElementById('invite-step-1').style.display = 'none';
+    document.getElementById('invite-step-2').style.display = 'block';
+    document.getElementById('invite-step-3').style.display = 'none';
+    document.getElementById('invite-step-4').style.display = 'none';
+    document.getElementById('invite-back-btn').style.display = 'block';
+    document.getElementById('invite-continue-btn').textContent = 'Continue →';
+
+    // Focus on role field
+    setTimeout(() => {
+      document.getElementById('invite-role').focus();
+    }, 100);
+
+  } else if (currentInviteStep === 2) {
+    // Validate step 2
+    const role = document.getElementById('invite-role').value;
+
+    if (!role) {
+      alert('Please select a job role');
+      return;
+    }
+
+    // Store step 2 data
+    inviteFormData.role = role;
+
+    // Move to step 3
+    currentInviteStep = 3;
+    document.getElementById('invite-step-1').style.display = 'none';
+    document.getElementById('invite-step-2').style.display = 'none';
+    document.getElementById('invite-step-3').style.display = 'block';
+    document.getElementById('invite-step-4').style.display = 'none';
+    document.getElementById('invite-back-btn').style.display = 'block';
+    document.getElementById('invite-continue-btn').textContent = 'Continue →';
+
+    // Focus on team field
+    setTimeout(() => {
+      document.getElementById('invite-team').focus();
+    }, 100);
+
+  } else if (currentInviteStep === 3) {
+    // Validate step 3
+    const team = document.getElementById('invite-team').value;
+
+    if (!team) {
+      alert('Please select a team');
+      return;
+    }
+
+    // Store step 3 data
+    inviteFormData.team = team;
+
+    // Move to step 4
+    currentInviteStep = 4;
+    document.getElementById('invite-step-1').style.display = 'none';
+    document.getElementById('invite-step-2').style.display = 'none';
+    document.getElementById('invite-step-3').style.display = 'none';
+    document.getElementById('invite-step-4').style.display = 'block';
+    document.getElementById('invite-back-btn').style.display = 'block';
+    document.getElementById('invite-continue-btn').textContent = 'Complete →';
+
+  } else if (currentInviteStep === 4) {
+    // Validate step 4
+    const accessLevel = document.querySelector('input[name="access-level"]:checked');
+
+    if (!accessLevel) {
+      alert('Please select an access level');
+      return;
+    }
+
+    // Store step 4 data
+    inviteFormData.accessLevel = accessLevel.value;
+
+    // Disable the submit button and show loading state
+    const continueBtn = document.getElementById('invite-continue-btn');
+    const originalBtnContent = continueBtn.innerHTML;
+    continueBtn.disabled = true;
+    continueBtn.textContent = 'Creating User...';
+    continueBtn.style.opacity = '0.7';
+
+    try {
+      // Submit the form data to database
+      await submitInviteForm();
+    } catch (error) {
+      // Error handling is done in submitInviteForm, just restore button
+      continueBtn.disabled = false;
+      continueBtn.innerHTML = originalBtnContent;
+      continueBtn.style.opacity = '1';
+    }
+  }
+}
+
+function inviteFormBack() {
+  if (currentInviteStep === 2) {
+    // Go back to step 1
+    currentInviteStep = 1;
+    document.getElementById('invite-step-1').style.display = 'block';
+    document.getElementById('invite-step-2').style.display = 'none';
+    document.getElementById('invite-step-3').style.display = 'none';
+    document.getElementById('invite-step-4').style.display = 'none';
+    document.getElementById('invite-back-btn').style.display = 'none';
+    document.getElementById('invite-continue-btn').textContent = 'Continue →';
+
+    // Focus on name field
+    setTimeout(() => {
+      document.getElementById('invite-name').focus();
+    }, 100);
+
+  } else if (currentInviteStep === 3) {
+    // Go back to step 2
+    currentInviteStep = 2;
+    document.getElementById('invite-step-1').style.display = 'none';
+    document.getElementById('invite-step-2').style.display = 'block';
+    document.getElementById('invite-step-3').style.display = 'none';
+    document.getElementById('invite-step-4').style.display = 'none';
+    document.getElementById('invite-back-btn').style.display = 'block';
+    document.getElementById('invite-continue-btn').textContent = 'Continue →';
+
+    // Focus on role field
+    setTimeout(() => {
+      document.getElementById('invite-role').focus();
+    }, 100);
+
+  } else if (currentInviteStep === 4) {
+    // Go back to step 3
+    currentInviteStep = 3;
+    document.getElementById('invite-step-1').style.display = 'none';
+    document.getElementById('invite-step-2').style.display = 'none';
+    document.getElementById('invite-step-3').style.display = 'block';
+    document.getElementById('invite-step-4').style.display = 'none';
+    document.getElementById('invite-back-btn').style.display = 'block';
+    document.getElementById('invite-continue-btn').textContent = 'Continue →';
+
+    // Focus on team field
+    setTimeout(() => {
+      document.getElementById('invite-team').focus();
+    }, 100);
+  }
+}
+
+// Function to handle access level selection
+function selectAccessLevel(level, labelElement) {
+  // Remove selected styling from all labels
+  const allLabels = document.querySelectorAll('label[onclick*="selectAccessLevel"]');
+  allLabels.forEach(label => {
+    label.style.borderColor = '#e5e7eb';
+    label.style.background = 'white';
+  });
+
+  // Add selected styling to clicked label
+  labelElement.style.borderColor = '#3b82f6';
+  labelElement.style.background = 'rgba(59,130,246,0.05)';
+
+  // Check the radio button
+  const radioButton = labelElement.querySelector('input[type="radio"]');
+  radioButton.checked = true;
+}
+
+// Function to submit invite form data to database
+async function submitInviteForm() {
+  try {
+    // Prepare the data for insertion
+    const userData = {
+      title: inviteFormData.title,
+      full_name: inviteFormData.name,
+      email: inviteFormData.email,
+      role: inviteFormData.role,
+      team_id: inviteFormData.team,
+      access_type: inviteFormData.accessLevel,
+      site_id: ctx.site_id,
+      invite_status: 'pending',
+      active: true,
+      created_at: new Date().toISOString(),
+      auth_user_id: null, // Will be set when they complete signup
+      onboarding_complete: false
+    };
+
+    console.log('Submitting user data:', userData);
+
+    // Insert into master_users table
+    const { data, error } = await supabase
+      .from('master_users')
+      .insert([userData])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Database insertion error:', error);
+      throw new Error(`Failed to create user: ${error.message}`);
+    }
+
+    console.log('User created successfully:', data);
+
+    // Get team name for display
+    const teamName = userData.team_id ?
+      (document.querySelector(`#invite-team option[value="${userData.team_id}"]`)?.textContent || `Team ${userData.team_id}`) :
+      'No team assigned';
+
+    // Show success message
+    alert(`✅ User created successfully!\n\n${userData.title} ${userData.full_name} has been added to your team.\n\nEmail: ${userData.email}\nJob Role: ${userData.role}\nTeam: ${teamName}\nAccess Level: ${userData.access_type}\n\nThey will need to complete the signup process to access the system.`);
+
+    // Refresh the team overview to show the new user
+    await loadTeamOverview();
+
+    // Reset form data
+    inviteFormData = {};
+
+    // Close the form
+    closeInviteForm();
+
+  } catch (error) {
+    console.error('Submission failed:', error);
+    alert(`❌ Failed to create user: ${error.message}`);
+  }
+}
+
 // Simple toast notification function
 function showToast(message, type = 'info') {
   const toast = document.createElement('div');
@@ -27512,6 +27876,186 @@ function showAdminErrorMessage(message) {
 </script>
 
 
+
+    <!-- Invite Form Modal -->
+    <div id="invite-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:10000; backdrop-filter:blur(4px);">
+      <div style="display:flex; align-items:center; justify-content:center; height:100%; padding:20px; width:100%;">
+        <div style="background:white; border-radius:20px; box-shadow:0 25px 50px rgba(0,0,0,0.25); max-width:600px; width:100%; overflow:hidden; transform:scale(0.9); transition:all 0.3s ease; margin:0 auto;">
+
+          <!-- Modal Header -->
+          <div style="background:linear-gradient(135deg, #3b82f6, #1d4ed8); padding:24px; text-align:center; position:relative;">
+            <button onclick="closeInviteForm()"
+                    style="position:absolute; top:16px; right:16px; background:rgba(255,255,255,0.2); border:none; color:white; width:32px; height:32px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:18px; transition:background 0.2s ease;"
+                    onmouseover="this.style.background='rgba(255,255,255,0.3)'"
+                    onmouseout="this.style.background='rgba(255,255,255,0.2)'">
+              ✕
+            </button>
+            <svg width="48" height="48" fill="white" viewBox="0 0 20 20" style="margin-bottom:12px;">
+              <path d="M8 9a3 3 0 100-6 3 3 0 000 6zM8 11a6 6 0 016 6H2a6 6 0 016-6zM16 7a1 1 0 10-2 0v1h-1a1 1 0 100 2h1v1a1 1 0 102 0v-1h1a1 1 0 100-2h-1V7z"></path>
+            </svg>
+            <h2 style="color:white; margin:0; font-size:24px; font-weight:700;">Invite Team Member</h2>
+            <p style="color:rgba(255,255,255,0.9); margin:8px 0 0 0; font-size:15px;">Add someone new to your team</p>
+          </div>
+
+          <!-- Modal Body -->
+          <div style="padding:32px;">
+            <form id="invite-form">
+
+              <!-- Step 1: Title and Name -->
+              <div id="invite-step-1">
+                <div style="display:flex; gap:12px; margin-bottom:24px;">
+                  <!-- Title Dropdown -->
+                  <div style="flex:0 0 120px;">
+                    <label style="display:block; font-weight:600; color:#374151; margin-bottom:8px; font-size:14px; letter-spacing:0.025em;">
+                      Title *
+                    </label>
+                    <select id="invite-title"
+                            required
+                            style="width:100%; padding:12px 16px; border:2px solid #e5e7eb; border-radius:12px; font-size:16px; transition:all 0.2s ease; background:white; appearance:none; background-image:url('data:image/svg+xml,<svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 20 20\"><path stroke=\"%236b7280\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"1.5\" d=\"M6 8l4 4 4-4\"/></svg>'); background-repeat:no-repeat; background-position:right 12px center; background-size:16px;"
+                            onfocus="this.style.borderColor='#3b82f6'; this.style.boxShadow='0 0 0 3px rgba(59,130,246,0.1)'"
+                            onblur="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none'">
+                      <option value="">Select</option>
+                      <option value="Mr">Mr</option>
+                      <option value="Mrs">Mrs</option>
+                      <option value="Miss">Miss</option>
+                      <option value="Ms">Ms</option>
+                      <option value="Dr">Dr</option>
+                      <option value="Prof">Prof</option>
+                    </select>
+                  </div>
+
+                  <!-- Name Field -->
+                  <div style="flex:1;">
+                    <label style="display:block; font-weight:600; color:#374151; margin-bottom:8px; font-size:14px; letter-spacing:0.025em;">
+                      Full Name *
+                    </label>
+                    <input type="text"
+                           id="invite-name"
+                           required
+                           placeholder="Enter their full name"
+                           style="width:100%; padding:12px 16px; border:2px solid #e5e7eb; border-radius:12px; font-size:16px; transition:all 0.2s ease; background:white;"
+                           onfocus="this.style.borderColor='#3b82f6'; this.style.boxShadow='0 0 0 3px rgba(59,130,246,0.1)'"
+                           onblur="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none'">
+                  </div>
+                </div>
+
+                <!-- Email Field -->
+                <div style="margin-bottom:24px;">
+                  <label style="display:block; font-weight:600; color:#374151; margin-bottom:8px; font-size:14px; letter-spacing:0.025em;">
+                    Email Address *
+                  </label>
+                  <input type="email"
+                         id="invite-email"
+                         required
+                         placeholder="Enter their email address"
+                         style="width:100%; padding:12px 16px; border:2px solid #e5e7eb; border-radius:12px; font-size:16px; transition:all 0.2s ease; background:white;"
+                         onfocus="this.style.borderColor='#3b82f6'; this.style.boxShadow='0 0 0 3px rgba(59,130,246,0.1)'"
+                         onblur="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none'">
+                </div>
+              </div>
+
+              <!-- Step 2: Job Role -->
+              <div id="invite-step-2" style="display:none;">
+                <div style="margin-bottom:24px;">
+                  <label style="display:block; font-weight:600; color:#374151; margin-bottom:8px; font-size:14px; letter-spacing:0.025em;">
+                    Job Role *
+                  </label>
+                  <select id="invite-role"
+                          required
+                          style="width:100%; padding:12px 16px; border:2px solid #e5e7eb; border-radius:12px; font-size:16px; transition:all 0.2s ease; background:white; appearance:none; background-image:url('data:image/svg+xml,<svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 20 20\"><path stroke=\"%236b7280\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"1.5\" d=\"M6 8l4 4 4-4\"/></svg>'); background-repeat:no-repeat; background-position:right 12px center; background-size:16px;"
+                          onfocus="this.style.borderColor='#3b82f6'; this.style.boxShadow='0 0 0 3px rgba(59,130,246,0.1)'"
+                          onblur="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none'">
+                    <option value="">Loading job roles...</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Step 3: Team -->
+              <div id="invite-step-3" style="display:none;">
+                <div style="margin-bottom:24px;">
+                  <label style="display:block; font-weight:600; color:#374151; margin-bottom:8px; font-size:14px; letter-spacing:0.025em;">
+                    Team *
+                  </label>
+                  <select id="invite-team"
+                          required
+                          style="width:100%; padding:12px 16px; border:2px solid #e5e7eb; border-radius:12px; font-size:16px; transition:all 0.2s ease; background:white; appearance:none; background-image:url('data:image/svg+xml,<svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 20 20\"><path stroke=\"%236b7280\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"1.5\" d=\"M6 8l4 4 4-4\"/></svg>'); background-repeat:no-repeat; background-position:right 12px center; background-size:16px;"
+                          onfocus="this.style.borderColor='#3b82f6'; this.style.boxShadow='0 0 0 3px rgba(59,130,246,0.1)'"
+                          onblur="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none'">
+                    <option value="">Loading teams...</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Step 4: Access Level -->
+              <div id="invite-step-4" style="display:none;">
+                <div style="margin-bottom:24px;">
+                  <label style="display:block; font-weight:600; color:#374151; margin-bottom:16px; font-size:14px; letter-spacing:0.025em;">
+                    Access Level *
+                  </label>
+                  <div style="display:flex; flex-direction:column; gap:16px;">
+                    <!-- Admin Option -->
+                    <label style="display:flex; align-items:flex-start; padding:16px; border:2px solid #e5e7eb; border-radius:12px; cursor:pointer; transition:all 0.2s ease; background:white;"
+                           onmouseover="this.style.borderColor='#d1d5db'"
+                           onmouseout="this.style.borderColor='#e5e7eb'"
+                           onclick="selectAccessLevel('admin', this)">
+                      <input type="radio" name="access-level" value="admin" style="margin:4px 12px 0 0; width:16px; height:16px; accent-color:#3b82f6;">
+                      <div>
+                        <div style="font-weight:600; color:#374151; margin-bottom:4px; font-size:16px;">Admin</div>
+                        <div style="color:#6b7280; font-size:14px; line-height:1.4;">Full access to all features including user management, settings, and administrative functions. Can invite and manage team members.</div>
+                      </div>
+                    </label>
+                    <!-- Staff Option -->
+                    <label style="display:flex; align-items:flex-start; padding:16px; border:2px solid #e5e7eb; border-radius:12px; cursor:pointer; transition:all 0.2s ease; background:white;"
+                           onmouseover="this.style.borderColor='#d1d5db'"
+                           onmouseout="this.style.borderColor='#e5e7eb'"
+                           onclick="selectAccessLevel('staff', this)">
+                      <input type="radio" name="access-level" value="staff" style="margin:4px 12px 0 0; width:16px; height:16px; accent-color:#3b82f6;">
+                      <div>
+                        <div style="font-weight:600; color:#374151; margin-bottom:4px; font-size:16px;">Staff</div>
+                        <div style="color:#6b7280; font-size:14px; line-height:1.4;">Standard access to core features for daily work. Can view and interact with team content but cannot manage users or change settings.</div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Form Actions -->
+              <div style="display:flex; gap:12px; justify-content:space-between; margin-top:32px;">
+                <div>
+                  <button type="button"
+                          id="invite-back-btn"
+                          onclick="inviteFormBack()"
+                          style="display:none; padding:12px 24px; background:#f3f4f6; color:#374151; border:none; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; transition:all 0.2s ease;"
+                          onmouseover="this.style.background='#e5e7eb'"
+                          onmouseout="this.style.background='#f3f4f6'">
+                    ← Back
+                  </button>
+                </div>
+                <div style="display:flex; gap:12px;">
+                  <button type="button"
+                          onclick="closeInviteForm()"
+                          style="padding:12px 24px; background:#f3f4f6; color:#374151; border:none; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; transition:all 0.2s ease;"
+                          onmouseover="this.style.background='#e5e7eb'"
+                          onmouseout="this.style.background='#f3f4f6'">
+                    Cancel
+                  </button>
+                  <button type="button"
+                          id="invite-continue-btn"
+                          onclick="inviteFormNext()"
+                          style="padding:12px 24px; background:linear-gradient(135deg, #3b82f6, #1d4ed8); color:white; border:none; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; transition:all 0.2s ease; box-shadow:0 4px 12px rgba(59,130,246,0.3);"
+                          onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 6px 16px rgba(59,130,246,0.4)'"
+                          onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(59,130,246,0.3)'">
+                    Continue →
+                  </button>
+                </div>
+              </div>
+
+            </form>
+          </div>
+
+        </div>
+      </div>
+    </div>
 
     <!-- Debug Console - Persistent across all pages (HIDDEN - uncomment to re-enable) -->
     <!-- <script src="debug-console.js"></script> -->
