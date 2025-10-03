@@ -859,8 +859,34 @@ function initCertificateUploaderPDFToImage() {
       throw new Error(errorMessage);
     }
     
-    const result = await response.json();
-    debug.info('[PDF-IMG] AI analysis result received');
+    // Attempt to parse JSON result and provide richer logging
+    let result = null;
+    try {
+      result = await response.json();
+      debug.info('[PDF-IMG] AI analysis result received:', result);
+    } catch (jsonErr) {
+      // If JSON parsing fails, surface raw text for debugging
+      try {
+        const text = await response.text();
+        debug.error('[PDF-IMG] Failed to parse AI JSON response. Raw response:', text);
+        throw new Error('Invalid JSON response from AI analysis: ' + text);
+      } catch (tErr) {
+        debug.error('[PDF-IMG] Failed to read AI response body:', tErr);
+        throw new Error('AI analysis returned an unreadable response');
+      }
+    }
+
+    // Normalize result: some deployments return data without a success flag
+    if (typeof result.success === 'undefined') {
+      if (result && (result.data || result.training_match_status)) {
+        result.success = true;
+        debug.warn('[PDF-IMG] AI response missing explicit success flag - treating as success based on presence of data');
+      } else {
+        result.success = false;
+        debug.warn('[PDF-IMG] AI response missing success flag and no data found');
+      }
+    }
+
     return result;
   }
   
@@ -879,8 +905,18 @@ function initCertificateUploaderPDFToImage() {
     // Set up modal with processing state
     setupProcessingModal(totalFiles);
     
-    // Show modal
+    // Show modal (ensure both classes so CSS animations/triggers run)
     confirmModal.classList.add('show');
+    confirmModal.classList.add('active');
+    confirmModal.setAttribute('aria-hidden', 'false');
+    // Make modal keyboard-focusable and focus it so users see it immediately
+    try { confirmModal.setAttribute('tabindex', '-1'); confirmModal.focus(); } catch (e) {}
+
+    // Also provide a visible browser alert for immediate feedback in case CSS hides the modal
+    if (typeof window.showToast !== 'function') {
+      // Use a brief non-blocking alert only when no toast function is available
+      console.log('[PDF-IMG] Processing modal shown');
+    }
   }
   
   // Reset progress steps to initial state
@@ -1358,8 +1394,8 @@ function initCertificateUploaderPDFToImage() {
       }
     }
     
-    // Transition from processing mode to confirmation mode
-    transitionToConfirmationMode(data, currentIndex, totalCount);
+  // Transition from processing mode to confirmation mode
+  transitionToConfirmationMode(data, currentIndex, totalCount);
 
     // Wait a moment for DOM to be ready after transition
     setTimeout(() => {
@@ -1670,8 +1706,11 @@ function initCertificateUploaderPDFToImage() {
       // Add queue information to modal
       addQueueInfoToModal(currentIndex, totalCount);
 
-      // Show popup modal with animation
-      confirmModal.classList.add('show');
+  // Show popup modal with animation (ensure both classes and focus)
+  confirmModal.classList.add('show');
+  confirmModal.classList.add('active');
+  confirmModal.setAttribute('aria-hidden', 'false');
+  try { confirmModal.setAttribute('tabindex', '-1'); confirmModal.focus(); } catch (e) {}
 
       // Update AI match indicator if there's a match
       updateAIMatchIndicator(data);
