@@ -25,7 +25,17 @@ serve(async (req) => {
     )
 
     // Parse request body
-    const { full_name, email, access_type, role_detail, team_id, site_id, password } = await req.json()
+    let { full_name, email, access_type, role_detail, team_id, site_id, password } = await req.json()
+
+    // Generate temporary password if not provided
+    if (!password) {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%'
+      password = ''
+      for (let i = 0; i < 12; i++) {
+        password += chars.charAt(Math.floor(Math.random() * chars.length))
+      }
+      console.log('Generated temporary password for user')
+    }
 
     // Validate required fields
     if (!full_name || !email || !access_type || !role_detail) {
@@ -129,7 +139,9 @@ serve(async (req) => {
       user_metadata: {
         full_name: full_name,
         access_type: access_type,
-        role_detail: role_detail
+        role_detail: role_detail,
+        site_id: site_id || null,
+        needs_onboarding: true // Flag to redirect to staff-welcome after password set
       }
     })
 
@@ -207,6 +219,23 @@ serve(async (req) => {
 
     console.log(`User record created successfully: ${userData[0]?.id}`)
 
+    // Send password reset email so user can set their own password
+    console.log('Sending password reset email to user...')
+    const { error: resetError } = await supabaseAdmin.auth.resetPasswordForEmail(
+      email,
+      {
+        redirectTo: 'https://checkloops.co.uk/simple-set-password.html'
+      }
+    )
+
+    if (resetError) {
+      console.warn('Failed to send password reset email:', resetError)
+      // Don't fail the whole operation if email fails
+      // Admin can resend invitation later
+    } else {
+      console.log('Password reset email sent successfully')
+    }
+
     // Return success response with user details
     return new Response(
       JSON.stringify({
@@ -222,10 +251,10 @@ serve(async (req) => {
           site_id,
           created_at: authData.user.created_at
         },
-        credentials: {
-          email,
-          password
-        }
+        email_sent: !resetError,
+        message: resetError 
+          ? 'User created but email failed to send. Please resend invitation.'
+          : 'User created and invitation email sent successfully'
       }),
       {
         status: 200,
