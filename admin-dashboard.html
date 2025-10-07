@@ -12755,6 +12755,28 @@ window.PIR_DEFINITIONS_DATA = [
       // COMPREHENSIVE USER DELETION
       logDeletion('warning', '⚠️ Starting COMPREHENSIVE user deletion');
 
+      // Prefer secure server-side deletion via Edge Function if available
+      try {
+        if (typeof supabase?.functions?.invoke === 'function') {
+          logDeletion('info', 'Attempting server-side deletion via Edge Function');
+          const { data: fnRes, error: fnErr } = await supabase.functions.invoke('delete-user', {
+            body: { userId, masterId, email, site_id: siteId }
+          });
+          if (!fnErr && fnRes?.ok) {
+            logDeletion('success', 'Edge function deletion completed', fnRes);
+            alert('✅ User completely deleted via server');
+            loadPracticeUsers();
+            return;
+          } else if (fnErr) {
+            logDeletion('warning', 'Edge function deletion failed, falling back', fnErr);
+          } else {
+            logDeletion('warning', 'Edge function returned unexpected response, falling back', fnRes);
+          }
+        }
+      } catch (edgeErr) {
+        logDeletion('warning', 'Edge function call error, using client-side fallback', edgeErr?.message || edgeErr);
+      }
+
       // Step 1: Get user details if we only have userId
       if (userId && !email) {
         logDeletion('info', 'Fetching user details by auth_user_id');

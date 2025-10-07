@@ -366,6 +366,40 @@ export async function requireStaffSession(supabase, options = {}) {
 
   const isWelcomePage = /staff-welcome\.html$/i.test(window.location.pathname);
 
+  // Check if this is a newly invited user who just set their password
+  const userMetadata = session.user?.user_metadata || {};
+  const rawMetadata = session.user?.raw_user_meta_data || {};
+  const isInvitedUser = userMetadata.needs_onboarding === true ||
+                        userMetadata.from_invitation === true ||
+                        userMetadata.invitation_date ||
+                        rawMetadata.needs_onboarding === true ||
+                        rawMetadata.from_invitation === true ||
+                        (userMetadata.site_id && userMetadata.invited === true) ||
+                        (rawMetadata.site_id && rawMetadata.invited === true);
+
+  console.log('[requireStaffSession] Invited user check:', {
+    needs_onboarding: userMetadata.needs_onboarding,
+    from_invitation: userMetadata.from_invitation,
+    invitation_date: userMetadata.invitation_date,
+    invited: userMetadata.invited,
+    site_id: userMetadata.site_id || rawMetadata.site_id,
+    isInvitedUser: isInvitedUser,
+    isWelcomePage: isWelcomePage,
+    role: role
+  });
+
+  // If this is an invited user on the welcome page, allow them through
+  if (isWelcomePage && isInvitedUser) {
+    console.log('[requireStaffSession] Allowing invited user on welcome page');
+    return { session, profileRow };
+  }
+
+  // Also allow if user has site_id in metadata but no profile yet (just invited)
+  if (isWelcomePage && (userMetadata.site_id || rawMetadata.site_id)) {
+    console.log('[requireStaffSession] Allowing user with site_id on welcome page');
+    return { session, profileRow };
+  }
+
   if (!isWelcomePage && role && !allowed.includes(String(role).toLowerCase())) {
     throw new Error('NOT_STAFF');
   }
