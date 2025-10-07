@@ -515,11 +515,18 @@ ${apiResponse.raw_text || 'No text extracted'}
       debug.info('AI extraction complete');
       debug.info('Raw AI text:', result.raw_text);
 
-      // Store raw API response for debugging
+      // Store raw API response for debugging (not shown unless explicitly enabled)
       window.lastCertificateAPIResponse = result;
 
-      // CREATE A VISIBLE DEBUG PANEL ON THE PAGE
-      showAPIDebugInfo(result);
+      // Only show debug overlay if explicitly enabled via config or localStorage
+      const debugUiEnabled = Boolean(
+        (window.CONFIG && window.CONFIG.ENABLE_CERT_DEBUG_UI) ||
+        (typeof localStorage !== 'undefined' && localStorage.getItem('ENABLE_CERT_DEBUG_UI') === 'true')
+      );
+
+      if (debugUiEnabled) {
+        showAPIDebugInfo(result);
+      }
 
       if (!result.success) {
         debug.error('AI extraction failed:', result.error);
@@ -808,24 +815,7 @@ ${apiResponse.raw_text || 'No text extracted'}
     }
   }
   
-  // Add toggle button for debug panel
-  const toggleBtn = document.createElement('button');
-  toggleBtn.textContent = 'Debug';
-  toggleBtn.style.cssText = `
-    position: fixed;
-    bottom: 20px;
-    left: 20px;
-    background: #1e293b;
-    color: white;
-    border: none;
-    padding: 8px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-    z-index: 10000;
-  `;
-  toggleBtn.onclick = () => window.certificateDebugger && window.certificateDebugger.toggle();
-  document.body.appendChild(toggleBtn);
+  // Debug toggle button removed from UI (kept available via window.certificateDebugger.show())
   
   debug.success('Certificate uploader initialized successfully');
   

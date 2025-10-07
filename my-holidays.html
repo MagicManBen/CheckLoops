@@ -497,6 +497,7 @@
       border: 1px solid var(--gray-100);
       background: var(--gray-50);
       margin: 0.5rem 0;
+      gap: 1rem;
     }
     .calc-row:hover {
       background: var(--primary-lightest);
@@ -504,6 +505,28 @@
     .calc-date {
       color: var(--gray-900);
       font-weight: 600;
+      flex: 1;
+    }
+    .calc-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+    }
+    .part-day-check {
+      cursor: pointer;
+      width: 16px;
+      height: 16px;
+      accent-color: var(--primary);
+    }
+    .calc-controls label {
+      cursor: pointer;
+      color: var(--gray-600);
+      user-select: none;
+    }
+    .calc-badge-wrapper {
+      position: relative;
+      min-width: 100px;
     }
     .calc-badge {
       font-weight: 600;
@@ -514,6 +537,25 @@
       border: 1px solid var(--primary-light);
       color: var(--primary-dark);
       white-space: nowrap;
+    }
+    .calc-badge-input {
+      width: 100px;
+      text-align: center;
+      background: white;
+      font-family: inherit;
+    }
+    .calc-badge-input:enabled {
+      cursor: text;
+      background: white;
+      border-color: var(--primary);
+    }
+    .calc-badge-input:focus {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(11, 79, 179, 0.1);
+    }
+    .calc-badge-input:disabled {
+      cursor: not-allowed;
+      background: var(--primary-lightest);
     }
     .calc-total {
       margin-top: 0.5rem;
@@ -1407,6 +1449,96 @@
           overlapList.innerHTML = overlapHTML;
         }
 
+        // Store calculated holiday data for each day
+        window.holidayDayData = {};
+
+        // Function to toggle part day input
+        window.togglePartDay = function(dateKey, checkbox) {
+          const row = checkbox.closest('.calc-row');
+          const input = row.querySelector('.calc-badge-input');
+          const display = row.querySelector('.calc-badge-display');
+
+          if (checkbox.checked) {
+            display.style.display = 'none';
+            input.style.display = 'block';
+            input.disabled = false;
+            input.focus();
+          } else {
+            input.style.display = 'none';
+            input.disabled = true;
+            display.style.display = 'block';
+            // Reset to calculated value
+            input.value = '';
+            window.holidayDayData[dateKey].isPartDay = false;
+            window.holidayDayData[dateKey].manualValue = null;
+            recalculateTotal();
+          }
+        };
+
+        // Function to validate and update manual time input
+        window.validateTimeInput = function(dateKey, input) {
+          const value = input.value.trim();
+
+          if (window.isGP) {
+            // For GPs, expect a number (sessions)
+            const sessions = parseFloat(value);
+            if (isNaN(sessions) || sessions < 0) {
+              input.value = '';
+              alert('Please enter a valid number of sessions');
+              return;
+            }
+            window.holidayDayData[dateKey].manualValue = sessions;
+          } else {
+            // For staff, expect HH:MM format
+            const timeMatch = value.match(/^(\d{1,2}):(\d{2})$/);
+            if (!timeMatch) {
+              input.value = '';
+              alert('Please enter time in HH:MM format (e.g., 3:30)');
+              return;
+            }
+            const hours = parseInt(timeMatch[1]);
+            const minutes = parseInt(timeMatch[2]);
+            if (minutes >= 60) {
+              input.value = '';
+              alert('Minutes must be less than 60');
+              return;
+            }
+            // Store as decimal hours
+            window.holidayDayData[dateKey].manualValue = hours + (minutes / 60);
+          }
+          window.holidayDayData[dateKey].isPartDay = true;
+          recalculateTotal();
+        };
+
+        // Function to recalculate total with manual overrides
+        window.recalculateTotal = function() {
+          let total = 0;
+
+          for (const dateKey in window.holidayDayData) {
+            const dayData = window.holidayDayData[dateKey];
+            if (dayData.isPartDay && dayData.manualValue !== null) {
+              total += dayData.manualValue;
+            } else {
+              total += dayData.calculatedValue;
+            }
+          }
+
+          if (window.isGP) {
+            document.getElementById('calc-total').textContent = total;
+            document.getElementById('calc-unit').textContent = total === 1 ? 'session' : 'sessions';
+            window.holidayRequestTotal = total;
+          } else {
+            const totalHours = Math.floor(total);
+            const totalMinutes = Math.round((total % 1) * 60);
+            const totalTimeStr = totalMinutes > 0 ?
+              `${totalHours}:${totalMinutes.toString().padStart(2, '0')}` :
+              `${totalHours}:00`;
+            document.getElementById('calc-total').textContent = totalTimeStr;
+            document.getElementById('calc-unit').textContent = '';
+            window.holidayRequestTotal = total;
+          }
+        };
+
         // Calculate time off
         document.getElementById('calculate-btn').addEventListener('click', async () => {
           const dates = (window.rangePicker && window.rangePicker.selectedDates) || [];
@@ -1429,6 +1561,8 @@
             return;
           }
 
+          // Reset holiday day data
+          window.holidayDayData = {};
           let totalHours = 0;
           let totalSessions = 0;
           let totalMinutes = 0;
@@ -1439,13 +1573,35 @@
           while (currentDate <= toDate) {
             const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][currentDate.getDay()];
             const dateStr = currentDate.toLocaleDateString();
+            const dateKey = currentDate.toISOString().split('T')[0]; // YYYY-MM-DD format
 
             if (window.isGP) {
               const sessions = parseFloat(pattern[`${dayName}_sessions`] || 0);
               if (sessions > 0) {
                 totalSessions += sessions;
+                // Store calculated value
+                window.holidayDayData[dateKey] = {
+                  calculatedValue: sessions,
+                  manualValue: null,
+                  isPartDay: false,
+                  dateStr: dateStr
+                };
                 rows.push(
-                  `<div class="calc-row"><div class="calc-date">${dateStr}</div><div class="calc-badge">${sessions} ${sessions === 1 ? 'session' : 'sessions'}</div></div>`
+                  `<div class="calc-row" data-date="${dateKey}">
+                    <div class="calc-date">${dateStr}</div>
+                    <div class="calc-controls">
+                      <input type="checkbox" class="part-day-check" id="partday-${dateKey}"
+                             onchange="togglePartDay('${dateKey}', this)">
+                      <label for="partday-${dateKey}">Part day</label>
+                    </div>
+                    <div class="calc-badge-wrapper">
+                      <div class="calc-badge calc-badge-display">${sessions} ${sessions === 1 ? 'session' : 'sessions'}</div>
+                      <input type="text" class="calc-badge calc-badge-input"
+                             placeholder="${window.isGP ? 'Sessions' : 'HH:MM'}"
+                             style="display:none;" disabled
+                             onblur="validateTimeInput('${dateKey}', this)">
+                    </div>
+                  </div>`
                 );
               }
             } else {
@@ -1456,8 +1612,29 @@
                 const displayHours = Math.floor(hours);
                 const displayMinutes = Math.round((hours % 1) * 60);
                 const timeStr = displayMinutes > 0 ? `${displayHours}h ${displayMinutes}m` : `${displayHours}h`;
+                // Store calculated value
+                window.holidayDayData[dateKey] = {
+                  calculatedValue: hours,
+                  manualValue: null,
+                  isPartDay: false,
+                  dateStr: dateStr
+                };
                 rows.push(
-                  `<div class="calc-row"><div class="calc-date">${dateStr}</div><div class="calc-badge">${timeStr}</div></div>`
+                  `<div class="calc-row" data-date="${dateKey}">
+                    <div class="calc-date">${dateStr}</div>
+                    <div class="calc-controls">
+                      <input type="checkbox" class="part-day-check" id="partday-${dateKey}"
+                             onchange="togglePartDay('${dateKey}', this)">
+                      <label for="partday-${dateKey}">Part day</label>
+                    </div>
+                    <div class="calc-badge-wrapper">
+                      <div class="calc-badge calc-badge-display">${timeStr}</div>
+                      <input type="text" class="calc-badge calc-badge-input"
+                             placeholder="HH:MM"
+                             style="display:none;" disabled
+                             onblur="validateTimeInput('${dateKey}', this)">
+                    </div>
+                  </div>`
                 );
               }
             }
@@ -1515,7 +1692,17 @@
           const fromDate = sDates[0] ? window.rangePicker.formatDate(sDates[0], "Y-m-d") : '';
           const toDate = sDates[1] ? window.rangePicker.formatDate(sDates[1], "Y-m-d") : (sDates[0] ? window.rangePicker.formatDate(sDates[0], "Y-m-d") : '');
           const reason = document.getElementById('reason').value;
-          const total = window.holidayRequestTotal || 0;
+
+          // Recalculate total to include any manual overrides
+          let total = 0;
+          for (const dateKey in window.holidayDayData) {
+            const dayData = window.holidayDayData[dateKey];
+            if (dayData.isPartDay && dayData.manualValue !== null) {
+              total += dayData.manualValue;
+            } else {
+              total += dayData.calculatedValue;
+            }
+          }
 
           if (!fromDate || !toDate) {
             alert('Please select dates');
@@ -1604,6 +1791,7 @@
             document.getElementById('calculation-result').style.display = 'none';
             document.getElementById('overlap-section').style.display = 'none';
             document.getElementById('submit-request').style.display = 'none';
+            window.holidayDayData = {}; // Reset holiday day data
 
             // Reload bookings
             loadBookings();

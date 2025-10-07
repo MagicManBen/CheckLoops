@@ -2,6 +2,7 @@
 const certificateDebugger = {
   debugPanelId: 'certificate-debug-panel',
   logPrefix: '[Certificate Uploader]',
+  // Keep logging available but disable UI by default
   debugEnabled: true,
   
   init() {
@@ -24,7 +25,8 @@ const certificateDebugger = {
         overflow-y: auto;
         z-index: 10000;
         box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-        display: flex;
+        /* Hide from view by default; can be shown via window.certificateDebugger.show() */
+        display: none;
         flex-direction: column;
       `;
       
@@ -102,8 +104,8 @@ const certificateDebugger = {
       
       document.body.appendChild(panel);
       
-      // Welcome message
-      this.log('Debug panel initialized', 'info');
+      // Still log to console but don't surface panel by default
+      try { (console.info || console.log).call(console, this.logPrefix, 'Debug panel initialized (hidden)'); } catch {}
     }
     
     return this;
