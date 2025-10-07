@@ -6655,6 +6655,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
               </svg>
               <h3 class="panel-title">Team Overview</h3>
+              <div style="display: flex; gap: 8px;">
+                <button onclick="window.showDeletionDebugConsole()"
+                        style="padding: 6px 12px; background: #6c757d; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;"
+                        title="Show deletion debug console">
+                  Debug
+                </button>
+                <button onclick="window.cleanupOrphanedUserRecords()"
+                        style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;"
+                        title="Clean up orphaned user records">
+                  Clean Orphaned
+                </button>
+              </div>
             </div>
 
             <div style="background: rgba(255,255,255,0.95); border-radius: 16px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.1), 0 1px 3px rgba(0,0,0,0.05); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.2);">
@@ -12609,208 +12621,386 @@ window.PIR_DEFINITIONS_DATA = [
   };
 
 
+  // Global debug log for user deletion
+  window.userDeletionLog = [];
+  window.logDeletion = function(level, message, data = null) {
+    const entry = {
+      timestamp: new Date().toISOString(),
+      level: level,
+      message: message,
+      data: data
+    };
+    window.userDeletionLog.push(entry);
+    console.log(`[${level.toUpperCase()}] ${message}`, data || '');
+
+    // Update debug console if visible
+    const debugConsole = document.getElementById('deletion-debug-log');
+    if (debugConsole) {
+      debugConsole.textContent = JSON.stringify(window.userDeletionLog, null, 2);
+    }
+  };
+
+  // Copy debug log to clipboard
+  window.copyDeletionDebugLog = function() {
+    const logText = JSON.stringify(window.userDeletionLog, null, 2);
+    navigator.clipboard.writeText(logText).then(() => {
+      alert('Debug log copied to clipboard!');
+    }).catch(err => {
+      console.error('Failed to copy:', err);
+      alert('Failed to copy debug log. Check console.');
+    });
+  };
+
+  // Show deletion debug console
+  window.showDeletionDebugConsole = function() {
+    let console = document.getElementById('deletion-debug-console');
+    if (!console) {
+      console = document.createElement('div');
+      console.id = 'deletion-debug-console';
+      console.style.cssText = 'position: fixed; bottom: 20px; right: 20px; width: 500px; max-height: 400px; background: white; border: 2px solid #333; border-radius: 8px; padding: 16px; z-index: 10000; overflow: auto; box-shadow: 0 4px 16px rgba(0,0,0,0.2);';
+      console.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <h3 style="margin: 0;">User Deletion Debug Log</h3>
+          <div>
+            <button onclick="copyDeletionDebugLog()" style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 8px;">Copy Log</button>
+            <button onclick="document.getElementById('deletion-debug-console').remove()" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">Close</button>
+          </div>
+        </div>
+        <pre id="deletion-debug-log" style="background: #f8f9fa; padding: 12px; border-radius: 4px; overflow: auto; max-height: 300px; font-size: 12px;">No logs yet...</pre>
+      `;
+      document.body.appendChild(console);
+    }
+    console.style.display = 'block';
+  };
+
+  // Comprehensive user deletion with full debugging
   window.removeUserComplete = async function(payload) {
-    // If payload is a string or simple object, handle it for backward compatibility
+    // Clear previous logs
+    window.userDeletionLog = [];
+    window.showDeletionDebugConsole();
+
+    logDeletion('info', 'Starting user deletion process', payload);
+
+    // Handle legacy payload formats
     if (typeof payload === 'string' || (payload && !payload.email && (payload.userId || payload.inviteId))) {
       const id = typeof payload === 'string' ? payload : (payload.userId || payload.inviteId || payload);
       const isUserId = typeof payload === 'string' ? arguments[1] !== false : !!payload.userId;
-      
-      const confirmMsg = isUserId ?
-        '⚠️ PERMANENT DELETION ⚠️\n\nThis will COMPLETELY REMOVE this user and ALL their data from:\n• All database tables\n• All file attachments\n• Authentication system\n• Training records\n• Complaints & submissions\n• Holiday requests\n• Meeting notes\n• Quiz attempts\n• And much more...\n\nThis action is IRREVERSIBLE and cannot be undone!\n\nAre you absolutely sure you want to delete this user?' :
-        'Are you sure you want to cancel this invitation?';
 
-      if (!confirm(confirmMsg)) {
-        return;
-      }
+      logDeletion('info', 'Legacy payload detected', { id, isUserId });
 
-      debugLog('warning', 'Removing user/invite (legacy mode)', { id, isUserId });
-      
-      // Handle old-style call with just ID
-      try {
-        if (!isUserId) {
-          // Just remove the invitation
-          const { error } = await supabase
-            .from('site_invites')
-            .delete()
-            .eq('id', id);
-
-          if (error) throw error;
-
-          debugLog('success', 'Invitation cancelled');
-          
-          const alertDiv = document.createElement('div');
-          alertDiv.className = 'alert success';
-          alertDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 16px; background: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 8px; z-index: 10000;';
-          alertDiv.textContent = 'Invitation cancelled';
-          document.body.appendChild(alertDiv);
-          setTimeout(() => alertDiv.remove(), 3000);
-          
-          // Reload the user list to reflect changes
-          loadPracticeUsers();
-          return;
-        }
-        
-        // Otherwise, continue with user ID deletion (will be handled by code below)
+      // Convert to standard format
+      if (isUserId) {
         payload = { userId: id };
-      } catch (err) {
-        debugLog('error', 'Failed to remove invite', err);
-        alert('Failed to remove invitation: ' + err.message);
-        return;
+      } else {
+        payload = { inviteId: id };
       }
     }
-    
-    // Extract data from payload
+
+    // Extract all possible identifiers
     const userId = payload.userId || '';
     const masterId = payload.masterId || '';
     const inviteId = payload.inviteId || '';
     const email = payload.email || '';
-    
-    // Determine if this is a user or just an invitation
+    const siteId = payload.site_id || window.ctx?.site_id || 2;
+
+    logDeletion('info', 'Extracted identifiers', { userId, masterId, inviteId, email, siteId });
+
+    // Determine if this is a user or invitation
     const isUser = !!userId;
-    
+
     const confirmMsg = isUser ?
-      '⚠️ PERMANENT DELETION ⚠️\n\nThis will COMPLETELY REMOVE this user and ALL their data from:\n• All database tables\n• All file attachments\n• Authentication system\n• Training records\n• Complaints & submissions\n• Holiday requests\n• Meeting notes\n• Quiz attempts\n• And much more...\n\nThis action is IRREVERSIBLE and cannot be undone!\n\nAre you absolutely sure you want to delete this user?' :
+      '⚠️ PERMANENT DELETION ⚠️\n\nThis will COMPLETELY REMOVE this user and ALL their data from:\n• All database tables\n• Authentication system\n• All related records\n\nThis action is IRREVERSIBLE!\n\nAre you absolutely sure?' :
       'Are you sure you want to cancel this invitation?';
 
     if (!confirm(confirmMsg)) {
+      logDeletion('info', 'User cancelled deletion');
       return;
     }
 
-    debugLog('warning', 'Removing user/invite', { userId, masterId, inviteId, email, isUser });
-
     try {
-      if (!isUser) {
-        // Remove COMPLETE invitation (from all tables)
-        if (!inviteId) {
-          throw new Error('No invitation ID provided');
-        }
+      if (!isUser && inviteId) {
+        // Handle invitation cancellation
+        logDeletion('info', 'Cancelling invitation', { inviteId });
 
-        debugLog('info', 'Removing complete invitation from all tables');
-
-        // Step 1: Delete from site_invites
-        const { error: siteInviteError } = await supabase
+        const { error } = await supabase
           .from('site_invites')
           .delete()
           .eq('id', inviteId);
 
-        if (siteInviteError) throw new Error(`Failed to delete site_invites: ${siteInviteError.message}`);
-        debugLog('success', 'site_invites record deleted');
+        if (error) {
+          logDeletion('error', 'Failed to delete invitation', error);
+          throw error;
+        }
 
-        // Step 2: Delete from master_users if masterId is available
-        if (masterId) {
+        logDeletion('success', 'Invitation cancelled successfully');
+
+        // Clean up any orphaned master_users record
+        if (email) {
           const { error: masterError } = await supabase
             .from('master_users')
             .delete()
-            .eq('id', masterId);
+            .eq('email', email)
+            .eq('site_id', siteId);
 
-          if (masterError) {
-            debugLog('warning', 'Failed to delete master_users record', masterError);
-          } else {
-            debugLog('success', 'master_users record deleted');
-          }
-        } else {
-          // Fallback: try to delete by email if no masterId
-          if (email) {
-            const { error: masterError } = await supabase
-              .from('master_users')
-              .delete()
-              .eq('email', email);
-
-            if (masterError) {
-              debugLog('warning', 'Failed to delete master_users by email', masterError);
-            } else {
-              debugLog('success', 'master_users record deleted by email');
-            }
+          if (!masterError) {
+            logDeletion('success', 'Cleaned up master_users record');
           }
         }
 
-        // Step 3: Delete from auth.users if email is available
-        if (email) {
+        alert('✅ Invitation cancelled');
+        loadPracticeUsers();
+        return;
+      }
+
+      // COMPREHENSIVE USER DELETION
+      logDeletion('warning', '⚠️ Starting COMPREHENSIVE user deletion');
+
+      // Step 1: Get user details if we only have userId
+      if (userId && !email) {
+        logDeletion('info', 'Fetching user details by auth_user_id');
+
+        const { data: userData } = await supabase
+          .from('master_users')
+          .select('email, id, site_id')
+          .eq('auth_user_id', userId)
+          .single();
+
+        if (userData) {
+          email = userData.email;
+          masterId = userData.id;
+          logDeletion('info', 'Found user details', userData);
+        } else {
+          // Try to get from auth
           try {
-            // Create service client for auth operations
-            const serviceSupabase = window.supabaseCreateClient(
-              'https://unveoqnlqnobufhublyw.supabase.co',
-              'sb_secret_ylIhDtikpno4LTTUmpDJvw_Ov7BtIEp'
-            );
-
-            // First find the auth user by email using service key
-            const { data: authUserList } = await serviceSupabase.auth.admin.listUsers();
-            const userToDelete = authUserList?.users?.find(u => u.email === email);
-
-            if (userToDelete) {
-              const { error: authError } = await serviceSupabase.auth.admin.deleteUser(userToDelete.id);
-              if (authError) {
-                debugLog('warning', 'Failed to delete auth user', authError);
-              } else {
-                debugLog('success', 'Auth user deleted');
-              }
-            } else {
-              debugLog('info', 'No auth user found with email');
+            const { data: authUsers } = await supabase.auth.admin.listUsers();
+            const authUser = authUsers?.users?.find(u => u.id === userId);
+            if (authUser) {
+              email = authUser.email;
+              logDeletion('info', 'Found email from auth', { email });
             }
-          } catch (authErr) {
-            debugLog('warning', 'Could not delete auth user', authErr);
+          } catch (e) {
+            logDeletion('warning', 'Could not fetch from auth.admin', e.message);
           }
-        }
-
-        debugLog('success', 'Complete invitation removal finished');
-
-        const alertDiv = document.createElement('div');
-        alertDiv.className = 'alert success';
-        alertDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 16px; background: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 8px; z-index: 10000;';
-        alertDiv.innerHTML = `
-          <strong>✅ Invitation Completely Removed</strong><br>
-          Deleted from site_invites, master_users, and auth tables
-        `;
-        document.body.appendChild(alertDiv);
-        setTimeout(() => alertDiv.remove(), 4000);
-      } else {
-        // Run comprehensive SQL script to delete all user data by email
-        debugLog('info', 'Running comprehensive SQL cleanup script');
-        
-        if (!email) {
-          debugLog('warning', 'No email provided for SQL cleanup, falling back to conventional deletion');
-          
-          // Get user profile data first for proper cleanup
-          const { data: profile, error: profileError } = await supabase
-            .from('master_users')
-            .select('full_name, auth_auth_user_id, email')
-            .eq('auth_user_id', userId)
-            .single();
-  
-          if (profileError && profileError.code !== 'PGRST116') {
-            debugLog('warning', 'Could not fetch profile for cleanup', profileError);
-          }
-  
-          // Also try to get user email from auth.users if needed
-          let userEmail = profile?.email;
-          if (!userEmail) {
-            const { data: authUser } = await supabase.auth.admin.getUserById(userId);
-            userEmail = authUser?.user?.email;
-          }
-          
-          if (!userEmail) {
-            throw new Error('Could not determine user email for deletion');
-          }
-          
-          // Use the email we found for comprehensive cleanup
-          debugLog('info', `Found email for cleanup: ${userEmail}`);
-          await executeComprehensiveUserDeletion(userId, userEmail, profile?.full_name || 'User');
-        } else {
-          // Use the email provided directly
-          await executeComprehensiveUserDeletion(userId, email, 'User');
         }
       }
 
-      // Reload the user list to reflect changes
+      // Define all tables that need to be cleaned
+      const tablesToClean = [
+        // Dependent tables first (have foreign keys)
+        'practice_progress',
+        'user_badges',
+        'user_streaks',
+        'user_points',
+        'training_records',
+        'holiday_requests',
+        'complaints',
+        'submissions',
+        'submission_rows',
+        'quiz_attempts',
+        'meeting_notes',
+        'tasks',
+        'notifications',
+        'audit_logs',
+        'file_attachments',
+        'fuzzy_match_holidays',
+        'team_members',
+        'site_invites',
+        // Primary table last
+        'master_users'
+      ];
+
+      let totalDeleted = 0;
+      const errors = [];
+
+      // Step 2: Delete from all tables
+      for (const table of tablesToClean) {
+        logDeletion('info', `Cleaning table: ${table}`);
+
+        try {
+          let query = supabase.from(table).delete();
+
+          // Build query based on available identifiers
+          if (table === 'master_users') {
+            if (email && siteId) {
+              query = query.eq('email', email).eq('site_id', siteId);
+            } else if (userId) {
+              query = query.eq('auth_user_id', userId);
+            } else if (masterId) {
+              query = query.eq('id', masterId);
+            }
+          } else {
+            // For other tables, try different column names
+            if (userId) {
+              // Try common column names
+              const userColumns = ['user_id', 'auth_user_id', 'created_by', 'owner_id', 'staff_id'];
+              for (const col of userColumns) {
+                try {
+                  const testQuery = supabase.from(table).select('id').eq(col, userId).limit(1);
+                  const { data: testData, error: testError } = await testQuery;
+                  if (!testError && testData) {
+                    query = query.eq(col, userId);
+                    break;
+                  }
+                } catch (e) {
+                  // Column doesn't exist, try next
+                }
+              }
+            }
+
+            if (email) {
+              // Also try email-based deletion
+              const emailColumns = ['email', 'user_email', 'created_by_email'];
+              for (const col of emailColumns) {
+                try {
+                  const testQuery = supabase.from(table).select('id').eq(col, email).limit(1);
+                  const { data: testData, error: testError } = await testQuery;
+                  if (!testError && testData) {
+                    query = query.eq(col, email);
+                    break;
+                  }
+                } catch (e) {
+                  // Column doesn't exist, try next
+                }
+              }
+            }
+          }
+
+          const { data, error } = await query;
+
+          if (error) {
+            if (!error.message.includes('column') && !error.message.includes('relation')) {
+              logDeletion('error', `Failed to delete from ${table}`, error);
+              errors.push({ table, error: error.message });
+            }
+          } else {
+            logDeletion('success', `Deleted from ${table}`);
+            totalDeleted++;
+          }
+        } catch (err) {
+          logDeletion('warning', `Error with table ${table}`, err.message);
+        }
+      }
+
+      // Step 3: Delete from Supabase Auth
+      if (userId) {
+        logDeletion('info', 'Deleting from Supabase Auth');
+
+        try {
+          const { error: authError } = await supabase.auth.admin.deleteUser(userId);
+
+          if (authError) {
+            logDeletion('error', 'Failed to delete from auth', authError);
+            errors.push({ table: 'auth.users', error: authError.message });
+          } else {
+            logDeletion('success', '✅ Deleted from Supabase Auth');
+          }
+        } catch (authErr) {
+          logDeletion('error', 'Auth deletion failed', authErr);
+        }
+      }
+
+      // Step 4: Report results
+      logDeletion('info', '=== DELETION COMPLETE ===');
+      logDeletion('info', `Tables cleaned: ${totalDeleted}`);
+
+      if (errors.length > 0) {
+        logDeletion('warning', 'Errors encountered:', errors);
+        alert(`⚠️ User deletion completed with some errors.\n\nSuccessfully cleaned ${totalDeleted} tables.\n\nErrors: ${errors.length}\n\nCheck the debug console for details.`);
+      } else {
+        alert(`✅ User completely deleted!\n\nCleaned ${totalDeleted} tables successfully.`);
+      }
+
+      // Reload user list
       loadPracticeUsers();
 
     } catch (err) {
-      debugLog('error', 'Failed to remove user/invite', err);
-      alert('Failed to remove user: ' + err.message);
+      logDeletion('error', 'Fatal error during deletion', err);
+      alert(`❌ Failed to delete user: ${err.message}\n\nCheck the debug console for details.`);
     }
   };
   
-  // Comprehensive user deletion function - removes ALL user data securely
+  // Cleanup utility for orphaned records
+  window.cleanupOrphanedUserRecords = async function(email) {
+    if (!email) {
+      email = prompt('Enter the email address to clean up:');
+      if (!email) return;
+    }
+
+    if (!confirm(`This will remove ALL orphaned records for: ${email}\n\nContinue?`)) return;
+
+    window.userDeletionLog = [];
+    window.showDeletionDebugConsole();
+
+    logDeletion('info', `Starting orphaned records cleanup for: ${email}`);
+
+    const tables = [
+      'practice_progress',
+      'user_badges',
+      'user_streaks',
+      'user_points',
+      'training_records',
+      'holiday_requests',
+      'complaints',
+      'submissions',
+      'master_users'
+    ];
+
+    let totalCleaned = 0;
+
+    for (const table of tables) {
+      try {
+        logDeletion('info', `Checking table: ${table}`);
+
+        // First, check if records exist
+        const { data: records, error: selectError } = await supabase
+          .from(table)
+          .select('id')
+          .eq('email', email);
+
+        if (!selectError && records && records.length > 0) {
+          logDeletion('info', `Found ${records.length} orphaned records in ${table}`);
+
+          // Delete them
+          const { error: deleteError } = await supabase
+            .from(table)
+            .delete()
+            .eq('email', email);
+
+          if (deleteError) {
+            logDeletion('error', `Failed to clean ${table}`, deleteError);
+          } else {
+            logDeletion('success', `Cleaned ${records.length} records from ${table}`);
+            totalCleaned += records.length;
+          }
+        }
+      } catch (err) {
+        logDeletion('warning', `Error checking ${table}`, err.message);
+      }
+    }
+
+    // Also check auth users
+    try {
+      const { data: authUsers } = await supabase.auth.admin.listUsers();
+      const authUser = authUsers?.users?.find(u => u.email === email);
+
+      if (authUser) {
+        logDeletion('info', 'Found orphaned auth user', authUser.id);
+
+        const { error } = await supabase.auth.admin.deleteUser(authUser.id);
+        if (!error) {
+          logDeletion('success', 'Removed orphaned auth user');
+          totalCleaned++;
+        }
+      }
+    } catch (err) {
+      logDeletion('warning', 'Could not check auth users', err.message);
+    }
+
+    logDeletion('info', `Cleanup complete! Total records cleaned: ${totalCleaned}`);
+    alert(`✅ Cleanup complete!\n\nRemoved ${totalCleaned} orphaned records for ${email}`);
+  };
+
+  // Legacy function preserved
   async function executeComprehensiveUserDeletion(userId, email, fullName) {
     debugLog('info', `🗑️ Starting comprehensive deletion for user: ${fullName} (${email}) [${userId}]`);
 
@@ -13052,21 +13242,113 @@ window.PIR_DEFINITIONS_DATA = [
       // Remove progress indicator
       setTimeout(() => progressDiv.remove(), 2000);
 
-      // Show final success message
-      const successDiv = document.createElement('div');
-      successDiv.className = 'alert success';
-      successDiv.style.cssText = 'position: fixed; top: 80px; right: 20px; padding: 20px; background: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 8px; z-index: 10000; max-width: 450px;';
-      successDiv.innerHTML = `
-        <strong>✅ User Completely Removed</strong><br>
-        <strong>${fullName}</strong> and all associated data has been permanently deleted.<br><br>
-        <strong>Summary:</strong><br>
-        • Tables processed: ${deletionResults.tablesProcessed}<br>
-        • Records deleted: ${deletionResults.recordsDeleted}<br>
-        • Duration: ${Math.round(duration / 1000)}s<br>
-        ${deletionResults.errors.length > 0 ? `<br><strong>⚠️ Warnings:</strong> ${deletionResults.errors.length} minor issues` : ''}
+      // Show detailed debug results with copy functionality
+      const debugDiv = document.createElement('div');
+      debugDiv.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        width: 500px;
+        max-height: 80vh;
+        background: #ffffff;
+        border: 2px solid #22c55e;
+        border-radius: 12px;
+        z-index: 10000;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        overflow: hidden;
       `;
-      document.body.appendChild(successDiv);
-      setTimeout(() => successDiv.remove(), 7000);
+
+      // Create detailed debug report
+      const debugReport = {
+        operation: 'User Deletion',
+        user: {
+          name: fullName,
+          id: userId,
+          email: email
+        },
+        results: {
+          tablesProcessed: deletionResults.tablesProcessed,
+          recordsDeleted: deletionResults.recordsDeleted,
+          duration: `${Math.round(duration / 1000)}s (${duration}ms)`,
+          errors: deletionResults.errors,
+          success: true
+        },
+        timestamp: new Date().toISOString(),
+        deletionPlan: deletionPlan.map(step => ({
+          category: step.category,
+          tables: step.tables.map(t => t.name)
+        }))
+      };
+
+      const debugJson = JSON.stringify(debugReport, null, 2);
+
+      debugDiv.innerHTML = `
+        <div style="background: linear-gradient(135deg, #22c55e, #16a34a); color: white; padding: 16px; font-weight: bold; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <div style="font-size: 16px;">✅ User Deletion Complete</div>
+            <div style="font-size: 12px; opacity: 0.9;">${fullName} and all data permanently removed</div>
+          </div>
+          <button onclick="this.closest('div').parentElement.remove()" style="background: rgba(255,255,255,0.2); border: none; color: white; width: 24px; height: 24px; border-radius: 50%; cursor: pointer; font-size: 16px;">×</button>
+        </div>
+
+        <div style="padding: 16px; max-height: 60vh; overflow-y: auto;">
+          <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+            <div style="flex: 1; background: #f8fafc; padding: 12px; border-radius: 8px; border-left: 4px solid #22c55e;">
+              <div style="font-size: 24px; font-weight: bold; color: #16a34a;">${deletionResults.tablesProcessed}</div>
+              <div style="font-size: 12px; color: #64748b;">Tables Processed</div>
+            </div>
+            <div style="flex: 1; background: #f8fafc; padding: 12px; border-radius: 8px; border-left: 4px solid #3b82f6;">
+              <div style="font-size: 24px; font-weight: bold; color: #2563eb;">${deletionResults.recordsDeleted}</div>
+              <div style="font-size: 12px; color: #64748b;">Records Deleted</div>
+            </div>
+            <div style="flex: 1; background: #f8fafc; padding: 12px; border-radius: 8px; border-left: 4px solid #8b5cf6;">
+              <div style="font-size: 24px; font-weight: bold; color: #7c3aed;">${Math.round(duration / 1000)}s</div>
+              <div style="font-size: 12px; color: #64748b;">Duration</div>
+            </div>
+          </div>
+
+          ${deletionResults.errors.length > 0 ? `
+            <div style="background: #fef3cd; border: 1px solid #fbbf24; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+              <div style="font-weight: bold; color: #92400e; margin-bottom: 8px;">⚠️ ${deletionResults.errors.length} Warnings:</div>
+              <div style="font-size: 12px; color: #92400e; max-height: 100px; overflow-y: auto;">
+                ${deletionResults.errors.map(err => `• ${err}`).join('<br>')}
+              </div>
+            </div>
+          ` : ''}
+
+          <div style="background: #f1f5f9; border-radius: 8px; padding: 12px; position: relative;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <span style="font-weight: bold; color: #475569;">Debug Report</span>
+              <button onclick="navigator.clipboard.writeText(\`${debugJson.replace(/`/g, '\\`')}\`).then(() => {
+                const btn = this;
+                const orig = btn.innerHTML;
+                btn.innerHTML = '✅ Copied!';
+                btn.style.background = '#22c55e';
+                setTimeout(() => { btn.innerHTML = orig; btn.style.background = '#3b82f6'; }, 2000);
+              })"
+              style="background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer;">
+                📋 Copy JSON
+              </button>
+            </div>
+            <pre style="background: #1e293b; color: #e2e8f0; padding: 12px; border-radius: 6px; font-size: 11px; max-height: 300px; overflow: auto; margin: 0; white-space: pre-wrap; word-wrap: break-word;">${debugJson}</pre>
+          </div>
+
+          <div style="margin-top: 16px; text-align: center;">
+            <button onclick="this.closest('div').parentElement.remove()" style="background: #64748b; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer;">
+              Close Debug Report
+            </button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(debugDiv);
+
+      // Auto-remove after 30 seconds if not manually closed
+      setTimeout(() => {
+        if (debugDiv.parentElement) {
+          debugDiv.remove();
+        }
+      }, 30000);
 
       return true;
 
@@ -23085,7 +23367,7 @@ async function loadTeamOverview() {
 
 // Comprehensive user deletion function
 async function deleteUser(authUserId, userName, masterUserId) {
-  // Show confirmation dialog
+  // Show simplified confirmation dialog
   const confirmed = confirm(`⚠️ PERMANENT DELETION WARNING ⚠️
 
 Are you absolutely sure you want to permanently delete "${userName}"?
@@ -23096,16 +23378,9 @@ This will:
 • Remove ALL their data (submissions, complaints, etc.)
 • This action CANNOT be undone
 
-Type "DELETE" to confirm this permanent action.`);
+Click OK to proceed with permanent deletion or Cancel to abort.`);
 
   if (!confirmed) return;
-
-  // Double confirmation - ask them to type DELETE
-  const typeConfirm = prompt(`To confirm permanent deletion of "${userName}", please type "DELETE" (all caps):`);
-  if (typeConfirm !== 'DELETE') {
-    alert('Deletion cancelled - confirmation text did not match.');
-    return;
-  }
 
   try {
     // Show loading state
@@ -23119,113 +23394,34 @@ Type "DELETE" to confirm this permanent action.`);
 
     console.log(`🗑️ Starting permanent deletion of user: ${userName} (Auth ID: ${authUserId})`);
 
-    // Step 1: Delete from all database tables using master_users ID and auth_user_id
-    const tablesToClean = [
-      'training_records',
-      'holiday_requests',
-      'complaints',
-      'submissions',
-      'submission_rows',
-      'activity_likes',
-      'pir_documents',
-      'kiosk_users',
-      'holiday_import_fuzzy',
-      'training_import_records',
-      'site_invites'
-    ];
-
-    let deletionResults = {
-      tablesProcessed: 0,
-      recordsDeleted: 0,
-      errors: []
-    };
-
-    // Delete from tables that reference master_users.id
-    for (const table of tablesToClean) {
-      try {
-        console.log(`Deleting from ${table}...`);
-
-        // Try both user_id and auth_user_id depending on table structure
-        const { error: deleteError1, count: count1 } = await supabase
-          .from(table)
-          .delete({ count: 'exact' })
-          .eq('user_id', masterUserId);
-
-        const { error: deleteError2, count: count2 } = await supabase
-          .from(table)
-          .delete({ count: 'exact' })
-          .eq('auth_user_id', authUserId);
-
-        const { error: deleteError3, count: count3 } = await supabase
-          .from(table)
-          .delete({ count: 'exact' })
-          .eq('created_by', authUserId);
-
-        deletionResults.tablesProcessed++;
-        deletionResults.recordsDeleted += (count1 || 0) + (count2 || 0) + (count3 || 0);
-
-        if (deleteError1 || deleteError2 || deleteError3) {
-          console.warn(`Some deletions failed in ${table}:`, deleteError1, deleteError2, deleteError3);
-        }
-      } catch (err) {
-        console.error(`Error deleting from ${table}:`, err);
-        deletionResults.errors.push(`${table}: ${err.message}`);
-      }
-    }
-
-    // Step 2: Delete from master_users (this should be last for referential integrity)
+    // Get user email for comprehensive deletion
+    let userEmail = '';
     try {
-      console.log('Deleting from master_users...');
-      const { error: masterError } = await supabase
+      // Try to get email from master_users first
+      const { data: profile } = await supabase
         .from('master_users')
-        .delete()
-        .eq('id', masterUserId);
+        .select('email')
+        .eq('id', masterUserId)
+        .single();
 
-      if (masterError) throw masterError;
-      deletionResults.recordsDeleted++;
-      deletionResults.tablesProcessed++;
-    } catch (err) {
-      console.error('Error deleting from master_users:', err);
-      deletionResults.errors.push(`master_users: ${err.message}`);
-    }
+      userEmail = profile?.email || '';
 
-    // Step 3: Delete from Supabase Auth using service role key
-    try {
-      console.log('Deleting from Supabase Auth...');
-
-      // Create service role client with the provided service key
-      const serviceRoleClient = window.supabaseCreateClient(
-        'https://unveoqnlqnobufhublyw.supabase.co',
-        'sb_secret_ylIhDtikpno4LTTUmpDJvw_Ov7BtIEp'
-      );
-
-      const { error: authError } = await serviceRoleClient.auth.admin.deleteUser(authUserId);
-
-      if (authError) {
-        console.error('Auth deletion error:', authError);
-        deletionResults.errors.push(`Supabase Auth: ${authError.message}`);
-      } else {
-        console.log('✅ Successfully deleted from Supabase Auth');
+      // If no email from master_users, try to get from auth user
+      if (!userEmail) {
+        const { data: authUser } = await supabase.auth.admin.getUserById(authUserId);
+        userEmail = authUser?.user?.email || '';
       }
-    } catch (err) {
-      console.error('Error deleting from Supabase Auth:', err);
-      deletionResults.errors.push(`Supabase Auth: ${err.message}`);
+    } catch (emailError) {
+      console.warn('Could not determine user email:', emailError);
+      userEmail = `user_${authUserId}@unknown.email`;
     }
 
-    // Show results
-    const successMessage = `✅ User "${userName}" has been permanently deleted.
+    // Use the comprehensive deletion function for complete cleanup
+    await executeComprehensiveUserDeletion(authUserId, userEmail, userName);
 
-📊 Deletion Summary:
-• Tables processed: ${deletionResults.tablesProcessed}
-• Records deleted: ${deletionResults.recordsDeleted}
-• Auth account: ${deletionResults.errors.some(e => e.includes('Supabase Auth')) ? 'Failed' : 'Deleted'}`;
-
-    if (deletionResults.errors.length > 0) {
-      console.warn('Some deletion errors occurred:', deletionResults.errors);
-      alert(successMessage + `\n\n⚠️ Some errors occurred:\n${deletionResults.errors.join('\n')}`);
-    } else {
-      alert(successMessage);
-    }
+    // Restore button state
+    deleteBtn.innerHTML = originalContent;
+    deleteBtn.disabled = false;
 
     // Refresh the team overview table
     await loadTeamOverview();
@@ -23237,8 +23433,9 @@ Type "DELETE" to confirm this permanent action.`);
     alert(`❌ Fatal error during deletion: ${error.message}`);
 
     // Restore button
+    const deleteBtn = event.target.closest('button');
     if (deleteBtn) {
-      deleteBtn.innerHTML = originalContent;
+      deleteBtn.innerHTML = deleteBtn.dataset.originalContent || 'Delete';
       deleteBtn.disabled = false;
     }
   }
@@ -27865,13 +28062,50 @@ async function submitInviteForm() {
 
     console.log('User created successfully:', data);
 
-    // Get team name for display
-    const teamName = userData.team_id ?
-      (document.querySelector(`#invite-team option[value="${userData.team_id}"]`)?.textContent || `Team ${userData.team_id}`) :
-      'No team assigned';
+    // Send invitation email
+    console.log('Sending invitation email...');
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      if (!session) throw new Error('Not logged in');
 
-    // Show success message
-    alert(`✅ User created successfully!\n\n${userData.title} ${userData.full_name} has been added to your team.\n\nEmail: ${userData.email}\nJob Role: ${userData.role}\nTeam: ${teamName}\nAccess Level: ${userData.access_type}\n\nThey will need to complete the signup process to access the system.`);
+      const { data: emailResult, error: emailError } = await supabase.functions.invoke('send-invitation', {
+        body: {
+          email: userData.email,
+          full_name: userData.full_name,
+          site_id: userData.site_id,
+          resend: false
+        },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (emailError) {
+        console.error('Email sending failed:', emailError);
+        // Show warning but don't fail the whole process
+        const teamName = userData.team_id ?
+          (document.querySelector(`#invite-team option[value="${userData.team_id}"]`)?.textContent || `Team ${userData.team_id}`) :
+          'No team assigned';
+
+        alert(`⚠️ User created but email failed to send!\n\n${userData.title} ${userData.full_name} has been added to your team.\n\nEmail: ${userData.email}\nJob Role: ${userData.role}\nTeam: ${teamName}\nAccess Level: ${userData.access_type}\n\n❌ Email Error: ${emailError.message}\n\nYou can use the "Resend" button to try sending the invitation email again.`);
+      } else {
+        console.log('Invitation email sent successfully:', emailResult);
+        const teamName = userData.team_id ?
+          (document.querySelector(`#invite-team option[value="${userData.team_id}"]`)?.textContent || `Team ${userData.team_id}`) :
+          'No team assigned';
+
+        alert(`✅ User created and password setup email sent!\n\n${userData.title} ${userData.full_name} has been added to your team.\n\nEmail: ${userData.email}\nJob Role: ${userData.role}\nTeam: ${teamName}\nAccess Level: ${userData.access_type}\n\n📧 Password reset email sent to: ${userData.email}\n✨ They will receive instructions to set their password and access the Staff Welcome page`);
+      }
+    } catch (emailError) {
+      console.error('Email sending error:', emailError);
+      // Show warning but don't fail the whole process
+      const teamName = userData.team_id ?
+        (document.querySelector(`#invite-team option[value="${userData.team_id}"]`)?.textContent || `Team ${userData.team_id}`) :
+        'No team assigned';
+
+      alert(`⚠️ User created but email failed to send!\n\n${userData.title} ${userData.full_name} has been added to your team.\n\nEmail: ${userData.email}\nJob Role: ${userData.role}\nTeam: ${teamName}\nAccess Level: ${userData.access_type}\n\n❌ Email Error: ${emailError.message}\n\nYou can use the "Resend" button to try sending the invitation email again.`);
+    }
 
     // Refresh the team overview to show the new user
     await loadTeamOverview();
