@@ -790,7 +790,7 @@ export function renderStaffNavigation(activePage = 'home') {
 
   // Conditionally add Achievements based on site settings
   if (siteSettings.enable_achievements !== false) {
-    navItems.push({ page: 'achievements', href: 'achievements.html', label: 'Achievements' });
+  // Achievements removed from staff navigation
   }
 
   // Clear existing content and event listeners to avoid duplication

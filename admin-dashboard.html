@@ -27604,17 +27604,52 @@ function showAdminErrorMessage(message) {
         email: authUser.user.email
       });
 
-      // Link auth user to master_users record
+      // Link auth user to master_users record with retry logic
       debugLog('🔗 Linking auth user to master_users record...', 'info');
-      const { error: updateError } = await supabase
-        .from('master_users')
-        .update({ auth_user_id: authUser.user.id })
-        .eq('id', masterData[0].id);
+      let linkSuccess = false;
+      let retryCount = 0;
+      const maxRetries = 3;
 
-      if (updateError) {
-        debugLog('❌ Failed to link auth user to master_users', 'error', updateError);
-      } else {
-        debugLog('✅ Auth user linked to master_users successfully', 'success');
+      while (!linkSuccess && retryCount < maxRetries) {
+        const { error: updateError } = await supabase
+          .from('master_users')
+          .update({
+            auth_user_id: authUser.user.id,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', masterData[0].id);
+
+        if (updateError) {
+          retryCount++;
+          debugLog(`⚠️ Attempt ${retryCount} failed to link auth_user_id`, 'warn', updateError);
+
+          if (retryCount < maxRetries) {
+            // Wait before retrying (exponential backoff)
+            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+          } else {
+            debugLog('❌ Failed to link auth user to master_users after all retries', 'error', updateError);
+            // Log critical failure but don't stop the flow
+            console.error('CRITICAL: auth_user_id not linked for user:', formData.email, 'master_users.id:', masterData[0].id);
+          }
+        } else {
+          linkSuccess = true;
+          debugLog('✅ Auth user linked to master_users successfully', 'success');
+        }
+      }
+
+      // Additionally, verify the link was successful
+      if (linkSuccess) {
+        const { data: verifyData, error: verifyError } = await supabase
+          .from('master_users')
+          .select('auth_user_id')
+          .eq('id', masterData[0].id)
+          .single();
+
+        if (verifyData?.auth_user_id === authUser.user.id) {
+          debugLog('✅ Verified auth_user_id link is correct', 'success');
+        } else {
+          debugLog('⚠️ auth_user_id verification failed', 'warn', { expected: authUser.user.id, actual: verifyData?.auth_user_id });
+        }
       }
 
       // Send password reset email using built-in Supabase system

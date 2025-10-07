@@ -1399,14 +1399,38 @@
 
           console.log('Saving nickname:', nickname, 'for user:', session.user.id);
 
-          // First check if user exists in master_users
-          const { data: existingUser, error: checkError } = await supabase
+          // First check if user exists in master_users by auth_user_id
+          let { data: existingUser, error: checkError } = await supabase
             .from('master_users')
             .select('id, nickname')
             .eq('auth_user_id', session.user.id)
             .maybeSingle();
 
-          if (checkError) {
+          // If not found by auth_user_id, try by email as fallback
+          if (!existingUser && session.user.email) {
+            console.log('User not found by auth_user_id, trying email fallback:', session.user.email);
+            const { data: emailUser, error: emailError } = await supabase
+              .from('master_users')
+              .select('id, nickname, auth_user_id')
+              .eq('email', session.user.email)
+              .maybeSingle();
+
+            if (emailUser) {
+              existingUser = emailUser;
+              console.log('Found user by email, will update auth_user_id');
+
+              // Update the missing auth_user_id
+              if (!emailUser.auth_user_id) {
+                await supabase
+                  .from('master_users')
+                  .update({ auth_user_id: session.user.id })
+                  .eq('id', emailUser.id);
+                console.log('Updated missing auth_user_id for user');
+              }
+            }
+          }
+
+          if (checkError && !existingUser) {
             console.error('Error checking user existence:', checkError);
             throw checkError;
           }
@@ -1421,7 +1445,7 @@
           const { data, error } = await supabase
             .from('master_users')
             .update({ nickname, updated_at: new Date().toISOString() })
-            .eq('auth_user_id', session.user.id);
+            .eq('id', existingUser.id);
 
           if (error) {
             console.error('Nickname save error:', error);
@@ -1497,14 +1521,38 @@
 
           console.log('Saving avatar URL:', avatarUrl, 'for user:', session.user.id);
 
-          // First check if user exists in master_users
-          const { data: existingUser, error: checkError } = await supabase
+          // First check if user exists in master_users by auth_user_id
+          let { data: existingUser, error: checkError } = await supabase
             .from('master_users')
             .select('id, avatar_url')
             .eq('auth_user_id', session.user.id)
             .maybeSingle();
 
-          if (checkError) {
+          // If not found by auth_user_id, try by email as fallback
+          if (!existingUser && session.user.email) {
+            console.log('User not found by auth_user_id for avatar, trying email fallback:', session.user.email);
+            const { data: emailUser, error: emailError } = await supabase
+              .from('master_users')
+              .select('id, avatar_url, auth_user_id')
+              .eq('email', session.user.email)
+              .maybeSingle();
+
+            if (emailUser) {
+              existingUser = emailUser;
+              console.log('Found user by email for avatar, will update auth_user_id');
+
+              // Update the missing auth_user_id
+              if (!emailUser.auth_user_id) {
+                await supabase
+                  .from('master_users')
+                  .update({ auth_user_id: session.user.id })
+                  .eq('id', emailUser.id);
+                console.log('Updated missing auth_user_id for avatar user');
+              }
+            }
+          }
+
+          if (checkError && !existingUser) {
             console.error('Error checking user existence for avatar:', checkError);
             throw checkError;
           }
@@ -1528,7 +1576,7 @@
           const { data, error: profileError } = await supabase
             .from('master_users')
             .update({ avatar_url: avatarUrl, updated_at: new Date().toISOString() })
-            .eq('auth_user_id', session.user.id);
+            .eq('id', existingUser.id);
 
           if (profileError) {
             console.error('Profile avatar update error:', profileError);

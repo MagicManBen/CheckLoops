@@ -71,17 +71,11 @@ function getStandardNavHTML(activePage = 'staff.html') {
 
       <div class="navbar-nav nav-links" id="nav-links">
         <a href="staff.html" class="nav-link ${activePage === 'staff.html' ? 'active' : ''}">Dashboard</a>
-  <a href="staff-training.html" class="nav-link ${activePage === 'staff-training.html' ? 'active' : ''}">Training</a>
-  <a href="staff-quiz.html" class="nav-link ${activePage === 'staff-quiz.html' ? 'active' : ''}">Quiz</a>
-  <a href="staff-calendar.html" class="nav-link ${activePage === 'staff-calendar.html' ? 'active' : ''}">Calendar</a>
+        <a href="staff-training.html" class="nav-link ${activePage === 'staff-training.html' ? 'active' : ''}">Training</a>
+        <a href="staff-quiz.html" class="nav-link ${activePage === 'staff-quiz.html' ? 'active' : ''}">Quiz</a>
+        <a href="staff-calendar.html" class="nav-link ${activePage === 'staff-calendar.html' ? 'active' : ''}">Calendar</a>
         <a href="my-holidays.html" class="nav-link ${activePage === 'my-holidays.html' ? 'active' : ''}">Holidays</a>
-        <div class="nav-dropdown">
-          <a href="#" class="nav-link dropdown-toggle">More ▼</a>
-          <div class="dropdown-menu">
-            <a href="staff-welcome.html" class="dropdown-item ${activePage === 'staff-welcome.html' ? 'active' : ''}">Welcome</a>
-            <a href="achievements.html" class="dropdown-item ${activePage === 'achievements.html' ? 'active' : ''}">Achievements</a>
-          </div>
-        </div>
+        <a href="staff-welcome.html" class="nav-link ${activePage === 'staff-welcome.html' ? 'active' : ''}">Welcome</a>
       </div>
 
       <div class="navbar-user">
@@ -91,12 +85,12 @@ function getStandardNavHTML(activePage = 'staff.html') {
           </svg>
           Admin Portal
         </a>
-        <button class="btn-signout" id="logout-btn">Sign Out</button>
         <div class="user-info">
           <div id="navbar-avatar" style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--accent)); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 0.875rem;"></div>
           <span class="user-pill" id="email-pill">—</span>
           <span class="user-pill role" id="role-pill">—</span>
         </div>
+        <button class="btn-signout" id="logout-btn">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
             <polyline points="16,17 21,12 16,7"></polyline>
