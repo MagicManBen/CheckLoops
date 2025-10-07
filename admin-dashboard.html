@@ -13000,8 +13000,18 @@ window.PIR_DEFINITIONS_DATA = [
     alert(`✅ Cleanup complete!\n\nRemoved ${totalCleaned} orphaned records for ${email}`);
   };
 
-  // Legacy function preserved
+  // Legacy function redirect to new system
   async function executeComprehensiveUserDeletion(userId, email, fullName) {
+    // Redirect to new function
+    return window.removeUserComplete({
+      userId: userId,
+      email: email,
+      site_id: window.ctx?.site_id || 2
+    });
+  }
+
+  // Old function preserved for compatibility
+  async function executeComprehensiveUserDeletionOld(userId, email, fullName) {
     debugLog('info', `🗑️ Starting comprehensive deletion for user: ${fullName} (${email}) [${userId}]`);
 
     const deletionResults = {
@@ -23400,24 +23410,40 @@ Click OK to proceed with permanent deletion or Cancel to abort.`);
       // Try to get email from master_users first
       const { data: profile } = await supabase
         .from('master_users')
-        .select('email')
+        .select('email, site_id')
         .eq('id', masterUserId)
         .single();
 
       userEmail = profile?.email || '';
+      const siteId = profile?.site_id || window.ctx?.site_id || 2;
 
       // If no email from master_users, try to get from auth user
       if (!userEmail) {
-        const { data: authUser } = await supabase.auth.admin.getUserById(authUserId);
-        userEmail = authUser?.user?.email || '';
+        try {
+          const { data: authUsers } = await supabase.auth.admin.listUsers();
+          const authUser = authUsers?.users?.find(u => u.id === authUserId);
+          userEmail = authUser?.email || '';
+        } catch (e) {
+          console.warn('Could not get email from auth:', e);
+        }
       }
+
+      // Use the new removeUserComplete function
+      await window.removeUserComplete({
+        userId: authUserId,
+        masterId: masterUserId,
+        email: userEmail,
+        site_id: siteId
+      });
+
     } catch (emailError) {
       console.warn('Could not determine user email:', emailError);
-      userEmail = `user_${authUserId}@unknown.email`;
+      // Call with minimal info
+      await window.removeUserComplete({
+        userId: authUserId,
+        masterId: masterUserId
+      });
     }
-
-    // Use the comprehensive deletion function for complete cleanup
-    await executeComprehensiveUserDeletion(authUserId, userEmail, userName);
 
     // Restore button state
     deleteBtn.innerHTML = originalContent;
