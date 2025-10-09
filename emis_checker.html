@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMIS Appointment Data Upload</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+            margin-top: 30px;
+        }
+        .upload-container {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .upload-container:hover {
+            border-color: #007bff;
+        }
+        .hidden {
+            display: none;
+        }
+        .fade {
+            opacity: 0;
+            transition: opacity 0.5s ease-out;
+        }
+        .alert {
+            transition: all 0.3s ease-in-out;
+        }
+        .alert-success {
+            border-left: 5px solid #28a745;
+        }
+        .alert-warning {
+            border-left: 5px solid #ffc107;
+        }
+        .processing-indicator {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 3px solid rgba(0,123,255,0.3);
+            border-radius: 50%;
+            border-top-color: #007bff;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        #progress-area {
+            margin-top: 20px;
+        }
+        .preview-table {
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        #status-message {
+            margin-top: 15px;
+        }
+        .stats-container {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        .stats-item {
+            margin-bottom: 10px;
+        }
+        .summary-card {
+            background-color: #f0f8ff;
+            padding: 15px;
+            margin-top: 20px;
+            border-left: 5px solid #007bff;
+            border-radius: 5px;
+        }
+        .badge {
+            font-size: 1em;
+        }
+        #debug-panel {
+            margin-bottom: 50px;
+        }
+        .debug-success {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .debug-error {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .debug-warning {
+            color: #ffc107;
+            font-weight: bold;
+        }
+        .debug-info {
+            color: #17a2b8;
+            font-weight: bold;
+        }
+        .copy-notification {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background-color: #28a745;
+            color: white;
+            border-radius: 4px;
+            transition: opacity 0.3s ease-in-out;
+            opacity: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mb-4 text-center">EMIS Appointment Data Upload</h1>
+        
+        <div class="upload-container" id="drop-area">
+            <p>Drag & drop your CSV file here or click to select a file</p>
+            <input type="file" id="file-input" accept=".csv" class="hidden">
+        </div>
+
+        <div id="file-info" class="alert alert-info hidden">
+            <span id="file-name"></span>
+            <button class="btn btn-sm btn-danger float-end" id="remove-file">Remove</button>
+            <div class="mt-2">
+                <span class="badge bg-success"><i class="bi bi-arrow-down-circle"></i> Auto-Fill</span>
+                <span class="small ms-2">Empty cells will be filled down from the cell above.</span>
+            </div>
+        </div>
+
+        <div id="data-stats" class="stats-container hidden">
+            <h4>Data Statistics</h4>
+            <div class="row">
+                <div class="col-md-4 stats-item">
+                    <strong>Total Rows:</strong> <span id="total-rows">0</span>
+                </div>
+                <div class="col-md-4 stats-item">
+                    <strong>Valid Rows:</strong> <span id="valid-rows">0</span>
+                </div>
+                <div class="col-md-4 stats-item">
+                    <strong>Invalid Rows:</strong> <span id="invalid-rows">0</span>
+                </div>
+            </div>
+            <div id="validation-issues" class="mt-2 hidden">
+                <h5>Validation Issues:</h5>
+                <ul id="validation-list" class="text-danger"></ul>
+            </div>
+        </div>
+
+        <div id="preview-area" class="hidden">
+            <h3>Data Preview</h3>
+            <p>Showing the first 5 rows of data:</p>
+            <div class="preview-table">
+                <table class="table table-striped table-bordered" id="preview-table">
+                    <thead id="preview-headers"></thead>
+                    <tbody id="preview-body"></tbody>
+                </table>
+            </div>
+            <div class="mt-3">
+                <button id="upload-btn" class="btn btn-primary">Upload to Database</button>
+            </div>
+        </div>
+
+        <div id="progress-area" class="hidden">
+            <div class="progress">
+                <div id="progress-bar" class="progress-bar" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+            </div>
+            <div id="status-message" class="text-center"></div>
+        </div>
+        
+        <div id="upload-summary" class="summary-card hidden">
+            <h4>Upload Summary</h4>
+            <div class="row">
+                <div class="col-md-4">
+                    <strong>Total Processed:</strong> <span id="total-processed">0</span>
+                </div>
+                <div class="col-md-4">
+                    <strong>Successfully Uploaded:</strong> <span id="total-uploaded">0</span>
+                </div>
+                <div class="col-md-4">
+                    <strong>Status:</strong> <span id="upload-status" class="badge bg-success">Success</span>
+                </div>
+            </div>
+            <div class="mt-3">
+                <button id="new-upload-btn" class="btn btn-outline-primary">Upload Another File</button>
+                <button id="test-connection-btn" class="btn btn-outline-secondary ms-2">Test API Connection</button>
+            </div>
+        </div>
+        
+        <!-- Debug Panel -->
+        <div id="debug-panel" class="mt-4">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h4>Debug Information</h4>
+                <div>
+                    <button id="toggle-debug-btn" class="btn btn-sm btn-outline-secondary">Show Debug Info</button>
+                    <button id="copy-debug-btn" class="btn btn-sm btn-outline-info ms-2" title="Copy debug info to clipboard">
+                        <i class="bi bi-clipboard"></i> Copy
+                    </button>
+                </div>
+            </div>
+            <div id="debug-content" class="hidden">
+                <div class="card">
+                    <div class="card-header bg-light">
+                        <ul class="nav nav-tabs card-header-tabs" id="debug-tabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="request-tab" data-bs-toggle="tab" data-bs-target="#request-debug" type="button" role="tab">Request</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="response-tab" data-bs-toggle="tab" data-bs-target="#response-debug" type="button" role="tab">Response</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="data-tab" data-bs-toggle="tab" data-bs-target="#data-debug" type="button" role="tab">Data</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="error-tab" data-bs-toggle="tab" data-bs-target="#error-debug" type="button" role="tab">Errors</button>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="card-body">
+                        <div class="tab-content" id="debug-tabs-content">
+                            <div class="tab-pane fade show active" id="request-debug" role="tabpanel">
+                                <pre class="bg-light p-3 mb-0" style="max-height: 300px; overflow-y: auto;"><code id="request-debug-content">No request data yet</code></pre>
+                            </div>
+                            <div class="tab-pane fade" id="response-debug" role="tabpanel">
+                                <pre class="bg-light p-3 mb-0" style="max-height: 300px; overflow-y: auto;"><code id="response-debug-content">No response data yet</code></pre>
+                            </div>
+                            <div class="tab-pane fade" id="data-debug" role="tabpanel">
+                                <pre class="bg-light p-3 mb-0" style="max-height: 300px; overflow-y: auto;"><code id="data-debug-content">No data yet</code></pre>
+                            </div>
+                            <div class="tab-pane fade" id="error-debug" role="tabpanel">
+                                <pre class="bg-light p-3 mb-0" style="max-height: 300px; overflow-y: auto;"><code id="error-debug-content">No errors yet</code></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Add Bootstrap Icons for copy button -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+
+    <!-- Add scripts here -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.0/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Elements
+            const dropArea = document.getElementById('drop-area');
+            const fileInput = document.getElementById('file-input');
+            const fileInfo = document.getElementById('file-info');
+            const fileName = document.getElementById('file-name');
+            const removeFileBtn = document.getElementById('remove-file');
+            const previewArea = document.getElementById('preview-area');
+            const previewHeaders = document.getElementById('preview-headers');
+            const previewBody = document.getElementById('preview-body');
+            const uploadBtn = document.getElementById('upload-btn');
+            const progressArea = document.getElementById('progress-area');
+            const progressBar = document.getElementById('progress-bar');
+            const statusMessage = document.getElementById('status-message');
+
+            // Global variables
+            let csvData = null;
+            let parsedData = null;
+            let mappedData = [];
+            let validationIssues = [];
+            let debugInfo = {
+                requests: [],
+                responses: [],
+                data: [],
+                errors: []
+            };
+
+            // Handle file drop event
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, preventDefaults, false);
+            });
+            
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropArea.addEventListener(eventName, highlight, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, unhighlight, false);
+            });
+
+            function highlight() {
+                dropArea.classList.add('bg-light');
+            }
+
+            function unhighlight() {
+                dropArea.classList.remove('bg-light');
+            }
+
+            // Handle file drop
+            dropArea.addEventListener('drop', handleDrop, false);
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const file = dt.files[0];
+                handleFile(file);
+            }
+
+            // Handle file selection
+            dropArea.addEventListener('click', () => {
+                fileInput.click();
+            });
+
+            fileInput.addEventListener('change', function(e) {
+                if (this.files && this.files[0]) {
+                    handleFile(this.files[0]);
+                }
+            });
+
+            // Remove file button
+            removeFileBtn.addEventListener('click', () => {
+                resetFileInput();
+            });
+
+            // Reset file input and related display elements
+            function resetFileInput() {
+                fileInput.value = '';
+                csvData = null;
+                parsedData = null;
+                mappedData = [];
+                validationIssues = [];
+                
+                // Clear debug info
+                debugInfo = {
+                    requests: [],
+                    responses: [],
+                    data: [],
+                    errors: []
+                };
+                
+                // Hide all areas
+                fileInfo.classList.add('hidden');
+                previewArea.classList.add('hidden');
+                progressArea.classList.add('hidden');
+                document.getElementById('data-stats').classList.add('hidden');
+                document.getElementById('validation-issues').classList.add('hidden');
+                document.getElementById('upload-summary').classList.add('hidden');
+                document.getElementById('debug-content').classList.add('hidden');
+                
+                // Reset debug content
+                document.getElementById('request-debug-content').textContent = 'No request data yet';
+                document.getElementById('response-debug-content').textContent = 'No response data yet';
+                document.getElementById('data-debug-content').textContent = 'No data yet';
+                document.getElementById('error-debug-content').textContent = 'No errors yet';
+                
+                // Reset debug button
+                document.getElementById('toggle-debug-btn').textContent = 'Show Debug Info';
+                
+                // Reset progress
+                updateProgress(0);
+                statusMessage.textContent = '';
+                statusMessage.classList.remove('text-success', 'text-warning', 'text-danger');
+                
+                // Reset upload button
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = 'Upload to Database';
+            }
+            
+            // Update progress bar
+            function updateProgress(percentage) {
+                progressBar.style.width = `${percentage}%`;
+                progressBar.setAttribute('aria-valuenow', percentage);
+            }
+            
+            // Update debug panels with current information
+            function updateDebugPanels() {
+                // Format and display request info
+                const requestContent = document.getElementById('request-debug-content');
+                if (debugInfo.requests.length > 0) {
+                    requestContent.textContent = JSON.stringify(debugInfo.requests, null, 2);
+                } else {
+                    requestContent.textContent = 'No request data yet';
+                }
+                
+                // Format and display response info
+                const responseContent = document.getElementById('response-debug-content');
+                if (debugInfo.responses.length > 0) {
+                    responseContent.textContent = JSON.stringify(debugInfo.responses, null, 2);
+                } else {
+                    responseContent.textContent = 'No response data yet';
+                }
+                
+                // Format and display data info
+                const dataContent = document.getElementById('data-debug-content');
+                if (debugInfo.data.length > 0) {
+                    dataContent.textContent = JSON.stringify(debugInfo.data, null, 2);
+                } else {
+                    dataContent.textContent = 'No data yet';
+                }
+                
+                // Format and display error info
+                const errorContent = document.getElementById('error-debug-content');
+                if (debugInfo.errors.length > 0) {
+                    errorContent.textContent = JSON.stringify(debugInfo.errors, null, 2);
+                    // Highlight the error tab if there are errors
+                    document.getElementById('error-tab').classList.add('text-danger');
+                } else {
+                    errorContent.textContent = 'No errors yet';
+                }
+            }
+            
+            // Copy debug information to clipboard
+            function copyDebugToClipboard() {
+                // Compile all debug info into a single object
+                const allDebugInfo = {
+                    timestamp: new Date().toISOString(),
+                    csvFileName: csvData ? csvData.name : 'No file',
+                    totalRecords: parsedData ? parsedData.length : 0,
+                    validRecords: mappedData ? mappedData.length : 0,
+                    invalidRecords: validationIssues ? validationIssues.length : 0,
+                    data: debugInfo.data,
+                    requests: debugInfo.requests,
+                    responses: debugInfo.responses,
+                    errors: debugInfo.errors
+                };
+                
+                // Convert to string
+                const debugString = JSON.stringify(allDebugInfo, null, 2);
+                
+                // Copy to clipboard
+                navigator.clipboard.writeText(debugString).then(() => {
+                    // Show notification
+                    const notification = document.createElement('div');
+                    notification.className = 'copy-notification';
+                    notification.textContent = 'Debug info copied to clipboard!';
+                    document.body.appendChild(notification);
+                    
+                    // Animate notification
+                    setTimeout(() => {
+                        notification.style.opacity = '1';
+                        setTimeout(() => {
+                            notification.style.opacity = '0';
+                            setTimeout(() => {
+                                document.body.removeChild(notification);
+                            }, 300);
+                        }, 2000);
+                    }, 10);
+                }).catch(err => {
+                    console.error('Failed to copy debug info:', err);
+                    alert('Failed to copy debug info to clipboard.');
+                });
+            }
+            
+            // Add event listeners for debug panel
+            document.getElementById('toggle-debug-btn').addEventListener('click', function() {
+                const debugContent = document.getElementById('debug-content');
+                if (debugContent.classList.contains('hidden')) {
+                    debugContent.classList.remove('hidden');
+                    this.textContent = 'Hide Debug Info';
+                    // Update debug panels with current info
+                    updateDebugPanels();
+                } else {
+                    debugContent.classList.add('hidden');
+                    this.textContent = 'Show Debug Info';
+                }
+            });
+            
+            // Add copy button functionality
+            document.getElementById('copy-debug-btn').addEventListener('click', copyDebugToClipboard);            // Map CSV fields to database columns with validation
+            function mapCsvToDbFields(data) {
+                let validRows = [];
+                let invalidRows = [];
+                validationIssues = []; // Reset global validation issues
+                
+                data.forEach((row, index) => {
+                    try {
+                        // Check if the row has at least one non-empty value
+                        const hasValues = Object.values(row).some(value => 
+                            value !== null && 
+                            value !== undefined && 
+                            value !== "" && 
+                            value !== "Unknown"
+                        );
+                        
+                        if (!hasValues) {
+                            throw new Error(`Row has no valid data`);
+                        }
+
+                        // Store row number for preserving original CSV order
+                        const csvRowNumber = index + 2;
+                        
+                        function keepUnknownOrNull(val) {
+                            // If the value is "Unknown", return "Unknown"; otherwise, null if empty, else value
+                            if (val === "Unknown") return "Unknown";
+                            if (val === undefined || val === null || val === "") return null;
+                            return val;
+                        }
+                        function parseIntOrUnknown(val) {
+                            if (val === "Unknown") return "Unknown";
+                            if (val === undefined || val === null || val === "") return null;
+                            return parseInt(val);
+                        }
+
+                        const mappedRow = {
+                            full_name_session_holder: keepUnknownOrNull(row["Full Name of the Session Holder of the Session"]),
+                            day_of_week: keepUnknownOrNull(row["Day of Week"]),
+                            session_start: parseDate(row["Session's Session Start"]),
+                            session_end: parseDate(row["Session's Session End"]),
+                            appointment_date: parseDate(row["Appointment Date"]),
+                            appointment_time: parseTime(row["Appointment Time"]),
+                            slot_type: keepUnknownOrNull(row["Slot Type"]),
+                            slot_duration: parseIntOrUnknown(row["Slot Duration"]),
+                            availability: keepUnknownOrNull(row["Availability"]),
+                            dna_status: keepUnknownOrNull(row["DNA"]),
+                            booked_time_to_slot_time: parseIntOrUnknown(row["Booked Time to Slot Time"]),
+                            arrive_time_to_send_in_time: parseIntOrUnknown(row["Arrive Time to Send In Time"]),
+                            slot_time_to_send_in_time: parseIntOrUnknown(row["Slot Time to Send In Time"]),
+                            slot_time_to_arrive_time: parseIntOrUnknown(row["Slot Time to Arrive Time"]),
+                            consultation_time: parseIntOrUnknown(row["Consultation Time"]),
+                            total: parseIntOrUnknown(row[""]), // The last column seems to be the total
+                            site_id: 2, // Default site id for this upload
+                            csv_row_number: csvRowNumber // Store original row number to preserve order
+                        };
+                        
+                        // Add the row number as a property for logging/debugging (this is in addition to the field above)
+                        Object.defineProperty(mappedRow, '_csvRowNumber', {
+                            value: csvRowNumber,
+                            enumerable: false // This makes it non-enumerable so it won't be included in JSON.stringify
+                        });
+
+                        // Add validation for data types
+                        if ((mappedRow.appointment_date === null || mappedRow.appointment_date === "Unknown") && row["Appointment Date"]) {
+                            throw new Error(`Invalid date format for Appointment Date: ${row["Appointment Date"]}`);
+                        }
+                        
+                        validRows.push(mappedRow);
+                    } catch (error) {
+                        const issueObj = {
+                            rowIndex: index + 2, // +2 because of 0-indexing and header row
+                            error: error.message,
+                            originalRow: row
+                        };
+                        invalidRows.push(issueObj);
+                        validationIssues.push(issueObj);
+                    }
+                });
+                
+                // Update data statistics UI
+                updateDataStats(data.length, validRows.length, invalidRows.length);
+                
+                // Show validation errors if any
+                if (invalidRows.length > 0) {
+                    console.warn('Invalid rows detected:', invalidRows);
+                    showValidationIssues(invalidRows);
+                    
+                    if (validRows.length === 0) {
+                        alert('No valid rows found in the CSV file. Please check the data and try again.');
+                        return [];
+                    }
+                }
+                
+                return validRows;
+            }
+            
+            // Update data statistics in the UI
+            function updateDataStats(total, valid, invalid) {
+                const dataStats = document.getElementById('data-stats');
+                const totalRows = document.getElementById('total-rows');
+                const validRows = document.getElementById('valid-rows');
+                const invalidRows = document.getElementById('invalid-rows');
+                
+                totalRows.textContent = total;
+                validRows.textContent = valid;
+                invalidRows.textContent = invalid;
+                
+                dataStats.classList.remove('hidden');
+            }
+            
+            // Show validation issues in the UI
+            function showValidationIssues(issues) {
+                const validationIssuesDiv = document.getElementById('validation-issues');
+                const validationList = document.getElementById('validation-list');
+                
+                // Clear previous issues
+                validationList.innerHTML = '';
+                
+                // Show up to 10 issues
+                const displayIssues = issues.slice(0, 10);
+                displayIssues.forEach(issue => {
+                    const li = document.createElement('li');
+                    li.textContent = `Row ${issue.rowIndex}: ${issue.error}`;
+                    validationList.appendChild(li);
+                });
+                
+                // Add message for additional issues
+                if (issues.length > 10) {
+                    const li = document.createElement('li');
+                    li.textContent = `...and ${issues.length - 10} more issues not shown`;
+                    validationList.appendChild(li);
+                }
+                
+                validationIssuesDiv.classList.remove('hidden');
+            }
+
+            // Parse time strings to HH:MM:SS format
+            function parseTime(timeStr) {
+                if (!timeStr || timeStr === "") return null;
+                if (timeStr === "Unknown") return "Unknown";
+                try {
+                    // Check if it's already in HH:MM or HH:MM:SS format
+                    if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(timeStr)) {
+                        // Ensure it has seconds
+                        if (!timeStr.includes(':')) return null;
+                        const parts = timeStr.split(':');
+                        if (parts.length === 2) {
+                            return `${parts[0].padStart(2, '0')}:${parts[1]}:00`;
+                        }
+                        return timeStr;
+                    }
+                    // Handle special case for 0:00 in your data
+                    if (timeStr === '0:00') {
+                        return '00:00:00';
+                    }
+                    console.warn(`Could not parse time: ${timeStr}`);
+                    return null;
+                } catch (error) {
+                    console.error(`Error parsing time '${timeStr}':`, error);
+                    return null;
+                }
+            }
+            
+            // Parse date strings to ISO format
+            function parseDate(dateStr) {
+                if (!dateStr || dateStr === "") return null;
+                if (dateStr === "Unknown") return "Unknown";
+                // Handle various date formats
+                try {
+                    // Check for the format D-MMM-YYYY (e.g., 8-Sep-25 or 8-Sep-2025)
+                    if (dateStr.includes('-')) {
+                        const dateParts = dateStr.split('-');
+                        // Format could be: DD-MMM-YY or DD-MMM-YYYY
+                        if (dateParts.length === 3) {
+                            const day = dateParts[0].trim().padStart(2, '0');
+                            const monthMap = {
+                                'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04', 'May': '05', 'Jun': '06',
+                                'Jul': '07', 'Aug': '08', 'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12'
+                            };
+                            const month = monthMap[dateParts[1].trim()] || '01';
+                            // Handle 2-digit or 4-digit years
+                            let year = dateParts[2].trim();
+                            if (year.length === 2) {
+                                year = '20' + year; // Assume 20xx for two-digit years
+                            }
+                            return `${year}-${month}-${day}`;
+                        }
+                    }
+                    // Check if it's already in ISO format (YYYY-MM-DD)
+                    const isoRegex = /^\d{4}-\d{2}-\d{2}$/;
+                    if (isoRegex.test(dateStr)) {
+                        return dateStr;
+                    }
+                    // Try parsing with built-in Date
+                    const parsed = new Date(dateStr);
+                    if (!isNaN(parsed.getTime())) {
+                        return parsed.toISOString().split('T')[0];
+                    }
+                    console.warn(`Could not parse date: ${dateStr}`);
+                    return null;
+                } catch (error) {
+                    console.error(`Error parsing date '${dateStr}':`, error);
+                    return null;
+                }
+            }
+            
+            // Simple fill-down: copy cells down until the next value
+            function fillDownEmptyCells(data) {
+                if (!data || data.length === 0) return data;
+                
+                const headers = Object.keys(data[0]);
+                let fillCount = 0;
+                
+                // Process each column
+                headers.forEach(header => {
+                    let lastValue = null;
+                    
+                    // Go through each row for this column
+                    for (let i = 0; i < data.length; i++) {
+                        const currentValue = data[i][header];
+                        
+                        // If cell has a value, remember it
+                        if (currentValue !== null && currentValue !== undefined && currentValue !== "" && currentValue !== "NULL") {
+                            lastValue = currentValue;
+                        } 
+                        // If cell is empty and we have a last value, fill it down
+                        else if (lastValue !== null) {
+                            data[i][header] = lastValue;
+                            fillCount++;
+                        }
+                    }
+                });
+                
+                console.log(`Fill-down applied: ${fillCount} cells filled`);
+                return data;
+            }
+
+            // Process and display CSV file
+            function handleFile(file) {
+                if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
+                    alert('Please upload a CSV file.');
+                    return;
+                }
+
+                csvData = file;
+                fileName.textContent = file.name;
+                fileInfo.classList.remove('hidden');
+                
+                Papa.parse(file, {
+                    header: true,
+                    dynamicTyping: true,
+                    complete: function(results) {
+                        parsedData = results.data;
+                        // Filter out empty rows
+                        parsedData = parsedData.filter(row => {
+                            return Object.values(row).some(value => value !== null && value !== "");
+                        });
+                        
+                        // Fill down empty cells with values from above
+                        console.log('BEFORE FILL-DOWN - First 3 rows:', JSON.parse(JSON.stringify(parsedData.slice(0, 3))));
+                        parsedData = fillDownEmptyCells(parsedData);
+                        console.log('AFTER FILL-DOWN - First 3 rows:', JSON.parse(JSON.stringify(parsedData.slice(0, 3))));
+                        
+                        mappedData = mapCsvToDbFields(parsedData);
+                        console.log('AFTER MAPPING - First 3 rows:', JSON.parse(JSON.stringify(mappedData.slice(0, 3))));
+                        
+                        // Display preview
+                        showPreview(parsedData);
+                    },
+                    error: function(error) {
+                        console.error('Error parsing CSV:', error);
+                        alert('Error parsing the CSV file. Please check the file format.');
+                    }
+                });
+            }
+
+            // Show preview of the parsed CSV data
+            function showPreview(data) {
+                if (!data || data.length === 0) {
+                    alert('No valid data found in the CSV file.');
+                    return;
+                }
+
+                // Display headers
+                const headers = Object.keys(data[0]);
+                let headerRow = '<tr>';
+                headers.forEach(header => {
+                    headerRow += `<th>${header}</th>`;
+                });
+                headerRow += '</tr>';
+                previewHeaders.innerHTML = headerRow;
+
+                // Display preview rows (first 5 rows)
+                let bodyRows = '';
+                const previewRows = data.slice(0, 5);
+                previewRows.forEach(row => {
+                    let rowHtml = '<tr>';
+                    headers.forEach(header => {
+                        rowHtml += `<td>${row[header] !== null ? row[header] : ''}</td>`;
+                    });
+                    rowHtml += '</tr>';
+                    bodyRows += rowHtml;
+                });
+                previewBody.innerHTML = bodyRows;
+
+                // Show preview area
+                previewArea.classList.remove('hidden');
+            }
+
+            // Upload button
+            uploadBtn.addEventListener('click', uploadToSupabase);
+            
+            // Function to upload data to Supabase via Edge Function
+            async function uploadToSupabase() {
+                if (!mappedData || mappedData.length === 0) {
+                    alert('No data to upload.');
+                    return;
+                }
+
+                try {
+                    // Clear previous debug info
+                    debugInfo = {
+                        requests: [],
+                        responses: [],
+                        data: [],
+                        errors: []
+                    };
+                    
+                    // Add initial data to debug
+                    debugInfo.data.push({
+                        timestamp: new Date().toISOString(),
+                        message: `Starting upload process with ${mappedData.length} records`,
+                        totalRecords: mappedData.length
+                    });
+                    
+                    progressArea.classList.remove('hidden');
+                    statusMessage.textContent = 'Preparing to upload data...';
+                    updateProgress(10);
+                    
+                    // Disable upload button during the process
+                    uploadBtn.disabled = true;
+                    uploadBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Uploading...';
+
+                    // URL of the Supabase Edge Function
+                    const supabaseUrl = 'https://unveoqnlqnobufhublyw.supabase.co';
+                    const url = `${supabaseUrl}/functions/v1/emis-upload`;
+                    
+                    // The JWT token for authorization (anon key)
+                    const jwtToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME';
+                    
+                    // Batch the data if needed (to handle large datasets)
+                    const batchSize = 25; // REDUCED batch size to prevent payload size issues
+                    const totalBatches = Math.ceil(mappedData.length / batchSize);
+                    
+                    let totalUploaded = 0;
+                    let hasErrors = false;
+                    let errorMessages = [];
+                    let successfulBatches = 0;
+                    
+                    updateProgress(20);
+                    statusMessage.textContent = `Uploading data in ${totalBatches} batches (${batchSize} records per batch)...`;
+                    
+                    // Log to console for debugging
+                    console.log(`Starting upload: ${mappedData.length} total records in ${totalBatches} batches`);
+                    console.log(`Sample record:`, mappedData[0]);
+                    
+                    // Add batch info to debug
+                    debugInfo.data.push({
+                        timestamp: new Date().toISOString(),
+                        message: `Data will be uploaded in ${totalBatches} batches of max ${batchSize} records each`,
+                        batchSize: batchSize,
+                        totalBatches: totalBatches,
+                        totalRecords: mappedData.length
+                    });
+                    
+                    for (let i = 0; i < totalBatches; i++) {
+                        const start = i * batchSize;
+                        const end = Math.min((i + 1) * batchSize, mappedData.length);
+                        const batch = mappedData.slice(start, end);
+                        
+                        statusMessage.textContent = `Uploading batch ${i + 1} of ${totalBatches}...`;
+                        const progressIncrement = 60 / totalBatches;
+                        const currentProgress = 20 + (i / totalBatches) * 60;
+                        updateProgress(currentProgress);
+                        
+                        try {
+                            statusMessage.innerHTML = `<strong>Uploading batch ${i + 1} of ${totalBatches}</strong><br>Processing ${batch.length} records...`;
+                            
+                            // Create a sanitized version of the batch for logging (remove potentially large data)
+                            const logBatch = batch.map(item => ({
+                                appointment_date: item.appointment_date,
+                                day_of_week: item.day_of_week,
+                                slot_type: item.slot_type,
+                                availability: item.availability,
+                                // Include only a sample of fields to keep logs concise
+                            }));
+                            
+                            // For Supabase Edge Functions, we need to use a JWT token with the Authorization header
+                            // This is how other parts of the app authenticate with edge functions
+                            const headers = {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${jwtToken}` 
+                            };
+                            
+                            // Log the request
+                            const requestInfo = {
+                                timestamp: new Date().toISOString(),
+                                batchNumber: i + 1,
+                                recordCount: batch.length,
+                                url: url,
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Authorization': 'Bearer [REDACTED]'
+                                },
+                                sampleData: logBatch.slice(0, 2) // Just include first two records
+                            };
+                            debugInfo.requests.push(requestInfo);
+                            
+                            // Log the exact data being sent for this batch
+                            console.log(`BATCH ${i + 1}/${totalBatches} - Sending ${batch.length} records. Sample:`, 
+                                batch.slice(0, 2).map(r => ({
+                                    row: r._csvRowNumber || 'unknown',
+                                    name: r.full_name_session_holder,
+                                    date: r.appointment_date,
+                                    slot: r.slot_type
+                                }))
+                            );
+                            
+                            // Calculate payload size for debugging
+                            const payload = JSON.stringify({ records: batch });
+                            const payloadSizeKB = (payload.length / 1024).toFixed(2);
+                            console.log(`Payload size: ${payloadSizeKB} KB`);
+                            
+                            // Make the request
+                            const response = await fetch(url, {
+                                method: 'POST',
+                                headers: headers,
+                                body: payload
+                            });
+                            
+                            // Check for network errors first
+                            if (!response) {
+                                throw new Error('Network error: No response received from server');
+                            }
+                            
+                            let responseData;
+                            try {
+                                responseData = await response.json();
+                            } catch (jsonError) {
+                                throw new Error(`Failed to parse response JSON: ${jsonError.message}`);
+                            }
+                            
+                            // Log the response
+                            const responseInfo = {
+                                timestamp: new Date().toISOString(),
+                                batchNumber: i + 1,
+                                status: response.status,
+                                statusText: response.statusText,
+                                ok: response.ok,
+                                data: responseData
+                            };
+                            debugInfo.responses.push(responseInfo);
+                            console.log(`BATCH ${i + 1} RESPONSE:`, responseData);
+                            
+                            if (!response.ok) {
+                                const errorDetails = responseData.error || 
+                                                   responseData.message ||
+                                                   responseData.details ||
+                                                   response.statusText || 
+                                                   'Unknown server error';
+                                throw new Error(`Server error ${response.status}: ${errorDetails}`);
+                            }
+                            
+                            totalUploaded += responseData.count || 0;
+                            successfulBatches++;
+                            
+                            // Add success info to debug data
+                            debugInfo.data.push({
+                                timestamp: new Date().toISOString(),
+                                message: `Successfully uploaded batch ${i + 1}/${totalBatches}`,
+                                batchNumber: i + 1,
+                                recordsUploaded: responseData.count || 0
+                            });
+                            
+                            statusMessage.innerHTML = `<span class="text-success">✓ Batch ${i + 1}/${totalBatches} complete</span><br>Uploaded ${totalUploaded} records so far`;
+                            
+                        } catch (batchError) {
+                            hasErrors = true;
+                            const errorMsg = `Batch ${i + 1}: ${batchError.message}`;
+                            errorMessages.push(errorMsg);
+                            
+                            // Update UI to show the error
+                            statusMessage.innerHTML = `<span class="text-danger">✗ Error in batch ${i + 1}/${totalBatches}</span><br>${batchError.message}`;
+                            
+                            // Log the error
+                            debugInfo.errors.push({
+                                timestamp: new Date().toISOString(),
+                                batchNumber: i + 1,
+                                message: batchError.message,
+                                stack: batchError.stack,
+                                recordsInBatch: batch.length,
+                                batchStartIndex: i * batchSize,
+                                batchEndIndex: Math.min((i + 1) * batchSize, mappedData.length) - 1
+                            });
+                            
+                            console.error(`ERROR IN BATCH ${i + 1}/${totalBatches}:`, batchError);
+                        }
+                    }
+                    
+                    // Update progress to complete
+                    updateProgress(100);
+                    
+                    // Show upload summary
+                    const uploadSummary = document.getElementById('upload-summary');
+                    const totalProcessed = document.getElementById('total-processed');
+                    const totalUploadedEl = document.getElementById('total-uploaded');
+                    const uploadStatus = document.getElementById('upload-status');
+                    const newUploadBtn = document.getElementById('new-upload-btn');
+                    
+                    totalProcessed.textContent = mappedData.length;
+                    totalUploadedEl.textContent = totalUploaded;
+                    
+                    // Update final debug info
+                    debugInfo.data.push({
+                        timestamp: new Date().toISOString(),
+                        message: `Upload process completed`,
+                        totalProcessed: mappedData.length,
+                        totalUploaded: totalUploaded,
+                        success: !hasErrors
+                    });
+                    
+                    if (hasErrors) {
+                        uploadStatus.textContent = 'Partial Success';
+                        uploadStatus.classList.remove('bg-success');
+                        uploadStatus.classList.add('bg-warning');
+                        
+                        // Display error messages directly in the status message
+                        let errorMsg = `Uploaded ${totalUploaded} of ${mappedData.length} records. Errors:`;
+                        errorMessages.forEach((err, idx) => {
+                            if (idx < 3) { // Show first 3 errors
+                                errorMsg += `<br>- ${err}`;
+                            }
+                        });
+                        if (errorMessages.length > 3) {
+                            errorMsg += `<br>- And ${errorMessages.length - 3} more errors...`;
+                        }
+                        
+                        statusMessage.innerHTML = errorMsg;
+                        statusMessage.classList.add('text-warning');
+                        
+                        // Also log to console for debugging
+                        console.error('UPLOAD ERRORS:', errorMessages);
+                        
+                        // Add detailed error summary to debug
+                        debugInfo.data.push({
+                            timestamp: new Date().toISOString(),
+                            message: `Upload completed with errors`,
+                            errorCount: errorMessages.length,
+                            errors: errorMessages
+                        });
+                        
+                        // Auto-select the Errors tab in debug panel
+                        if (document.getElementById('error-tab')) {
+                            document.getElementById('error-tab').click();
+                        }
+                    } else {
+                        uploadStatus.textContent = 'Success';
+                        uploadStatus.classList.add('bg-success');
+                        statusMessage.textContent = `Successfully uploaded ${totalUploaded} records to the database!`;
+                        statusMessage.classList.add('text-success');
+                    }
+                    
+                    uploadSummary.classList.remove('hidden');
+                    
+                    // Update debug panel
+                    updateDebugPanels();
+                    
+                    // Add event listener for new upload button
+                    newUploadBtn.addEventListener('click', () => {
+                        resetFileInput();
+                        uploadSummary.classList.add('hidden');
+                        statusMessage.classList.remove('text-success', 'text-warning', 'text-danger');
+                        progressArea.classList.add('hidden');
+                    });
+                    
+                    // Re-enable upload button
+                    uploadBtn.disabled = false;
+                    uploadBtn.textContent = 'Upload to Database';
+                    
+                } catch (error) {
+                    console.error('Upload error:', error);
+                    
+                    // Log the error
+                    debugInfo.errors.push({
+                        timestamp: new Date().toISOString(),
+                        message: error.message,
+                        stack: error.stack
+                    });
+                    
+                    updateProgress(0);
+                    statusMessage.textContent = `Error: ${error.message}`;
+                    statusMessage.classList.add('text-danger');
+                    
+                    // Update debug panel
+                    updateDebugPanels();
+                    
+                    // Re-enable upload button
+                    uploadBtn.disabled = false;
+                    uploadBtn.textContent = 'Try Again';
+                }
+            }
+            
+            // Test API Connection
+            document.getElementById('test-connection-btn').addEventListener('click', async function() {
+                try {
+                    // Add debug message
+                    debugInfo.data.push({
+                        timestamp: new Date().toISOString(),
+                        message: 'Testing connection to Supabase Edge Function'
+                    });
+                    
+                    // Show debug message
+                    statusMessage.textContent = 'Testing connection to API...';
+                    statusMessage.classList.remove('text-success', 'text-warning', 'text-danger');
+                    
+                    // Get Supabase URL and JWT token from the upload function
+                    const supabaseUrl = 'https://unveoqnlqnobufhublyw.supabase.co';
+                    const jwtToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME';
+                    
+                    // Create request info for debugging
+                    const requestInfo = {
+                        timestamp: new Date().toISOString(),
+                        url: `${supabaseUrl}/functions/v1/emis-upload/health`,
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer [REDACTED]'
+                        }
+                    };
+                    
+                    debugInfo.requests.push(requestInfo);
+                    
+                    // Make the API request
+                    const response = await fetch(`${supabaseUrl}/functions/v1/emis-upload/health`, {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${jwtToken}`
+                        }
+                    });
+                    
+                    const result = await response.json();
+                    
+                    // Create response info for debugging
+                    const responseInfo = {
+                        timestamp: new Date().toISOString(),
+                        status: response.status,
+                        statusText: response.statusText,
+                        ok: response.ok,
+                        data: result
+                    };
+                    
+                    debugInfo.responses.push(responseInfo);
+                    
+                    if (response.ok) {
+                        debugInfo.data.push({
+                            timestamp: new Date().toISOString(),
+                            message: 'API connection successful',
+                            details: result
+                        });
+                        
+                        statusMessage.textContent = 'API connection successful! ✅';
+                        statusMessage.classList.add('text-success');
+                    } else {
+                        debugInfo.errors.push({
+                            timestamp: new Date().toISOString(),
+                            message: 'API connection failed',
+                            status: response.status,
+                            details: result
+                        });
+                        
+                        statusMessage.textContent = `API connection failed: ${result.error || response.statusText} ❌`;
+                        statusMessage.classList.add('text-danger');
+                    }
+                    
+                    // Update debug panels with new info
+                    updateDebugPanels();
+                    document.getElementById('toggle-debug-btn').textContent = 'Show Debug Info';
+                    document.getElementById('debug-content').classList.remove('hidden');
+                    document.getElementById('toggle-debug-btn').textContent = 'Hide Debug Info';
+                    
+                } catch (error) {
+                    console.error('Connection test error:', error);
+                    
+                    debugInfo.errors.push({
+                        timestamp: new Date().toISOString(),
+                        message: `API connection test failed: ${error.message}`,
+                        stack: error.stack
+                    });
+                    
+                    statusMessage.textContent = `Connection test error: ${error.message} ❌`;
+                    statusMessage.classList.add('text-danger');
+                    
+                    // Update debug panels
+                    updateDebugPanels();
+                    document.getElementById('debug-content').classList.remove('hidden');
+                    document.getElementById('toggle-debug-btn').textContent = 'Hide Debug Info';
+                }
+            });
+            
+            // Update progress bar
+            function updateProgress(percentage) {
+                progressBar.style.width = `${percentage}%`;
+                progressBar.setAttribute('aria-valuenow', percentage);
+            }
+        });
+    </script>
+</body>
+</html>
