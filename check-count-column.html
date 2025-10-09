@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Check Count Column</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        .success { color: #155724; background-color: #d4edda; padding: 10px; border-radius: 5px; }
+        .error { color: #721c24; background-color: #f8d7da; padding: 10px; border-radius: 5px; }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover { background-color: #0056b3; }
+    </style>
+</head>
+<body>
+    <h1>Check Count Column in Database</h1>
+    
+    <button onclick="checkLastRecord()">Check Last Uploaded Record</button>
+    <button onclick="checkCountValues()">Check All Count Values</button>
+    
+    <div id="results"></div>
+
+    <script>
+        const supabaseUrl = 'https://unveoqnlqnobufhublyw.supabase.co';
+        const jwtToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME';
+
+        async function checkLastRecord() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<p>Fetching last uploaded record...</p>';
+
+            try {
+                const response = await fetch(
+                    `${supabaseUrl}/rest/v1/emis_apps_raw?select=*&order=created_at.desc&limit=1`,
+                    {
+                        headers: {
+                            'apikey': jwtToken,
+                            'Authorization': `Bearer ${jwtToken}`
+                        }
+                    }
+                );
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+
+                const records = await response.json();
+                
+                if (records && records.length > 0) {
+                    const record = records[0];
+                    
+                    // Check all possible column name variations
+                    const countValue = record['Count'] || record['count'] || record['total'] || 'NOT FOUND';
+                    
+                    let html = '<div class="success"><h3>Last Record:</h3><pre>' + 
+                        JSON.stringify(record, null, 2) + '</pre></div>';
+                    
+                    html += '<h3>Count Column Analysis:</h3>';
+                    html += '<ul>';
+                    html += '<li><strong>record["Count"]:</strong> ' + (record['Count'] !== undefined ? record['Count'] : 'undefined') + '</li>';
+                    html += '<li><strong>record["count"]:</strong> ' + (record['count'] !== undefined ? record['count'] : 'undefined') + '</li>';
+                    html += '<li><strong>record["total"]:</strong> ' + (record['total'] !== undefined ? record['total'] : 'undefined') + '</li>';
+                    html += '</ul>';
+                    
+                    // List all column names
+                    html += '<h3>All Column Names in Table:</h3><pre>';
+                    html += Object.keys(record).join('\n');
+                    html += '</pre>';
+                    
+                    resultsDiv.innerHTML = html;
+                } else {
+                    resultsDiv.innerHTML = '<div class="error">No records found</div>';
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = '<div class="error">Error: ' + error.message + '</div>';
+            }
+        }
+
+        async function checkCountValues() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<p>Fetching records with Count values...</p>';
+
+            try {
+                // Try different column name variations
+                const queries = [
+                    'Count=not.is.null',
+                    'count=not.is.null',
+                    'total=not.is.null'
+                ];
+
+                let foundData = false;
+                
+                for (const query of queries) {
+                    try {
+                        const response = await fetch(
+                            `${supabaseUrl}/rest/v1/emis_apps_raw?select=*&${query}&limit=10`,
+                            {
+                                headers: {
+                                    'apikey': jwtToken,
+                                    'Authorization': `Bearer ${jwtToken}`
+                                }
+                            }
+                        );
+
+                        if (response.ok) {
+                            const records = await response.json();
+                            if (records && records.length > 0) {
+                                foundData = true;
+                                resultsDiv.innerHTML = '<div class="success"><h3>Found ' + records.length + 
+                                    ' records using query: ' + query + '</h3><pre>' + 
+                                    JSON.stringify(records.slice(0, 3), null, 2) + '</pre></div>';
+                                break;
+                            }
+                        }
+                    } catch (e) {
+                        console.log('Query failed:', query, e);
+                    }
+                }
+
+                if (!foundData) {
+                    resultsDiv.innerHTML += '<div class="error">Could not find records with Count/count/total values</div>';
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = '<div class="error">Error: ' + error.message + '</div>';
+            }
+        }
+    </script>
+</body>
+</html>

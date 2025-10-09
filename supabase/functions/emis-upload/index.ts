@@ -1,4 +1,6 @@
+// @ts-ignore
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+// @ts-ignore
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 // Set CORS headers
@@ -11,7 +13,7 @@ const corsHeaders = {
 // New anon key for verification
 const VALID_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME";
 
-serve(async (req) => {
+serve(async (req: Request) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -80,7 +82,9 @@ serve(async (req) => {
     // Create a Supabase client
     const supabaseAdmin = createClient(
       // These environment variables are set by Supabase Edge Functions
+      // @ts-ignore
       Deno.env.get('SUPABASE_URL') ?? '',
+      // @ts-ignore
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
@@ -96,15 +100,15 @@ serve(async (req) => {
 
     // Process records to handle empty values appropriately
     // Ensure they maintain the original order using csv_row_number
-    const processedRecords = records.map(record => {
-      const processedRecord = {};
+    const processedRecords = records.map((record: any) => {
+      const processedRecord: any = {};
       
       // Loop through each key in the record
       for (const [key, value] of Object.entries(record)) {
         // Skip the csv_row_number field for now - we'll handle it specially
         if (key !== 'csv_row_number') {
-          // Handle empty strings, "Unknown" values, and nulls consistently
-          if (value === "" || value === "Unknown" || value === null || value === undefined) {
+          // Handle empty strings and nulls - but preserve "Unknown" as a valid string value
+          if (value === "" || value === null || value === undefined) {
             processedRecord[key] = null;
           } else {
             processedRecord[key] = value;
@@ -126,21 +130,21 @@ serve(async (req) => {
     });
 
     // Filter out completely empty records but keep track of their row order
-    const validRecords = processedRecords.filter(record => {
+    const validRecords = processedRecords.filter((record: any) => {
       // Check if at least one field has a non-null value (excluding csv_row_number)
       return Object.entries(record).some(([key, value]) => key !== 'csv_row_number' && value !== null);
     });
 
     // Sort the valid records by csv_row_number to preserve the original order
-    validRecords.sort((a, b) => {
+    validRecords.sort((a: any, b: any) => {
       const rowA = a.csv_row_number || Number.MAX_SAFE_INTEGER;
       const rowB = b.csv_row_number || Number.MAX_SAFE_INTEGER;
       return rowA - rowB;
     });
     
-    // Insert data into the emis_apps table
+    // Insert data into the emis_apps_raw table
     const { data, error } = await supabaseAdmin
-      .from('emis_apps')
+      .from('emis_apps_raw')
       .insert(validRecords)
       .select();
 

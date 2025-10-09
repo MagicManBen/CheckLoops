@@ -1,250 +1,617 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EMIS Appointment Data Upload</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body {
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            max-width: 800px;
-            background-color: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
-            margin-top: 30px;
-        }
-        .upload-container {
-            border: 2px dashed #ccc;
-            padding: 20px;
-            text-align: center;
-            margin-bottom: 20px;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        .upload-container:hover {
-            border-color: #007bff;
-        }
-        .hidden {
-            display: none;
-        }
-        .fade {
-            opacity: 0;
-            transition: opacity 0.5s ease-out;
-        }
-        .alert {
-            transition: all 0.3s ease-in-out;
-        }
-        .alert-success {
-            border-left: 5px solid #28a745;
-        }
-        .alert-warning {
-            border-left: 5px solid #ffc107;
-        }
-        .processing-indicator {
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 3px solid rgba(0,123,255,0.3);
-            border-radius: 50%;
-            border-top-color: #007bff;
-            animation: spin 1s ease-in-out infinite;
-            margin-right: 10px;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        #progress-area {
-            margin-top: 20px;
-        }
-        .preview-table {
-            margin-top: 20px;
-            max-height: 400px;
-            overflow-y: auto;
-        }
-        #status-message {
-            margin-top: 15px;
-        }
-        .stats-container {
-            margin-top: 20px;
-            padding: 15px;
-            background-color: #f8f9fa;
-            border-radius: 5px;
-        }
-        .stats-item {
-            margin-bottom: 10px;
-        }
-        .summary-card {
-            background-color: #f0f8ff;
-            padding: 15px;
-            margin-top: 20px;
-            border-left: 5px solid #007bff;
-            border-radius: 5px;
-        }
-        .badge {
-            font-size: 1em;
-        }
-        #debug-panel {
-            margin-bottom: 50px;
-        }
-        .debug-success {
-            color: #28a745;
-            font-weight: bold;
-        }
-        .debug-error {
-            color: #dc3545;
-            font-weight: bold;
-        }
-        .debug-warning {
-            color: #ffc107;
-            font-weight: bold;
-        }
-        .debug-info {
-            color: #17a2b8;
-            font-weight: bold;
-        }
-        .copy-notification {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            padding: 10px 20px;
-            background-color: #28a745;
-            color: white;
-            border-radius: 4px;
-            transition: opacity 0.3s ease-in-out;
-            opacity: 0;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
+<title>CheckLoops — EMIS Appointment Data</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.supabase.co https://*.supabase.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.supabase.com wss://*.supabase.co wss://*.supabase.com https:;">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+<script src="config.js"></script>
+<script src="rls-fix.js"></script>
+<script src="supabase-js.js"></script>
+<script type="module">
+  const { createClient } = supabase;
+  window.supabaseCreateClient = createClient;
+  // Use EXACT same configuration as admin-login.html to share sessions
+  const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      flowType: 'pkce',
+      storage: window.localStorage,
+      storageKey: `sb-${CONFIG.SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`
+    }
+  });
+  window.supabase = sb;
+
+  // Add small delay to prevent race condition with session loading
+  setTimeout(async () => {
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) {
+        console.log('EMIS Checker: No session found, redirecting to login');
+        sessionStorage.setItem('redirectAfterLogin', window.location.pathname);
+        window.location.replace('admin-login.html');
+        return;
+      }
+      console.log('EMIS Checker: Session found for user:', session.user.email);
+      const { data: profile } = await sb
+        .from('master_users')
+        .select('access_type')
+        .eq('auth_user_id', session.user.id)
+        .maybeSingle();
+      const accessType = String(profile?.access_type || '').toLowerCase();
+      const isAdmin = accessType === 'admin' || accessType === 'owner';
+      console.log('EMIS Checker: Access type:', accessType, '=> isAdmin:', isAdmin);
+      if (!isAdmin) {
+        console.log('EMIS Checker: Not admin, redirecting to staff portal');
+        window.location.replace('staff.html');
+      }
+    } catch (e) {
+      console.log('EMIS Checker: Error checking session, redirecting to login:', e);
+      window.location.replace('admin-login.html');
+    }
+  }, 1000); // Wait 1 second for session to fully load
+  window.CONFIG = CONFIG;
+  window.addEventListener('storage', (e) => {
+    if (e.key && e.key.includes('sb-') && e.newValue === null) {
+      try { window.location.replace('home.html'); } catch(_) {}
+    }
+  });
+  window.addEventListener('load', async () => {
+    try { await sb.auth.getSession(); } catch(_) {}
+  });
+  Object.defineProperty(window, 'getSupabase', { value: () => sb });
+</script>
+<style>
+    /* Custom styles */
+    .upload-container {
+        border: 2px dashed #ccc;
+        padding: 40px; /* Increased padding for larger size */
+        text-align: center;
+        margin: 20px auto; /* Center horizontally */
+        border-radius: 10px;
+        cursor: pointer;
+        max-width: 600px; /* Set a maximum width */
+        background-color: #f9f9f9; /* Optional: Add a subtle background color */
+    }
+    .upload-container:hover {
+        border-color: #007bff;
+        background-color: #e9f5ff; /* Optional: Change background on hover */
+    }
+    .hidden {
+        display: none;
+    }
+    /* Ensure tab panes are visible without fade glitches */
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; opacity: 1; }
+    .fade {
+        opacity: 0;
+        transition: opacity 0.5s ease-out;
+    }
+    .alert {
+        transition: all 0.3s ease-in-out;
+    }
+    .alert-success {
+        border-left: 5px solid #28a745;
+    }
+    .alert-warning {
+        border-left: 5px solid #ffc107;
+    }
+    .processing-indicator {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 3px solid rgba(0,123,255,0.3);
+        border-radius: 50%;
+        border-top-color: #007bff;
+        animation: spin 1s ease-in-out infinite;
+        margin-right: 10px;
+    }
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+    #progress-area {
+        margin-top: 20px;
+    }
+    .preview-table {
+        margin-top: 20px;
+        max-height: 400px;
+        overflow-y: auto;
+    }
+    #status-message {
+        margin-top: 15px;
+    }
+    .stats-container {
+        margin-top: 20px;
+        padding: 15px;
+        background-color: #f8f9fa;
+        border-radius: 5px;
+    }
+    .stats-item {
+        margin-bottom: 10px;
+    }
+    .summary-card {
+        background-color: #f0f8ff;
+        padding: 15px;
+        margin-top: 20px;
+        border-left: 5px solid #007bff;
+        border-radius: 5px;
+    }
+    .badge {
+        font-size: 1em;
+    }
+    #debug-panel {
+        margin-bottom: 50px;
+    }
+    .debug-success {
+        color: #28a745;
+        font-weight: bold;
+    }
+    .debug-error {
+        color: #dc3545;
+        font-weight: bold;
+    }
+    .debug-warning {
+        color: #ffc107;
+        font-weight: bold;
+    }
+    .debug-info {
+        color: #17a2b8;
+        font-weight: bold;
+    }
+    .copy-notification {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        padding: 10px 20px;
+        background-color: #28a745;
+        color: white;
+        border-radius: 4px;
+        transition: opacity 0.3s ease-in-out;
+        opacity: 0;
+    }
+    
+    /* Admin Dashboard Layout Styles */
+    .app { 
+      display: grid;
+      --sidebarW: 260px; 
+      grid-template-columns: var(--sidebarW) minmax(0, 1fr); 
+      gap: 22px; 
+      padding: 22px; 
+      min-height: 100vh; 
+      transition: grid-template-columns .2s ease; 
+    }
+    .app.collapsed { --sidebarW: 56px; }
+    .main-content { overflow-x: hidden; }
+    .sidebar {
+      background: var(--sidebar, #fff); 
+      border-radius: 12px; 
+      box-shadow: var(--shadow-md); 
+      overflow-y: auto;
+      padding: 18px 0;
+    }
+    .app.collapsed #sidebar {
+      padding: 18px 0;
+      overflow: visible;
+    }
+    .brand {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 30px;
+      padding: 0 24px;
+    }
+    .brand .logo {
+      width: 42px;
+      height: auto;
+      margin-bottom: 12px;
+    }
+    .brand .t {
+      font-size: 1.2rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin: 0;
+      white-space: nowrap;
+    }
+    .brand .hint {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    .sidebar-toggle {
+      float: right;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      padding: 6px;
+      border-radius: 6px;
+      margin: 0 10px 0 0;
+      color: var(--text-light);
+    }
+    .sidebar-toggle:hover {
+      background: var(--hover-light);
+    }
+    .sidebar-toggle-icon {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      width: 18px;
+      height: 14px;
+    }
+    .toggle-line {
+      background: currentColor;
+      height: 2px;
+      width: 100%;
+      border-radius: 5px;
+      transition: transform 0.3s, opacity 0.2s;
+    }
+    .toggle-line:nth-child(1) { transform-origin: top left; }
+    .toggle-line:nth-child(3) { transform-origin: bottom left; }
+    .app.collapsed .toggle-line:nth-child(1) { transform: rotate(45deg) translate(1px, -1px); }
+    .app.collapsed .toggle-line:nth-child(2) { opacity: 0; }
+    .app.collapsed .toggle-line:nth-child(3) { transform: rotate(-45deg) translate(1px, 1px); }
+    
+    #main-content-container {
+      padding: 20px;
+      background-color: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+      min-height: calc(100vh - 44px);
+    }
+    
+    /* Background effects */
+    .bg {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: -1;
+      background: linear-gradient(120deg, #f5f7fa 0%, #e8ecf1 100%);
+      overflow: hidden;
+    }
+    .wave {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 40%;
+      background: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNDQwIDMyMCIgcHJlc2VydmVBc3BlY3RSYXRpbz0ibm9uZSI+PHBhdGggZmlsbD0icmdiYSgyNDAsIDI0NCwgMjQ4LCAwLjgpIiBkPSJNMCw5NlM0OCw4MCwxNDQsODBzMTkyLDQ4LDI4OCw0OHMxOTIsLTk2LDI4OCwtOTZTOTEyLDk2LDEwMDgsOTZzMTkyLC00OCwyODgsLTQ4czk2LDgwLDE0NCw4MFYzMjBIMFY5NloiPjwvcGF0aD48L3N2Zz4=') repeat-x;
+      background-size: 1440px 320px;
+      animation: wave 20s linear infinite;
+    }
+    .wave2 {
+      opacity: 0.5;
+      animation-duration: 15s;
+      animation-direction: reverse;
+    }
+    @keyframes wave {
+      0% { background-position-x: 0; }
+      100% { background-position-x: 1440px; }
+    }
+    .mesh {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: -2;
+      overflow: hidden;
+    }
+    .m1, .m2, .m3 {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.15;
+    }
+    .m1 {
+      background: radial-gradient(circle, rgba(30,144,255,1) 0%, rgba(0,212,255,0) 70%);
+      width: 60vw;
+      height: 60vw;
+      top: -20vw;
+      left: -10vw;
+    }
+    .m2 {
+      background: radial-gradient(circle, rgba(142,45,226,1) 0%, rgba(142,45,226,0) 70%);
+      width: 50vw;
+      height: 50vw;
+      bottom: -10vw;
+      right: -10vw;
+    }
+    .m3 {
+      background: radial-gradient(circle, rgba(74,222,128,1) 0%, rgba(74,222,128,0) 70%);
+      width: 40vw;
+      height: 40vw;
+      top: 30vh;
+      right: 20vw;
+    }
+    .orb {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(30px);
+      opacity: 0.1;
+      z-index: -1;
+    }
+    .orb1 {
+      background: #4ade80;
+      width: 150px;
+      height: 150px;
+      top: 40%;
+      left: 20%;
+      animation: float 8s ease-in-out infinite;
+    }
+    .orb2 {
+      background: #1e90ff;
+      width: 100px;
+      height: 100px;
+      top: 30%;
+      right: 20%;
+      animation: float 10s ease-in-out infinite;
+    }
+    .orb3 {
+      background: #8e2de2;
+      width: 80px;
+      height: 80px;
+      bottom: 20%;
+      right: 30%;
+      animation: float 12s ease-in-out infinite;
+    }
+    @keyframes float {
+      0%, 100% { transform: translate(0, 0); }
+      50% { transform: translate(20px, 20px); }
+    }
+    .particles {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: -1;
+      overflow: hidden;
+    }
+    .particle {
+      position: absolute;
+      width: 4px;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.5);
+      border-radius: 50%;
+      top: -10px;
+      animation: fall 15s linear infinite;
+    }
+    @keyframes fall {
+      0% { transform: translateY(0); opacity: 0; }
+      10% { opacity: 0.8; }
+      90% { opacity: 0.8; }
+      100% { transform: translateY(105vh); opacity: 0; }
+    }
+    
+    /* Navigation styles */
+    #nav {
+      padding: 0 12px;
+    }
+    #nav button {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      padding: 12px 15px;
+      border-radius: 8px;
+      border: none;
+      background: transparent;
+      text-align: left;
+      margin-bottom: 4px;
+      color: var(--text, #374151);
+      transition: all 0.2s;
+      position: relative;
+      cursor: pointer;
+    }
+    #nav button:hover {
+      background: var(--hover, rgba(243,244,246,0.8));
+    }
+    #nav button.active {
+      background: var(--active, rgba(224,242,254,0.7));
+      color: var(--accent, #0ea5e9);
+    }
+    #nav .icon {
+      width: 18px;
+      height: 18px;
+      margin-right: 12px;
+      flex-shrink: 0;
+      color: var(--muted, #6b7280);
+    }
+    #nav button.active .icon {
+      color: var(--accent, #0ea5e9);
+    }
+    
+    /* Nav Group Toggle */
+    #nav .nav-group-toggle {
+      font-weight: 600;
+      margin-top: 8px;
+    }
+    #nav .nav-group-toggle .caret {
+      margin-left: auto;
+      transition: transform 0.2s;
+      opacity: 0.6;
+    }
+    #nav .nav-group-toggle[aria-expanded="true"] .caret {
+      transform: rotate(180deg);
+    }
+    #nav .nav-group {
+      padding-left: 16px;
+      margin-bottom: 8px;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+    }
+    #nav .nav-group.collapsed {
+      max-height: 0;
+    }
+    
+    /* Main content area styling */
+    .content-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+    .content-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #111827;
+      margin: 0;
+    }
+    
+    /* Inner container for actual EMIS content */
+    .emis-container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+</style>
 </head>
 <body>
-    <div class="container">
-        <h1 class="mb-4 text-center">EMIS Appointment Data Upload</h1>
-        
-        <div class="upload-container" id="drop-area">
-            <p>Drag & drop your CSV file here or click to select a file</p>
-            <input type="file" id="file-input" accept=".csv" class="hidden">
-        </div>
+  <div class="bg">
+    <div class="wave"></div>
+    <div class="wave wave2"></div>
+  </div>
+  <div class="mesh" aria-hidden="true"><div class="m1"></div><div class="m2"></div><div class="m3"></div></div>
+  
+  <!-- Floating orbs for extra depth -->
+  <div class="orb orb1"></div>
+  <div class="orb orb2"></div>
+  <div class="orb orb3"></div>
+  
+  <!-- Particle system -->
+  <div class="particles" aria-hidden="true">
+    <div class="particle" style="left: 10%; animation-delay: 0s;"></div>
+    <div class="particle" style="left: 20%; animation-delay: 2s;"></div>
+    <div class="particle" style="left: 30%; animation-delay: 4s;"></div>
+    <div class="particle" style="left: 40%; animation-delay: 6s;"></div>
+    <div class="particle" style="left: 50%; animation-delay: 8s;"></div>
+    <div class="particle" style="left: 60%; animation-delay: 10s;"></div>
+    <div class="particle" style="left: 70%; animation-delay: 12s;"></div>
+    <div class="particle" style="left: 80%; animation-delay: 14s;"></div>
+    <div class="particle" style="left: 90%; animation-delay: 16s;"></div>
+  </div>
 
-        <div id="file-info" class="alert alert-info hidden">
-            <span id="file-name"></span>
-            <button class="btn btn-sm btn-danger float-end" id="remove-file">Remove</button>
-            <div class="mt-2">
-                <span class="badge bg-success"><i class="bi bi-arrow-down-circle"></i> Auto-Fill</span>
-                <span class="small ms-2">Empty cells will be filled down from the cell above.</span>
-            </div>
-        </div>
-
-        <div id="data-stats" class="stats-container hidden">
-            <h4>Data Statistics</h4>
-            <div class="row">
-                <div class="col-md-4 stats-item">
-                    <strong>Total Rows:</strong> <span id="total-rows">0</span>
-                </div>
-                <div class="col-md-4 stats-item">
-                    <strong>Valid Rows:</strong> <span id="valid-rows">0</span>
-                </div>
-                <div class="col-md-4 stats-item">
-                    <strong>Invalid Rows:</strong> <span id="invalid-rows">0</span>
-                </div>
-            </div>
-            <div id="validation-issues" class="mt-2 hidden">
-                <h5>Validation Issues:</h5>
-                <ul id="validation-list" class="text-danger"></ul>
-            </div>
-        </div>
-
-        <div id="preview-area" class="hidden">
-            <h3>Data Preview</h3>
-            <p>Showing the first 5 rows of data:</p>
-            <div class="preview-table">
-                <table class="table table-striped table-bordered" id="preview-table">
-                    <thead id="preview-headers"></thead>
-                    <tbody id="preview-body"></tbody>
-                </table>
-            </div>
-            <div class="mt-3">
-                <button id="upload-btn" class="btn btn-primary">Upload to Database</button>
-            </div>
-        </div>
-
-        <div id="progress-area" class="hidden">
-            <div class="progress">
-                <div id="progress-bar" class="progress-bar" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
-            </div>
-            <div id="status-message" class="text-center"></div>
+  <div class="app" id="app" aria-live="polite">
+    <!-- Sidebar intentionally removed for focused EMIS page -->
+    <main class="main-content">
+      <div id="main-content-container">
+        <div class="content-header">
+          <h1 class="content-title">EMIS Appointment Data Upload</h1>
         </div>
         
-        <div id="upload-summary" class="summary-card hidden">
-            <h4>Upload Summary</h4>
-            <div class="row">
-                <div class="col-md-4">
-                    <strong>Total Processed:</strong> <span id="total-processed">0</span>
-                </div>
-                <div class="col-md-4">
-                    <strong>Successfully Uploaded:</strong> <span id="total-uploaded">0</span>
-                </div>
-                <div class="col-md-4">
-                    <strong>Status:</strong> <span id="upload-status" class="badge bg-success">Success</span>
-                </div>
+        <div class="emis-container">
+          <ul class="nav nav-tabs" id="emis-tabs" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload-section" type="button" role="tab" aria-controls="upload-section" aria-selected="true">Upload</button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="view-tab" data-bs-toggle="tab" data-bs-target="#view-section" type="button" role="tab" aria-controls="view-section" aria-selected="false">View Data</button>
+            </li>
+          </ul>
+          
+          <div class="tab-content" id="emis-tabs-content">
+        <div class="tab-pane show active" id="upload-section" role="tabpanel" aria-labelledby="upload-tab">
+          <!-- Upload Tab Content -->
+          <div>
+            <div class="upload-container" id="drop-area">
+                <p>Drag & drop your CSV file here or click to select a file</p>
+                <input type="file" id="file-input" accept=".csv" class="hidden">
             </div>
-            <div class="mt-3">
-                <button id="new-upload-btn" class="btn btn-outline-primary">Upload Another File</button>
-                <button id="test-connection-btn" class="btn btn-outline-secondary ms-2">Test API Connection</button>
+
+            <div id="file-info" class="alert alert-info hidden">
+                <span id="file-name"></span>
+                <button class="btn btn-sm btn-danger float-end" id="remove-file">Remove</button>
             </div>
-        </div>
-        
-        <!-- Debug Panel -->
-        <div id="debug-panel" class="mt-4">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <h4>Debug Information</h4>
-                <div>
-                    <button id="toggle-debug-btn" class="btn btn-sm btn-outline-secondary">Show Debug Info</button>
-                    <button id="copy-debug-btn" class="btn btn-sm btn-outline-info ms-2" title="Copy debug info to clipboard">
-                        <i class="bi bi-clipboard"></i> Copy
-                    </button>
-                </div>
-            </div>
-            <div id="debug-content" class="hidden">
-                <div class="card">
-                    <div class="card-header bg-light">
-                        <ul class="nav nav-tabs card-header-tabs" id="debug-tabs" role="tablist">
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link active" id="request-tab" data-bs-toggle="tab" data-bs-target="#request-debug" type="button" role="tab">Request</button>
-                            </li>
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="response-tab" data-bs-toggle="tab" data-bs-target="#response-debug" type="button" role="tab">Response</button>
-                            </li>
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="data-tab" data-bs-toggle="tab" data-bs-target="#data-debug" type="button" role="tab">Data</button>
-                            </li>
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="error-tab" data-bs-toggle="tab" data-bs-target="#error-debug" type="button" role="tab">Errors</button>
-                            </li>
-                        </ul>
+
+            <div id="data-stats" class="stats-container hidden">
+                <h4>Data Statistics</h4>
+                <div class="row">
+                    <div class="col-md-4 stats-item">
+                        <strong>Total Rows:</strong> <span id="total-rows">0</span>
                     </div>
-                    <div class="card-body">
-                        <div class="tab-content" id="debug-tabs-content">
-                            <div class="tab-pane fade show active" id="request-debug" role="tabpanel">
-                                <pre class="bg-light p-3 mb-0" style="max-height: 300px; overflow-y: auto;"><code id="request-debug-content">No request data yet</code></pre>
-                            </div>
-                            <div class="tab-pane fade" id="response-debug" role="tabpanel">
-                                <pre class="bg-light p-3 mb-0" style="max-height: 300px; overflow-y: auto;"><code id="response-debug-content">No response data yet</code></pre>
-                            </div>
-                            <div class="tab-pane fade" id="data-debug" role="tabpanel">
-                                <pre class="bg-light p-3 mb-0" style="max-height: 300px; overflow-y: auto;"><code id="data-debug-content">No data yet</code></pre>
-                            </div>
-                            <div class="tab-pane fade" id="error-debug" role="tabpanel">
-                                <pre class="bg-light p-3 mb-0" style="max-height: 300px; overflow-y: auto;"><code id="error-debug-content">No errors yet</code></pre>
-                            </div>
-                        </div>
+                    <div class="col-md-4 stats-item">
+                        <strong>Valid Rows:</strong> <span id="valid-rows">0</span>
+                    </div>
+                    <div class="col-md-4 stats-item">
+                        <strong>Invalid Rows:</strong> <span id="invalid-rows">0</span>
                     </div>
                 </div>
+                <div id="validation-issues" class="mt-2 hidden">
+                    <h5>Validation Issues:</h5>
+                    <ul id="validation-list" class="text-danger"></ul>
+                </div>
             </div>
+
+            <div id="preview-area" class="hidden">
+                <h3>Data Preview</h3>
+                <p>Showing the first 5 rows of data:</p>
+                <div class="preview-table">
+                    <table class="table table-striped table-bordered" id="preview-table">
+                        <thead id="preview-headers"></thead>
+                        <tbody id="preview-body"></tbody>
+                    </table>
+                </div>
+                <div class="mt-3">
+                    <button id="upload-btn" class="btn btn-primary">Upload to Database</button>
+                </div>
+            </div>
+
+            <div id="progress-area" class="hidden">
+                <div class="progress">
+                    <div id="progress-bar" class="progress-bar" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+                <div id="status-message" class="text-center"></div>
+            </div>
+            
+            <div id="upload-summary" class="summary-card hidden">
+                <h4>Upload Summary</h4>
+                <div class="row">
+                    <div class="col-md-4">
+                        <strong>Total Processed:</strong> <span id="total-processed">0</span>
+                    </div>
+                    <div class="col-md-4">
+                        <strong>Successfully Uploaded:</strong> <span id="total-uploaded">0</span>
+                    </div>
+                    <div class="col-md-4">
+                        <strong>Status:</strong> <span id="upload-status" class="badge bg-success">Success</span>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <button id="new-upload-btn" class="btn btn-outline-primary">Upload Another File</button>
+                    <button id="test-connection-btn" class="btn btn-outline-secondary ms-2">Test API Connection</button>
+                </div>
+            </div>
+          </div>
         </div>
+        <div class="tab-pane" id="view-section" role="tabpanel" aria-labelledby="view-tab">
+          <!-- View Data Tab Content -->
+          <div class="my-3">
+            <input type="text" id="search-box" class="form-control" placeholder="Filter by Full Name, Date, etc...">
+          </div>
+          <div>
+            <span id="row-count"></span>
+          </div>
+          <div style="max-height: 500px; overflow:auto;">
+            <table class="table table-sm table-striped" id="emis-table">
+              <thead><tr id="emis-table-head"></tr></thead>
+              <tbody id="emis-table-body"></tbody>
+            </table>
+          </div>
+          <nav>
+            <ul class="pagination justify-content-center mt-3" id="emis-pagination"></ul>
+          </nav>
+        </div>
+      </div>
     </div>
     
     <!-- Add Bootstrap Icons for copy button -->
@@ -254,8 +621,95 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.0/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+
+    const supabaseUrl = 'https://unveoqnlqnobufhublyw.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME';
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const VIEW_NAME = 'emis_apps_filled';
+    const PAGE_SIZE = 25;
+    let emisRows = [], emisFilteredRows = [], page = 1, totalPages = 1;
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // Tabs: Only fetch when view tab is shown
+      document.getElementById('view-tab').addEventListener('shown.bs.tab', fetchAndRenderEmisData);
+      document.getElementById('search-box').addEventListener('input', function() {
+        filterAndRenderEmisTable(this.value);
+      });
+    });
+
+    async function fetchAndRenderEmisData() {
+      const { data, error } = await supabase
+        .from(VIEW_NAME)
+        .select('*')
+        .order('csv_row_number', { ascending: true });
+
+      if (error) {
+        document.getElementById('emis-table-body').innerHTML = `<tr><td colspan="100%" class="text-danger">Error loading data: ${error.message}</td></tr>`;
+        return;
+      }
+      emisRows = data || [];
+      filterAndRenderEmisTable(document.getElementById('search-box').value);
+    }
+
+    function filterAndRenderEmisTable(filterVal) {
+      filterVal = filterVal?.toLowerCase() || '';
+      emisFilteredRows = !filterVal
+        ? emisRows
+        : emisRows.filter(row => Object.values(row).some(
+            val => (val + '').toLowerCase().includes(filterVal)
+          ));
+
+      page = 1;
+      totalPages = Math.max(1, Math.ceil(emisFilteredRows.length / PAGE_SIZE));
+      renderEmisTablePage();
+    }
+
+    function renderEmisTablePage() {
+      const tableHead = document.getElementById('emis-table-head');
+      const tableBody = document.getElementById('emis-table-body');
+      if (!emisFilteredRows.length) {
+        tableHead.innerHTML = '';
+        tableBody.innerHTML = '<tr><td colspan="100%">No records found.</td></tr>';
+        document.getElementById('row-count').textContent = '';
+        renderEmisPagination();
+        return;
+      }
+      const headers = Object.keys(emisFilteredRows[0]);
+      tableHead.innerHTML = headers.map(h => `<th>${h}</th>`).join('');
+      const start = (page - 1) * PAGE_SIZE;
+      const end = start + PAGE_SIZE;
+      tableBody.innerHTML = emisFilteredRows.slice(start, end).map(row =>
+        `<tr>${headers.map(h => `<td>${row[h] ?? ''}</td>`).join('')}</tr>`
+      ).join('');
+      document.getElementById('row-count').textContent = `Showing ${Math.min(end, emisFilteredRows.length)} of ${emisFilteredRows.length} records`;
+      renderEmisPagination();
+    }
+
+    function renderEmisPagination() {
+      const pag = document.getElementById('emis-pagination');
+      if (totalPages <= 1) { pag.innerHTML = ''; return; }
+      pag.innerHTML = `
+        <li class="page-item${page==1?' disabled':''}"><a class="page-link" href="#" onclick="emisGotoPage(${page-1});return false;">Prev</a></li>
+        ${Array.from({length: totalPages}, (_,i)=>i+1).map(n=>`
+          <li class="page-item${page==n?' active':''}"><a class="page-link" href="#" onclick="emisGotoPage(${n});return false;">${n}</a></li>
+        `).join('')}
+        <li class="page-item${page==totalPages?' disabled':''}"><a class="page-link" href="#" onclick="emisGotoPage(${page+1});return false;">Next</a></li>
+      `;
+    }
+    window.emisGotoPage = function(n) {
+      if (n<1 || n>totalPages) return;
+      page = n;
+      renderEmisTablePage();
+    }
+    </script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // Ensure Upload tab content is visible by default even if fade classes misbehave
+            document.getElementById('upload-section')?.classList.add('active');
+            document.getElementById('view-section')?.classList.remove('active');
             // Elements
             const dropArea = document.getElementById('drop-area');
             const fileInput = document.getElementById('file-input');
@@ -273,14 +727,7 @@
             // Global variables
             let csvData = null;
             let parsedData = null;
-            let mappedData = [];
-            let validationIssues = [];
-            let debugInfo = {
-                requests: [],
-                responses: [],
-                data: [],
-                errors: []
-            };
+            let csvHeadersOrder = null;
 
             // Handle file drop event
             ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -337,17 +784,6 @@
                 fileInput.value = '';
                 csvData = null;
                 parsedData = null;
-                mappedData = [];
-                validationIssues = [];
-                
-                // Clear debug info
-                debugInfo = {
-                    requests: [],
-                    responses: [],
-                    data: [],
-                    errors: []
-                };
-                
                 // Hide all areas
                 fileInfo.classList.add('hidden');
                 previewArea.classList.add('hidden');
@@ -355,22 +791,10 @@
                 document.getElementById('data-stats').classList.add('hidden');
                 document.getElementById('validation-issues').classList.add('hidden');
                 document.getElementById('upload-summary').classList.add('hidden');
-                document.getElementById('debug-content').classList.add('hidden');
-                
-                // Reset debug content
-                document.getElementById('request-debug-content').textContent = 'No request data yet';
-                document.getElementById('response-debug-content').textContent = 'No response data yet';
-                document.getElementById('data-debug-content').textContent = 'No data yet';
-                document.getElementById('error-debug-content').textContent = 'No errors yet';
-                
-                // Reset debug button
-                document.getElementById('toggle-debug-btn').textContent = 'Show Debug Info';
-                
                 // Reset progress
                 updateProgress(0);
                 statusMessage.textContent = '';
                 statusMessage.classList.remove('text-success', 'text-warning', 'text-danger');
-                
                 // Reset upload button
                 uploadBtn.disabled = false;
                 uploadBtn.textContent = 'Upload to Database';
@@ -382,195 +806,86 @@
                 progressBar.setAttribute('aria-valuenow', percentage);
             }
             
-            // Update debug panels with current information
-            function updateDebugPanels() {
-                // Format and display request info
-                const requestContent = document.getElementById('request-debug-content');
-                if (debugInfo.requests.length > 0) {
-                    requestContent.textContent = JSON.stringify(debugInfo.requests, null, 2);
-                } else {
-                    requestContent.textContent = 'No request data yet';
-                }
-                
-                // Format and display response info
-                const responseContent = document.getElementById('response-debug-content');
-                if (debugInfo.responses.length > 0) {
-                    responseContent.textContent = JSON.stringify(debugInfo.responses, null, 2);
-                } else {
-                    responseContent.textContent = 'No response data yet';
-                }
-                
-                // Format and display data info
-                const dataContent = document.getElementById('data-debug-content');
-                if (debugInfo.data.length > 0) {
-                    dataContent.textContent = JSON.stringify(debugInfo.data, null, 2);
-                } else {
-                    dataContent.textContent = 'No data yet';
-                }
-                
-                // Format and display error info
-                const errorContent = document.getElementById('error-debug-content');
-                if (debugInfo.errors.length > 0) {
-                    errorContent.textContent = JSON.stringify(debugInfo.errors, null, 2);
-                    // Highlight the error tab if there are errors
-                    document.getElementById('error-tab').classList.add('text-danger');
-                } else {
-                    errorContent.textContent = 'No errors yet';
-                }
-            }
             
-            // Copy debug information to clipboard
-            function copyDebugToClipboard() {
-                // Compile all debug info into a single object
-                const allDebugInfo = {
-                    timestamp: new Date().toISOString(),
-                    csvFileName: csvData ? csvData.name : 'No file',
-                    totalRecords: parsedData ? parsedData.length : 0,
-                    validRecords: mappedData ? mappedData.length : 0,
-                    invalidRecords: validationIssues ? validationIssues.length : 0,
-                    data: debugInfo.data,
-                    requests: debugInfo.requests,
-                    responses: debugInfo.responses,
-                    errors: debugInfo.errors
-                };
-                
-                // Convert to string
-                const debugString = JSON.stringify(allDebugInfo, null, 2);
-                
-                // Copy to clipboard
-                navigator.clipboard.writeText(debugString).then(() => {
-                    // Show notification
-                    const notification = document.createElement('div');
-                    notification.className = 'copy-notification';
-                    notification.textContent = 'Debug info copied to clipboard!';
-                    document.body.appendChild(notification);
-                    
-                    // Animate notification
-                    setTimeout(() => {
-                        notification.style.opacity = '1';
-                        setTimeout(() => {
-                            notification.style.opacity = '0';
-                            setTimeout(() => {
-                                document.body.removeChild(notification);
-                            }, 300);
-                        }, 2000);
-                    }, 10);
-                }).catch(err => {
-                    console.error('Failed to copy debug info:', err);
-                    alert('Failed to copy debug info to clipboard.');
-                });
-            }
-            
-            // Add event listeners for debug panel
-            document.getElementById('toggle-debug-btn').addEventListener('click', function() {
-                const debugContent = document.getElementById('debug-content');
-                if (debugContent.classList.contains('hidden')) {
-                    debugContent.classList.remove('hidden');
-                    this.textContent = 'Hide Debug Info';
-                    // Update debug panels with current info
-                    updateDebugPanels();
-                } else {
-                    debugContent.classList.add('hidden');
-                    this.textContent = 'Show Debug Info';
-                }
-            });
-            
-            // Add copy button functionality
-            document.getElementById('copy-debug-btn').addEventListener('click', copyDebugToClipboard);            // Map CSV fields to database columns with validation
+            // Map CSV fields to database columns with validation
             function mapCsvToDbFields(data) {
-                let validRows = [];
-                let invalidRows = [];
-                validationIssues = []; // Reset global validation issues
-                
-                data.forEach((row, index) => {
-                    try {
-                        // Check if the row has at least one non-empty value
-                        const hasValues = Object.values(row).some(value => 
-                            value !== null && 
-                            value !== undefined && 
-                            value !== "" && 
-                            value !== "Unknown"
-                        );
-                        
-                        if (!hasValues) {
-                            throw new Error(`Row has no valid data`);
-                        }
+    let validRows = [];
+    let invalidRows = [];
+    validationIssues = []; // Reset global validation issues
 
-                        // Store row number for preserving original CSV order
-                        const csvRowNumber = index + 2;
-                        
-                        function keepUnknownOrNull(val) {
-                            // If the value is "Unknown", return "Unknown"; otherwise, null if empty, else value
-                            if (val === "Unknown") return "Unknown";
-                            if (val === undefined || val === null || val === "") return null;
-                            return val;
-                        }
-                        function parseIntOrUnknown(val) {
-                            if (val === "Unknown") return "Unknown";
-                            if (val === undefined || val === null || val === "") return null;
-                            return parseInt(val);
-                        }
+    // CSV columns and DB columns in the SAME order
+    const csvHeaders = [
+        "Full Name of the Session Holder of the Session",
+        "Day of Week",
+        "Session's Session Start",
+        "Session's Session End",
+        "Appointment Date",
+        "Appointment Time",
+        "Slot Type",
+        "Slot Duration",
+        "Availability",
+        "DNA",
+        "Booked Time to Slot Time",
+        "Arrive Time to Send In Time",
+        "Slot Time to Send In Time",
+        "Slot Time to Arrive Time",
+        "Consultation Time",
+        "Count"
+    ];
+    const dbKeys = [
+        "full_name_session_holder",
+        "day_of_week",
+        "session_start",
+        "session_end",
+        "appointment_date",
+        "appointment_time",
+        "slot_type",
+        "slot_duration",
+        "availability",
+        "dna_status",
+        "booked_time_to_slot_time",
+        "arrive_time_to_send_in_time",
+        "slot_time_to_send_in_time",
+        "slot_time_to_arrive_time",
+        "consultation_time",
+        "Count"
+    ];
 
-                        const mappedRow = {
-                            full_name_session_holder: keepUnknownOrNull(row["Full Name of the Session Holder of the Session"]),
-                            day_of_week: keepUnknownOrNull(row["Day of Week"]),
-                            session_start: parseDate(row["Session's Session Start"]),
-                            session_end: parseDate(row["Session's Session End"]),
-                            appointment_date: parseDate(row["Appointment Date"]),
-                            appointment_time: parseTime(row["Appointment Time"]),
-                            slot_type: keepUnknownOrNull(row["Slot Type"]),
-                            slot_duration: parseIntOrUnknown(row["Slot Duration"]),
-                            availability: keepUnknownOrNull(row["Availability"]),
-                            dna_status: keepUnknownOrNull(row["DNA"]),
-                            booked_time_to_slot_time: parseIntOrUnknown(row["Booked Time to Slot Time"]),
-                            arrive_time_to_send_in_time: parseIntOrUnknown(row["Arrive Time to Send In Time"]),
-                            slot_time_to_send_in_time: parseIntOrUnknown(row["Slot Time to Send In Time"]),
-                            slot_time_to_arrive_time: parseIntOrUnknown(row["Slot Time to Arrive Time"]),
-                            consultation_time: parseIntOrUnknown(row["Consultation Time"]),
-                            total: parseIntOrUnknown(row[""]), // The last column seems to be the total
-                            site_id: 2, // Default site id for this upload
-                            csv_row_number: csvRowNumber // Store original row number to preserve order
-                        };
-                        
-                        // Add the row number as a property for logging/debugging (this is in addition to the field above)
-                        Object.defineProperty(mappedRow, '_csvRowNumber', {
-                            value: csvRowNumber,
-                            enumerable: false // This makes it non-enumerable so it won't be included in JSON.stringify
-                        });
+    data.forEach((row, index) => {
+        try {
+            let mappedRow = {};
 
-                        // Add validation for data types
-                        if ((mappedRow.appointment_date === null || mappedRow.appointment_date === "Unknown") && row["Appointment Date"]) {
-                            throw new Error(`Invalid date format for Appointment Date: ${row["Appointment Date"]}`);
-                        }
-                        
-                        validRows.push(mappedRow);
-                    } catch (error) {
-                        const issueObj = {
-                            rowIndex: index + 2, // +2 because of 0-indexing and header row
-                            error: error.message,
-                            originalRow: row
-                        };
-                        invalidRows.push(issueObj);
-                        validationIssues.push(issueObj);
-                    }
-                });
-                
-                // Update data statistics UI
-                updateDataStats(data.length, validRows.length, invalidRows.length);
-                
-                // Show validation errors if any
-                if (invalidRows.length > 0) {
-                    console.warn('Invalid rows detected:', invalidRows);
-                    showValidationIssues(invalidRows);
-                    
-                    if (validRows.length === 0) {
-                        alert('No valid rows found in the CSV file. Please check the data and try again.');
-                        return [];
-                    }
+            csvHeaders.forEach((col, i) => {
+                let val = row[col];
+                // Keep the value as-is from CSV, including empty values
+                if (val === undefined || val === null) {
+                    val = null;
                 }
-                
-                return validRows;
-            }
+                mappedRow[dbKeys[i]] = val;
+            });
+
+            // Add extra columns for site ID and CSV row number
+            mappedRow["site_id"] = 2;
+            mappedRow["csv_row_number"] = index + 2;
+
+            validRows.push(mappedRow);
+        } catch (error) {
+            const issueObj = {
+                rowIndex: index + 2,
+                error: error.message,
+                originalRow: row
+            };
+            invalidRows.push(issueObj);
+            validationIssues.push(issueObj);
+        }
+    });
+
+    updateDataStats(data.length, validRows.length, invalidRows.length);
+    if (invalidRows.length > 0) showValidationIssues(invalidRows);
+
+    return validRows;
+
+}
             
             // Update data statistics in the UI
             function updateDataStats(total, valid, invalid) {
@@ -682,38 +997,9 @@
                 }
             }
             
-            // Simple fill-down: copy cells down until the next value
-            function fillDownEmptyCells(data) {
-                if (!data || data.length === 0) return data;
-                
-                const headers = Object.keys(data[0]);
-                let fillCount = 0;
-                
-                // Process each column
-                headers.forEach(header => {
-                    let lastValue = null;
-                    
-                    // Go through each row for this column
-                    for (let i = 0; i < data.length; i++) {
-                        const currentValue = data[i][header];
-                        
-                        // If cell has a value, remember it
-                        if (currentValue !== null && currentValue !== undefined && currentValue !== "" && currentValue !== "NULL") {
-                            lastValue = currentValue;
-                        } 
-                        // If cell is empty and we have a last value, fill it down
-                        else if (lastValue !== null) {
-                            data[i][header] = lastValue;
-                            fillCount++;
-                        }
-                    }
-                });
-                
-                console.log(`Fill-down applied: ${fillCount} cells filled`);
-                return data;
-            }
 
-            // Process and display CSV file
+
+            // Process and display CSV file (parse as array, detect last empty header with data as Count, preserve column index, no fill-down)
             function handleFile(file) {
                 if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
                     alert('Please upload a CSV file.');
@@ -723,26 +1009,69 @@
                 csvData = file;
                 fileName.textContent = file.name;
                 fileInfo.classList.remove('hidden');
-                
+
                 Papa.parse(file, {
-                    header: true,
-                    dynamicTyping: true,
+                    header: false,              // parse as arrays to keep column indices
+                    dynamicTyping: false,
+                    skipEmptyLines: true,
                     complete: function(results) {
-                        parsedData = results.data;
-                        // Filter out empty rows
-                        parsedData = parsedData.filter(row => {
-                            return Object.values(row).some(value => value !== null && value !== "");
+                        const rows = results.data || [];
+                        if (!rows.length) {
+                            alert('No rows found in CSV.');
+                            return;
+                        }
+                        if (rows.length === 1) {
+                            alert('CSV only contains a header row.');
+                            return;
+                        }
+
+                        const headerRowRaw = rows[0].map(c => (c == null ? '' : String(c)));
+                        const dataRows = rows.slice(1);
+
+                        const hasDataInCol = (idx) => dataRows.some(r => {
+                            const v = r[idx];
+                            return v !== null && v !== undefined && String(v).trim() !== '';
                         });
-                        
-                        // Fill down empty cells with values from above
-                        console.log('BEFORE FILL-DOWN - First 3 rows:', JSON.parse(JSON.stringify(parsedData.slice(0, 3))));
-                        parsedData = fillDownEmptyCells(parsedData);
-                        console.log('AFTER FILL-DOWN - First 3 rows:', JSON.parse(JSON.stringify(parsedData.slice(0, 3))));
-                        
-                        mappedData = mapCsvToDbFields(parsedData);
-                        console.log('AFTER MAPPING - First 3 rows:', JSON.parse(JSON.stringify(mappedData.slice(0, 3))));
-                        
-                        // Display preview
+
+                        // Find the rightmost empty header that actually has data => this becomes 'Count'
+                        let countIdx = -1;
+                        for (let i = headerRowRaw.length - 1; i >= 0; i--) {
+                            const h = headerRowRaw[i];
+                            const isEmpty = !h || h.trim() === '';
+                            if (isEmpty && hasDataInCol(i)) { countIdx = i; break; }
+                        }
+
+                        // Build cleaned headers + index -> key map
+                        const cleanedHeaders = [];
+                        const indexToKey = new Array(headerRowRaw.length).fill(null);
+                        for (let i = 0; i < headerRowRaw.length; i++) {
+                            const h = (headerRowRaw[i] || '').trim();
+                            if (h === '') {
+                                if (i === countIdx) {
+                                    cleanedHeaders.push('Count');
+                                    indexToKey[i] = 'Count';
+                                }
+                                // else drop empty unnamed column with no data
+                            } else {
+                                cleanedHeaders.push(h);
+                                indexToKey[i] = h;
+                            }
+                        }
+
+                        // Rebuild objects by column index; trim strings; do NOT fill-down
+                        parsedData = dataRows.map(r => {
+                            const obj = {};
+                            for (let i = 0; i < indexToKey.length; i++) {
+                                const key = indexToKey[i];
+                                if (!key) continue; // dropped column
+                                let val = r[i];
+                                if (typeof val === 'string') val = val.trim();
+                                obj[key] = (val === '') ? null : val; // preserve nulls, keep 'Unknown' strings
+                            }
+                            return obj;
+                        }).filter(row => Object.values(row).some(v => v !== null && v !== undefined && String(v) !== ''));
+
+                        csvHeadersOrder = cleanedHeaders;
                         showPreview(parsedData);
                     },
                     error: function(error) {
@@ -752,437 +1081,184 @@
                 });
             }
 
-            // Show preview of the parsed CSV data
+            // Show preview of the parsed CSV data, preserving CSV header order
             function showPreview(data) {
                 if (!data || data.length === 0) {
                     alert('No valid data found in the CSV file.');
                     return;
                 }
 
-                // Display headers
-                const headers = Object.keys(data[0]);
+                const headers = csvHeadersOrder && csvHeadersOrder.length ? csvHeadersOrder : Object.keys(data[0]);
+
+                // Display headers in CSV order
                 let headerRow = '<tr>';
-                headers.forEach(header => {
-                    headerRow += `<th>${header}</th>`;
-                });
+                headers.forEach(header => { headerRow += `<th>${header}</th>`; });
                 headerRow += '</tr>';
                 previewHeaders.innerHTML = headerRow;
 
-                // Display preview rows (first 5 rows)
+                // Display first 5 rows in CSV order
                 let bodyRows = '';
-                const previewRows = data.slice(0, 5);
-                previewRows.forEach(row => {
+                data.slice(0, 5).forEach(row => {
                     let rowHtml = '<tr>';
-                    headers.forEach(header => {
-                        rowHtml += `<td>${row[header] !== null ? row[header] : ''}</td>`;
-                    });
+                    headers.forEach(header => { rowHtml += `<td>${row[header] ?? ''}</td>`; });
                     rowHtml += '</tr>';
                     bodyRows += rowHtml;
                 });
                 previewBody.innerHTML = bodyRows;
 
-                // Show preview area
                 previewArea.classList.remove('hidden');
             }
 
             // Upload button
             uploadBtn.addEventListener('click', uploadToSupabase);
-            
-            // Function to upload data to Supabase via Edge Function
+
+            // Upload CSV rows mapped to DB columns (underscored), preserve "Count", batch upload
             async function uploadToSupabase() {
-                if (!mappedData || mappedData.length === 0) {
+                if (!parsedData || parsedData.length === 0) {
                     alert('No data to upload.');
                     return;
                 }
 
                 try {
-                    // Clear previous debug info
-                    debugInfo = {
-                        requests: [],
-                        responses: [],
-                        data: [],
-                        errors: []
-                    };
-                    
-                    // Add initial data to debug
-                    debugInfo.data.push({
-                        timestamp: new Date().toISOString(),
-                        message: `Starting upload process with ${mappedData.length} records`,
-                        totalRecords: mappedData.length
-                    });
-                    
                     progressArea.classList.remove('hidden');
-                    statusMessage.textContent = 'Preparing to upload data...';
+                    statusMessage.textContent = 'Uploading...';
                     updateProgress(10);
-                    
-                    // Disable upload button during the process
+
                     uploadBtn.disabled = true;
                     uploadBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Uploading...';
 
-                    // URL of the Supabase Edge Function
                     const supabaseUrl = 'https://unveoqnlqnobufhublyw.supabase.co';
                     const url = `${supabaseUrl}/functions/v1/emis-upload`;
-                    
-                    // The JWT token for authorization (anon key)
                     const jwtToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME';
-                    
-                    // Batch the data if needed (to handle large datasets)
-                    const batchSize = 25; // REDUCED batch size to prevent payload size issues
-                    const totalBatches = Math.ceil(mappedData.length / batchSize);
-                    
-                    let totalUploaded = 0;
-                    let hasErrors = false;
-                    let errorMessages = [];
-                    let successfulBatches = 0;
-                    
-                    updateProgress(20);
-                    statusMessage.textContent = `Uploading data in ${totalBatches} batches (${batchSize} records per batch)...`;
-                    
-                    // Log to console for debugging
-                    console.log(`Starting upload: ${mappedData.length} total records in ${totalBatches} batches`);
-                    console.log(`Sample record:`, mappedData[0]);
-                    
-                    // Add batch info to debug
-                    debugInfo.data.push({
-                        timestamp: new Date().toISOString(),
-                        message: `Data will be uploaded in ${totalBatches} batches of max ${batchSize} records each`,
-                        batchSize: batchSize,
-                        totalBatches: totalBatches,
-                        totalRecords: mappedData.length
+
+                    // Map CSV headers -> DB columns (NO fill-down, values as-is)
+                    const headerToDb = {
+                        "Full Name of the Session Holder of the Session": "full_name_session_holder",
+                        "Day of Week": "day_of_week",
+                        "Session's Session Start": "session_start",
+                        "Session's Session End": "session_end",
+                        "Appointment Date": "appointment_date",
+                        "Appointment Time": "appointment_time",
+                        "Slot Type": "slot_type",
+                        "Slot Duration": "slot_duration",
+                        "Availability": "availability",
+                        "DNA": "dna_status",
+                        "Booked Time to Slot Time": "booked_time_to_slot_time",
+                        "Arrive Time to Send In Time": "arrive_time_to_send_in_time",
+                        "Slot Time to Send In Time": "slot_time_to_send_in_time",
+                        "Slot Time to Arrive Time": "slot_time_to_arrive_time",
+                        "Consultation Time": "consultation_time",
+                        "Count": "Count" // this column exists as quoted "Count" in your table
+                    };
+
+                    // Build records strictly with DB column names present in your schema
+                    const records = parsedData.map((row, idx) => {
+                        const obj = {};
+                        for (const key in row) {
+                            if (Object.prototype.hasOwnProperty.call(headerToDb, key)) {
+                                const dbKey = headerToDb[key];
+                                let val = row[key];
+                                if (typeof val === 'string') {
+                                    val = val.trim();
+                                }
+                                obj[dbKey] = val; // keep value as-is (no fill-down), but trimmed
+                                
+                                // Debug log for Count column
+                                if (key === 'Count' && idx < 3) {
+                                    console.log(`Row ${idx}: Count column - CSV key: "${key}", DB key: "${dbKey}", Value: "${val}"`);
+                                }
+                            }
+                        }
+                        obj.site_id = 2;
+                        obj.csv_row_number = idx + 1;
+                        
+                        // Debug log for first 3 records
+                        if (idx < 3) {
+                            console.log(`Record ${idx}:`, obj);
+                        }
+                        
+                        return obj;
                     });
-                    
+
+                    // Batch upload for reliability
+                    const batchSize = 25;
+                    const totalBatches = Math.ceil(records.length / batchSize);
+                    let totalUploaded = 0;
+
                     for (let i = 0; i < totalBatches; i++) {
                         const start = i * batchSize;
-                        const end = Math.min((i + 1) * batchSize, mappedData.length);
-                        const batch = mappedData.slice(start, end);
-                        
-                        statusMessage.textContent = `Uploading batch ${i + 1} of ${totalBatches}...`;
-                        const progressIncrement = 60 / totalBatches;
-                        const currentProgress = 20 + (i / totalBatches) * 60;
-                        updateProgress(currentProgress);
-                        
-                        try {
-                            statusMessage.innerHTML = `<strong>Uploading batch ${i + 1} of ${totalBatches}</strong><br>Processing ${batch.length} records...`;
-                            
-                            // Create a sanitized version of the batch for logging (remove potentially large data)
-                            const logBatch = batch.map(item => ({
-                                appointment_date: item.appointment_date,
-                                day_of_week: item.day_of_week,
-                                slot_type: item.slot_type,
-                                availability: item.availability,
-                                // Include only a sample of fields to keep logs concise
-                            }));
-                            
-                            // For Supabase Edge Functions, we need to use a JWT token with the Authorization header
-                            // This is how other parts of the app authenticate with edge functions
-                            const headers = {
+                        const end = Math.min((i + 1) * batchSize, records.length);
+                        const batch = records.slice(start, end);
+
+                        const response = await fetch(url, {
+                            method: 'POST',
+                            headers: {
                                 'Content-Type': 'application/json',
-                                'Authorization': `Bearer ${jwtToken}` 
-                            };
-                            
-                            // Log the request
-                            const requestInfo = {
-                                timestamp: new Date().toISOString(),
-                                batchNumber: i + 1,
-                                recordCount: batch.length,
-                                url: url,
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Authorization': 'Bearer [REDACTED]'
-                                },
-                                sampleData: logBatch.slice(0, 2) // Just include first two records
-                            };
-                            debugInfo.requests.push(requestInfo);
-                            
-                            // Log the exact data being sent for this batch
-                            console.log(`BATCH ${i + 1}/${totalBatches} - Sending ${batch.length} records. Sample:`, 
-                                batch.slice(0, 2).map(r => ({
-                                    row: r._csvRowNumber || 'unknown',
-                                    name: r.full_name_session_holder,
-                                    date: r.appointment_date,
-                                    slot: r.slot_type
-                                }))
-                            );
-                            
-                            // Calculate payload size for debugging
-                            const payload = JSON.stringify({ records: batch });
-                            const payloadSizeKB = (payload.length / 1024).toFixed(2);
-                            console.log(`Payload size: ${payloadSizeKB} KB`);
-                            
-                            // Make the request
-                            const response = await fetch(url, {
-                                method: 'POST',
-                                headers: headers,
-                                body: payload
-                            });
-                            
-                            // Check for network errors first
-                            if (!response) {
-                                throw new Error('Network error: No response received from server');
-                            }
-                            
-                            let responseData;
+                                'Authorization': `Bearer ${jwtToken}`
+                            },
+                            body: JSON.stringify({ records: batch })
+                        });
+
+                        if (!response.ok) {
+                            let msg = response.statusText || 'Unknown server error';
                             try {
-                                responseData = await response.json();
-                            } catch (jsonError) {
-                                throw new Error(`Failed to parse response JSON: ${jsonError.message}`);
-                            }
-                            
-                            // Log the response
-                            const responseInfo = {
-                                timestamp: new Date().toISOString(),
-                                batchNumber: i + 1,
-                                status: response.status,
-                                statusText: response.statusText,
-                                ok: response.ok,
-                                data: responseData
-                            };
-                            debugInfo.responses.push(responseInfo);
-                            console.log(`BATCH ${i + 1} RESPONSE:`, responseData);
-                            
-                            if (!response.ok) {
-                                const errorDetails = responseData.error || 
-                                                   responseData.message ||
-                                                   responseData.details ||
-                                                   response.statusText || 
-                                                   'Unknown server error';
-                                throw new Error(`Server error ${response.status}: ${errorDetails}`);
-                            }
-                            
-                            totalUploaded += responseData.count || 0;
-                            successfulBatches++;
-                            
-                            // Add success info to debug data
-                            debugInfo.data.push({
-                                timestamp: new Date().toISOString(),
-                                message: `Successfully uploaded batch ${i + 1}/${totalBatches}`,
-                                batchNumber: i + 1,
-                                recordsUploaded: responseData.count || 0
-                            });
-                            
-                            statusMessage.innerHTML = `<span class="text-success">✓ Batch ${i + 1}/${totalBatches} complete</span><br>Uploaded ${totalUploaded} records so far`;
-                            
-                        } catch (batchError) {
-                            hasErrors = true;
-                            const errorMsg = `Batch ${i + 1}: ${batchError.message}`;
-                            errorMessages.push(errorMsg);
-                            
-                            // Update UI to show the error
-                            statusMessage.innerHTML = `<span class="text-danger">✗ Error in batch ${i + 1}/${totalBatches}</span><br>${batchError.message}`;
-                            
-                            // Log the error
-                            debugInfo.errors.push({
-                                timestamp: new Date().toISOString(),
-                                batchNumber: i + 1,
-                                message: batchError.message,
-                                stack: batchError.stack,
-                                recordsInBatch: batch.length,
-                                batchStartIndex: i * batchSize,
-                                batchEndIndex: Math.min((i + 1) * batchSize, mappedData.length) - 1
-                            });
-                            
-                            console.error(`ERROR IN BATCH ${i + 1}/${totalBatches}:`, batchError);
+                                const res = await response.json();
+                                if (res && (res.error || res.message)) msg = res.error || res.message;
+                            } catch {}
+                            throw new Error(`Server error ${response.status}: ${msg}`);
                         }
+
+                        totalUploaded += batch.length;
+                        const prog = 10 + ((i + 1) / totalBatches) * 90;
+                        updateProgress(prog);
+                        statusMessage.textContent = `Uploaded ${totalUploaded} / ${records.length}`;
                     }
-                    
-                    // Update progress to complete
+
                     updateProgress(100);
-                    
-                    // Show upload summary
+                    statusMessage.textContent = `Successfully uploaded ${totalUploaded} records.`;
+                    statusMessage.classList.add('text-success');
+
+                    // Summary
                     const uploadSummary = document.getElementById('upload-summary');
                     const totalProcessed = document.getElementById('total-processed');
                     const totalUploadedEl = document.getElementById('total-uploaded');
                     const uploadStatus = document.getElementById('upload-status');
-                    const newUploadBtn = document.getElementById('new-upload-btn');
-                    
-                    totalProcessed.textContent = mappedData.length;
-                    totalUploadedEl.textContent = totalUploaded;
-                    
-                    // Update final debug info
-                    debugInfo.data.push({
-                        timestamp: new Date().toISOString(),
-                        message: `Upload process completed`,
-                        totalProcessed: mappedData.length,
-                        totalUploaded: totalUploaded,
-                        success: !hasErrors
-                    });
-                    
-                    if (hasErrors) {
-                        uploadStatus.textContent = 'Partial Success';
-                        uploadStatus.classList.remove('bg-success');
-                        uploadStatus.classList.add('bg-warning');
-                        
-                        // Display error messages directly in the status message
-                        let errorMsg = `Uploaded ${totalUploaded} of ${mappedData.length} records. Errors:`;
-                        errorMessages.forEach((err, idx) => {
-                            if (idx < 3) { // Show first 3 errors
-                                errorMsg += `<br>- ${err}`;
-                            }
-                        });
-                        if (errorMessages.length > 3) {
-                            errorMsg += `<br>- And ${errorMessages.length - 3} more errors...`;
-                        }
-                        
-                        statusMessage.innerHTML = errorMsg;
-                        statusMessage.classList.add('text-warning');
-                        
-                        // Also log to console for debugging
-                        console.error('UPLOAD ERRORS:', errorMessages);
-                        
-                        // Add detailed error summary to debug
-                        debugInfo.data.push({
-                            timestamp: new Date().toISOString(),
-                            message: `Upload completed with errors`,
-                            errorCount: errorMessages.length,
-                            errors: errorMessages
-                        });
-                        
-                        // Auto-select the Errors tab in debug panel
-                        if (document.getElementById('error-tab')) {
-                            document.getElementById('error-tab').click();
-                        }
-                    } else {
-                        uploadStatus.textContent = 'Success';
-                        uploadStatus.classList.add('bg-success');
-                        statusMessage.textContent = `Successfully uploaded ${totalUploaded} records to the database!`;
-                        statusMessage.classList.add('text-success');
-                    }
-                    
                     uploadSummary.classList.remove('hidden');
-                    
-                    // Update debug panel
-                    updateDebugPanels();
-                    
-                    // Add event listener for new upload button
-                    newUploadBtn.addEventListener('click', () => {
-                        resetFileInput();
-                        uploadSummary.classList.add('hidden');
-                        statusMessage.classList.remove('text-success', 'text-warning', 'text-danger');
-                        progressArea.classList.add('hidden');
-                    });
-                    
-                    // Re-enable upload button
-                    uploadBtn.disabled = false;
-                    uploadBtn.textContent = 'Upload to Database';
-                    
+                    totalProcessed.textContent = records.length;
+                    totalUploadedEl.textContent = totalUploaded;
+                    uploadStatus.textContent = 'Success';
+                    uploadStatus.classList.add('bg-success');
+
                 } catch (error) {
-                    console.error('Upload error:', error);
-                    
-                    // Log the error
-                    debugInfo.errors.push({
-                        timestamp: new Date().toISOString(),
-                        message: error.message,
-                        stack: error.stack
-                    });
-                    
-                    updateProgress(0);
                     statusMessage.textContent = `Error: ${error.message}`;
                     statusMessage.classList.add('text-danger');
-                    
-                    // Update debug panel
-                    updateDebugPanels();
-                    
-                    // Re-enable upload button
+                    updateProgress(0);
+                } finally {
                     uploadBtn.disabled = false;
-                    uploadBtn.textContent = 'Try Again';
+                    uploadBtn.textContent = 'Upload to Database';
                 }
             }
             
-            // Test API Connection
+            // Test API Connection (simplified, no debug UI)
             document.getElementById('test-connection-btn').addEventListener('click', async function() {
                 try {
-                    // Add debug message
-                    debugInfo.data.push({
-                        timestamp: new Date().toISOString(),
-                        message: 'Testing connection to Supabase Edge Function'
-                    });
-                    
-                    // Show debug message
                     statusMessage.textContent = 'Testing connection to API...';
-                    statusMessage.classList.remove('text-success', 'text-warning', 'text-danger');
-                    
-                    // Get Supabase URL and JWT token from the upload function
                     const supabaseUrl = 'https://unveoqnlqnobufhublyw.supabase.co';
                     const jwtToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME';
-                    
-                    // Create request info for debugging
-                    const requestInfo = {
-                        timestamp: new Date().toISOString(),
-                        url: `${supabaseUrl}/functions/v1/emis-upload/health`,
+                    const res = await fetch(`${supabaseUrl}/functions/v1/emis-upload/health`, {
                         method: 'GET',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': 'Bearer [REDACTED]'
-                        }
-                    };
-                    
-                    debugInfo.requests.push(requestInfo);
-                    
-                    // Make the API request
-                    const response = await fetch(`${supabaseUrl}/functions/v1/emis-upload/health`, {
-                        method: 'GET',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${jwtToken}`
-                        }
+                        headers: { 'Authorization': `Bearer ${jwtToken}` }
                     });
-                    
-                    const result = await response.json();
-                    
-                    // Create response info for debugging
-                    const responseInfo = {
-                        timestamp: new Date().toISOString(),
-                        status: response.status,
-                        statusText: response.statusText,
-                        ok: response.ok,
-                        data: result
-                    };
-                    
-                    debugInfo.responses.push(responseInfo);
-                    
-                    if (response.ok) {
-                        debugInfo.data.push({
-                            timestamp: new Date().toISOString(),
-                            message: 'API connection successful',
-                            details: result
-                        });
-                        
+                    if (res.ok) {
                         statusMessage.textContent = 'API connection successful! ✅';
                         statusMessage.classList.add('text-success');
                     } else {
-                        debugInfo.errors.push({
-                            timestamp: new Date().toISOString(),
-                            message: 'API connection failed',
-                            status: response.status,
-                            details: result
-                        });
-                        
-                        statusMessage.textContent = `API connection failed: ${result.error || response.statusText} ❌`;
+                        statusMessage.textContent = `API connection failed: ${res.status} ❌`;
                         statusMessage.classList.add('text-danger');
                     }
-                    
-                    // Update debug panels with new info
-                    updateDebugPanels();
-                    document.getElementById('toggle-debug-btn').textContent = 'Show Debug Info';
-                    document.getElementById('debug-content').classList.remove('hidden');
-                    document.getElementById('toggle-debug-btn').textContent = 'Hide Debug Info';
-                    
-                } catch (error) {
-                    console.error('Connection test error:', error);
-                    
-                    debugInfo.errors.push({
-                        timestamp: new Date().toISOString(),
-                        message: `API connection test failed: ${error.message}`,
-                        stack: error.stack
-                    });
-                    
-                    statusMessage.textContent = `Connection test error: ${error.message} ❌`;
+                } catch (e) {
+                    statusMessage.textContent = `Connection test error: ${e.message} ❌`;
                     statusMessage.classList.add('text-danger');
-                    
-                    // Update debug panels
-                    updateDebugPanels();
-                    document.getElementById('debug-content').classList.remove('hidden');
-                    document.getElementById('toggle-debug-btn').textContent = 'Hide Debug Info';
                 }
             });
             
@@ -1193,5 +1269,260 @@
             }
         });
     </script>
+
+    <!-- Bottom-left user avatar: exact copy of admin dashboard styling -->
+    <style>
+    /* CSS Variables (same as admin dashboard) */
+    :root {
+      --accent: #0ea5e9;
+      --accent-2: #38bdf8;
+      --panel-bg: #ffffff;
+      --border-color: #e2e8f0;
+      --ink: #0f172a;
+      --muted: #64748b;
+    }
+    
+    /* User avatar - exact copy from admin dashboard */
+    .user-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 700;
+      font-size: 18px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+      transition: transform 0.18s ease;
+      flex-shrink: 0;
+      cursor: pointer;
+      position: fixed;
+      left: 18px;
+      bottom: 18px;
+      z-index: 9999;
+    }
+    /* Presence indicator (admin dashboard style) */
+    .user-avatar { position: fixed; }
+    .user-avatar::after {
+      content: '';
+      position: absolute;
+      bottom: -2px;
+      right: -2px;
+      width: 16px;
+      height: 16px;
+      background: #41d656; /* var(--success) equivalent */
+      border: 2px solid var(--panel-bg);
+      border-radius: 50%;
+    }
+    .user-avatar.inactive::after { background: var(--muted); }
+    .user-avatar:hover { transform: scale(1.04); }
+    
+    /* User popover - same styling as email-popover */
+    .user-popover {
+      position: fixed;
+      left: 76px;
+      bottom: 18px;
+      min-width: 260px;
+      max-width: 360px;
+      background: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 12px 30px rgba(2,6,23,0.25);
+      color: var(--ink);
+      z-index: 10000;
+      transform-origin: bottom left;
+      animation: popIn .18s cubic-bezier(.2,.9,.2,1);
+      display: none;
+    }
+    
+    @keyframes popIn {
+      from { transform: scale(.92) translateY(6px); opacity: 0; }
+      to { transform: scale(1) translateY(0); opacity: 1; }
+    }
+    
+    .user-popover .user-email {
+      font-weight: 600;
+      color: var(--ink);
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+    
+    .user-popover .user-role {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 12px;
+    }
+    
+    .user-popover .btn-signout {
+      width: 100%;
+      padding: 8px 16px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--ink);
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    .user-popover .btn-signout:hover {
+      background: #f8fafc;
+      border-color: var(--muted);
+    }
+    </style>
+
+    <!-- User avatar in bottom-left (exact copy of admin dashboard structure) -->
+    <div class="user-avatar" id="user-avatar" title="User menu" aria-haspopup="true" aria-expanded="false">
+      <span id="user-initials">U</span>
+    </div>
+    
+    <!-- User popover -->
+    <div class="user-popover" id="user-popover" role="dialog" aria-hidden="true">
+      <div class="user-email" id="user-email">—</div>
+      <div class="user-role" id="user-role">—</div>
+      <button class="btn-signout" id="btn-signout">Sign out</button>
+    </div>
+
+    <script>
+    // User avatar functionality — synced with admin dashboard
+    document.addEventListener('DOMContentLoaded', async () => {
+      try {
+        const userAvatar = document.getElementById('user-avatar');
+        const userPopover = document.getElementById('user-popover');
+        const userInitials = document.getElementById('user-initials');
+        const userEmailEl = document.getElementById('user-email'); // will show NAME here
+        const userRoleEl = document.getElementById('user-role');
+        const btnSignout = document.getElementById('btn-signout');
+
+        const sb = window.supabase || (window.getSupabase && window.getSupabase());
+        if (!sb) return;
+
+        const { data: { session } } = await sb.auth.getSession();
+        if (!session) {
+          sessionStorage.setItem('redirectAfterLogin', window.location.pathname);
+          window.location.replace('admin-login.html');
+          return;
+        }
+
+        const user = session.user;
+
+        // Load profile
+        let profile = null;
+        try {
+          const { data } = await sb
+            .from('master_users')
+            .select('site_id, access_type, full_name, avatar_url')
+            .eq('auth_user_id', user.id)
+            .maybeSingle();
+          profile = data || null;
+        } catch (e) { console.error('Profile fetch error:', e); }
+
+        // Build display name exactly like admin dashboard
+        let displayName = profile?.full_name ||
+                          user?.user_metadata?.nickname ||
+                          user?.user_metadata?.full_name ||
+                          user?.user_metadata?.name ||
+                          (user.email ? user.email.split('@')[0]
+                            .replace(/[._-]/g, ' ')
+                            .replace(/\b\w/g, l => l.toUpperCase()) : 'User');
+
+        // Set initials (first + last) like admin dashboard
+        const baseName = displayName || user.email || 'User';
+        const parts = baseName.trim().split(' ');
+        const initials = parts.length >= 2
+          ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+          : baseName.substring(0, 2).toUpperCase();
+        if (userInitials) userInitials.textContent = initials;
+
+        // Prefer stored avatar URL, fallback to user metadata
+        try {
+          let avatarUrl = profile?.avatar_url || user?.user_metadata?.avatar_url || null;
+          if (!avatarUrl) {
+            try {
+              const { data: saw } = await sb
+                .from('master_users')
+                .select('avatar_url, updated_at')
+                .eq('auth_user_id', user.id)
+                .order('updated_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              avatarUrl = saw?.avatar_url || avatarUrl;
+            } catch (_) {}
+          }
+          if (avatarUrl) {
+            let img = userAvatar.querySelector('img');
+            if (!img) {
+              img = document.createElement('img');
+              img.alt = 'Avatar';
+              img.style.width = '100%';
+              img.style.height = '100%';
+              img.style.borderRadius = '50%';
+              img.style.objectFit = 'cover';
+              userAvatar.appendChild(img);
+            }
+            img.src = avatarUrl;
+            if (userInitials) userInitials.style.display = 'none';
+          }
+        } catch (e) { console.warn('Avatar render failed', e); }
+
+        // Role text exactly like admin dashboard
+        let detectedRole = String(profile?.access_type || user?.user_metadata?.role || '').toLowerCase();
+        let roleText = (detectedRole === 'admin' || detectedRole === 'owner' ||
+                        (user?.email && user.email.toLowerCase() === 'benhowardmagic@hotmail.com'))
+                        ? 'Admin'
+                        : (detectedRole ? detectedRole.charAt(0).toUpperCase() + detectedRole.slice(1) : 'Staff');
+
+        // Site name (same fallback)
+        let siteName = '';
+        try {
+          if (profile?.site_id) {
+            const { data: site } = await sb
+              .from('sites')
+              .select('name')
+              .eq('id', profile.site_id)
+              .maybeSingle();
+            siteName = site?.name || '';
+          } else {
+            siteName = 'Harley Street Medical Centre';
+          }
+        } catch (_) {}
+
+        // Populate popover text — NAME on first line, then `Role  Site`
+        if (userEmailEl) userEmailEl.textContent = displayName;
+        if (userRoleEl) userRoleEl.textContent = siteName ? `${roleText}  ${siteName}` : roleText;
+
+        // Toggle popover
+        userAvatar.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const isVisible = userPopover.style.display === 'block';
+          document.querySelectorAll('.user-popover').forEach(p => { if (p !== userPopover) p.style.display = 'none'; });
+          userPopover.style.display = isVisible ? 'none' : 'block';
+          userAvatar.setAttribute('aria-expanded', !isVisible);
+        });
+        document.addEventListener('click', (e) => {
+          if (!userAvatar.contains(e.target) && !userPopover.contains(e.target)) {
+            userPopover.style.display = 'none';
+            userAvatar.setAttribute('aria-expanded', false);
+          }
+        });
+
+        // Sign out handler
+        btnSignout.addEventListener('click', async () => {
+          try { await sb.auth.signOut(); } catch(e) { console.error('Sign out failed', e); }
+          window.location.replace('home.html');
+        });
+
+      } catch (err) {
+        console.error('User avatar init error', err);
+      }
+    });
+    </script>
+        </div>
+      </div>
+    </main>
+  </div>
 </body>
 </html>

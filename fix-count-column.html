@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fix Count Column in Supabase</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 10px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 15px 0;
+            border: 1px solid #ddd;
+        }
+        .panel {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .log {
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .success {
+            color: #2e7d32;
+            background-color: #e8f5e9;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .error {
+            color: #c62828;
+            background-color: #ffebee;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .warning {
+            color: #ef6c00;
+            background-color: #fff3e0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .progress-bar {
+            width: 100%;
+            background-color: #e0e0e0;
+            padding: 3px;
+            border-radius: 3px;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, .2);
+            margin: 10px 0;
+        }
+        .progress-bar-fill {
+            height: 20px;
+            background-color: #4CAF50;
+            border-radius: 3px;
+            transition: width 0.5s ease-in-out;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 20px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <h1>Fix Count Column in Supabase</h1>
+    
+    <div class="panel">
+        <h2>Step 1: Upload Original CSV File</h2>
+        <p>Upload your original CSV file to extract Count values:</p>
+        <input type="file" id="csvFile" accept=".csv">
+    </div>
+
+    <div id="csvInfo" class="panel" style="display:none">
+        <h2>CSV Data Preview</h2>
+        <div id="csvPreview"></div>
+        <button id="mapBtn" disabled>Map CSV to Database Records</button>
+    </div>
+
+    <div id="mappingPanel" class="panel" style="display:none">
+        <h2>Step 2: Mapping Preview</h2>
+        <div id="mappingInfo"></div>
+        <div class="progress-bar" id="progressBar" style="display:none">
+            <div class="progress-bar-fill" id="progressBarFill" style="width: 0%">0%</div>
+        </div>
+        <button id="updateBtn" disabled>Update Count Values in Database</button>
+    </div>
+
+    <div id="resultPanel" class="panel" style="display:none">
+        <h2>Results</h2>
+        <div id="updateResults"></div>
+    </div>
+
+    <div id="logPanel" class="log" style="display:none">
+        <h3>Log</h3>
+        <div id="logMessages"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.0/papaparse.min.js"></script>
+    <script>
+        const supabaseUrl = 'https://unveoqnlqnobufhublyw.supabase.co';
+        const jwtToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME';
+        
+        let csvData = null;
+        let dbRecords = null;
+        let mappedData = null;
+        
+        // Event handlers
+        document.getElementById('csvFile').addEventListener('change', handleFileSelect);
+        document.getElementById('mapBtn').addEventListener('click', mapCsvToDatabase);
+        document.getElementById('updateBtn').addEventListener('click', updateDatabase);
+        
+        function addLog(message, type = 'info') {
+            const logPanel = document.getElementById('logPanel');
+            const logMessages = document.getElementById('logMessages');
+            
+            logPanel.style.display = 'block';
+            
+            const logEntry = document.createElement('div');
+            logEntry.className = type;
+            logEntry.innerHTML = `<p>${message}</p>`;
+            
+            logMessages.appendChild(logEntry);
+            logPanel.scrollTop = logPanel.scrollHeight;
+        }
+        
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            addLog(`Reading file: ${file.name}`);
+            
+            Papa.parse(file, {
+                header: true,
+                dynamicTyping: false,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    processCSV(results);
+                },
+                error: function(error) {
+                    addLog(`Error parsing CSV: ${error}`, 'error');
+                }
+            });
+        }
+        
+        function processCSV(results) {
+            const csvPreview = document.getElementById('csvPreview');
+            const mapBtn = document.getElementById('mapBtn');
+            const csvInfoPanel = document.getElementById('csvInfo');
+            
+            // Get the raw headers
+            const rawHeaders = Array.isArray(results.meta?.fields) ? results.meta.fields : Object.keys(results.data[0] || {});
+            
+            addLog(`Total headers: ${rawHeaders.length}`);
+            addLog(`Raw headers: ${JSON.stringify(rawHeaders)}`);
+            
+            // Find ALL empty headers and identify which one has values
+            const emptyHeaderIndices = [];
+            for (let i = 0; i < rawHeaders.length; i++) {
+                const h = rawHeaders[i];
+                if (!h || String(h).trim() === '') {
+                    emptyHeaderIndices.push(i);
+                    addLog(`Empty header at index ${i}`);
+                }
+            }
+            
+            // Extract count values - try each empty header to find which one has the data
+            csvData = {};
+            let countFound = false;
+            let countHeaderIdx = -1;
+            
+            // Try each empty header index to find the one with Count values
+            for (const headerIdx of emptyHeaderIndices) {
+                const testData = {};
+                const emptyHeaderKey = rawHeaders[headerIdx];
+                
+                // Check first 10 rows to see if this header has values
+                let hasValues = false;
+                results.data.slice(0, 10).forEach((row) => {
+                    const value = row[emptyHeaderKey];
+                    if (value !== undefined && value !== null && value !== '') {
+                        hasValues = true;
+                    }
+                });
+                
+                if (hasValues) {
+                    countHeaderIdx = headerIdx;
+                    addLog(`Found Count values at header index ${headerIdx}`);
+                    break;
+                }
+            }
+            
+            // Extract all Count values using the identified header index
+            if (countHeaderIdx >= 0) {
+                const emptyHeaderKey = rawHeaders[countHeaderIdx];
+                
+                results.data.forEach((row, idx) => {
+                    const countValue = row[emptyHeaderKey];
+                    
+                    // Debug first few rows
+                    if (idx < 5) {
+                        addLog(`Row ${idx + 1}: headerKey="${emptyHeaderKey}", value="${countValue}"`);
+                    }
+                    
+                    if (countValue !== undefined && countValue !== null && countValue !== '') {
+                        csvData[idx + 1] = countValue.toString().trim();
+                        countFound = true;
+                    }
+                });
+            } else {
+                addLog('No empty header with values found!', 'error');
+            }
+            
+            // Display preview
+            let html = `<p>Total rows: ${results.data.length}</p>`;
+            html += `<p>Count values found: ${Object.keys(csvData).length}</p>`;
+            
+            if (countFound) {
+                html += `<h3>Count Values Preview (first 10)</h3>`;
+                html += `<table><tr><th>CSV Row #</th><th>Count Value</th></tr>`;
+                
+                Object.entries(csvData)
+                    .slice(0, 10)
+                    .forEach(([rowNum, countValue]) => {
+                        html += `<tr><td>${rowNum}</td><td>${countValue}</td></tr>`;
+                    });
+                
+                html += `</table>`;
+                
+                mapBtn.disabled = false;
+                addLog(`CSV processed. Found ${Object.keys(csvData).length} Count values.`, 'success');
+            } else {
+                html += `<div class="error">No Count values found! Make sure your CSV has values in the last column.</div>`;
+                addLog(`No Count values found in CSV!`, 'error');
+            }
+            
+            csvPreview.innerHTML = html;
+            csvInfoPanel.style.display = 'block';
+        }
+        
+        async function mapCsvToDatabase() {
+            const mappingPanel = document.getElementById('mappingPanel');
+            const mappingInfo = document.getElementById('mappingInfo');
+            const mapBtn = document.getElementById('mapBtn');
+            const updateBtn = document.getElementById('updateBtn');
+            
+            try {
+                mapBtn.disabled = true;
+                mappingInfo.innerHTML = '<p>Fetching database records...</p>';
+                mappingPanel.style.display = 'block';
+                
+                addLog('Fetching records from database...');
+                
+                // Fetch records from database
+                const response = await fetch(
+                    `${supabaseUrl}/rest/v1/emis_apps_raw?select=id,csv_row_number&order=csv_row_number.asc`,
+                    {
+                        headers: {
+                            'apikey': jwtToken,
+                            'Authorization': `Bearer ${jwtToken}`
+                        }
+                    }
+                );
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch database records: ${response.status}`);
+                }
+                
+                dbRecords = await response.json();
+                addLog(`Fetched ${dbRecords.length} records from database.`);
+                
+                // Map CSV rows to DB records by csv_row_number
+                mappedData = dbRecords
+                    .filter(record => csvData[record.csv_row_number] !== undefined)
+                    .map(record => ({
+                        id: record.id,
+                        csv_row_number: record.csv_row_number,
+                        Count: csvData[record.csv_row_number]
+                    }));
+                
+                // Preview the mapping
+                let html = `<p>Database records: ${dbRecords.length}</p>`;
+                html += `<p>Records to update: ${mappedData.length}</p>`;
+                
+                html += `<h3>Update Preview (first 10)</h3>`;
+                html += `<table><tr><th>DB ID</th><th>CSV Row #</th><th>Count Value</th></tr>`;
+                
+                mappedData.slice(0, 10).forEach(record => {
+                    html += `<tr>
+                        <td>${record.id}</td>
+                        <td>${record.csv_row_number}</td>
+                        <td>${record.Count}</td>
+                    </tr>`;
+                });
+                
+                html += `</table>`;
+                
+                if (mappedData.length > 0) {
+                    updateBtn.disabled = false;
+                    addLog(`Mapped ${mappedData.length} records for update.`, 'success');
+                } else {
+                    html += `<div class="warning">No records to update! Row numbers don't match between CSV and database.</div>`;
+                    addLog(`No records to update! Row numbers don't match.`, 'warning');
+                }
+                
+                mappingInfo.innerHTML = html;
+                
+            } catch (error) {
+                mappingInfo.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+                addLog(`Error during mapping: ${error.message}`, 'error');
+                mapBtn.disabled = false;
+            }
+        }
+        
+        async function updateDatabase() {
+            const updateBtn = document.getElementById('updateBtn');
+            const resultPanel = document.getElementById('resultPanel');
+            const updateResults = document.getElementById('updateResults');
+            const progressBar = document.getElementById('progressBar');
+            const progressBarFill = document.getElementById('progressBarFill');
+            
+            try {
+                if (!mappedData || mappedData.length === 0) {
+                    throw new Error('No data to update!');
+                }
+                
+                updateBtn.disabled = true;
+                progressBar.style.display = 'block';
+                resultPanel.style.display = 'block';
+                updateResults.innerHTML = '<p>Updating records...</p>';
+                
+                addLog(`Starting database update for ${mappedData.length} records...`);
+                
+                // Update in batches of 20
+                const batchSize = 20;
+                const totalBatches = Math.ceil(mappedData.length / batchSize);
+                let successCount = 0;
+                let errorCount = 0;
+                let errorMessages = [];
+                
+                for (let i = 0; i < totalBatches; i++) {
+                    const start = i * batchSize;
+                    const end = Math.min((i + 1) * batchSize, mappedData.length);
+                    const batch = mappedData.slice(start, end);
+                    
+                    try {
+                        // Update Count for each record individually
+                        for (const record of batch) {
+                            const response = await fetch(
+                                `${supabaseUrl}/rest/v1/emis_apps_raw?id=eq.${record.id}`,
+                                {
+                                    method: 'PATCH',
+                                    headers: {
+                                        'apikey': jwtToken,
+                                        'Authorization': `Bearer ${jwtToken}`,
+                                        'Content-Type': 'application/json',
+                                        'Prefer': 'return=minimal'
+                                    },
+                                    body: JSON.stringify({ Count: record.Count })
+                                }
+                            );
+                            
+                            if (response.ok) {
+                                successCount++;
+                            } else {
+                                errorCount++;
+                                const errorText = await response.text();
+                                errorMessages.push(`Row ${record.csv_row_number}: ${errorText}`);
+                                addLog(`Failed to update record ${record.id} (Row ${record.csv_row_number}): ${errorText}`, 'error');
+                            }
+                        }
+                        
+                        // Update progress
+                        const progress = Math.round((i + 1) / totalBatches * 100);
+                        progressBarFill.style.width = `${progress}%`;
+                        progressBarFill.textContent = `${progress}%`;
+                        
+                        addLog(`Batch ${i + 1}/${totalBatches} completed. Progress: ${progress}%`);
+                        
+                    } catch (error) {
+                        errorCount += batch.length;
+                        errorMessages.push(`Batch ${i + 1}: ${error.message}`);
+                        addLog(`Error in batch ${i + 1}: ${error.message}`, 'error');
+                    }
+                }
+                
+                // Show final results
+                let resultHtml = '';
+                
+                if (successCount > 0) {
+                    resultHtml += `<div class="success">
+                        <h3>✅ Successfully updated ${successCount} records</h3>
+                    </div>`;
+                }
+                
+                if (errorCount > 0) {
+                    resultHtml += `<div class="error">
+                        <h3>❌ Failed to update ${errorCount} records</h3>
+                        <details>
+                            <summary>View Error Details</summary>
+                            <pre>${errorMessages.join('\n')}</pre>
+                        </details>
+                    </div>`;
+                }
+                
+                resultHtml += `<p>Update completed at ${new Date().toLocaleString()}</p>`;
+                
+                if (successCount > 0) {
+                    resultHtml += `<div class="panel">
+                        <h3>Next Steps</h3>
+                        <p>The Count column should now be populated in your database.</p>
+                        <p>You can verify this by checking the data in Supabase.</p>
+                    </div>`;
+                }
+                
+                updateResults.innerHTML = resultHtml;
+                addLog(`Update completed: ${successCount} successes, ${errorCount} errors`, successCount > 0 ? 'success' : 'error');
+                
+            } catch (error) {
+                updateResults.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+                addLog(`Error during update: ${error.message}`, 'error');
+                updateBtn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
