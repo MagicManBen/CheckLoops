@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Test Save Slot Mappings Function</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<style>
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    max-width: 900px;
+    margin: 40px auto;
+    padding: 0 20px;
+    background: #f8fafc;
+  }
+  h1 { color: #1e293b; }
+  .test-section {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    margin: 20px 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+  button {
+    background: #3b82f6;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    margin-right: 10px;
+    margin-bottom: 10px;
+  }
+  button:hover { background: #2563eb; }
+  button:disabled {
+    background: #94a3b8;
+    cursor: not-allowed;
+  }
+  .result {
+    margin-top: 15px;
+    padding: 15px;
+    background: #f1f5f9;
+    border-radius: 6px;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .success { background: #dcfce7; border-left: 4px solid #22c55e; }
+  .error { background: #fee2e2; border-left: 4px solid #ef4444; }
+  .info { background: #dbeafe; border-left: 4px solid #3b82f6; }
+  .status {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .status.ok { background: #22c55e; color: white; }
+  .status.fail { background: #ef4444; color: white; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+  }
+  th, td {
+    padding: 8px;
+    text-align: left;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  th {
+    background: #f8fafc;
+    font-weight: 600;
+    color: #334155;
+  }
+</style>
+</head>
+<body>
+  <h1>🧪 Test Save Slot Mappings Function</h1>
+  
+  <div class="test-section">
+    <h2>Configuration</h2>
+    <p><strong>Supabase URL:</strong> <span id="config-url">Loading...</span></p>
+    <p><strong>Has Anon Key:</strong> <span id="config-key">Loading...</span></p>
+    <p><strong>User Logged In:</strong> <span id="config-user">Loading...</span></p>
+    <p><strong>Site ID:</strong> <span id="config-site">Loading...</span></p>
+  </div>
+
+  <div class="test-section">
+    <h2>Test 1: Save Sample Mappings</h2>
+    <p>Save 3 sample slot type mappings to the database.</p>
+    <button id="test-save">Save Sample Mappings</button>
+    <div id="result-save" class="result" style="display:none;"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>Test 2: View Saved Mappings</h2>
+    <p>Query the database to see all saved mappings for your site.</p>
+    <button id="test-view">View My Mappings</button>
+    <button id="test-view-all">View All Mappings (Admin)</button>
+    <div id="result-view" class="result" style="display:none;"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>Test 3: Error Handling</h2>
+    <p>Test various error scenarios.</p>
+    <button id="test-empty">Send Empty Mappings</button>
+    <button id="test-invalid">Send Invalid Data</button>
+    <div id="result-error" class="result" style="display:none;"></div>
+  </div>
+
+  <script>
+    let supabase;
+    let userProfile;
+    
+    // Initialize Supabase
+    window.addEventListener('load', async () => {
+      try {
+        if (!window.CONFIG) {
+          throw new Error('CONFIG not loaded');
+        }
+        
+        const { createClient } = supabase;
+        supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+        window.supabase = supabase;
+        
+        document.getElementById('config-url').textContent = CONFIG.SUPABASE_URL;
+        document.getElementById('config-key').innerHTML = '<span class="status ok">YES</span>';
+        
+        // Check if user is logged in
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) {
+          document.getElementById('config-user').innerHTML = '<span class="status fail">NOT LOGGED IN</span>';
+          document.getElementById('config-site').innerHTML = '<span class="status fail">N/A</span>';
+          alert('You need to be logged in to test this. Redirecting to login...');
+          window.location.href = 'admin-login.html';
+          return;
+        }
+        
+        document.getElementById('config-user').innerHTML = `<span class="status ok">${session.user.email}</span>`;
+        
+        // Get user's site_id
+        const { data: profile, error } = await supabase
+          .from('master_users')
+          .select('site_id')
+          .eq('auth_user_id', session.user.id)
+          .single();
+        
+        if (error || !profile) {
+          document.getElementById('config-site').innerHTML = '<span class="status fail">NOT FOUND</span>';
+        } else {
+          userProfile = profile;
+          document.getElementById('config-site').innerHTML = `<span class="status ok">${profile.site_id}</span>`;
+        }
+        
+      } catch (err) {
+        document.getElementById('config-url').textContent = 'Error loading config';
+        document.getElementById('config-key').innerHTML = '<span class="status fail">NO</span>';
+        document.getElementById('config-user').innerHTML = '<span class="status fail">ERROR</span>';
+        console.error('Init error:', err);
+      }
+    });
+
+    // Test 1: Save sample mappings
+    document.getElementById('test-save').addEventListener('click', async () => {
+      const btn = document.getElementById('test-save');
+      const result = document.getElementById('result-save');
+      
+      btn.disabled = true;
+      result.style.display = 'block';
+      result.className = 'result info';
+      result.textContent = '⏳ Saving sample mappings...';
+      
+      try {
+        const sampleMappings = [
+          {
+            hardcoded_type: 'Book on the day',
+            matched_emis_type: 'Urgent appointment'
+          },
+          {
+            hardcoded_type: 'Within 1 week',
+            matched_emis_type: 'Routine appointment'
+          },
+          {
+            hardcoded_type: 'Within 2 weeks',
+            matched_emis_type: 'Follow-up appointment'
+          }
+        ];
+        
+        const startTime = Date.now();
+        const { data, error } = await supabase.functions.invoke('save-slot-mappings', {
+          body: { mappings: sampleMappings }
+        });
+        const duration = Date.now() - startTime;
+        
+        if (error) {
+          throw new Error(error.message || JSON.stringify(error));
+        }
+        
+        result.className = 'result success';
+        result.textContent = `✅ SUCCESS (${duration}ms)\n\n` + JSON.stringify(data, null, 2);
+      } catch (err) {
+        result.className = 'result error';
+        result.textContent = `❌ ERROR\n\n${err.message}\n\n${err.stack || ''}`;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // Test 2: View mappings
+    document.getElementById('test-view').addEventListener('click', async () => {
+      const btn = document.getElementById('test-view');
+      const result = document.getElementById('result-view');
+      
+      btn.disabled = true;
+      result.style.display = 'block';
+      result.className = 'result info';
+      result.textContent = '⏳ Loading mappings...';
+      
+      try {
+        const { data, error } = await supabase
+          .from('slot_type_mappings')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (error) throw error;
+        
+        if (!data || data.length === 0) {
+          result.className = 'result info';
+          result.textContent = 'No mappings found for your site. Try saving some first!';
+          return;
+        }
+        
+        let html = `✅ Found ${data.length} mapping(s)\n\n`;
+        
+        // Create a table
+        html += '<table>';
+        html += '<tr><th>Hardcoded Type</th><th>EMIS Type</th><th>Created</th><th>User</th></tr>';
+        
+        data.forEach(row => {
+          const date = new Date(row.created_at).toLocaleString();
+          html += `<tr>`;
+          html += `<td>${row.hardcoded_type}</td>`;
+          html += `<td>${row.matched_emis_type}</td>`;
+          html += `<td>${date}</td>`;
+          html += `<td>${row.mapped_by_user_email || row.mapped_by_user_id.substring(0, 8)}</td>`;
+          html += `</tr>`;
+        });
+        
+        html += '</table>';
+        
+        result.className = 'result success';
+        result.innerHTML = html;
+        
+      } catch (err) {
+        result.className = 'result error';
+        result.textContent = `❌ ERROR\n\n${err.message}`;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // Test 2b: View all mappings (requires admin)
+    document.getElementById('test-view-all').addEventListener('click', async () => {
+      const btn = document.getElementById('test-view-all');
+      const result = document.getElementById('result-view');
+      
+      btn.disabled = true;
+      result.style.display = 'block';
+      result.className = 'result info';
+      result.textContent = '⏳ Loading all mappings (admin only)...';
+      
+      try {
+        // This might fail if user doesn't have admin access
+        const { data, error, count } = await supabase
+          .from('slot_type_mappings')
+          .select('*, master_users!inner(site_id)', { count: 'exact' })
+          .order('created_at', { ascending: false })
+          .limit(50);
+        
+        if (error) throw error;
+        
+        result.className = 'result success';
+        result.textContent = `✅ Found ${count || data.length} total mappings (showing first 50)\n\n` + 
+          JSON.stringify(data, null, 2);
+        
+      } catch (err) {
+        result.className = 'result error';
+        result.textContent = `❌ ERROR\n\n${err.message}\n\nThis might be expected if you don't have admin access.`;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // Test 3: Error handling - empty
+    document.getElementById('test-empty').addEventListener('click', async () => {
+      const btn = document.getElementById('test-empty');
+      const result = document.getElementById('result-error');
+      
+      btn.disabled = true;
+      result.style.display = 'block';
+      result.className = 'result info';
+      result.textContent = '⏳ Testing with empty array...';
+      
+      try {
+        const { data, error } = await supabase.functions.invoke('save-slot-mappings', {
+          body: { mappings: [] }
+        });
+        
+        result.className = 'result success';
+        result.textContent = `✅ Response received\n\n${JSON.stringify(data || error, null, 2)}`;
+      } catch (err) {
+        result.className = 'result error';
+        result.textContent = `❌ ERROR\n\n${err.message}`;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // Test 3b: Error handling - invalid
+    document.getElementById('test-invalid').addEventListener('click', async () => {
+      const btn = document.getElementById('test-invalid');
+      const result = document.getElementById('result-error');
+      
+      btn.disabled = true;
+      result.style.display = 'block';
+      result.className = 'result info';
+      result.textContent = '⏳ Testing with invalid data...';
+      
+      try {
+        const { data, error } = await supabase.functions.invoke('save-slot-mappings', {
+          body: { invalid: 'data' }
+        });
+        
+        result.className = 'result success';
+        result.textContent = `✅ Response received\n\n${JSON.stringify(data || error, null, 2)}`;
+      } catch (err) {
+        result.className = 'result error';
+        result.textContent = `❌ ERROR\n\n${err.message}`;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
