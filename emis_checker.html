@@ -1352,6 +1352,50 @@
     </script>
 
     <script>
+        // --- Core Classification Functions (Global Scope) ---
+        // These must be at top level so ensureClassificationOnce can find them
+        
+        // Low-level: call edge function, fallback to direct fetch; return { data, error, status }
+        async function callClassify(slotTypes) {
+          const body = { slotTypes };
+          const url = (window.CONFIG && window.CONFIG.SUPABASE_URL ? window.CONFIG.SUPABASE_URL : '') + '/functions/v1/classify-slot-types';
+          // Try supabase.functions.invoke first
+          try {
+            const t0 = Date.now();
+            const { data, error } = await window.supabase.functions.invoke('classify-slot-types', { body });
+            const ms = Date.now() - t0;
+            if (error) return { data: null, error: new Error(error.message || String(error)), status: `invoke_error_${ms}ms` };
+            // Stash minimal debug when server doesn't send debug block
+            try { if (!window.lastAIRawResponse) window.lastAIRawResponse = JSON.stringify(data).slice(0, 4000); } catch(_) {}
+            return { data, error: null, status: `invoke_ok_${ms}ms` };
+          } catch (e) {
+            // Fallback to direct fetch
+            try {
+              const t1 = Date.now();
+              const res = await fetch(url, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${(window.CONFIG && window.CONFIG.SUPABASE_ANON_KEY) || ''}`
+                },
+                body: JSON.stringify(body)
+              });
+              const ms2 = Date.now() - t1;
+              let txt = '';
+              try { txt = await res.text(); } catch(_) {}
+              try { window.lastAIRawResponse = txt; } catch(_) {}
+              if (!res.ok) return { data: null, error: new Error(`HTTP ${res.status} ${res.statusText}`), status: `fetch_error_${ms2}ms` };
+              let data = null; try { data = JSON.parse(txt); } catch { data = null; }
+              return { data, error: null, status: `fetch_ok_${ms2}ms` };
+            } catch (e2) {
+              return { data: null, error: e2, status: 'fetch_throw' };
+            }
+          }
+        }
+        
+        // Expose globally
+        window.callClassify = callClassify;
+    
         // Appointment Type Setup functionality
         function setupAppointmentTypes() {
             const statusEl = document.getElementById('appt-setup-status');
@@ -1849,8 +1893,11 @@
           await ensureSlotTypesOnce();
           if (window.slotTypeClassification && window.slotTypeClassification.on_the_day) return window.slotTypeClassification;
           if (!__classificationPromise) {
-            // Prefer the newer classifySlotTypes implementation if available, otherwise fallback
-            if (typeof classifySlotTypes === 'function') {
+            // Use the global window.classifySlotTypes if available
+            if (typeof window.classifySlotTypes === 'function') {
+              __classificationPromise = window.classifySlotTypes()
+                .catch(err => { __classificationPromise = null; throw err; });
+            } else if (typeof classifySlotTypes === 'function') {
               __classificationPromise = classifySlotTypes()
                 .catch(err => { __classificationPromise = null; throw err; });
             } else if (typeof ensureClassification === 'function') {
@@ -2541,58 +2588,8 @@
               }
             }
 
-            // --- Classify slot types using OpenAI ---
-            // Low-level: call edge function, fallback to direct fetch; return { data, error, status }
-            async function callClassify(slotTypes) {
-              const body = { slotTypes };
-              const url = (window.CONFIG && window.CONFIG.SUPABASE_URL ? window.CONFIG.SUPABASE_URL : '') + '/functions/v1/classify-slot-types';
-              // Try supabase.functions.invoke first
-              try {
-                const t0 = Date.now();
-                const { data, error } = await window.supabase.functions.invoke('classify-slot-types', { body });
-                const ms = Date.now() - t0;
-                if (error) return { data: null, error: new Error(error.message || String(error)), status: `invoke_error_${ms}ms` };
-                // Stash minimal debug when server doesn't send debug block
-                try { if (!window.lastAIRawResponse) window.lastAIRawResponse = JSON.stringify(data).slice(0, 4000); } catch(_) {}
-                return { data, error: null, status: `invoke_ok_${ms}ms` };
-              } catch (e) {
-                // Fallback to direct fetch
-                try {
-                  const t1 = Date.now();
-                  const res = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'Authorization': `Bearer ${(window.CONFIG && window.CONFIG.SUPABASE_ANON_KEY) || ''}`
-                    },
-                    body: JSON.stringify(body)
-                  });
-                  const ms2 = Date.now() - t1;
-                  let txt = '';
-                  try { txt = await res.text(); } catch(_) {}
-                  try { window.lastAIRawResponse = txt; } catch(_) {}
-                  if (!res.ok) return { data: null, error: new Error(`HTTP ${res.status} ${res.statusText}`), status: `fetch_error_${ms2}ms` };
-                  let data = null; try { data = JSON.parse(txt); } catch { data = null; }
-                  return { data, error: null, status: `fetch_ok_${ms2}ms` };
-                } catch (e2) {
-                  return { data: null, error: e2, status: 'fetch_throw' };
-                }
-              }
-            }
-
-            // Simple connectivity and auth diagnostic
-            async function aiConnectivityTest() {
-              const sample = ['Urgent on day','Routine appt','Follow-up in 10 days'];
-              try {
-                const result = await callClassify(sample);
-                if (result.error) return { ok: false, detail: result.error.message || result.status };
-                const cls = result.data && (result.data.classification || result.data);
-                const ok = cls && Array.isArray(cls.on_the_day);
-                return { ok: !!ok, detail: result.status };
-              } catch (e) {
-                return { ok: false, detail: e?.message || String(e) };
-              }
-            }
+            // Note: callClassify is now defined at top-level scope
+            // Note: aiConnectivityTest is now defined as window.aiConnectivityTest at top-level scope
 
             async function classifySlotTypes() {
               console.log('═══════════════════════════════════════════════════════════');
@@ -2785,6 +2782,9 @@ ${slotTypesList}`
                 within_2_weeks: (classification?.within_2_weeks || []).length
               });
             }
+            
+            // Make classifySlotTypes globally accessible (callClassify already exposed at top level)
+            window.classifySlotTypes = classifySlotTypes;
             
             // Helper to create a category card
             function createCategoryCard(title, items, color) {
