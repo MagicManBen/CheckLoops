@@ -1,41 +1,169 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>UNO R4 – Online Test</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>CheckLoops — Device Setup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
-body{font-family:system-ui;margin:24px;max-width:520px}
-label{display:block;font-size:12px;color:#475569;margin-bottom:6px;text-transform:uppercase}
-input{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:10px}
-button{padding:10px 14px;border:0;border-radius:10px;background:#2563eb;color:#fff;font-weight:600;margin-top:10px;cursor:pointer}
-pre{background:#0b1020;color:#a7f3d0;padding:12px;border-radius:10px;min-height:120px;white-space:pre-wrap}
+:root{--bg1:#0b4fb3;--bg2:#062b6f;--glass:#ffffff16;--glass2:#ffffff24;--ink:#eaf1ff;--muted:#b8c7e8;--white:#e6f0ff;--border:#ffffff1f;--round:16px;--ok:#2bd4a7}
+*{box-sizing:border-box} html,body{height:100%}
+body{margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:linear-gradient(180deg,var(--bg1),var(--bg2)) fixed;display:flex;align-items:center;justify-content:center;padding:22px}
+.app{width:min(900px,96vw);background:var(--glass);border:1px solid var(--border);border-radius:var(--round);backdrop-filter:blur(8px);box-shadow:0 20px 40px rgba(0,0,0,.25);overflow:hidden}
+.header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 20px 10px 20px}
+.brand{display:flex;align-items:center;gap:10px}.badge{padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:var(--glass2);font-size:12px;color:var(--white)}
+h1{font-size:20px;margin:0}.muted{color:var(--muted)} .small{font-size:12px}
+.progress{display:flex;gap:14px;padding:0 20px 16px 20px}
+.dot{width:28px;height:28px;border-radius:999px;display:grid;place-items:center;border:1px solid var(--border);background:var(--glass2);color:var(--muted);font-weight:800}
+.dot.active{background:#2563eb;color:#fff;border-color:#2563eb}.dot.done{background:var(--ok);color:#032d1f;border-color:var(--ok)}
+.viewport{position:relative;height:480px;max-height:72vh}
+.screen{position:absolute;inset:0;padding:18px 20px;display:flex;flex-direction:column;gap:12px;transform:translateX(100%);opacity:0;transition:transform .28s ease,opacity .28s ease}
+.screen.active{transform:translateX(0);opacity:1}.screen.exit-left{transform:translateX(-100%);opacity:0}
+.box{display:inline-block;padding:10px 12px;border-radius:12px;border:1px dashed var(--border);background:var(--glass2);color:var(--muted);font-size:14px}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+button,a.button{display:inline-block;padding:12px 16px;border-radius:12px;border:0;font-weight:800;text-decoration:none;cursor:pointer}
+.primary{background:#2563eb;color:#fff}.ghost{background:transparent;border:1px solid var(--border);color:var(--ink);font-weight:600}
+.ok{color:var(--ok);font-weight:800}.warn{color:#ff6b6b;font-weight:700}
+.help{padding:10px;border:1px solid var(--border);border-radius:12px;background:var(--glass2)}
+.hidden{display:none}
 </style>
 </head>
 <body>
-<h2>UNO R4 – Online Test</h2>
-<label>Device IP</label>
-<input id="ip" placeholder="e.g. 192.168.1.130" />
-<button id="status">GET /status</button>
-<button id="diag">GET /diag</button>
-<button id="tick">POST /tick</button>
-<pre id="log">Enter IP and click a button.</pre>
+<div class="app">
+  <div class="header">
+    <div class="brand"><span class="badge">CheckLoops</span><h1>Device setup</h1></div>
+    <div class="muted small" id="phase">Phase: Start</div>
+  </div>
+
+  <div class="progress">
+    <div class="dot" data-k="1">1</div><div class="sep" style="flex:1;height:2px;background:var(--border);align-self:center"></div>
+    <div class="dot" data-k="2">2</div><div class="sep" style="flex:1;height:2px;background:var(--border);align-self:center"></div>
+    <div class="dot" data-k="3">3</div>
+  </div>
+
+  <div class="viewport">
+    <!-- Step 1 -->
+    <section class="screen active" data-step="1" id="s1">
+      <h2>Step 1 — Join the device’s setup Wi-Fi</h2>
+      <p class="muted">Open Wi-Fi settings and connect to the device network.</p>
+      <div class="box">Network: <b>CheckLoops-Setup-XXYY</b> • Password: <b>checkloops</b></div>
+      <div class="help small">iPhone: a small “Sign-In” sheet may appear. Use it to continue.</div>
+      <div class="row" style="margin-top:auto">
+        <button class="ghost" id="s1Help">I can’t find it</button>
+        <button class="primary" id="s1Next">I’m on the device Wi-Fi →</button>
+      </div>
+      <div id="s1HelpTxt" class="small muted hidden">Power-cycle the device, wait ~10s, look for <b>CheckLoops-Setup-XXYY</b>.</div>
+    </section>
+
+    <!-- Step 2 (auto-opener / fallback) -->
+    <section class="screen" data-step="2" id="s2">
+      <h2>Opening the device page…</h2>
+      <p class="muted" id="s2Msg">If it doesn’t open automatically, tap the button below.</p>
+      <div class="row">
+        <a class="button primary" id="openBtn" href="#">Open device setup (http://192.168.4.1)</a>
+        <button class="ghost" id="s2Back">← Back</button>
+      </div>
+      <div class="help small">
+        On the device page: choose your home Wi-Fi, enter the password, then tap <b>Save &amp; Connect</b>. The device will join your Wi-Fi, then you’ll return here automatically.
+      </div>
+    </section>
+
+    <!-- Step 3 (confirmation) -->
+    <section class="screen" data-step="3" id="s3">
+      <div class="row" style="align-items:center"><span class="ok" style="font-size:24px">✓</span><h2 style="margin:0">Connected</h2></div>
+      <p class="muted">Your device is now on Wi-Fi and ready.</p>
+      <div id="macBox" class="box hidden">Device ID: <span id="macVal"></span></div>
+      <div class="row">
+        <a class="button primary" id="finishLink" href="https://checkloops.app/pair/success">Finish on CheckLoops</a>
+        <button class="ghost" id="again">Set up another device</button>
+      </div>
+      <div class="help small">LED on the device is solid and a ✓ briefly shows on its matrix when online.</div>
+    </section>
+  </div>
+</div>
+
 <script>
-const ip=document.getElementById('ip'), log=document.getElementById('log');
-function base(){ const v=(ip.value||"").trim(); if(!v){ alert("Enter IP"); return null; } return `http://${v}`; }
-function add(s){ log.textContent += `\n${s}`; log.scrollTop=log.scrollHeight; }
-async function doReq(m,p,body){
-  const b=base(); if(!b) return;
-  const url=b+p, t0=performance.now();
-  try{
-    const opts={method:m,cache:"no-store"};
-    if(m==="POST"){ opts.headers={"Content-Type":"application/json"}; opts.body=body||""; }
-    const r=await fetch(url,opts); const txt=await r.text();
-    add(`${m} ${p} -> HTTP ${r.status} (${Math.round(performance.now()-t0)}ms)\n${txt}`);
-  }catch(e){ add(`${m} ${p} FAILED: ${e}`); }
-}
-document.getElementById('status').onclick = ()=>doReq("GET","/status");
-document.getElementById('diag').onclick   = ()=>doReq("GET","/diag");
-document.getElementById('tick').onclick   = ()=>doReq("POST","/tick");
+(function(){
+  const $ = s => document.querySelector(s);
+  const dots=[...document.querySelectorAll('.dot')];
+  const screens=[...document.querySelectorAll('.screen')];
+  const state={step:1, mac:null};
+
+  function setStep(n,anim=true){
+    state.step=Math.max(1,Math.min(3,n));
+    const act=screens.find(x=>x.classList.contains('active'));
+    screens.forEach(x=>x.classList.remove('exit-left'));
+    if(anim && act && +act.dataset.step!==state.step){ act.classList.add('exit-left'); }
+    screens.forEach(x=>x.classList.toggle('active', +x.dataset.step===state.step));
+    dots.forEach(d=>{ const k=+d.dataset.k; d.classList.toggle('active',k===state.step); d.classList.toggle('done',k<state.step); });
+    $('#phase').textContent='Phase: '+(state.step===1?'Start':state.step===2?'Connect Page':'Connected');
+    try{ localStorage.setItem('cl_setup_step', String(state.step)); }catch(_){}
+  }
+
+  function currentReturnURL(){
+    // Strip query (?mac, ok) to keep the URL clean for next rounds.
+    const base = location.origin + location.pathname;
+    return base;
+  }
+
+  function openDevicePage(){
+    const ret = encodeURIComponent(currentReturnURL());
+    const url = `http://192.168.4.1/?return=${ret}`;
+    $('#openBtn').href = url;
+    // If hosting over HTTP, try a quick image-ping and auto-navigate if reachable.
+    if(location.protocol === 'http:'){
+      const img=new Image(); let done=false;
+      img.onload = ()=>{ if(done) return; done=true; location.href=url; };
+      img.onerror= ()=>{ if(done) return; done=true; /* stay on this step; user can tap button */ };
+      img.src = `http://192.168.4.1/favicon.ico?ts=${Date.now()}`;
+      setTimeout(()=>{ if(!done){ done=true; } }, 1200);
+    }else{
+      // On HTTPS we can't probe HTTP subresources (blocked). Just navigate now.
+      location.href = url;
+    }
+  }
+
+  function onReturnFromDevice(){
+    const u = new URL(location.href);
+    const mac = u.searchParams.get('mac');
+    const ok  = u.searchParams.get('ok');
+    if(mac && ok==='1'){
+      state.mac = mac;
+      try{ localStorage.setItem('checkloops_device_mac', mac); }catch(_){}
+      $('#macVal').textContent = mac; $('#macBox').classList.remove('hidden');
+      const f = new URL($('#finishLink').href); f.searchParams.set('mac', mac); f.searchParams.set('ok','1'); $('#finishLink').href = f.toString();
+      // Clean URL bar so refresh doesn't keep jumping here
+      history.replaceState({}, '', currentReturnURL());
+      setStep(3, false);
+      return true;
+    }
+    return false;
+  }
+
+  // init
+  if(!onReturnFromDevice()){
+    try{
+      const saved = localStorage.getItem('cl_setup_step');
+      setStep(Math.min(parseInt(saved||'1',10),2), false);
+      const smac = localStorage.getItem('checkloops_device_mac');
+      if(smac){ $('#macVal').textContent = smac; $('#macBox').classList.remove('hidden');
+        const f = new URL($('#finishLink').href); f.searchParams.set('mac', smac); $('#finishLink').href = f.toString();
+      }
+    }catch(_){}
+  }
+
+  // UI hooks
+  $('#s1Next').onclick = ()=>{ setStep(2); openDevicePage(); };
+  $('#s1Help').onclick = ()=> $('#s1HelpTxt').classList.toggle('hidden');
+  $('#s2Back').onclick = ()=> setStep(1);
+  $('#openBtn').onclick = ()=>{ /* href already set */ };
+  $('#again').onclick = ()=>{ try{ localStorage.removeItem('cl_setup_step'); }catch(_){}
+    location.href = currentReturnURL(); };
+
+  // If user manually navigates to step 2 (e.g., back), refresh the open link
+  if(state.step===2) $('#openBtn').href = `http://192.168.4.1/?return=${encodeURIComponent(currentReturnURL())}`;
+})();
 </script>
 </body>
 </html>

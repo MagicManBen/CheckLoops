@@ -1112,14 +1112,20 @@
             </div></div>
           </div>
           <div class="wstep" data-wstep="4">
-            <div class="card"><div class="card-hd">Set-up (part 2)</div>
-              <div class="card-bd" style="display:flex;align-items:center;justify-content:center;">
-                <select id="emis-slottype-select" style="min-width:220px;padding:8px 10px;border-radius:8px;border:1px solid #e2e8f0;font-size:14px;"></select>
+            <div class="card">
+              <div class="card-hd">Set-up (part 2)</div>
+              <div class="card-bd">
+                <!-- Intentionally left blank (UI removed). Background slot-type logic remains active. -->
               </div>
             </div>
           </div>
           <div class="wstep" data-wstep="5">
-            <div class="card"><div class="card-hd">All set</div><div class="card-bd"><p class="muted">Done screen with a summary and links to Dashboard. Placeholder.</p></div></div>
+            <div class="card">
+              <div class="card-hd">Done</div>
+              <div class="card-bd">
+                <!-- Done page intentionally blank. Finalization handled elsewhere. -->
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1177,6 +1183,673 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
+        // Appointment Type Setup functionality
+        function setupAppointmentTypes() {
+            const statusEl = document.getElementById('appt-setup-status');
+            const bodyEl = document.getElementById('appt-setup-body');
+            const btnAll = document.getElementById('appt-match-all');
+            const btnClear = document.getElementById('appt-clear');
+            
+            // Skip if elements not found (wrong step)
+            if (!statusEl || !bodyEl || !btnAll || !btnClear) return;
+
+            const urgentPattern = /\b(emergency|urgent|same\s*day|book\s*on\s*day|bod)\b/i;
+
+            // Categories to identify
+            const categories = [
+              { key: 'on_the_day',    label: 'Book on the day',     source: 'ai' },
+              { key: 'within_1_week', label: 'Within 1 week',       source: 'ai' },
+              { key: 'within_2_weeks',label: 'Within 2 weeks',      source: 'ai' },
+              { key: 'duty',          label: 'Duty slot (today only)', pattern: /\b(duty|duty\s*dr|duty\s*slot)\b/i },
+              { key: 'nhs_111',       label: '111 slots',             pattern: /\b(111|nhs\s*111)\b/i },
+              { key: 'break',         label: 'Breaks',                pattern: /\b(break|comfort)\b/i },
+              { key: 'lunch',         label: 'Lunch',                 pattern: /\b(lunch|meal)\b/i },
+              { key: 'admin',         label: 'Admin slots',           pattern: /\b(admin|administration|paperwork)\b/i },
+            ];
+
+            // Local selection state
+            const selections = {}; // { key: selectedLabel }
+
+            function setStatus(text){ if(statusEl) statusEl.textContent = text; }
+
+            function normalizeLabel(s){ return String(s || '').trim().replace(/\s+/g,' '); }
+
+            async function ensureSlotTypes(){
+              // Reuse already loaded values when present
+              if (Array.isArray(window.loadedSlotTypes) && window.loadedSlotTypes.length) return window.loadedSlotTypes;
+
+              const started = performance.now();
+              const sb = window.supabase || (window.getSupabase && window.getSupabase());
+              if (!sb) throw new Error('Supabase client not available');
+
+              const PAGE_SIZE = 1000;
+              let offset = 0;
+              const seen = new Set();
+              const originals = new Map();
+
+              setStatus('Loading slot types from EMIS…');
+              while (true) {
+                const { data, error } = await sb
+                  .from('emis_apps_raw')
+                  .select('slot_type')
+                  .not('slot_type', 'is', null)
+                  .order('slot_type', { ascending: true })
+                  .range(offset, offset + PAGE_SIZE - 1);
+                if (error) throw error;
+                if (!data || !data.length) break;
+
+                for (const r of data) {
+                  const label = normalizeLabel(r.slot_type);
+                  if (!label) continue;
+                  const key = label.replace(/\s+/g,'');
+                  if (!seen.has(key)) { seen.add(key); originals.set(key, label); }
+                }
+
+                if (data.length < PAGE_SIZE) break;
+                offset += PAGE_SIZE;
+              }
+
+              const values = Array.from(seen).sort().map(k => originals.get(k));
+              window.loadedSlotTypes = values;
+              const dur = Math.round(performance.now() - started);
+              setStatus(`Loaded ${values.length} slot types (${dur}ms)`);
+              return values;
+            }
+
+            function nudgeUrgent(classification){
+              const nudged = {
+                on_the_day: [...(classification.on_the_day || [])],
+                within_1_week: [],
+                within_2_weeks: []
+              };
+              (classification.within_1_week || []).forEach(s => urgentPattern.test(s) ? nudged.on_the_day.push(s) : nudged.within_1_week.push(s));
+              (classification.within_2_weeks || []).forEach(s => urgentPattern.test(s) ? nudged.on_the_day.push(s) : nudged.within_2_weeks.push(s));
+              nudged.on_the_day = [...new Set(nudged.on_the_day)];
+              return nudged;
+            }
+            
+            // Render a lightweight Step 4 UI (client-only, does not call Supabase)
+            function renderStep4Setup() {
+              console.log('renderStep4Setup() called');
+              const step4Bd = document.querySelector('.wstep[data-wstep="4"] .card-bd');
+              if (!step4Bd) return;
+              // Clear existing content
+              step4Bd.innerHTML = '';
+
+              const heading = document.createElement('h4');
+              heading.textContent = 'Appointment Type Setup';
+              heading.style.marginTop = '0';
+              step4Bd.appendChild(heading);
+
+              const hint = document.createElement('div');
+              hint.className = 'hint';
+              hint.textContent = 'Select the slot type that corresponds to each appointment category and confirm.';
+              step4Bd.appendChild(hint);
+
+              const table = document.createElement('table');
+              table.style.width = '100%';
+              table.style.borderCollapse = 'collapse';
+              table.style.marginTop = '12px';
+
+              const thead = document.createElement('thead');
+              thead.innerHTML = '<tr><th style="width:260px;text-align:left">Type to identify</th><th style="text-align:left">Slot type (from EMIS)</th><th style="width:120px">Confirm</th></tr>';
+              table.appendChild(thead);
+
+              const tbody = document.createElement('tbody');
+              table.appendChild(tbody);
+
+              // Use loaded slot types if available, otherwise placeholder small list
+              const slotTypes = (Array.isArray(window.loadedSlotTypes) && window.loadedSlotTypes.length) ? window.loadedSlotTypes : ['-- No slot types loaded --', 'Example Slot A', 'Example Slot B'];
+
+              const categoriesForUI = [
+                { key: 'on_the_day', label: 'Book on the day' },
+                { key: 'within_1_week', label: 'Within 1 week' },
+                { key: 'within_2_weeks', label: 'Within 2 weeks' },
+                { key: 'duty', label: 'Duty slot' },
+                { key: 'nhs_111', label: '111 slots' },
+                { key: 'break', label: 'Breaks' },
+                { key: 'admin', label: 'Admin slots' }
+              ];
+
+              categoriesForUI.forEach(cat => {
+                const tr = document.createElement('tr');
+                const tdName = document.createElement('td');
+                const tdSel = document.createElement('td');
+                const tdConfirm = document.createElement('td');
+
+                tdName.innerHTML = `<div class="cat-name">${cat.label}</div>`;
+
+                const sel = document.createElement('select');
+                sel.style.width = '100%';
+                sel.style.padding = '6px 8px';
+                sel.dataset.catKey = cat.key;
+                const defaultOpt = document.createElement('option'); defaultOpt.value = ''; defaultOpt.textContent = '— Select —'; sel.appendChild(defaultOpt);
+                slotTypes.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; sel.appendChild(o); });
+
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.style.transform = 'scale(1.1)';
+                cb.style.marginLeft = '6px';
+
+                tdSel.appendChild(sel);
+                tdConfirm.appendChild(cb);
+                tr.appendChild(tdName); tr.appendChild(tdSel); tr.appendChild(tdConfirm);
+                tbody.appendChild(tr);
+
+                sel.addEventListener('change', () => { if (sel.value) cb.checked = true; });
+              });
+
+              step4Bd.appendChild(table);
+
+              // Actions row
+              const actions = document.createElement('div');
+              actions.style.display = 'flex'; actions.style.gap = '8px'; actions.style.marginTop = '12px';
+
+              const btnConfirmAll = document.createElement('button'); btnConfirmAll.className = 'btn-primary'; btnConfirmAll.textContent = 'Confirm All';
+              const btnClear = document.createElement('button'); btnClear.className = 'btn-secondary'; btnClear.textContent = 'Clear';
+
+              btnConfirmAll.addEventListener('click', () => {
+                tbody.querySelectorAll('tr').forEach(tr => {
+                  const sel = tr.querySelector('select'); const cb = tr.querySelector('input[type="checkbox"]');
+                  if (sel && cb && sel.value && sel.value !== '') cb.checked = true;
+                });
+              });
+
+              btnClear.addEventListener('click', () => {
+                tbody.querySelectorAll('tr').forEach(tr => {
+                  const sel = tr.querySelector('select'); const cb = tr.querySelector('input[type="checkbox"]');
+                  if (sel) sel.value = '';
+                  if (cb) cb.checked = false;
+                });
+              });
+
+              actions.appendChild(btnConfirmAll); actions.appendChild(btnClear);
+              step4Bd.appendChild(actions);
+            }
+            // Appointment type setup functionality
+            async function initAppointmentSetup() {
+              const setupStatus = document.getElementById('appt-setup-status');
+              const setupBody = document.getElementById('appt-setup-body');
+              const saveBtn = document.getElementById('appt-save');
+              const matchAllBtn = document.getElementById('appt-match-all');
+              const clearBtn = document.getElementById('appt-clear');
+              
+              if (!setupStatus || !setupBody) return;
+              
+              // Make sure we have slot types loaded
+              if (!window.loadedSlotTypes || !window.loadedSlotTypes.length) {
+                setupStatus.textContent = 'Loading slot types...';
+                try {
+                  await loadSlotTypesDropdown();
+                } catch (err) {
+                  setupStatus.textContent = 'Error loading slot types';
+                  setupStatus.classList.add('error');
+                  return;
+                }
+              }
+              
+              const slotTypes = window.loadedSlotTypes || [];
+              if (!slotTypes.length) {
+                setupStatus.textContent = 'No slot types available';
+                setupStatus.classList.add('error');
+                return;
+              }
+              
+              // Get classifications if available
+              let classification = window.slotTypeClassification;
+              if (!classification) {
+                setupStatus.textContent = 'Classifying slot types...';
+                try {
+                  classification = await ensureClassification(slotTypes);
+                } catch (err) {
+                  console.error('Classification error:', err);
+                  // Continue without classification, we'll just show empty dropdowns
+                }
+              }
+              
+              // Build the UI with our categories
+              setupStatus.textContent = 'Ready';
+              setupStatus.classList.remove('error');
+              buildAppointmentSetupRows(setupBody, slotTypes, classification);
+              
+              // Build the UI with our categories
+              setupStatus.textContent = 'Ready';
+              setupStatus.classList.remove('error');
+              buildAppointmentSetupRows(setupBody, slotTypes, classification);
+              
+              // Setup buttons
+              if (saveBtn) {
+                saveBtn.addEventListener('click', () => {
+                  setupStatus.textContent = 'Configuration saved';
+                  setTimeout(() => { setupStatus.textContent = 'Ready'; }, 2000);
+                });
+              }
+              
+              if (matchAllBtn) {
+                matchAllBtn.addEventListener('click', () => {
+                  setupBody.querySelectorAll('input[type="checkbox"]:not(:checked)').forEach(cb => {
+                    const sel = cb.closest('tr').querySelector('select');
+                    if (sel && sel.value !== '— Select —') {
+                      cb.checked = true;
+                    }
+                  });
+                });
+              }
+              
+              if (clearBtn) {
+                clearBtn.addEventListener('click', () => {
+                  setupBody.querySelectorAll('select').forEach(sel => {
+                    sel.value = '— Select —';
+                  });
+                  setupBody.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                    cb.checked = false;
+                  });
+                });
+              }
+            }
+            
+            function buildAppointmentSetupRows(bodyEl, slotTypes, classification) {
+              bodyEl.innerHTML = '';
+              const opts = ['— Select —', ...slotTypes];
+              
+              // Sample categories - matching the screenshot
+              const setupCategories = [
+                { key: 'on_the_day', label: 'Book on the day', source: 'ai' },
+                { key: 'within_1_week', label: 'Within 1 week', source: 'ai' },
+                { key: 'within_2_weeks', label: 'Within 2 weeks', source: 'ai' },
+                { key: 'duty', label: 'Duty slot', pattern: /\b(duty|triage)\b/i },
+                { key: '111', label: '111 slots', pattern: /\b111\b/i },
+                { key: 'breaks', label: 'Breaks', pattern: /\b(break|lunch)\b/i },
+                { key: 'admin', label: 'Admin slots', pattern: /\b(admin|meeting)\b/i }
+              ];
+
+              function suggestedFor(cat) {
+                if (!classification) return '';
+                
+                if (cat.source === 'ai') {
+                  const arr = classification[cat.key] || [];
+                  return arr[0] || '';
+                }
+                if (cat.pattern) {
+                  const m = slotTypes.find(s => cat.pattern.test(s));
+                  return m || '';
+                }
+                return '';
+              }
+
+              setupCategories.forEach(cat => {
+                const tr = document.createElement('tr');
+                const tdName = document.createElement('td');
+                const tdSel = document.createElement('td');
+                const tdConfirm = document.createElement('td');
+
+                tdName.innerHTML = `<div class="cat-name">${cat.label}</div>`;
+
+                const sel = document.createElement('select');
+                sel.dataset.catKey = cat.key;
+                opts.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); });
+                const suggestion = suggestedFor(cat);
+                if (suggestion) sel.value = suggestion;
+
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.dataset.catKey = cat.key;
+                cb.checked = !!suggestion;
+
+                tdSel.appendChild(sel);
+                tdConfirm.appendChild(cb);
+                tr.appendChild(tdName);
+                tr.appendChild(tdSel);
+                tr.appendChild(tdConfirm);
+                bodyEl.appendChild(tr);
+                
+                // Hook up events
+                sel.addEventListener('change', () => {
+                  if (sel.value !== '— Select —') {
+                    cb.checked = true;
+                  }
+                });
+              });
+            }
+            
+            
+
+            async function ensureClassification(slotTypes){
+              if (window.slotTypeClassification) return window.slotTypeClassification;
+              const sb = window.supabase || (window.getSupabase && window.getSupabase());
+              if (!sb) throw new Error('Supabase client not available');
+
+              const t0 = performance.now();
+              setStatus('Classifying slot types…');
+              const { data, error } = await sb.functions.invoke('classify-slot-types', { body: { slotTypes } });
+              if (error) throw new Error(error.message || 'Edge function failed');
+              const raw = data?.classification || data;
+              if (!raw) throw new Error('No classification returned');
+              const nudged = nudgeUrgent(raw);
+              window.slotTypeClassification = nudged;
+              const dt = Math.round(performance.now() - t0);
+              setStatus(`Classified in ${dt}ms`);
+              return nudged;
+            }
+
+            function buildRows(slotTypes, classification){
+              bodyEl.innerHTML = '';
+              const opts = ['— Select —', ...slotTypes];
+
+              function suggestedFor(cat){
+                if (cat.source === 'ai') {
+                  const arr = classification[cat.key] || [];
+                  // Prefer first AI suggestion
+                  return arr[0] || '';
+                }
+                if (cat.pattern) {
+                  const m = slotTypes.find(s => cat.pattern.test(s));
+                  return m || '';
+                }
+                return '';
+              }
+
+              categories.forEach(cat => {
+                const tr = document.createElement('tr');
+                const tdName = document.createElement('td');
+                const tdSel = document.createElement('td');
+                const tdConfirm = document.createElement('td');
+
+                tdName.innerHTML = `<div class="cat-name">${cat.label}</div>`;
+
+                const sel = document.createElement('select');
+                opts.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); });
+                const suggestion = suggestedFor(cat);
+                if (suggestion) sel.value = suggestion; else sel.value = '— Select —';
+
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.ariaLabel = `Confirm ${cat.label}`;
+                cb.addEventListener('change',() => {
+                  if (cb.checked && sel.value && sel.value !== '— Select —') {
+                    tr.classList.add('row-confirmed');
+                    selections[cat.key] = sel.value;
+                  } else {
+                    tr.classList.remove('row-confirmed');
+                    delete selections[cat.key];
+                  }
+                  setStatus(Object.keys(selections).length ? `Confirmed ${Object.keys(selections).length} / ${categories.length}` : 'No selections yet');
+                });
+
+                sel.addEventListener('change', () => {
+                  if (cb.checked) cb.dispatchEvent(new Event('change'));
+                });
+
+                tdSel.appendChild(sel);
+                tdConfirm.appendChild(cb);
+                tr.appendChild(tdName); tr.appendChild(tdSel); tr.appendChild(tdConfirm);
+                bodyEl.appendChild(tr);
+
+                // Auto-confirm suggested matches for AI categories
+                if (suggestion && cat.source === 'ai') {
+                  cb.checked = true; cb.dispatchEvent(new Event('change'));
+                }
+              });
+            }
+
+            btnAll.addEventListener('click', () => {
+              // Confirm all rows with current selections; if not selected, try to set suggestion and confirm
+              Array.from(bodyEl.querySelectorAll('tr')).forEach((tr, idx) => {
+                const cat = categories[idx];
+                const sel = tr.querySelector('select');
+                const cb = tr.querySelector('input[type="checkbox"]');
+                if (sel && (!sel.value || sel.value === '— Select —')) {
+                  // set suggestion if available
+                  const slotTypes = window.loadedSlotTypes || [];
+                  const classification = window.slotTypeClassification || { on_the_day:[], within_1_week:[], within_2_weeks:[] };
+                  let s = '';
+                  if (cat.source === 'ai') s = (classification[cat.key]||[])[0] || '';
+                  else if (cat.pattern) s = (slotTypes.find(x => cat.pattern.test(x)) || '');
+                  if (s) sel.value = s;
+                }
+                if (cb && sel && sel.value && sel.value !== '— Select —') { cb.checked = true; cb.dispatchEvent(new Event('change')); }
+              });
+              setStatus(`All matched where possible (${Object.keys(selections).length} confirmed)`);
+            });
+
+            btnClear.addEventListener('click', () => {
+              Object.keys(selections).forEach(k => delete selections[k]);
+              Array.from(bodyEl.querySelectorAll('tr')).forEach(tr => { tr.classList.remove('row-confirmed'); });
+              Array.from(bodyEl.querySelectorAll('input[type="checkbox"]')).forEach(cb => cb.checked = false);
+              setStatus('Cleared selections');
+            });
+
+            (async function init(){
+              try {
+                const slotTypes = await ensureSlotTypes();
+                const classification = await ensureClassification(slotTypes);
+                buildRows(slotTypes, classification);
+              } catch (e) {
+                console.error('Appointment setup init error:', e);
+                setStatus('Error: ' + (e?.message || String(e)));
+              }
+            })();
+        }
+
+        // Helper: load unique slot types from emis_apps_raw into window.loadedSlotTypes
+        async function loadUniqueSlotTypes() {
+          if (Array.isArray(window.loadedSlotTypes) && window.loadedSlotTypes.length) return window.loadedSlotTypes;
+          const sb = window.supabase || (window.getSupabase && window.getSupabase());
+          if (!sb) throw new Error('Supabase client not available');
+          const PAGE_SIZE = 1000;
+          let offset = 0;
+          const seen = new Set();
+          const originals = new Map();
+          while (true) {
+            const { data, error } = await sb
+              .from('emis_apps_raw')
+              .select('slot_type')
+              .not('slot_type', 'is', null)
+              .order('slot_type', { ascending: true })
+              .range(offset, offset + PAGE_SIZE - 1);
+            if (error) throw error;
+            if (!data || !data.length) break;
+            for (const r of data) {
+              const label = String(r.slot_type || '').trim();
+              if (!label) continue;
+              const key = label.replace(/\s+/g,'');
+              if (!seen.has(key)) { seen.add(key); originals.set(key, label); }
+            }
+            if (data.length < PAGE_SIZE) break;
+            offset += PAGE_SIZE;
+          }
+          const values = Array.from(seen).sort().map(k => originals.get(k));
+          window.loadedSlotTypes = values;
+          return values;
+        }
+
+        // Expose a global renderer for Step 4 so callers outside
+        // the nested setup function can invoke it (MutationObserver,
+        // showWelcomeStep, etc.). This mirrors the inner function's
+        // behavior but lives at top-level.
+        async function renderStep4Setup() {
+          console.log('global renderStep4Setup() called');
+          const step4Bd = document.querySelector('.wstep[data-wstep="4"] .card-bd');
+          if (!step4Bd) return;
+          
+          // Instead of using the .card-bd, create an absolute positioned container over it
+          // that won't be affected by other CSS rules
+          const container = document.createElement('div');
+          container.id = 'step4-container';
+          container.style.position = 'fixed';
+          container.style.top = '180px';
+          container.style.left = '50%';
+          container.style.transform = 'translateX(-50%)';
+          container.style.width = '90%';
+          container.style.maxWidth = '1000px';
+          container.style.backgroundColor = 'white';
+          container.style.padding = '20px';
+          container.style.borderRadius = '10px';
+          container.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+          container.style.zIndex = '9999'; // Very high z-index
+          container.style.maxHeight = 'calc(100vh - 220px)';
+          container.style.overflowY = 'auto';
+          document.body.appendChild(container);
+          
+          // Clear existing content in both the original and new container
+          step4Bd.innerHTML = '';
+          container.innerHTML = '';
+
+          const heading = document.createElement('h4');
+          heading.textContent = 'Appointment Type Setup';
+          heading.style.marginTop = '0';
+          container.appendChild(heading);
+
+          const hint = document.createElement('div');
+          hint.className = 'hint';
+          hint.textContent = 'Select the slot type that corresponds to each appointment category and confirm.';
+          container.appendChild(hint);
+
+          // Add a visible debug badge so the user can see this rendered even if stacking hides regular content
+          const debugBadge = document.createElement('div');
+          debugBadge.textContent = 'Step 4 renderer: OK';
+          debugBadge.style.position = 'absolute';
+          debugBadge.style.top = '10px';
+          debugBadge.style.right = '14px';
+          debugBadge.style.background = 'rgba(220,38,38,0.95)';
+          debugBadge.style.color = '#fff';
+          debugBadge.style.padding = '6px 10px';
+          debugBadge.style.borderRadius = '6px';
+          debugBadge.style.fontSize = '12px';
+          debugBadge.style.zIndex = '9999';
+          debugBadge.id = 'step4-debug-badge';
+          try { container.appendChild(debugBadge); } catch(_) {}
+
+          const table = document.createElement('table');
+          table.style.width = '100%';
+          table.style.borderCollapse = 'collapse';
+          table.style.marginTop = '12px';
+
+          const thead = document.createElement('thead');
+          thead.innerHTML = '<tr><th style="width:260px;text-align:left">Type to identify</th><th style="text-align:left">Slot type (from EMIS)</th><th style="width:120px">Confirm</th></tr>';
+          table.appendChild(thead);
+
+          const tbody = document.createElement('tbody');
+          table.appendChild(tbody);
+
+          // Ensure slot types are loaded from the database
+          let slotTypes = (Array.isArray(window.loadedSlotTypes) && window.loadedSlotTypes.length) ? window.loadedSlotTypes : [];
+          if (!slotTypes.length) {
+            try { slotTypes = await loadUniqueSlotTypes(); } catch (e) { console.warn('Failed to load slot types for Step 4:', e); }
+          }
+
+          const categoriesForUI = [
+            { key: 'on_the_day', label: 'Book on the day' },
+            { key: 'within_1_week', label: 'Within 1 week' },
+            { key: 'within_2_weeks', label: 'Within 2 weeks' },
+            { key: 'duty', label: 'Duty slot' },
+            { key: 'nhs_111', label: '111 slots' },
+            { key: 'break', label: 'Breaks' },
+            { key: 'admin', label: 'Admin slots' }
+          ];
+
+          // If we have slot types, try to classify and preselect AI suggestions
+          let classification = window.slotTypeClassification;
+          if ((!classification || !classification.on_the_day) && slotTypes.length) {
+            try { classification = await classifySlotTypes(); } catch (_) {}
+          }
+
+          categoriesForUI.forEach(cat => {
+            const tr = document.createElement('tr');
+            const tdName = document.createElement('td');
+            const tdSel = document.createElement('td');
+            const tdConfirm = document.createElement('td');
+
+            tdName.innerHTML = `<div class="cat-name">${cat.label}</div>`;
+
+            const sel = document.createElement('select');
+            sel.style.width = '100%';
+            sel.style.padding = '6px 8px';
+            sel.dataset.catKey = cat.key;
+            const defaultOpt = document.createElement('option'); defaultOpt.value = ''; defaultOpt.textContent = '— Select —'; sel.appendChild(defaultOpt);
+            const options = slotTypes.length ? slotTypes : ['-- No slot types loaded --', 'Example Slot A', 'Example Slot B'];
+            options.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; sel.appendChild(o); });
+
+            // Preselect AI suggestion when available for the three AI categories
+            if (classification && (cat.key === 'on_the_day' || cat.key === 'within_1_week' || cat.key === 'within_2_weeks')) {
+              const arr = Array.isArray(classification[cat.key]) ? classification[cat.key] : [];
+              if (arr.length) {
+                sel.value = arr[0];
+                if (sel.value) cb.checked = true;
+              }
+            } else {
+              // Heuristic suggestions for the non-AI categories
+              if (options.length) {
+                const patternMap = {
+                  duty: /(\bduty\b|duty\s*dr|duty\s*slot)/i,
+                  nhs_111: /(111|nhs\s*111)/i,
+                  break: /\b(break|comfort)\b/i,
+                  admin: /\b(admin|administration|paperwork)\b/i
+                };
+                const pat = patternMap[cat.key];
+                if (pat) {
+                  const match = options.find(s => pat.test(s));
+                  if (match) { sel.value = match; cb.checked = true; }
+                }
+              }
+            }
+
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.style.transform = 'scale(1.1)';
+            cb.style.marginLeft = '6px';
+
+            tdSel.appendChild(sel);
+            tdConfirm.appendChild(cb);
+            tr.appendChild(tdName); tr.appendChild(tdSel); tr.appendChild(tdConfirm);
+            tbody.appendChild(tr);
+
+            sel.addEventListener('change', () => { if (sel.value) cb.checked = true; });
+          });
+
+          step4Bd.appendChild(table);
+
+          // Actions row
+          const actions = document.createElement('div');
+          actions.style.display = 'flex'; actions.style.gap = '8px'; actions.style.marginTop = '12px';
+
+          const btnConfirmAll = document.createElement('button'); btnConfirmAll.className = 'btn-primary'; btnConfirmAll.type = 'button'; btnConfirmAll.textContent = 'Confirm All';
+          const btnClear = document.createElement('button'); btnClear.className = 'btn-secondary'; btnClear.type = 'button'; btnClear.textContent = 'Clear';
+
+          btnConfirmAll.addEventListener('click', () => {
+            tbody.querySelectorAll('tr').forEach(tr => {
+              const sel = tr.querySelector('select'); const cb = tr.querySelector('input[type="checkbox"]');
+              if (sel && cb && sel.value && sel.value !== '') cb.checked = true;
+            });
+          });
+
+          btnClear.addEventListener('click', () => {
+            tbody.querySelectorAll('tr').forEach(tr => {
+              const sel = tr.querySelector('select'); const cb = tr.querySelector('input[type="checkbox"]');
+              if (sel) sel.value = '';
+              if (cb) cb.checked = false;
+            });
+          });
+
+          actions.appendChild(btnConfirmAll); actions.appendChild(btnClear);
+          step4Bd.appendChild(actions);
+
+          // Watch for accidental clears of the card body and re-render once if it happens shortly after
+          try {
+            const obs = new MutationObserver((mutations) => {
+              const hasChildren = step4Bd.childNodes && step4Bd.childNodes.length > 0;
+              if (!hasChildren) {
+                obs.disconnect();
+                console.warn('Step 4 card body was cleared; re-rendering');
+                setTimeout(() => { try { renderStep4Setup(); } catch(_) {} }, 120);
+              }
+            });
+            obs.observe(step4Bd, { childList: true, subtree: false });
+            // Stop observing after 2.5s to avoid long-lived observers
+            setTimeout(() => { try { obs.disconnect(); } catch(_) {} }, 2500);
+          } catch (e) { console.warn('Could not attach Step 4 observer', e); }
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             // Simple view router for Welcome / Upload / Dashboard
             const navButtons = document.querySelectorAll('.nav-pill');
@@ -1219,6 +1892,10 @@
               if (btnBack) btnBack.disabled = (wStep === 1);
               if (btnNext) btnNext.textContent = (wStep === maxWStep) ? 'Finish' : 'Next';
               updateWizardProgress();
+              // If we navigated to step 4, ensure the setup UI is rendered
+              if (wStep === 4 && typeof renderStep4Setup === 'function') {
+                try { renderStep4Setup(); } catch (e) { console.error('renderStep4Setup error', e); }
+              }
             }
 
             // Wire controls
@@ -1488,146 +2165,27 @@ ${slotTypesList}`
                 }
                 console.log('═══════════════════════════════════════════════════════════\n');
 
+                // Return the nudged classification so callers can use it immediately
+                return nudgedClassification;
+
               } catch (err) {
-                console.error('\n❌ ═══════════════════════════════════════════════════════');
-                console.error('❌ CLASSIFICATION FAILED');
-                console.error('❌ ═══════════════════════════════════════════════════════');
-                console.error('Error name:', err.name);
-                console.error('Error message:', err.message);
-                console.error('Error stack:', err.stack);
-                
-                // Display error in UI
-                const step4 = document.querySelector('.wstep[data-wstep="4"] .card-bd');
-                if (step4) {
-                  let errorContainer = document.getElementById('classification-error');
-                  if (!errorContainer) {
-                    errorContainer = document.createElement('div');
-                    errorContainer.id = 'classification-error';
-                    errorContainer.style.marginTop = '20px';
-                    errorContainer.style.padding = '16px';
-                    errorContainer.style.backgroundColor = '#fef2f2';
-                    errorContainer.style.borderRadius = '8px';
-                    errorContainer.style.border = '1px solid #fecaca';
-                    step4.appendChild(errorContainer);
-                  }
-                  
-                  errorContainer.innerHTML = `
-                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                      <span style="font-size: 20px;">⚠️</span>
-                      <strong style="color: #dc2626;">Classification Failed</strong>
-                    </div>
-                    <div style="font-size: 14px; color: #991b1b;">
-                      ${err.message || 'Unknown error occurred'}
-                    </div>
-                  `;
-                }
-                
-                console.error('═══════════════════════════════════════════════════════════\n');
+                console.error('\n❌ CLASSIFICATION FAILED', err);
+                // Keep classification error available to background logic, but don't inject UI into step 4
+                try { window.classificationError = { message: err.message || String(err) }; } catch (_) {}
+                throw err;
               }
             }
             
             // Function to display classification results in the UI
             function displayClassificationResults(classification, timingMs) {
-              // Find step 4 container
-              const step4 = document.querySelector('.wstep[data-wstep="4"] .card-bd');
-              if (!step4) {
-                console.error('Could not find step 4 container for displaying results');
-                return;
-              }
-
-              // Create or find results container
-              let resultsContainer = document.getElementById('classification-results');
-              if (!resultsContainer) {
-                resultsContainer = document.createElement('div');
-                resultsContainer.id = 'classification-results';
-                resultsContainer.style.marginTop = '20px';
-                resultsContainer.style.padding = '16px';
-                resultsContainer.style.backgroundColor = '#f8fafc';
-                resultsContainer.style.borderRadius = '8px';
-                resultsContainer.style.border = '1px solid #e2e8f0';
-                step4.appendChild(resultsContainer);
-              } else {
-                resultsContainer.innerHTML = ''; // Clear previous results
-              }
-              
-              // Add heading with status box
-              const headerRow = document.createElement('div');
-              headerRow.style.display = 'flex';
-              headerRow.style.justifyContent = 'space-between';
-              headerRow.style.alignItems = 'center';
-              headerRow.style.marginBottom = '16px';
-              resultsContainer.appendChild(headerRow);
-              
-              const heading = document.createElement('h4');
-              heading.style.fontWeight = '600';
-              heading.style.margin = '0';
-              heading.textContent = 'Appointment Types Classification';
-              headerRow.appendChild(heading);
-              
-              // Status box showing timing
-              if (timingMs !== undefined) {
-                const statusBox = document.createElement('div');
-                statusBox.style.fontSize = '12px';
-                statusBox.style.padding = '4px 12px';
-                statusBox.style.backgroundColor = '#10b981';
-                statusBox.style.color = 'white';
-                statusBox.style.borderRadius = '12px';
-                statusBox.style.fontWeight = '500';
-                statusBox.textContent = `✓ Classified in ${timingMs}ms`;
-                headerRow.appendChild(statusBox);
-              }
-              
-              // Create container for the three categories
-              const categoriesContainer = document.createElement('div');
-              categoriesContainer.style.display = 'grid';
-              categoriesContainer.style.gridTemplateColumns = 'repeat(auto-fit, minmax(280px, 1fr))';
-              categoriesContainer.style.gap = '16px';
-              resultsContainer.appendChild(categoriesContainer);
-              
-              // Create cards for each category with colors
-              categoriesContainer.appendChild(
-                createCategoryCard('On the day', classification.on_the_day || [], '#dc2626')
-              );
-              
-              categoriesContainer.appendChild(
-                createCategoryCard('Within 1 week', classification.within_1_week || [], '#2563eb')
-              );
-              
-              categoriesContainer.appendChild(
-                createCategoryCard('Within 2 weeks', classification.within_2_weeks || [], '#059669')
-              );
-              
-              // Add raw JSON data (expandable)
-              const rawDataContainer = document.createElement('div');
-              rawDataContainer.style.marginTop = '20px';
-              resultsContainer.appendChild(rawDataContainer);
-              
-              const toggleButton = document.createElement('button');
-              toggleButton.textContent = 'Show Raw JSON';
-              toggleButton.style.border = '1px solid #e2e8f0';
-              toggleButton.style.backgroundColor = '#f8fafc';
-              toggleButton.style.padding = '8px 16px';
-              toggleButton.style.borderRadius = '6px';
-              toggleButton.style.fontSize = '13px';
-              toggleButton.style.cursor = 'pointer';
-              rawDataContainer.appendChild(toggleButton);
-              
-              const jsonPre = document.createElement('pre');
-              jsonPre.style.padding = '12px';
-              jsonPre.style.backgroundColor = '#f8fafc';
-              jsonPre.style.borderRadius = '6px';
-              jsonPre.style.overflowX = 'auto';
-              jsonPre.style.marginTop = '8px';
-              jsonPre.style.border = '1px solid #e2e8f0';
-              jsonPre.style.fontSize = '13px';
-              jsonPre.style.display = 'none';
-              jsonPre.textContent = JSON.stringify(classification, null, 2);
-              rawDataContainer.appendChild(jsonPre);
-              
-              toggleButton.addEventListener('click', () => {
-                const isVisible = jsonPre.style.display === 'block';
-                jsonPre.style.display = isVisible ? 'none' : 'block';
-                toggleButton.textContent = isVisible ? 'Show Raw JSON' : 'Hide Raw JSON';
+              // Store classification for background use and log a concise summary. Do not inject UI into step 4.
+              try { window.slotTypeClassification = classification || {}; } catch (_) {}
+              try { window.classificationTimingMs = timingMs; } catch (_) {}
+              console.log('Appointment types classified (background only). Timing:', timingMs, 'ms');
+              console.log('Classification summary:', {
+                on_the_day: (classification?.on_the_day || []).length,
+                within_1_week: (classification?.within_1_week || []).length,
+                within_2_weeks: (classification?.within_2_weeks || []).length
               });
             }
             
@@ -1699,14 +2257,19 @@ ${slotTypesList}`
               return card;
             }
 
-            // Load when step 4 becomes active
+            // Load when step 4 or 5 becomes active
             const observer = new MutationObserver((mutations) => {
               for (const m of mutations) {
                 if (m.type === 'attributes' && m.attributeName === 'class') {
                   const target = m.target;
-                  if (target && target.dataset && Number(target.dataset.wstep) === 4) {
-                    if (target.classList.contains('on')) {
-                      setTimeout(() => { loadSlotTypesDropdown(); }, 150);
+                  if (target && target.dataset) {
+                    const step = Number(target.dataset.wstep);
+                    if (step === 4 && target.classList.contains('on')) {
+                      // Render the Step 4 appointment setup UI (client-only).
+                      setTimeout(() => { if (typeof renderStep4Setup === 'function') renderStep4Setup(); }, 150);
+                    }
+                    if (step === 5 && target.classList.contains('on')) {
+                      setTimeout(() => { initAppointmentSetup(); }, 150);
                     }
                   }
                 }
@@ -2267,6 +2830,96 @@ ${slotTypesList}`
       to { transform: scale(1) translateY(0); opacity: 1; }
     }
     
+    /* Appointment setup styles */
+    .setup-grid { 
+      margin-top: 16px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    #appt-setup-grid {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    #appt-setup-grid thead th {
+      text-align: left;
+      font-size: 12px;
+      color: #64748b;
+      padding: 10px 8px;
+      background: #f8fafc;
+      border-bottom: 1px solid #eef2f7;
+    }
+    #appt-setup-grid tbody td {
+      padding: 10px 8px;
+      border-bottom: 1px solid #f1f5f9;
+      vertical-align: middle;
+    }
+    #appt-setup-grid .cat-name {
+      font-weight: 600;
+      color: #0f172a;
+    }
+    #appt-setup-grid select {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #fff;
+      color: #0f172a;
+      font-size: 13px;
+    }
+    .setup-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+      justify-content: flex-start;
+    }
+    #appt-save {
+      background: #3b82f6;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-weight: 500;
+      border: none;
+      cursor: pointer;
+    }
+    #appt-match-all, #appt-clear {
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-weight: 500;
+      border: 1px solid #e2e8f0;
+      background: white;
+      color: #334155;
+      cursor: pointer;
+    }
+    .wizard-nav-buttons {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid #e2e8f0;
+    }
+    #appt-back {
+      background: white;
+      color: #334155;
+      padding: 8px 24px;
+      border-radius: 6px;
+      font-weight: 500;
+      border: 1px solid #e2e8f0;
+      cursor: pointer;
+    }
+    #appt-finish {
+      background: #3b82f6;
+      color: white;
+      padding: 8px 24px;
+      border-radius: 6px;
+      font-weight: 500;
+      border: none;
+      cursor: pointer;
+    }
+    .row-confirmed {
+      background: #f0fdf4;
+    }
+    
     .user-popover .user-email {
       font-weight: 600;
       color: var(--ink);
@@ -2551,252 +3204,6 @@ ${slotTypesList}`
     });
   </script>
 
-  <!-- Appointment Type Setup: Identify key appointment types used within the surgery -->
-  <style>
-    /* Minimal, self-contained styles (reusing neutrals from page) */
-    #appt-setup-section { margin: 24px 16px; padding: 16px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; }
-    #appt-setup-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-    #appt-setup-title { font-weight: 700; color: #0f172a; font-size: 16px; }
-    #appt-setup-status { font-size: 12px; color: #0f172a; background: #f8fafc; border: 1px solid #e2e8f0; padding: 6px 10px; border-radius: 999px; }
-    #appt-setup-grid { width: 100%; border-collapse: collapse; }
-    #appt-setup-grid thead th { text-align: left; font-size: 12px; color: #64748b; padding: 10px 8px; border-bottom: 1px solid #eef2f7; }
-    #appt-setup-grid tbody td { padding: 10px 8px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
-    #appt-setup-grid .cat-name { font-weight: 600; color: #0f172a; }
-    #appt-setup-grid select { width: 100%; padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; color: #0f172a; font-size: 13px; }
-    #appt-setup-actions { display: flex; gap: 10px; margin-top: 12px; }
-    .btn-primary { background: #2563eb; color: #fff; border: 0; border-radius: 8px; padding: 8px 12px; font-weight: 600; cursor: pointer; }
-    .btn-secondary { background: #f8fafc; color: #0f172a; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; font-weight: 600; cursor: pointer; }
-    .row-confirmed { background: #f0fdf4; }
-    .hint { font-size: 12px; color: #64748b; }
-  </style>
-
-  <section id="appt-setup-section" aria-label="Appointment Type Setup">
-    <div id="appt-setup-header">
-      <div>
-        <div id="appt-setup-title">Appointment Type Setup</div>
-        <div class="hint">Identify the appointment types used within your surgery. Pre-selections come from AI and smart matching.</div>
-      </div>
-      <div id="appt-setup-status" aria-live="polite">Idle</div>
-    </div>
-
-    <table id="appt-setup-grid">
-      <thead>
-        <tr>
-          <th style="width: 240px;">Type to identify</th>
-          <th>Slot type (from EMIS)</th>
-          <th style="width: 140px;">Confirm</th>
-        </tr>
-      </thead>
-      <tbody id="appt-setup-body">
-        <!-- Rows injected by script -->
-      </tbody>
-    </table>
-
-    <div id="appt-setup-actions">
-      <button id="appt-match-all" class="btn-primary" type="button">Match All</button>
-      <button id="appt-clear" class="btn-secondary" type="button">Clear</button>
-    </div>
-  </section>
-
-  <script>
-  (function(){
-    const statusEl = document.getElementById('appt-setup-status');
-    const bodyEl = document.getElementById('appt-setup-body');
-    const btnAll = document.getElementById('appt-match-all');
-    const btnClear = document.getElementById('appt-clear');
-
-    const urgentPattern = /\b(emergency|urgent|same\s*day|book\s*on\s*day|bod)\b/i;
-
-    // Categories to identify
-    const categories = [
-      { key: 'on_the_day',    label: 'Book on the day',     source: 'ai' },
-      { key: 'within_1_week', label: 'Within 1 week',       source: 'ai' },
-      { key: 'within_2_weeks',label: 'Within 2 weeks',      source: 'ai' },
-      { key: 'duty',          label: 'Duty slot (today only)', pattern: /\b(duty|duty\s*dr|duty\s*slot)\b/i },
-      { key: 'nhs_111',       label: '111 slots',             pattern: /\b(111|nhs\s*111)\b/i },
-      { key: 'break',         label: 'Breaks',                pattern: /\b(break|comfort)\b/i },
-      { key: 'lunch',         label: 'Lunch',                 pattern: /\b(lunch|meal)\b/i },
-      { key: 'admin',         label: 'Admin slots',           pattern: /\b(admin|administration|paperwork)\b/i },
-    ];
-
-    // Local selection state
-    const selections = {}; // { key: selectedLabel }
-
-    function setStatus(text){ if(statusEl) statusEl.textContent = text; }
-
-    function normalizeLabel(s){ return String(s || '').trim().replace(/\s+/g,' '); }
-
-    async function ensureSlotTypes(){
-      // Reuse already loaded values when present
-      if (Array.isArray(window.loadedSlotTypes) && window.loadedSlotTypes.length) return window.loadedSlotTypes;
-
-      const started = performance.now();
-      const sb = window.supabase || (window.getSupabase && window.getSupabase());
-      if (!sb) throw new Error('Supabase client not available');
-
-      const PAGE_SIZE = 1000;
-      let offset = 0;
-      const seen = new Set();
-      const originals = new Map();
-
-      setStatus('Loading slot types from EMIS…');
-      while (true) {
-        const { data, error } = await sb
-          .from('emis_apps_raw')
-          .select('slot_type')
-          .not('slot_type', 'is', null)
-          .order('slot_type', { ascending: true })
-          .range(offset, offset + PAGE_SIZE - 1);
-        if (error) throw error;
-        if (!data || !data.length) break;
-
-        for (const r of data) {
-          const label = normalizeLabel(r.slot_type);
-          if (!label) continue;
-          const key = label.replace(/\s+/g,'');
-          if (!seen.has(key)) { seen.add(key); originals.set(key, label); }
-        }
-
-        if (data.length < PAGE_SIZE) break;
-        offset += PAGE_SIZE;
-      }
-
-      const values = Array.from(seen).sort().map(k => originals.get(k));
-      window.loadedSlotTypes = values;
-      const dur = Math.round(performance.now() - started);
-      setStatus(`Loaded ${values.length} slot types (${dur}ms)`);
-      return values;
-    }
-
-    function nudgeUrgent(classification){
-      const nudged = {
-        on_the_day: [...(classification.on_the_day || [])],
-        within_1_week: [],
-        within_2_weeks: []
-      };
-      (classification.within_1_week || []).forEach(s => urgentPattern.test(s) ? nudged.on_the_day.push(s) : nudged.within_1_week.push(s));
-      (classification.within_2_weeks || []).forEach(s => urgentPattern.test(s) ? nudged.on_the_day.push(s) : nudged.within_2_weeks.push(s));
-      nudged.on_the_day = [...new Set(nudged.on_the_day)];
-      return nudged;
-    }
-
-    async function ensureClassification(slotTypes){
-      if (window.slotTypeClassification) return window.slotTypeClassification;
-      const sb = window.supabase || (window.getSupabase && window.getSupabase());
-      if (!sb) throw new Error('Supabase client not available');
-
-      const t0 = performance.now();
-      setStatus('Classifying slot types…');
-      const { data, error } = await sb.functions.invoke('classify-slot-types', { body: { slotTypes } });
-      if (error) throw new Error(error.message || 'Edge function failed');
-      const raw = data?.classification || data;
-      if (!raw) throw new Error('No classification returned');
-      const nudged = nudgeUrgent(raw);
-      window.slotTypeClassification = nudged;
-      const dt = Math.round(performance.now() - t0);
-      setStatus(`Classified in ${dt}ms`);
-      return nudged;
-    }
-
-    function buildRows(slotTypes, classification){
-      bodyEl.innerHTML = '';
-      const opts = ['— Select —', ...slotTypes];
-
-      function suggestedFor(cat){
-        if (cat.source === 'ai') {
-          const arr = classification[cat.key] || [];
-          // Prefer first AI suggestion
-          return arr[0] || '';
-        }
-        if (cat.pattern) {
-          const m = slotTypes.find(s => cat.pattern.test(s));
-          return m || '';
-        }
-        return '';
-      }
-
-      categories.forEach(cat => {
-        const tr = document.createElement('tr');
-        const tdName = document.createElement('td');
-        const tdSel = document.createElement('td');
-        const tdConfirm = document.createElement('td');
-
-        tdName.innerHTML = `<div class="cat-name">${cat.label}</div>`;
-
-        const sel = document.createElement('select');
-        opts.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); });
-        const suggestion = suggestedFor(cat);
-        if (suggestion) sel.value = suggestion; else sel.value = '— Select —';
-
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.ariaLabel = `Confirm ${cat.label}`;
-        cb.addEventListener('change',() => {
-          if (cb.checked && sel.value && sel.value !== '— Select —') {
-            tr.classList.add('row-confirmed');
-            selections[cat.key] = sel.value;
-          } else {
-            tr.classList.remove('row-confirmed');
-            delete selections[cat.key];
-          }
-          setStatus(Object.keys(selections).length ? `Confirmed ${Object.keys(selections).length} / ${categories.length}` : 'No selections yet');
-        });
-
-        sel.addEventListener('change', () => {
-          if (cb.checked) cb.dispatchEvent(new Event('change'));
-        });
-
-        tdSel.appendChild(sel);
-        tdConfirm.appendChild(cb);
-        tr.appendChild(tdName); tr.appendChild(tdSel); tr.appendChild(tdConfirm);
-        bodyEl.appendChild(tr);
-
-        // Auto-confirm suggested matches for AI categories
-        if (suggestion && cat.source === 'ai') {
-          cb.checked = true; cb.dispatchEvent(new Event('change'));
-        }
-      });
-    }
-
-    btnAll.addEventListener('click', () => {
-      // Confirm all rows with current selections; if not selected, try to set suggestion and confirm
-      Array.from(bodyEl.querySelectorAll('tr')).forEach((tr, idx) => {
-        const cat = categories[idx];
-        const sel = tr.querySelector('select');
-        const cb = tr.querySelector('input[type="checkbox"]');
-        if (sel && (!sel.value || sel.value === '— Select —')) {
-          // set suggestion if available
-          const slotTypes = window.loadedSlotTypes || [];
-          const classification = window.slotTypeClassification || { on_the_day:[], within_1_week:[], within_2_weeks:[] };
-          let s = '';
-          if (cat.source === 'ai') s = (classification[cat.key]||[])[0] || '';
-          else if (cat.pattern) s = (slotTypes.find(x => cat.pattern.test(x)) || '');
-          if (s) sel.value = s;
-        }
-        if (cb && sel && sel.value && sel.value !== '— Select —') { cb.checked = true; cb.dispatchEvent(new Event('change')); }
-      });
-      setStatus(`All matched where possible (${Object.keys(selections).length} confirmed)`);
-    });
-
-    btnClear.addEventListener('click', () => {
-      Object.keys(selections).forEach(k => delete selections[k]);
-      Array.from(bodyEl.querySelectorAll('tr')).forEach(tr => { tr.classList.remove('row-confirmed'); });
-      Array.from(bodyEl.querySelectorAll('input[type="checkbox"]')).forEach(cb => cb.checked = false);
-      setStatus('Cleared selections');
-    });
-
-    (async function init(){
-      try {
-        const slotTypes = await ensureSlotTypes();
-        const classification = await ensureClassification(slotTypes);
-        buildRows(slotTypes, classification);
-      } catch (e) {
-        console.error('Appointment setup init error:', e);
-        setStatus('Error: ' + (e?.message || String(e)));
-      }
-    })();
-
-  })();
-  </script>
+  
 </body>
 </html>
