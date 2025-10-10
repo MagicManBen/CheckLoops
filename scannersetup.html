@@ -1,0 +1,139 @@
+
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0a58ff">
+  <title>CheckLoops — Scanner Setup</title>
+  <meta name="color-scheme" content="light dark">
+  <style>
+    :root{
+      --blue:#0a58ff; --blue2:#2e8bff; --ink:#f6f9ff; --muted:#d4e3ff;
+      --glass1:rgba(255,255,255,.18); --glass2:rgba(255,255,255,.10);
+      --stroke:rgba(255,255,255,.22); --shadow:0 20px 40px rgba(3,12,50,.35);
+      --radius:22px;
+    }
+    *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+    html,body{height:100%}
+    body{
+      margin:0; font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display",system-ui;
+      color:var(--ink);
+      background:
+        radial-gradient(900px 600px at 80% -10%, #70a1ff2b 0, transparent 60%),
+        radial-gradient(1100px 700px at -10% 110%, #93c5ff26 0, transparent 60%),
+        linear-gradient(180deg,#0b3cff,#0a2cff 22%,#071e6d 100%);
+      overflow:hidden;
+    }
+    .app{position:relative; width:min(430px,100vw); height:100vh; margin:0 auto; display:flex; flex-direction:column; padding: env(safe-area-inset-top) 16px calc(18px + env(safe-area-inset-bottom));}
+    .top{display:flex; align-items:center; justify-content:space-between; padding:16px 6px 10px}
+    .badge{padding:7px 12px; border-radius:999px; border:1px solid var(--stroke); color:#e8f1ff;
+      background:linear-gradient(180deg,var(--glass1),var(--glass2)); box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+    .sheet{flex:1; border:1px solid var(--stroke); border-radius:var(--radius); background:linear-gradient(180deg,var(--glass1),var(--glass2)); backdrop-filter:blur(22px) saturate(160%); box-shadow:var(--shadow); padding:14px; overflow:auto}
+    h1{font-size:22px; letter-spacing:.01em; margin:4px 2px}
+    .sub{color:var(--muted); margin:0 2px 10px}
+    label{display:block; margin:12px 6px 6px 6px; font-size:12px; color:#c7d7ff; letter-spacing:.06em; text-transform:uppercase}
+    input{width:calc(100% - 12px); margin:0 6px; padding:14px; border-radius:14px; border:1px solid var(--stroke); background:rgba(255,255,255,.14); color:#fff; font-size:16px}
+    input::placeholder{color:#e7eeff99}
+    .row{display:flex; gap:10px; flex-wrap:wrap; margin:14px 6px}
+    button,a.button{display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:14px 18px; border:0; border-radius:16px; font-weight:800; letter-spacing:.01em; cursor:pointer; text-decoration:none;}
+    .primary{background:linear-gradient(180deg,var(--blue2),var(--blue)); color:#fff; box-shadow:0 10px 20px rgba(10,88,255,.28)}
+    .ghost{background:linear-gradient(180deg,rgba(255,255,255,.14),rgba(255,255,255,.08)); color:#fff; border:1px solid var(--stroke)}
+    .warn{color:#ffb4b4}
+    .ok{color:#baffd0}
+    .log{margin:8px 6px; border:1px dashed var(--stroke); border-radius:14px; padding:10px; color:#e8f1ff; background:rgba(255,255,255,.08); font-size:13px; min-height:62px; white-space:pre-wrap}
+    .banner{margin:8px 6px; padding:10px 12px; border-radius:14px; border:1px solid var(--stroke); background:rgba(255,255,255,.10)}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="top">
+      <div class="badge">CheckLoops</div>
+      <div class="badge" id="netInfo">Scanner setup</div>
+    </div>
+    <div class="sheet">
+      <h1>Scanner setup</h1>
+      <p class="sub">Talk to your device over the same Wi‑Fi network.</p>
+
+      <div id="httpsWarn" class="banner" style="display:none">
+        <strong>Heads up:</strong> This page is loaded over <b>HTTPS</b>. Browsers block AJAX to <code>http://</code> devices (mixed content / Private Network Access). If the button below fails, open this file locally (file://) or host it on <b>http://</b>.
+      </div>
+
+      <label for="ip">Device IP</label>
+      <input id="ip" inputmode="decimal" placeholder="e.g. 192.168.1.130" autocomplete="off" />
+
+      <div class="row">
+        <button class="ghost" id="remember">Remember IP</button>
+        <a class="button ghost" id="openDevice" href="#" target="_blank" rel="noopener">Open device page</a>
+      </div>
+
+      <div class="row">
+        <button class="primary" id="btnTest">Light all red LEDs (test)</button>
+      </div>
+
+      <div id="log" class="log">Ready.</div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    const $ = s => document.querySelector(s);
+    const log = msg => { const el=$('#log'); const t=new Date().toLocaleTimeString(); el.textContent += `\n[${t}] ${msg}`; el.scrollTop = el.scrollHeight; };
+
+    function getIP(){ return $('#ip').value.trim(); }
+    function setIP(v){ $('#ip').value = v || ''; updateLinks(); }
+    function updateLinks(){ const ip=getIP(); $('#openDevice').href = ip?`http://${ip}/`:'#'; }
+
+    function saveIP(){ const ip=getIP(); if(!ip){ alert('Enter the device IP'); return; } try{ localStorage.setItem('checkloops_device_ip', ip);}catch(_){} log(`Saved IP: ${ip}`); updateLinks(); }
+
+    async function post(url){
+      const t0 = performance.now();
+      const res = await fetch(url, { method:'POST', mode:'cors' }).catch(e=>{ throw e; });
+      const txt = await res.text();
+      const dt = Math.round(performance.now()-t0);
+      return {status:res.status, ok:res.ok, body:txt, dt};
+    }
+
+    async function test(){
+      const ip = getIP();
+      if(!ip){ alert('Enter the device IP first'); return; }
+      const urlRed = `http://${ip}/led?color=red`;
+      const urlTick = `http://${ip}/tick`;
+      try{
+        log(`POST ${urlRed}`);
+        let r = await post(urlRed);
+        if(r.status===404){
+          log(`LED endpoint not found (404). Falling back to /tick…`);
+          log(`POST ${urlTick}`);
+          r = await post(urlTick);
+        }
+        if(r.ok){ log(`✓ Success (${r.dt}ms)`); }
+        else { log(`Request returned ${r.status}: ${r.body}`); }
+      }catch(e){
+        log(`Request failed. ${e && e.message ? e.message : e}`);
+        if(location.protocol==='https:'){
+          log('This page is HTTPS — browsers block HTTP device calls (mixed content / PNA). Try opening this page over http:// or as a local file.');
+        }
+      }
+    }
+
+    // boot
+    (function init(){
+      // HTTPS warning
+      if(location.protocol==='https:') $('#httpsWarn').style.display='block';
+      // query param ip=…
+      try{ const u=new URL(location.href); const qip=u.searchParams.get('ip'); if(qip) setIP(qip); }catch(_){ }
+      // localStorage fallback
+      if(!getIP()){
+        try{ const saved=localStorage.getItem('checkloops_device_ip'); if(saved) setIP(saved); }catch(_){ }
+      }
+      updateLinks();
+      $('#remember').onclick = saveIP;
+      $('#btnTest').onclick = test;
+      $('#ip').addEventListener('input', updateLinks);
+    })();
+  })();
+  </script>
+</body>
+</html>

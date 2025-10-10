@@ -52,6 +52,12 @@ serve(async (req) => {
       )
     }
 
+    // Log prompt and raw AI content for debugging
+    try {
+      console.log('classify-slot-types: prompt sent to AI:', userPrompt)
+      console.log('classify-slot-types: raw AI response:', aiContent)
+    } catch (_) {}
+
     // Try to extract JSON from AI response
     let parsed
     try {
@@ -69,14 +75,16 @@ serve(async (req) => {
     const keys = ['on_the_day', 'within_1_week', 'within_2_weeks']
     for (const k of keys) if (!Array.isArray(parsed[k])) parsed[k] = []
 
-    return new Response(JSON.stringify({ success: true, classification: parsed }), {
+    // Include prompt and raw AI response in debug output so the client can display them
+    return new Response(JSON.stringify({ success: true, classification: parsed, debug: { prompt: userPrompt, aiRaw: aiContent } }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
 
   } catch (err) {
     console.error('classify-slot-types error:', err)
-    return new Response(JSON.stringify({ error: err.message || String(err) }), {
+    const message = (err && (err as any).message) ? (err as any).message : String(err)
+    return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })

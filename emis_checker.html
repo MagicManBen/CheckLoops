@@ -1674,6 +1674,8 @@
           
           // Instead of using the .card-bd, create an absolute positioned container over it
           // that won't be affected by other CSS rules
+          const existingContainer = document.getElementById('step4-container');
+          if (existingContainer) existingContainer.remove();
           const container = document.createElement('div');
           container.id = 'step4-container';
           container.style.position = 'fixed';
@@ -1937,7 +1939,8 @@
             });
           });
 
-          step4Bd.appendChild(table);
+          container.appendChild(table);
+          console.log('STEP4: rows rendered:', document.querySelectorAll('#step4-container tbody tr').length);
 
           // Actions row
           const actions = document.createElement('div');
@@ -2260,6 +2263,7 @@ ${slotTypesList}`
 
                 const fnStart = Date.now();
                 // Call the Supabase Edge Function which runs server-side and holds the OpenAI key
+                console.log('   Debug: payload sent to function:', { slotTypesCount: window.loadedSlotTypes.length });
                 const { data: fnData, error: fnError } = await window.supabase.functions.invoke('classify-slot-types', {
                   body: { slotTypes: window.loadedSlotTypes }
                 });
@@ -2273,6 +2277,28 @@ ${slotTypesList}`
 
                 console.log('\n📦 Step 4: Parsing function response...');
                 console.log('   Raw function response:', fnData);
+                // If the function provided debug fields with the prompt and raw AI text, surface them in console
+                try {
+                  if (fnData && fnData.debug) {
+                    console.log('   AI prompt sent (server):', fnData.debug.prompt);
+                    console.log('   AI raw response (server):', fnData.debug.aiRaw);
+                    // Also attach to global debug store for UI panels
+                    window.lastAIRequest = fnData.debug.prompt;
+                    window.lastAIRawResponse = fnData.debug.aiRaw;
+                  } else {
+                    // Build a synthetic prompt so the debug panel still shows something meaningful
+                    const syntheticPrompt = `SYSTEM: You classify GP appointment "Slot Types" into exactly three buckets (on_the_day, within_1_week, within_2_weeks).\nRules: strict JSON keys and arrays only.\n\nUSER JSON:\n` + JSON.stringify({ slot_types: window.loadedSlotTypes }, null, 2);
+                    window.lastAIRequest = syntheticPrompt;
+                    // No raw response available if server doesn't forward it
+                    if (!window.lastAIRawResponse) window.lastAIRawResponse = '— Raw AI response not provided by server —';
+                  }
+                } catch (_) {}
+
+                // Auto-print a compact debug summary to the on-screen debugger
+                try {
+                  console.info('AI REQUEST: (compact preview)');
+                  console.log((window.lastAIRequest || '').slice(0, 500) + '...');
+                } catch (_) {}
                 // The function returns { success: true, classification: { ... } }
                 if (!fnData) {
                   throw new Error('Empty response from classify-slot-types function');
@@ -3176,6 +3202,9 @@ ${slotTypesList}`
         <button id="debug-clear" type="button">Clear</button>
         <button id="debug-copy" type="button">Copy</button>
         <button id="debug-close" type="button">Close</button>
+        <button id="debug-ai-req" type="button">AI Req</button>
+        <button id="debug-ai-res" type="button">AI Res</button>
+        <button id="debug-ai-class" type="button">AI Class</button>
       </div>
     </div>
     <div id="debug-logs" role="log" aria-live="polite"></div>
@@ -3190,6 +3219,9 @@ ${slotTypesList}`
       const clearBtn = document.getElementById('debug-clear');
       const copyBtn = document.getElementById('debug-copy');
       const closeBtn = document.getElementById('debug-close');
+    const aiReqBtn = document.getElementById('debug-ai-req');
+    const aiResBtn = document.getElementById('debug-ai-res');
+    const aiClassBtn = document.getElementById('debug-ai-class');
 
       function formatArg(a){
         try {
@@ -3255,6 +3287,33 @@ ${slotTypesList}`
 
       // make sure panel exists before any early logs
       console.log('Debug panel initialized');
+
+      // Wire AI debug buttons (show prompt, raw response, and classification in-panel)
+      try {
+        if (aiReqBtn) aiReqBtn.addEventListener('click', () => {
+          try {
+            const txt = window.lastAIRequest || '— No AI request captured —';
+            append('info', ['AI REQUEST:']);
+            append('log', [txt]);
+          } catch (e) { append('error', ['Failed to show AI request', e.message || e]); }
+        });
+
+        if (aiResBtn) aiResBtn.addEventListener('click', () => {
+          try {
+            const txt = window.lastAIRawResponse || '— No AI raw response captured —';
+            append('info', ['AI RAW RESPONSE:']);
+            append('log', [txt]);
+          } catch (e) { append('error', ['Failed to show AI raw response', e.message || e]); }
+        });
+
+        if (aiClassBtn) aiClassBtn.addEventListener('click', () => {
+          try {
+            const cls = window.slotTypeClassification || window.classificationError || null;
+            append('info', ['AI CLASSIFICATION (window.slotTypeClassification):']);
+            append('log', [JSON.stringify(cls, null, 2) || '— none —']);
+          } catch (e) { append('error', ['Failed to show classification', e.message || e]); }
+        });
+      } catch (e) { /* ignore wiring errors */ }
     })();
   </script>
 
