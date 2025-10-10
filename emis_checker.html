@@ -2550,5 +2550,253 @@ ${slotTypesList}`
       }
     });
   </script>
+
+  <!-- Appointment Type Setup: Identify key appointment types used within the surgery -->
+  <style>
+    /* Minimal, self-contained styles (reusing neutrals from page) */
+    #appt-setup-section { margin: 24px 16px; padding: 16px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; }
+    #appt-setup-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+    #appt-setup-title { font-weight: 700; color: #0f172a; font-size: 16px; }
+    #appt-setup-status { font-size: 12px; color: #0f172a; background: #f8fafc; border: 1px solid #e2e8f0; padding: 6px 10px; border-radius: 999px; }
+    #appt-setup-grid { width: 100%; border-collapse: collapse; }
+    #appt-setup-grid thead th { text-align: left; font-size: 12px; color: #64748b; padding: 10px 8px; border-bottom: 1px solid #eef2f7; }
+    #appt-setup-grid tbody td { padding: 10px 8px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+    #appt-setup-grid .cat-name { font-weight: 600; color: #0f172a; }
+    #appt-setup-grid select { width: 100%; padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; color: #0f172a; font-size: 13px; }
+    #appt-setup-actions { display: flex; gap: 10px; margin-top: 12px; }
+    .btn-primary { background: #2563eb; color: #fff; border: 0; border-radius: 8px; padding: 8px 12px; font-weight: 600; cursor: pointer; }
+    .btn-secondary { background: #f8fafc; color: #0f172a; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; font-weight: 600; cursor: pointer; }
+    .row-confirmed { background: #f0fdf4; }
+    .hint { font-size: 12px; color: #64748b; }
+  </style>
+
+  <section id="appt-setup-section" aria-label="Appointment Type Setup">
+    <div id="appt-setup-header">
+      <div>
+        <div id="appt-setup-title">Appointment Type Setup</div>
+        <div class="hint">Identify the appointment types used within your surgery. Pre-selections come from AI and smart matching.</div>
+      </div>
+      <div id="appt-setup-status" aria-live="polite">Idle</div>
+    </div>
+
+    <table id="appt-setup-grid">
+      <thead>
+        <tr>
+          <th style="width: 240px;">Type to identify</th>
+          <th>Slot type (from EMIS)</th>
+          <th style="width: 140px;">Confirm</th>
+        </tr>
+      </thead>
+      <tbody id="appt-setup-body">
+        <!-- Rows injected by script -->
+      </tbody>
+    </table>
+
+    <div id="appt-setup-actions">
+      <button id="appt-match-all" class="btn-primary" type="button">Match All</button>
+      <button id="appt-clear" class="btn-secondary" type="button">Clear</button>
+    </div>
+  </section>
+
+  <script>
+  (function(){
+    const statusEl = document.getElementById('appt-setup-status');
+    const bodyEl = document.getElementById('appt-setup-body');
+    const btnAll = document.getElementById('appt-match-all');
+    const btnClear = document.getElementById('appt-clear');
+
+    const urgentPattern = /\b(emergency|urgent|same\s*day|book\s*on\s*day|bod)\b/i;
+
+    // Categories to identify
+    const categories = [
+      { key: 'on_the_day',    label: 'Book on the day',     source: 'ai' },
+      { key: 'within_1_week', label: 'Within 1 week',       source: 'ai' },
+      { key: 'within_2_weeks',label: 'Within 2 weeks',      source: 'ai' },
+      { key: 'duty',          label: 'Duty slot (today only)', pattern: /\b(duty|duty\s*dr|duty\s*slot)\b/i },
+      { key: 'nhs_111',       label: '111 slots',             pattern: /\b(111|nhs\s*111)\b/i },
+      { key: 'break',         label: 'Breaks',                pattern: /\b(break|comfort)\b/i },
+      { key: 'lunch',         label: 'Lunch',                 pattern: /\b(lunch|meal)\b/i },
+      { key: 'admin',         label: 'Admin slots',           pattern: /\b(admin|administration|paperwork)\b/i },
+    ];
+
+    // Local selection state
+    const selections = {}; // { key: selectedLabel }
+
+    function setStatus(text){ if(statusEl) statusEl.textContent = text; }
+
+    function normalizeLabel(s){ return String(s || '').trim().replace(/\s+/g,' '); }
+
+    async function ensureSlotTypes(){
+      // Reuse already loaded values when present
+      if (Array.isArray(window.loadedSlotTypes) && window.loadedSlotTypes.length) return window.loadedSlotTypes;
+
+      const started = performance.now();
+      const sb = window.supabase || (window.getSupabase && window.getSupabase());
+      if (!sb) throw new Error('Supabase client not available');
+
+      const PAGE_SIZE = 1000;
+      let offset = 0;
+      const seen = new Set();
+      const originals = new Map();
+
+      setStatus('Loading slot types from EMIS…');
+      while (true) {
+        const { data, error } = await sb
+          .from('emis_apps_raw')
+          .select('slot_type')
+          .not('slot_type', 'is', null)
+          .order('slot_type', { ascending: true })
+          .range(offset, offset + PAGE_SIZE - 1);
+        if (error) throw error;
+        if (!data || !data.length) break;
+
+        for (const r of data) {
+          const label = normalizeLabel(r.slot_type);
+          if (!label) continue;
+          const key = label.replace(/\s+/g,'');
+          if (!seen.has(key)) { seen.add(key); originals.set(key, label); }
+        }
+
+        if (data.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
+      }
+
+      const values = Array.from(seen).sort().map(k => originals.get(k));
+      window.loadedSlotTypes = values;
+      const dur = Math.round(performance.now() - started);
+      setStatus(`Loaded ${values.length} slot types (${dur}ms)`);
+      return values;
+    }
+
+    function nudgeUrgent(classification){
+      const nudged = {
+        on_the_day: [...(classification.on_the_day || [])],
+        within_1_week: [],
+        within_2_weeks: []
+      };
+      (classification.within_1_week || []).forEach(s => urgentPattern.test(s) ? nudged.on_the_day.push(s) : nudged.within_1_week.push(s));
+      (classification.within_2_weeks || []).forEach(s => urgentPattern.test(s) ? nudged.on_the_day.push(s) : nudged.within_2_weeks.push(s));
+      nudged.on_the_day = [...new Set(nudged.on_the_day)];
+      return nudged;
+    }
+
+    async function ensureClassification(slotTypes){
+      if (window.slotTypeClassification) return window.slotTypeClassification;
+      const sb = window.supabase || (window.getSupabase && window.getSupabase());
+      if (!sb) throw new Error('Supabase client not available');
+
+      const t0 = performance.now();
+      setStatus('Classifying slot types…');
+      const { data, error } = await sb.functions.invoke('classify-slot-types', { body: { slotTypes } });
+      if (error) throw new Error(error.message || 'Edge function failed');
+      const raw = data?.classification || data;
+      if (!raw) throw new Error('No classification returned');
+      const nudged = nudgeUrgent(raw);
+      window.slotTypeClassification = nudged;
+      const dt = Math.round(performance.now() - t0);
+      setStatus(`Classified in ${dt}ms`);
+      return nudged;
+    }
+
+    function buildRows(slotTypes, classification){
+      bodyEl.innerHTML = '';
+      const opts = ['— Select —', ...slotTypes];
+
+      function suggestedFor(cat){
+        if (cat.source === 'ai') {
+          const arr = classification[cat.key] || [];
+          // Prefer first AI suggestion
+          return arr[0] || '';
+        }
+        if (cat.pattern) {
+          const m = slotTypes.find(s => cat.pattern.test(s));
+          return m || '';
+        }
+        return '';
+      }
+
+      categories.forEach(cat => {
+        const tr = document.createElement('tr');
+        const tdName = document.createElement('td');
+        const tdSel = document.createElement('td');
+        const tdConfirm = document.createElement('td');
+
+        tdName.innerHTML = `<div class="cat-name">${cat.label}</div>`;
+
+        const sel = document.createElement('select');
+        opts.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); });
+        const suggestion = suggestedFor(cat);
+        if (suggestion) sel.value = suggestion; else sel.value = '— Select —';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.ariaLabel = `Confirm ${cat.label}`;
+        cb.addEventListener('change',() => {
+          if (cb.checked && sel.value && sel.value !== '— Select —') {
+            tr.classList.add('row-confirmed');
+            selections[cat.key] = sel.value;
+          } else {
+            tr.classList.remove('row-confirmed');
+            delete selections[cat.key];
+          }
+          setStatus(Object.keys(selections).length ? `Confirmed ${Object.keys(selections).length} / ${categories.length}` : 'No selections yet');
+        });
+
+        sel.addEventListener('change', () => {
+          if (cb.checked) cb.dispatchEvent(new Event('change'));
+        });
+
+        tdSel.appendChild(sel);
+        tdConfirm.appendChild(cb);
+        tr.appendChild(tdName); tr.appendChild(tdSel); tr.appendChild(tdConfirm);
+        bodyEl.appendChild(tr);
+
+        // Auto-confirm suggested matches for AI categories
+        if (suggestion && cat.source === 'ai') {
+          cb.checked = true; cb.dispatchEvent(new Event('change'));
+        }
+      });
+    }
+
+    btnAll.addEventListener('click', () => {
+      // Confirm all rows with current selections; if not selected, try to set suggestion and confirm
+      Array.from(bodyEl.querySelectorAll('tr')).forEach((tr, idx) => {
+        const cat = categories[idx];
+        const sel = tr.querySelector('select');
+        const cb = tr.querySelector('input[type="checkbox"]');
+        if (sel && (!sel.value || sel.value === '— Select —')) {
+          // set suggestion if available
+          const slotTypes = window.loadedSlotTypes || [];
+          const classification = window.slotTypeClassification || { on_the_day:[], within_1_week:[], within_2_weeks:[] };
+          let s = '';
+          if (cat.source === 'ai') s = (classification[cat.key]||[])[0] || '';
+          else if (cat.pattern) s = (slotTypes.find(x => cat.pattern.test(x)) || '');
+          if (s) sel.value = s;
+        }
+        if (cb && sel && sel.value && sel.value !== '— Select —') { cb.checked = true; cb.dispatchEvent(new Event('change')); }
+      });
+      setStatus(`All matched where possible (${Object.keys(selections).length} confirmed)`);
+    });
+
+    btnClear.addEventListener('click', () => {
+      Object.keys(selections).forEach(k => delete selections[k]);
+      Array.from(bodyEl.querySelectorAll('tr')).forEach(tr => { tr.classList.remove('row-confirmed'); });
+      Array.from(bodyEl.querySelectorAll('input[type="checkbox"]')).forEach(cb => cb.checked = false);
+      setStatus('Cleared selections');
+    });
+
+    (async function init(){
+      try {
+        const slotTypes = await ensureSlotTypes();
+        const classification = await ensureClassification(slotTypes);
+        buildRows(slotTypes, classification);
+      } catch (e) {
+        console.error('Appointment setup init error:', e);
+        setStatus('Error: ' + (e?.message || String(e)));
+      }
+    })();
+
+  })();
+  </script>
 </body>
 </html>
