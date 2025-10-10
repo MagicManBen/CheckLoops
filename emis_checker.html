@@ -2582,18 +2582,43 @@
                 }
                 
                 // Call the Edge Function to save mappings
-                const { data, error } = await sb.functions.invoke('save-slot-mappings', {
-                  body: { mappings }
-                });
-                
-                if (error) {
-                  console.error('Error saving mappings:', error);
-                  alert(`Failed to save mappings: ${error.message || 'Unknown error'}`);
-                  if (btnNext) {
-                    btnNext.disabled = false;
-                    btnNext.textContent = originalText;
+                // Call the Edge Function to save mappings
+                // We use the Supabase JS SDK which wraps the HTTP response, but to capture full error details
+                // we also attempt a direct fetch fallback to inspect the raw response body when something fails.
+                let fnResponse = null;
+                try {
+                  const { data, error } = await sb.functions.invoke('save-slot-mappings', {
+                    body: { mappings }
+                  });
+                  fnResponse = { data, error };
+                  if (error) throw error;
+                } catch (invokeErr) {
+                  console.error('Supabase functions.invoke error:', invokeErr);
+                  // Try direct fetch to capture raw JSON from the function
+                  try {
+                    const url = (window.CONFIG && window.CONFIG.SUPABASE_URL ? window.CONFIG.SUPABASE_URL : '') + '/functions/v1/save-slot-mappings';
+                    const t0 = Date.now();
+                    const r = await fetch(url, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${session.access_token}`
+                      },
+                      body: JSON.stringify({ mappings })
+                    });
+                    const txt = await r.text();
+                    let parsed = null;
+                    try { parsed = JSON.parse(txt); } catch(_) { parsed = txt; }
+                    console.error('Direct function fetch response status:', r.status, r.statusText, 'body:', parsed);
+                    alert('Failed to save mappings. See console for details.');
+                    if (btnNext) { btnNext.disabled = false; btnNext.textContent = originalText; }
+                    return false;
+                  } catch (fetchErr) {
+                    console.error('Direct fetch error when saving mappings:', fetchErr);
+                    alert('Failed to save mappings (network error). See console for details.');
+                    if (btnNext) { btnNext.disabled = false; btnNext.textContent = originalText; }
+                    return false;
                   }
-                  return false;
                 }
                 
                 console.log('✅ Mappings saved successfully:', data);
