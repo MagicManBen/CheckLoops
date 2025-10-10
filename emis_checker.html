@@ -1121,9 +1121,17 @@
           </div>
           <div class="wstep" data-wstep="5">
             <div class="card">
-              <div class="card-hd">Done</div>
-              <div class="card-bd">
-                <!-- Done page intentionally blank. Finalization handled elsewhere. -->
+              <div class="card-hd">Setup Complete</div>
+              <div class="card-bd" id="step5-content">
+                <div style="text-align:center;padding:40px 20px;">
+                  <div style="font-size:64px;margin-bottom:20px;">✅</div>
+                  <h2 style="color:#0f172a;margin-bottom:12px;">Setup Complete!</h2>
+                  <p style="color:#64748b;margin-bottom:30px;">Your slot type mappings have been saved successfully.</p>
+                  <div id="step5-summary" style="background:#f8fafc;border-radius:8px;padding:20px;margin-bottom:20px;text-align:left;">
+                    <p style="color:#64748b;margin:0;">Loading confirmation...</p>
+                  </div>
+                  <button class="btn-primary" onclick="window.location.reload()">Configure Another Site</button>
+                </div>
               </div>
             </div>
           </div>
@@ -2465,7 +2473,15 @@
 
             // Wire controls
             if (btnBack) btnBack.addEventListener('click', () => showWelcomeStep(wStep - 1));
-            if (btnNext) btnNext.addEventListener('click', () => {
+            if (btnNext) btnNext.addEventListener('click', async () => {
+              // If on step 4, save the mappings before proceeding
+              if (wStep === 4) {
+                const success = await saveMappings();
+                if (!success) {
+                  return; // Don't proceed if save failed
+                }
+              }
+              
               if (wStep < maxWStep) {
                 showWelcomeStep(wStep + 1); // advance through steps
               } else {
@@ -2498,6 +2514,158 @@
             // Initialize wizard at step 1
             showWelcomeStep(1);
             updateWizardProgress();
+
+            // --- Save slot type mappings to database ---
+            async function saveMappings() {
+              console.log('💾 Saving slot type mappings...');
+              
+              try {
+                // Get all the select elements and checkboxes from step 4
+                const step4Container = document.getElementById('step4-container');
+                if (!step4Container) {
+                  console.error('Step 4 container not found');
+                  alert('Error: Setup form not found. Please refresh and try again.');
+                  return false;
+                }
+                
+                // Find all the rows with select elements
+                const rows = step4Container.querySelectorAll('tbody tr');
+                const mappings = [];
+                let confirmedCount = 0;
+                
+                rows.forEach(row => {
+                  const select = row.querySelector('select');
+                  const checkbox = row.querySelector('input[type="checkbox"]');
+                  const categoryKey = select?.dataset?.catKey;
+                  const categoryLabel = row.querySelector('.cat-name')?.textContent?.trim();
+                  
+                  if (!select || !checkbox || !categoryKey || !categoryLabel) {
+                    return; // Skip invalid rows
+                  }
+                  
+                  // Only save confirmed mappings (checkbox checked)
+                  if (checkbox.checked && select.value && select.value !== '— Select —') {
+                    mappings.push({
+                      category_key: categoryKey,
+                      category_label: categoryLabel,
+                      emis_slot_type: select.value
+                    });
+                    confirmedCount++;
+                  }
+                });
+                
+                if (mappings.length === 0) {
+                  alert('Please select and confirm at least one slot type mapping before proceeding.');
+                  return false;
+                }
+                
+                console.log(`📊 Saving ${mappings.length} mappings:`, mappings);
+                
+                // Show loading state
+                const btnNext = document.getElementById('welcome-next');
+                const originalText = btnNext?.textContent;
+                if (btnNext) {
+                  btnNext.disabled = true;
+                  btnNext.textContent = 'Saving...';
+                }
+                
+                // Get Supabase client and auth session
+                const sb = window.supabase || (window.getSupabase && window.getSupabase());
+                if (!sb) throw new Error('Supabase client not available');
+                
+                const { data: { session } } = await sb.auth.getSession();
+                if (!session) {
+                  alert('Your session has expired. Please log in again.');
+                  window.location.href = 'admin-login.html';
+                  return false;
+                }
+                
+                // Call the Edge Function to save mappings
+                const { data, error } = await sb.functions.invoke('save-slot-mappings', {
+                  body: { mappings }
+                });
+                
+                if (error) {
+                  console.error('Error saving mappings:', error);
+                  alert(`Failed to save mappings: ${error.message || 'Unknown error'}`);
+                  if (btnNext) {
+                    btnNext.disabled = false;
+                    btnNext.textContent = originalText;
+                  }
+                  return false;
+                }
+                
+                console.log('✅ Mappings saved successfully:', data);
+                
+                // Store the result for Step 5 display
+                window.savedMappingsResult = {
+                  success: true,
+                  count: mappings.length,
+                  mappings: data.mappings || mappings,
+                  timestamp: new Date().toISOString()
+                };
+                
+                // Update Step 5 summary
+                updateStep5Summary(data);
+                
+                if (btnNext) {
+                  btnNext.disabled = false;
+                  btnNext.textContent = originalText;
+                }
+                
+                return true;
+                
+              } catch (err) {
+                console.error('Unexpected error saving mappings:', err);
+                alert(`Error: ${err.message || 'Failed to save mappings. Please try again.'}`);
+                
+                const btnNext = document.getElementById('welcome-next');
+                if (btnNext) {
+                  btnNext.disabled = false;
+                  btnNext.textContent = 'Next';
+                }
+                
+                return false;
+              }
+            }
+            
+            // Update Step 5 with confirmation details
+            function updateStep5Summary(saveResult) {
+              const summaryEl = document.getElementById('step5-summary');
+              if (!summaryEl) return;
+              
+              const count = saveResult.saved_count || saveResult.count || 0;
+              const mappings = saveResult.mappings || [];
+              
+              let html = `
+                <h3 style="font-size:16px;font-weight:600;margin:0 0 12px 0;color:#0f172a;">
+                  ${count} Slot Type Mapping${count !== 1 ? 's' : ''} Saved
+                </h3>
+                <div style="display:grid;gap:8px;max-height:300px;overflow-y:auto;">
+              `;
+              
+              mappings.forEach(mapping => {
+                html += `
+                  <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:white;border:1px solid #e2e8f0;border-radius:6px;">
+                    <div>
+                      <div style="font-weight:600;color:#0f172a;font-size:14px;">${mapping.category_label || mapping.category_key}</div>
+                      <div style="font-size:12px;color:#64748b;margin-top:2px;">${mapping.emis_slot_type}</div>
+                    </div>
+                    <div style="color:#22c55e;font-size:20px;">✓</div>
+                  </div>
+                `;
+              });
+              
+              html += `</div>`;
+              
+              html += `
+                <div style="margin-top:16px;padding:12px;background:#dbeafe;border-radius:6px;font-size:13px;color:#1e40af;">
+                  <strong>ℹ️ Note:</strong> These mappings are now active for your site. You can update them anytime by returning to this setup wizard.
+                </div>
+              `;
+              
+              summaryEl.innerHTML = html;
+            }
 
             // --- Setup (step 4) : Populate slot type dropdown from emis_apps_raw ---
             async function loadSlotTypesDropdown() {
