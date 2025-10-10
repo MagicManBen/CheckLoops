@@ -1176,11 +1176,180 @@
     <!-- Progress overlay (moved into Step 2 card as inline `progress-inline`) -->
     <!-- The element keeps id="progress-overlay" so existing JS can toggle .show and update #progress-bar and #status-message -->
     
+    <!-- AI Debug Panel -->
+    <div id="ai-debug-panel" style="position:fixed; bottom:20px; right:20px; background-color:#ffffff; border:1px solid #e2e8f0; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.1); padding:15px; z-index:1000; max-width:400px; display:none;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <h4 style="margin:0; font-size:16px; font-weight:600;">AI Debug Controls</h4>
+        <button id="close-debug-panel" style="background:none; border:none; cursor:pointer; color:#64748b; font-size:18px;">×</button>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <button id="ai-test-btn" style="background-color:#3b82f6; color:white; border:none; border-radius:4px; padding:8px 12px; cursor:pointer; font-size:14px;">Test AI connectivity</button>
+        <button id="ai-req-btn" style="background-color:#4ade80; color:white; border:none; border-radius:4px; padding:8px 12px; cursor:pointer; font-size:14px;">Show Last Request</button>
+        <button id="ai-res-btn" style="background-color:#f59e0b; color:white; border:none; border-radius:4px; padding:8px 12px; cursor:pointer; font-size:14px;">Show Last Response</button>
+        <button id="ai-retry-btn" style="background-color:#ef4444; color:white; border:none; border-radius:4px; padding:8px 12px; cursor:pointer; font-size:14px;">Retry Classification</button>
+      </div>
+      <div id="ai-status" style="margin-top:10px; padding:8px; background-color:#f8fafc; border-radius:4px; font-size:13px; color:#334155;">Status: Ready</div>
+      <div style="margin-top:10px; text-align:right;">
+        <a href="#" id="toggle-debug-panel" style="font-size:12px; color:#3b82f6; text-decoration:none;">Toggle Debug Panel</a>
+      </div>
+    </div>
+    
 
     <!-- Add scripts here -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.0/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <!-- Debug Panel Controls -->
+    <script>
+      // Initialize debug panel on document load
+      document.addEventListener('DOMContentLoaded', function() {
+        // Show debug panel with Alt+D keyboard shortcut
+        document.addEventListener('keydown', function(e) {
+          if (e.altKey && e.key === 'd') {
+            toggleDebugPanel();
+          }
+        });
+        
+        // Toggle debug panel visibility
+        function toggleDebugPanel() {
+          const panel = document.getElementById('ai-debug-panel');
+          if (panel) {
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+          }
+        }
+        
+        // Set up event listeners for debug panel buttons
+        document.getElementById('close-debug-panel')?.addEventListener('click', function() {
+          document.getElementById('ai-debug-panel').style.display = 'none';
+        });
+        
+        document.getElementById('toggle-debug-panel')?.addEventListener('click', function(e) {
+          e.preventDefault();
+          toggleDebugPanel();
+        });
+        
+        document.getElementById('ai-test-btn')?.addEventListener('click', async function() {
+          try {
+            updateAiStatus('Testing AI connectivity...');
+            const result = await window.aiConnectivityTest();
+            updateAiStatus(`Test result: ${result.ok ? 'SUCCESS' : 'FAILED'} - ${result.detail || ''}`);
+            console.log('AI connectivity test result:', result);
+          } catch (err) {
+            updateAiStatus(`Test error: ${err.message || String(err)}`);
+            console.error('AI test error:', err);
+          }
+        });
+        
+        document.getElementById('ai-req-btn')?.addEventListener('click', function() {
+          try {
+            const req = window.aiRequest();
+            updateAiStatus('Request data shown in console');
+            alert('Last request data logged to console');
+          } catch (err) {
+            updateAiStatus(`Error showing request: ${err.message}`);
+            console.error('Error showing request:', err);
+          }
+        });
+        
+        document.getElementById('ai-res-btn')?.addEventListener('click', function() {
+          try {
+            const res = window.aiResponse();
+            updateAiStatus('Response data shown in console');
+            alert('Last response data logged to console');
+          } catch (err) {
+            updateAiStatus(`Error showing response: ${err.message}`);
+            console.error('Error showing response:', err);
+          }
+        });
+        
+        document.getElementById('ai-retry-btn')?.addEventListener('click', async function() {
+          try {
+            updateAiStatus('Resetting cache and reclassifying...');
+            // Clear classification cache
+            window.slotTypeClassification = null;
+            window.__classificationPromise = null;
+            
+            // Request new classification
+            const classification = await window.ensureClassificationOnce();
+            updateAiStatus(`Classification complete with ${Object.keys(classification || {}).length} categories`);
+            console.log('New classification result:', classification);
+          } catch (err) {
+            updateAiStatus(`Classification error: ${err.message || String(err)}`);
+            console.error('Classification retry error:', err);
+          }
+        });
+        
+        // Helper function to update AI status in the debug panel
+        function updateAiStatus(message) {
+          const statusEl = document.getElementById('ai-status');
+          if (statusEl) {
+            statusEl.textContent = `Status: ${message}`;
+            
+            // Add visual feedback
+            statusEl.style.backgroundColor = '#f0f9ff';
+            setTimeout(() => {
+              statusEl.style.backgroundColor = '#f8fafc';
+            }, 300);
+          }
+        }
+        
+        // Make debug panel draggable
+        makeDraggable(document.getElementById('ai-debug-panel'));
+        
+        // Show debug panel if the URL has a debug parameter
+        if (window.location.search.includes('debug=1') || window.location.hash === '#debug') {
+          document.getElementById('ai-debug-panel').style.display = 'block';
+        }
+      });
+      
+      // Make an element draggable
+      function makeDraggable(el) {
+        if (!el) return;
+        
+        let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+        const header = el.querySelector('h4') || el;
+        
+        if (header) {
+          header.style.cursor = 'move';
+          header.onmousedown = dragMouseDown;
+        }
+        
+        function dragMouseDown(e) {
+          e = e || window.event;
+          e.preventDefault();
+          pos3 = e.clientX;
+          pos4 = e.clientY;
+          document.onmouseup = closeDragElement;
+          document.onmousemove = elementDrag;
+        }
+        
+        function elementDrag(e) {
+          e = e || window.event;
+          e.preventDefault();
+          pos1 = pos3 - e.clientX;
+          pos2 = pos4 - e.clientY;
+          pos3 = e.clientX;
+          pos4 = e.clientY;
+          
+          // Calculate new position
+          const newTop = (el.offsetTop - pos2);
+          const newLeft = (el.offsetLeft - pos1);
+          
+          // Apply position limits to keep panel on screen
+          const maxTop = window.innerHeight - el.offsetHeight;
+          const maxLeft = window.innerWidth - el.offsetWidth;
+          
+          el.style.top = Math.max(0, Math.min(maxTop, newTop)) + "px";
+          el.style.left = Math.max(0, Math.min(maxLeft, newLeft)) + "px";
+        }
+        
+        function closeDragElement() {
+          document.onmouseup = null;
+          document.onmousemove = null;
+        }
+      }
+    </script>
 
     <script>
         // Appointment Type Setup functionality
@@ -1663,6 +1832,91 @@
           return values;
         }
 
+        // Orchestrator: ensure slot types are fully loaded (single in-flight promise)
+        let __slotTypesLoadPromise = null;
+        async function ensureSlotTypesOnce() {
+          if (Array.isArray(window.loadedSlotTypes) && window.loadedSlotTypes.length) return window.loadedSlotTypes;
+          if (!__slotTypesLoadPromise) {
+            __slotTypesLoadPromise = loadUniqueSlotTypes()
+              .catch(err => { __slotTypesLoadPromise = null; throw err; });
+          }
+          return __slotTypesLoadPromise;
+        }
+
+        // Orchestrator: ensure classification happens after slot types are loaded, prevent duplicate invokes
+        let __classificationPromise = null;
+        async function ensureClassificationOnce() {
+          await ensureSlotTypesOnce();
+          if (window.slotTypeClassification && window.slotTypeClassification.on_the_day) return window.slotTypeClassification;
+          if (!__classificationPromise) {
+            // Prefer the newer classifySlotTypes implementation if available, otherwise fallback
+            if (typeof classifySlotTypes === 'function') {
+              __classificationPromise = classifySlotTypes()
+                .catch(err => { __classificationPromise = null; throw err; });
+            } else if (typeof ensureClassification === 'function') {
+              __classificationPromise = (async () => {
+                try {
+                  const slotTypes = window.loadedSlotTypes || (await ensureSlotTypesOnce());
+                  const res = await ensureClassification(slotTypes);
+                  return res;
+                } catch (err) { __classificationPromise = null; throw err; }
+              })();
+            } else {
+              throw new Error('No classification function available');
+            }
+          }
+          return __classificationPromise;
+        }
+
+        function resetClassificationCache() {
+          try { window.slotTypeClassification = null; } catch(_) {}
+          __classificationPromise = null;
+        }
+        
+        // Global availability for test functions
+        // Simple connectivity and auth diagnostic
+        window.aiConnectivityTest = async function() {
+          console.log('Running AI connectivity test...');
+          const sample = ['Urgent on day','Routine appt','Follow-up in 10 days'];
+          try {
+            const sb = window.supabase || (window.getSupabase && window.getSupabase());
+            if (!sb) throw new Error('No Supabase client found');
+            
+            console.log('Testing with direct invoke');
+            const { data, error } = await sb.functions.invoke('classify-slot-types', { 
+              body: { slotTypes: sample }
+            });
+            
+            if (error) throw new Error(error.message || String(error));
+            console.log('Test result:', data);
+            
+            const cls = data && (data.classification || data);
+            const ok = cls && (Array.isArray(cls.on_the_day) || Array.isArray(cls.within_1_week) || Array.isArray(cls.within_2_weeks));
+            return { ok: !!ok, detail: 'invoke_ok' };
+          } catch (e) {
+            console.error('Test error:', e);
+            return { ok: false, detail: e?.message || String(e) };
+          }
+        };
+        
+        // Last request payload sent to AI
+        window.lastAIRequest = null;
+        
+        // Last response received from AI
+        window.lastAIResponse = null;
+        
+        // Display the last request payload
+        window.aiRequest = function() {
+          console.log('Last AI request payload:', window.lastAIRequest);
+          return window.lastAIRequest;
+        };
+        
+        // Display the last response from AI
+        window.aiResponse = function() {
+          console.log('Last AI response:', window.lastAIResponse);
+          return window.lastAIResponse;
+        };
+
         // Expose a global renderer for Step 4 so callers outside
         // the nested setup function can invoke it (MutationObserver,
         // showWelcomeStep, etc.). This mirrors the inner function's
@@ -1723,6 +1977,40 @@
           hint.style.fontSize = '0.95rem';
           hint.style.lineHeight = '1.5';
           container.appendChild(hint);
+
+          // AI status + controls row
+          const aiRow = document.createElement('div');
+          aiRow.style.display = 'flex';
+          aiRow.style.alignItems = 'center';
+          aiRow.style.gap = '10px';
+          aiRow.style.margin = '6px 0 8px 0';
+          const aiStatus = document.createElement('span');
+          aiStatus.id = 'ai-status-line';
+          aiStatus.style.fontSize = '12px';
+          aiStatus.style.color = '#334155';
+          aiStatus.textContent = 'AI status: idle';
+          const aiRetry = document.createElement('button');
+          aiRetry.id = 'step4-ai-retry-btn';
+          aiRetry.type = 'button';
+          aiRetry.textContent = 'Retry classify';
+          aiRetry.style.padding = '6px 10px';
+          aiRetry.style.borderRadius = '6px';
+          aiRetry.style.border = '1px solid #e2e8f0';
+          aiRetry.style.background = '#fff';
+          aiRetry.style.cursor = 'pointer';
+          const aiTest = document.createElement('button');
+          aiTest.id = 'step4-ai-test-btn';
+          aiTest.type = 'button';
+          aiTest.textContent = 'Test AI connectivity';
+          aiTest.style.padding = '6px 10px';
+          aiTest.style.borderRadius = '6px';
+          aiTest.style.border = '1px solid #e2e8f0';
+          aiTest.style.background = '#fff';
+          aiTest.style.cursor = 'pointer';
+          aiRow.appendChild(aiStatus);
+          aiRow.appendChild(aiRetry);
+          aiRow.appendChild(aiTest);
+          container.appendChild(aiRow);
 
           // Add a visible status badge so the user can see this rendered even if stacking hides regular content
           const debugBadge = document.createElement('div');
@@ -1808,10 +2096,10 @@
           
           tbody.appendChild(loadingRow);
 
-          // Ensure slot types are loaded from the database
+          // Ensure slot types are loaded from the database (via orchestrator)
           let slotTypes = (Array.isArray(window.loadedSlotTypes) && window.loadedSlotTypes.length) ? window.loadedSlotTypes : [];
           if (!slotTypes.length) {
-            try { slotTypes = await loadUniqueSlotTypes(); } catch (e) { console.warn('Failed to load slot types for Step 4:', e); }
+            try { slotTypes = await ensureSlotTypesOnce(); } catch (e) { console.warn('Failed to load slot types for Step 4:', e); }
           }
           
           // Clear loading indicator once data is loaded
@@ -1827,10 +2115,26 @@
             { key: 'admin', label: 'Admin slots' }
           ];
 
-          // If we have slot types, try to classify and preselect AI suggestions
+          // If we have slot types, classify (via orchestrator) and preselect AI suggestions
           let classification = window.slotTypeClassification;
           if ((!classification || !classification.on_the_day) && slotTypes.length) {
-            try { classification = await classifySlotTypes(); } catch (_) {}
+            try {
+              const statusEl = document.getElementById('ai-status-line');
+              if (statusEl) statusEl.textContent = `AI status: classifying ${slotTypes.length} slot types…`;
+              classification = await ensureClassificationOnce();
+              if (statusEl) {
+                const counts = {
+                  o: (classification.on_the_day||[]).length,
+                  w1: (classification.within_1_week||[]).length,
+                  w2: (classification.within_2_weeks||[]).length
+                };
+                statusEl.textContent = `AI status: classified (on_the_day ${counts.o}, within_1_week ${counts.w1}, within_2_weeks ${counts.w2})`;
+              }
+            } catch (err) {
+              console.warn('Classification failed in Step 4:', err);
+              const statusEl = document.getElementById('ai-status-line');
+              if (statusEl) statusEl.textContent = `AI status: error — ${err?.message || err}`;
+            }
           }
 
           categoriesForUI.forEach(cat => {
@@ -2025,6 +2329,29 @@
           actions.appendChild(btnClear);
           container.appendChild(actions);
 
+          // Wire AI buttons (using step4-specific IDs to avoid conflicts with global debug panel)
+          try {
+            const statusEl = document.getElementById('ai-status-line');
+            const retryBtn = document.getElementById('step4-ai-retry-btn');
+            const testBtn = document.getElementById('step4-ai-test-btn');
+            if (retryBtn) retryBtn.addEventListener('click', async () => {
+              try {
+                resetClassificationCache();
+                if (statusEl) statusEl.textContent = 'AI status: retrying…';
+                const cls = await ensureClassificationOnce();
+                const counts = { o: (cls.on_the_day||[]).length, w1: (cls.within_1_week||[]).length, w2: (cls.within_2_weeks||[]).length };
+                if (statusEl) statusEl.textContent = `AI status: classified (on_the_day ${counts.o}, within_1_week ${counts.w1}, within_2_weeks ${counts.w2})`;
+              } catch (e) { if (statusEl) statusEl.textContent = `AI status: error — ${e?.message || e}`; }
+            });
+            if (testBtn) testBtn.addEventListener('click', async () => {
+              try {
+                if (statusEl) statusEl.textContent = 'AI test: pinging function…';
+                const diag = await window.aiConnectivityTest();
+                if (statusEl) statusEl.textContent = `AI test: ${diag.ok ? 'OK' : 'FAIL'} (${diag.detail})`;
+              } catch (e) { if (statusEl) statusEl.textContent = `AI test: error — ${e?.message || e}`; }
+            });
+          } catch(_) {}
+
           // Watch for accidental clears of the card body and re-render once if it happens shortly after
           try {
             const obs = new MutationObserver((mutations) => {
@@ -2188,10 +2515,8 @@
                 // Store the loaded values globally for classification
                 window.loadedSlotTypes = Array.from(values).map(norm => originalValues.get(norm) || norm);
 
-                // Trigger classification now that values are loaded
-                setTimeout(() => {
-                  classifySlotTypes();
-                }, 500);
+                // Trigger classification now that values are fully loaded (no race with pagination)
+                try { await ensureClassificationOnce(); } catch (e) { console.warn('Classification failed after loading slot types', e); }
 
                 // If nothing found, show a single disabled option
                 if (values.length === 0) {
@@ -2217,6 +2542,58 @@
             }
 
             // --- Classify slot types using OpenAI ---
+            // Low-level: call edge function, fallback to direct fetch; return { data, error, status }
+            async function callClassify(slotTypes) {
+              const body = { slotTypes };
+              const url = (window.CONFIG && window.CONFIG.SUPABASE_URL ? window.CONFIG.SUPABASE_URL : '') + '/functions/v1/classify-slot-types';
+              // Try supabase.functions.invoke first
+              try {
+                const t0 = Date.now();
+                const { data, error } = await window.supabase.functions.invoke('classify-slot-types', { body });
+                const ms = Date.now() - t0;
+                if (error) return { data: null, error: new Error(error.message || String(error)), status: `invoke_error_${ms}ms` };
+                // Stash minimal debug when server doesn't send debug block
+                try { if (!window.lastAIRawResponse) window.lastAIRawResponse = JSON.stringify(data).slice(0, 4000); } catch(_) {}
+                return { data, error: null, status: `invoke_ok_${ms}ms` };
+              } catch (e) {
+                // Fallback to direct fetch
+                try {
+                  const t1 = Date.now();
+                  const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${(window.CONFIG && window.CONFIG.SUPABASE_ANON_KEY) || ''}`
+                    },
+                    body: JSON.stringify(body)
+                  });
+                  const ms2 = Date.now() - t1;
+                  let txt = '';
+                  try { txt = await res.text(); } catch(_) {}
+                  try { window.lastAIRawResponse = txt; } catch(_) {}
+                  if (!res.ok) return { data: null, error: new Error(`HTTP ${res.status} ${res.statusText}`), status: `fetch_error_${ms2}ms` };
+                  let data = null; try { data = JSON.parse(txt); } catch { data = null; }
+                  return { data, error: null, status: `fetch_ok_${ms2}ms` };
+                } catch (e2) {
+                  return { data: null, error: e2, status: 'fetch_throw' };
+                }
+              }
+            }
+
+            // Simple connectivity and auth diagnostic
+            async function aiConnectivityTest() {
+              const sample = ['Urgent on day','Routine appt','Follow-up in 10 days'];
+              try {
+                const result = await callClassify(sample);
+                if (result.error) return { ok: false, detail: result.error.message || result.status };
+                const cls = result.data && (result.data.classification || result.data);
+                const ok = cls && Array.isArray(cls.on_the_day);
+                return { ok: !!ok, detail: result.status };
+              } catch (e) {
+                return { ok: false, detail: e?.message || String(e) };
+              }
+            }
+
             async function classifySlotTypes() {
               console.log('═══════════════════════════════════════════════════════════');
               console.log('🔍 CLASSIFICATION DEBUG - FULL TRACE');
@@ -2254,37 +2631,43 @@ ${slotTypesList}`
               };
               
               console.log('   Request body size:', JSON.stringify(requestBody).length, 'bytes');
-              console.log('   Target URL: http://localhost:8787/summarize');
+              console.log('   Target Function: classify-slot-types at', (window.CONFIG && window.CONFIG.SUPABASE_URL ? window.CONFIG.SUPABASE_URL + '/functions/v1/classify-slot-types' : '(missing CONFIG.SUPABASE_URL)'));
+              try { window.lastAIRequest = JSON.stringify({ slot_types: window.loadedSlotTypes, format: { on_the_day: [], within_1_week: [], within_2_weeks: [] } }, null, 2); } catch(_) {}
 
               try {
                 console.log('\n📡 Step 3: Sending request to Supabase Edge Function...');
-                console.log('   Using supabase.functions.invoke("classify-slot-types")');
+                console.log('   Using supabase.functions.invoke("classify-slot-types") with fallback');
                 console.log('   Current page origin:', window.location.origin);
 
                 const fnStart = Date.now();
-                // Call the Supabase Edge Function which runs server-side and holds the OpenAI key
+                // Store the request payload for debugging
+                window.lastAIRequest = {
+                  slotTypes: window.loadedSlotTypes,
+                  count: window.loadedSlotTypes.length
+                };
                 console.log('   Debug: payload sent to function:', { slotTypesCount: window.loadedSlotTypes.length });
-                const { data: fnData, error: fnError } = await window.supabase.functions.invoke('classify-slot-types', {
-                  body: { slotTypes: window.loadedSlotTypes }
-                });
-
+                const result = await callClassify(window.loadedSlotTypes);
                 const fnDuration = Date.now() - fnStart;
-                console.log(`✅ Function call completed in ${fnDuration}ms`);
-                if (fnError) {
-                  console.error('❌ Edge function error:', fnError.message || fnError);
-                  throw new Error(`Edge function failed: ${fnError.message || JSON.stringify(fnError)}`);
+                console.log(`✅ Function call finished (${result.status}) in ${fnDuration}ms`);
+                
+                // Store the response for debugging
+                window.lastAIResponse = result;
+                
+                if (result.error) {
+                  console.error('❌ Function call error:', result.error);
+                  throw new Error(result.error.message || String(result.error));
                 }
 
                 console.log('\n📦 Step 4: Parsing function response...');
-                console.log('   Raw function response:', fnData);
+                console.log('   Raw function response:', result.data);
                 // If the function provided debug fields with the prompt and raw AI text, surface them in console
                 try {
-                  if (fnData && fnData.debug) {
-                    console.log('   AI prompt sent (server):', fnData.debug.prompt);
-                    console.log('   AI raw response (server):', fnData.debug.aiRaw);
+                  if (result.data && result.data.debug) {
+                    console.log('   AI prompt sent (server):', result.data.debug.prompt);
+                    console.log('   AI raw response (server):', result.data.debug.aiRaw);
                     // Also attach to global debug store for UI panels
-                    window.lastAIRequest = fnData.debug.prompt;
-                    window.lastAIRawResponse = fnData.debug.aiRaw;
+                    window.lastAIRequest = result.data.debug.prompt;
+                    window.lastAIRawResponse = result.data.debug.aiRaw;
                   } else {
                     // Build a synthetic prompt so the debug panel still shows something meaningful
                     const syntheticPrompt = `SYSTEM: You classify GP appointment "Slot Types" into exactly three buckets (on_the_day, within_1_week, within_2_weeks).\nRules: strict JSON keys and arrays only.\n\nUSER JSON:\n` + JSON.stringify({ slot_types: window.loadedSlotTypes }, null, 2);
@@ -2300,11 +2683,11 @@ ${slotTypesList}`
                   console.log((window.lastAIRequest || '').slice(0, 500) + '...');
                 } catch (_) {}
                 // The function returns { success: true, classification: { ... } }
-                if (!fnData) {
+                if (!result.data) {
                   throw new Error('Empty response from classify-slot-types function');
                 }
 
-                const classification = fnData.classification || fnData || null;
+                const classification = result.data.classification || result.data || null;
                 if (!classification) {
                   console.error('❌ No classification object in function response');
                   throw new Error('Function did not return classification');
