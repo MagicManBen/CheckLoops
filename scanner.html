@@ -32,14 +32,16 @@
     .title{font-size:24px;font-weight:800;margin:0}
     .sub{color:var(--muted)}
     .row{display:flex;gap:10px;flex-wrap:wrap}
-    .chip{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:14px;border:1px solid var(--stroke);
+    .chip{display:none;align-items:center;gap:8px;padding:10px 14px;border-radius:14px;border:1px solid var(--stroke);
       background:linear-gradient(180deg,rgba(255,255,255,.14),rgba(255,255,255,.08));color:var(--ink2);font-weight:600}
     button,a.button{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:14px 18px;border:0;border-radius:16px;
       font-weight:800;letter-spacing:.01em;text-decoration:none;cursor:pointer;box-shadow:0 10px 20px rgba(10,88,255,.28)}
     .primary{background:linear-gradient(180deg,#2e8bff,#0a58ff);color:#fff}
     .ghost{background:linear-gradient(180deg,rgba(255,255,255,.12),rgba(255,255,255,.06));color:#fff;border:1px solid var(--stroke);box-shadow:none}
     .input{width:100%;padding:14px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.12);color:#fff;font-size:16px}
+    .dim{opacity:.55;pointer-events:none}
     .bottom-pad{height:calc(6px + env(safe-area-inset-bottom))}
+    .target{color:#d9e6ff;font-size:13px}
   </style>
 </head>
 <body>
@@ -51,38 +53,27 @@
 
     <div class="sheet">
       <h1 class="title">Pair your Eyoyo scanner</h1>
-      <div class="sub" id="intro">Make sure your phone is on the <b>same home Wi‑Fi</b> as the device. We’ll open the device’s pairing page on your network.</div>
+      <div class="sub">Phone and device must be on the same Wi‑Fi.</div>
 
-      <div id="macBox" class="chip" style="display:none"><strong>Device ID</strong> <span id="macVal"></span></div>
+      <div id="macBox" class="chip"><strong>Device ID</strong> <span id="macVal"></span></div>
 
-      <h3 class="title" style="font-size:18px;margin-top:8px">Open the device’s pairing page</h3>
-      <div class="row">
-        <a class="button primary" id="openLocal" href="#">Open pairing page</a>
-        <a class="button ghost" id="connectedPage" href="#" target="_blank">Device “Connected” page</a>
-      </div>
       <div class="row">
         <form id="startForm" method="POST" action="#">
-          <button class="primary" type="submit">Start pairing (recommended)</button>
+          <button id="startBtn" class="primary" type="submit" disabled>Start pairing</button>
         </form>
+        <a id="openPair" class="button ghost dim" href="#" target="_blank">Open device</a>
       </div>
-      <div class="sub">If nothing happens, try the addresses below or enter the IP manually.</div>
+      <div class="target">Target: <span id="target">not set</span></div>
 
-      <label class="sub" for="ip" style="margin-top:4px">Or enter device IP</label>
+      <label class="sub" for="ip" style="margin-top:10px">Enter device IP (if known)</label>
       <div class="row">
         <input id="ip" class="input" placeholder="e.g. 192.168.1.42">
-        <button class="ghost" id="ipGo">Open</button>
+        <button class="ghost" id="saveIp">Save</button>
       </div>
 
-      <div class="row" id="cands" style="margin-top:6px"></div>
-
-      <div class="sub" style="margin-top:10px">
-        Tip: On some networks, the <code>.local</code> address needs Bonjour/mDNS support. If a link doesn’t work, try the IP box.
-      </div>
+      <div class="sub" id="hint">Tip: If your network supports mDNS, we’ll try <code>checkloops-XXYY.local</code> using the Device ID.</div>
 
       <div style="margin-top:auto"></div>
-      <div class="row">
-        <a class="button ghost" id="finishLink" href="https://checkloops.app/pair/success">Finish on CheckLoops</a>
-      </div>
       <div class="bottom-pad"></div>
     </div>
   </div>
@@ -93,9 +84,9 @@
       const qp = new URL(location.href).searchParams;
       const macParam = qp.get('mac');
       const okParam  = qp.get('ok');
-      const ipParam  = qp.get('ip');
-      let mac = macParam || null;
+      let ipParam    = qp.get('ip') || '';
 
+      let mac = macParam || null;
       try{
         if(!mac){ mac = localStorage.getItem('checkloops_device_mac') || null; }
         if(mac){ localStorage.setItem('checkloops_device_mac', mac); }
@@ -106,13 +97,6 @@
         $('#macBox').style.display = 'inline-flex';
       }
 
-      // Populate Finish link with MAC if known
-      try{
-        const f = new URL($('#finishLink').href);
-        if(mac) f.searchParams.set('mac', mac);
-        $('#finishLink').href = f.toString();
-      }catch(_){}
-
       function macSuffix(m){
         if(!m) return '';
         const parts = m.split(':').map(x=>x.trim());
@@ -120,60 +104,58 @@
         return (parts[4]+parts[5]).toUpperCase();
       }
 
-      function buildBase(){
+      function candidateBase(){
+        const v = ($('#ip').value||'').trim();
+        if(v) return `http://${v}`;
         if(ipParam) return `http://${ipParam}`;
         const sfx = macSuffix(mac);
         if(sfx) return `http://checkloops-${sfx}.local`;
-        return `http://checkloops.local`;
+        return '';
       }
 
-      function setPrimaryLinks(){
-        const base = buildBase();
-        $('#openLocal').href = `${base}/pair`;
-        $('#connectedPage').href = `${base}/`;
-        const start = `${base}/ble/start`;
-        const form = document.getElementById('startForm');
-        if(form) form.action = start;
+      function wire(){
+        const base = candidateBase();
+        const ready = !!base;
+        $('#target').textContent = ready ? base : 'not set';
+        const startBtn = $('#startBtn');
+        const startForm = $('#startForm');
+        const openPair = $('#openPair');
+        if(ready){
+          startBtn.removeAttribute('disabled');
+          startForm.action = base + '/ble/start';
+          openPair.classList.remove('dim');
+          openPair.href = base + '/pair';
+        }else{
+          startBtn.setAttribute('disabled','disabled');
+          startForm.action = '#';
+          openPair.classList.add('dim');
+          openPair.href = '#';
+        }
       }
 
-      function renderCandidates(){
-        const c = $('#cands'); c.innerHTML='';
-        const list = [];
-        if(ipParam) list.push(`http://${ipParam}/pair`);
-        const sfx = macSuffix(mac);
-        if(sfx) list.push(`http://checkloops-${sfx}.local/pair`);
-        list.push(`http://checkloops.local/pair`);
-        list.forEach(u=>{
-          const a=document.createElement('a');
-          a.className='button ghost';
-          a.style.boxShadow='none';
-          a.href=u;
-          a.textContent = u.replace(/^https?:\/\//,'');
-          c.appendChild(a);
-        });
-      }
+      // Preload stored IP if any
+      try{
+        if(!$('#ip').value){
+          const s = localStorage.getItem('uno_ip');
+          if(s){ $('#ip').value = s; }
+        }
+      }catch(_){}
 
-      // If we arrived straight from device hand-off (?ok=1) and have a hint (mac or ip),
-      // auto-start device-led pairing (POST /ble/start). Otherwise, just set links.
-      if(okParam==='1' && (macParam || ipParam)){
-        try{
-          setPrimaryLinks();
-          setTimeout(()=>{
-            const form = document.getElementById('startForm');
-            if(form) form.submit(); else location.href = $('#openLocal').href;
-          }, 700);
-        }catch(_){}
-      } else {
-        setPrimaryLinks();
-      }
-
-      renderCandidates();
-
-      // Manual IP open
-      $('#ipGo').onclick = ()=>{
-        const ip = ($('#ip').value||'').trim();
-        if(ip) location.href = `http://${ip}/pair`;
+      $('#saveIp').onclick = ()=>{
+        const v = ($('#ip').value||'').trim();
+        if(v){ try{ localStorage.setItem('uno_ip', v); }catch(_){ } }
+        wire();
       };
+
+      // Initial wiring
+      wire();
+
+      // Auto-start if returning from Wi‑Fi in ok=1 and we have a base
+      if(okParam==='1'){
+        setTimeout(()=>{
+          if(!$('#startBtn').disabled){ $('#startForm').submit(); }
+        }, 700);
+      }
     })();
   </script>
 </body>
