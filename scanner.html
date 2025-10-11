@@ -42,6 +42,9 @@
     .dim{opacity:.55;pointer-events:none}
     .bottom-pad{height:calc(6px + env(safe-area-inset-bottom))}
     .target{color:#d9e6ff;font-size:13px}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .note{color:#d9e6ff;font-size:13px}
+    .links{display:flex;gap:10px;flex-wrap:wrap}
   </style>
 </head>
 <body>
@@ -62,13 +65,15 @@
           <button id="startBtn" class="primary" type="submit" disabled>Start pairing</button>
         </form>
         <a id="openPair" class="button ghost dim" href="#" target="_blank">Open device</a>
+        <a id="openMDNS" class="button ghost dim" href="#" target="_blank" style="display:none">Open via mDNS</a>
       </div>
-      <div class="target">Target: <span id="target">not set</span></div>
+      <div class="target">Target: <code id="target" class="mono">not set</code></div>
+      <div id="why" class="note">We can’t verify reachability from this secure page, but the links above will open the device directly on your network.</div>
 
       <label class="sub" for="ip" style="margin-top:10px">Enter device IP (if known)</label>
       <div class="row">
         <input id="ip" class="input" placeholder="e.g. 192.168.1.42">
-        <button class="ghost" id="saveIp">Save</button>
+        <button class="ghost" id="saveIp" type="button">Save</button>
       </div>
 
       <div class="sub" id="hint">Tip: If your network supports mDNS, we’ll try <code>checkloops-XXYY.local</code> using the Device ID.</div>
@@ -85,6 +90,7 @@
       const macParam = qp.get('mac');
       const okParam  = qp.get('ok');
       let ipParam    = qp.get('ip') || '';
+      let mdnsHint  = '';
 
       let mac = macParam || null;
       try{
@@ -104,6 +110,8 @@
         return (parts[4]+parts[5]).toUpperCase();
       }
 
+      function mdnsBase(){ const sfx = macSuffix(mac); return sfx ? `http://checkloops-${sfx}.local` : ''; }
+
       function candidateBase(){
         const v = ($('#ip').value||'').trim();
         if(v) return `http://${v}`;
@@ -115,8 +123,9 @@
 
       function wire(){
         const base = candidateBase();
+        const mdns = mdnsBase();
         const ready = !!base;
-        $('#target').textContent = ready ? base : 'not set';
+        document.querySelector('#target').textContent = ready ? base : (mdns ? mdns : 'not set');
         const startBtn = $('#startBtn');
         const startForm = $('#startForm');
         const openPair = $('#openPair');
@@ -131,6 +140,16 @@
           openPair.classList.add('dim');
           openPair.href = '#';
         }
+        const openMDNS = document.querySelector('#openMDNS');
+        if(mdns){
+          openMDNS.style.display = 'inline-flex';
+          openMDNS.href = mdns + '/pair';
+          openMDNS.classList.remove('dim');
+        } else {
+          openMDNS.style.display = 'none';
+          openMDNS.href = '#';
+          openMDNS.classList.add('dim');
+        }
       }
 
       // Preload stored IP if any
@@ -138,6 +157,7 @@
         if(!$('#ip').value){
           const s = localStorage.getItem('uno_ip');
           if(s){ $('#ip').value = s; }
+          if(!ipParam && s){ ipParam = s; }
         }
       }catch(_){}
 
@@ -146,7 +166,14 @@
         if(v){ try{ localStorage.setItem('uno_ip', v); }catch(_){ } }
         wire();
       };
+      document.getElementById('ip').addEventListener('input', wire);
 
+      mdnsHint = mdnsBase();
+      if(mdnsHint){
+        try{
+          document.getElementById('hint').innerHTML = 'Tip: If your network supports mDNS, we’ll try <code>'+mdnsHint.replace('http://','')+'</code> using the Device ID.';
+        }catch(_){}
+      }
       // Initial wiring
       wire();
 

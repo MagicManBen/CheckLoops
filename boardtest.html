@@ -198,14 +198,18 @@ button:active, a.button:active{transform:scale(.98)}
           </svg>
           Connected
         </div>
-        <h2 class="title" id="s3t" style="margin:4px 0 0 0">You’re all set</h2>
-        <div class="sub">Your device is online and ready.</div>
+        <h2 class="title" id="s3t" style="margin:4px 0 0 0">Pair your scanner</h2>
+        <div class="sub" id="s3Sub">We’ll start pairing now. Put the Eyoyo in BLE mode.</div>
 
         <div id="macBox" class="chip" style="display:none"><strong>Device ID</strong> <span id="macVal"></span></div>
 
         <div style="margin-top:auto"></div>
         <div class="row">
-          <a class="button primary" id="toPair" href="scanner.html">Pair Eyoyo scanner</a>
+          <a class="button primary" id="autoPairBtn" href="#">Start pairing</a>
+        </div>
+        <div id="s3Status" class="sub" style="display:none"></div>
+        <div class="row">
+          <a class="button ghost" id="manualBtn" href="scanner.html">Manual pairing</a>
         </div>
       </section>
     </div>
@@ -221,6 +225,18 @@ button:active, a.button:active{transform:scale(.98)}
   let s2Timer = 0;
   function setS2Status(t){
     const el = document.getElementById('s2Status');
+    if(!el) return;
+    el.textContent = t || '';
+    el.style.display = t ? 'block' : 'none';
+  }
+  function macSuffix(m){
+    if(!m) return '';
+    const p = m.split(':').map(x=>x.trim());
+    if(p.length<6) return '';
+    return (p[4]+p[5]).toUpperCase();
+  }
+  function setS3Status(t){
+    const el = document.getElementById('s3Status');
     if(!el) return;
     el.textContent = t || '';
     el.style.display = t ? 'block' : 'none';
@@ -275,13 +291,23 @@ button:active, a.button:active{transform:scale(.98)}
       try{ localStorage.setItem('checkloops_device_mac', mac); }catch(_){}
       $('#macVal').textContent = mac; $('#macBox').style.display='inline-flex';
 
-      // Point the Pair button to the hosted scanner page with MAC, then auto-forward
       try{
-        const pairURL = new URL('scanner.html', location.href);
-        pairURL.searchParams.set('mac', mac);
-        const pairBtn = document.getElementById('toPair');
-        if(pairBtn) pairBtn.href = pairURL.toString();
-        setTimeout(()=>{ location.href = pairURL.toString(); }, 800);
+        const sfx = macSuffix(mac);
+        const host = sfx ? `checkloops-${sfx}.local` : `checkloops.local`;
+        const startURL = `http://${host}/ble/start`;
+        const autoBtn = document.getElementById('autoPairBtn');
+        if(autoBtn) autoBtn.href = startURL;
+
+        const manual = document.getElementById('manualBtn');
+        if(manual){
+          const mu = new URL('scanner.html', location.href);
+          mu.searchParams.set('mac', mac);
+          manual.href = mu.toString();
+        }
+
+        setS3Status('Starting pairing…');
+        // Use top-level navigation to avoid mixed-content fetch; works on iOS
+        setTimeout(()=>{ location.href = startURL; }, 700);
       }catch(_){}
 
       history.replaceState({}, '', baseURL());
@@ -302,11 +328,20 @@ button:active, a.button:active{transform:scale(.98)}
       const saved = localStorage.getItem('checkloops_device_mac');
       if(saved){
         $('#macVal').textContent = saved; $('#macBox').style.display='inline-flex';
-        // populate Pair link with saved MAC
-        const pairURL = new URL('scanner.html', location.href);
-        pairURL.searchParams.set('mac', saved);
-        const pairBtn = document.getElementById('toPair');
-        if(pairBtn) pairBtn.href = pairURL.toString();
+        try{
+          const sfx = macSuffix(saved);
+          const host = sfx ? `checkloops-${sfx}.local` : `checkloops.local`;
+          const startURL = `http://${host}/ble/start`;
+          const pairBtn = document.getElementById('autoPairBtn');
+          if(pairBtn) pairBtn.href = startURL;
+
+          const manual = document.getElementById('manualBtn');
+          if(manual){
+            const mu = new URL('scanner.html', location.href);
+            mu.searchParams.set('mac', saved);
+            manual.href = mu.toString();
+          }
+        }catch(_){}
       }
     }catch(_){}
   }
