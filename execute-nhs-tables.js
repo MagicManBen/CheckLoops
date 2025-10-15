@@ -1,7 +1,194 @@
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+async function createNHSTables() {
+  console.log('Creating NHS tables (via admin-exec-sql edge function)');
+
+  const commands = [
+    `CREATE TABLE IF NOT EXISTS public."NHS_All_GPs" (
+      id SERIAL PRIMARY KEY,
+      practice_ods_code TEXT NOT NULL,
+      practice_name TEXT,
+      last_updated TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      ods_data JSONB,
+      qof_data JSONB,
+      patient_survey_data JSONB,
+      workforce_data JSONB,
+      prescribing_data JSONB,
+      appointments_data JSONB,
+      referrals_data JSONB,
+      practice_code TEXT,
+      data_quality_score NUMERIC(5,2),
+      data_completeness JSONB,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      CONSTRAINT unique_practice_ods_code UNIQUE (practice_ods_code)
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS public."NHS_Reference_Data" (
+      id SERIAL PRIMARY KEY,
+      data_type TEXT NOT NULL,
+      practice_code TEXT,
+      ods_code TEXT,
+      data JSONB NOT NULL,
+      period TEXT,
+      source_file TEXT,
+      import_date TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      record_count INTEGER,
+      last_updated TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      CONSTRAINT unique_reference_data UNIQUE (data_type, practice_code, period)
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS public."NHS_CSV_Import_Log" (
+      id SERIAL PRIMARY KEY,
+      data_type TEXT NOT NULL,
+      filename TEXT NOT NULL,
+      period TEXT,
+      records_imported INTEGER,
+      import_status TEXT,
+      error_message TEXT,
+      imported_by TEXT,
+      import_started TIMESTAMP WITH TIME ZONE,
+      import_completed TIMESTAMP WITH TIME ZONE,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS public."NHS_Practice_Codes" (
+      id SERIAL PRIMARY KEY,
+      ods_code TEXT UNIQUE NOT NULL,
+      practice_code TEXT,
+      alternative_codes JSONB,
+      practice_name TEXT,
+      status TEXT,
+      last_verified TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    )`
+  ];
+
+  for (const sql of commands) {
+    console.log('Invoking admin-exec-sql for: ' + sql.substring(0, 50) + '...');
+    try {
+      const res = await supabase.functions.invoke('admin-exec-sql', { body: { sql } });
+      if (res.error) {
+        console.error('Edge function invocation error:', res.error);
+      } else if (res.data?.error) {
+        console.error('Execution error from edge function:', res.data.error);
+      } else {
+        console.log('\u2713 Success');
+      }
+    } catch (err) {
+      console.error('Invoke failed:', err);
+    }
+  }
+
+  console.log('Finished invoking all create-table commands. Verify in Supabase dashboard.');
+}
+
+createNHSTables().catch(err => console.error(err));
+import { createClient } from '@supabase/supabase-js';
+
+const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+async function createNHSTables() {
+    console.log('Creating NHS tables (via admin-exec-sql edge function)');
+
+    const commands = [
+        `CREATE TABLE IF NOT EXISTS public."NHS_All_GPs" (
+            id SERIAL PRIMARY KEY,
+            practice_ods_code TEXT NOT NULL,
+            practice_name TEXT,
+            last_updated TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            ods_data JSONB,
+            qof_data JSONB,
+            patient_survey_data JSONB,
+            workforce_data JSONB,
+            prescribing_data JSONB,
+            appointments_data JSONB,
+            referrals_data JSONB,
+            practice_code TEXT,
+            data_quality_score NUMERIC(5,2),
+            data_completeness JSONB,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            CONSTRAINT unique_practice_ods_code UNIQUE (practice_ods_code)
+        )`,
+
+        `CREATE TABLE IF NOT EXISTS public."NHS_Reference_Data" (
+            id SERIAL PRIMARY KEY,
+            data_type TEXT NOT NULL,
+            practice_code TEXT,
+            ods_code TEXT,
+            data JSONB NOT NULL,
+            period TEXT,
+            source_file TEXT,
+            import_date TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            record_count INTEGER,
+            last_updated TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            CONSTRAINT unique_reference_data UNIQUE (data_type, practice_code, period)
+        )`,
+
+        `CREATE TABLE IF NOT EXISTS public."NHS_CSV_Import_Log" (
+            id SERIAL PRIMARY KEY,
+            data_type TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            period TEXT,
+            records_imported INTEGER,
+            import_status TEXT,
+            error_message TEXT,
+            imported_by TEXT,
+            import_started TIMESTAMP WITH TIME ZONE,
+            import_completed TIMESTAMP WITH TIME ZONE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        )`,
+
+        `CREATE TABLE IF NOT EXISTS public."NHS_Practice_Codes" (
+            id SERIAL PRIMARY KEY,
+            ods_code TEXT UNIQUE NOT NULL,
+            practice_code TEXT,
+            alternative_codes JSONB,
+            practice_name TEXT,
+            status TEXT,
+            last_verified TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        )`
+    ];
+
+    for (const sql of commands) {
+        console.log('Invoking admin-exec-sql for: ' + sql.substring(0, 50) + '...');
+        try {
+            const res = await supabase.functions.invoke('admin-exec-sql', { body: { sql } });
+            if (res.error) {
+                console.error('Edge function invocation error:', res.error);
+            } else if (res.data?.error) {
+                console.error('Execution error from edge function:', res.data.error);
+            } else {
+                console.log('\u2713 Success');
+            }
+        } catch (err) {
+            console.error('Invoke failed:', err);
+        }
+    }
+
+    // Optional verification (may require elevated access)
+    console.log('Finished invoking all create-table commands. Verify in Supabase dashboard.');
+}
+
+createNHSTables().catch(err => console.error(err));
+import { createClient } from '@supabase/supabase-js';
+
+const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
 const SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTAxNzI3NiwiZXhwIjoyMDcwNTkzMjc2fQ.CJxV14F0T2TWkAjeR4bpYiBIOwLwyfzF9WzAWwS99Xc';
+
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
+// Use anon client locally; privileged SQL will be executed via edge function
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
@@ -78,7 +265,15 @@ async function createNHSTables() {
 
         for (const sql of commands) {
             console.log('Executing: ' + sql.substring(0, 50) + '...');
-            const { error } = await supabase.rpc('exec_sql', { sql_query: sql });
+                console.log('Invoking admin-exec-sql for: ' + sql.substring(0, 50) + '...');
+                const res = await supabase.functions.invoke('admin-exec-sql', { body: { sql } });
+                if (res.error) {
+                    console.error('Edge function error:', res.error);
+                } else if (res?.data?.error) {
+                    console.error('Execution error:', res.data.error);
+                } else {
+                    console.log('✓ Success');
+                }
 
             if (error) {
                 // Try direct approach if RPC doesn't work

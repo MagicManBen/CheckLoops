@@ -1,31 +1,25 @@
 // Script to find email in all Supabase tables
 const { createClient } = require('@supabase/supabase-js');
 
-// Supabase URL and key 
+// Supabase URL and ANON key (do not store service keys in source)
 const supabaseUrl = 'https://unveoqnlqnobufhublyw.supabase.co';
-const supabaseServiceKey = 'sb_secret_ylIhDtikpno4LTTUmpDJvw_Ov7BtIEp';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
-const emailToSearch = 'ben.howard@stoke.nhs.uk';
+const supabase = createClient(supabaseUrl, SUPABASE_ANON_KEY);
+const emailToSearch = process.env.SEARCH_EMAIL || 'ben.howard@stoke.nhs.uk';
 
 async function listAllTables() {
   console.log('Listing all tables in the database...');
   
   try {
-    // Using RPC to execute custom SQL to list tables
-    const { data, error } = await supabase.rpc('execute_sql', {
-      query: `SELECT table_name 
-              FROM information_schema.tables 
-              WHERE table_schema = 'public' 
-              AND table_type = 'BASE TABLE'`
-    });
-
+    // Delegate to server-side edge function which has the service key
+    const { data, error } = await supabase.functions.invoke('search-email', { body: { email: emailToSearch, listOnly: true } });
     if (error) {
-      console.error('Error listing tables:', error);
+      console.error('Edge function error listing tables:', error);
       return [];
     }
-
-    return data.map(row => row.table_name);
+    // Edge function returns { tables } when listOnly is true
+    return (data?.tables || []).map(row => row.table_name || row);
   } catch (err) {
     console.error('Exception listing tables:', err);
     return [];
@@ -36,57 +30,13 @@ async function findEmailInTable(tableName) {
   console.log(`Searching for ${emailToSearch} in table: ${tableName}`);
   
   try {
-    // Get column names first
-    const { data: columns, error: columnsError } = await supabase.rpc('execute_sql', {
-      query: `SELECT column_name 
-              FROM information_schema.columns 
-              WHERE table_schema = 'public' 
-              AND table_name = '${tableName}'`
-    });
-
-    if (columnsError) {
-      console.error(`Error getting columns for ${tableName}:`, columnsError);
+    // Delegate the search to the edge function which will perform the privileged query
+    const { data, error } = await supabase.functions.invoke('search-email', { body: { email: emailToSearch, table: tableName } });
+    if (error) {
+      console.error('Edge function error searching table:', error);
       return null;
     }
-
-    // Filter for text-like columns that might contain email addresses
-    const textColumns = columns.filter(col => {
-      const colName = col.column_name.toLowerCase();
-      return colName.includes('email') || 
-             colName.includes('mail') || 
-             colName.includes('user') || 
-             colName.includes('contact') ||
-             colName.includes('address');
-    }).map(col => col.column_name);
-
-    if (textColumns.length === 0) {
-      return null; // No suitable columns to search
-    }
-
-    // Search each column for the email
-    const results = [];
-    for (const column of textColumns) {
-      const { data, error } = await supabase.rpc('execute_sql', {
-        query: `SELECT id, ${column} FROM "${tableName}" 
-                WHERE ${column} = '${emailToSearch}' 
-                OR ${column} ILIKE '%${emailToSearch}%'`
-      });
-
-      if (error) {
-        console.error(`Error searching ${tableName}.${column}:`, error);
-        continue;
-      }
-
-      if (data && data.length > 0) {
-        results.push({ 
-          table: tableName, 
-          column, 
-          matches: data 
-        });
-      }
-    }
-
-    return results.length > 0 ? results : null;
+    return data?.results || null;
   } catch (err) {
     console.error(`Exception searching ${tableName}:`, err);
     return null;

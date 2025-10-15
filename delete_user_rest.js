@@ -1,12 +1,17 @@
 // Script to delete user data from Supabase using REST API
 import fetch from 'node-fetch';
 
-// Supabase credentials
-const SUPABASE_URL = 'https://unveoqnlqnobufhublyw.supabase.co';
-const SUPABASE_SERVICE_KEY = 'sb_secret_ylIhDtikpno4LTTUmpDJvw_Ov7BtIEp';
-const EMAIL_TO_DELETE = 'ben.howard@stoke.nhs.uk';
+// Supabase credentials (read from environment for security)
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://unveoqnlqnobufhublyw.supabase.co';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+const EMAIL_TO_DELETE = process.env.EMAIL_TO_DELETE || 'ben.howard@stoke.nhs.uk';
 
 async function main() {
+  if (!SUPABASE_SERVICE_KEY) {
+    console.error('Missing Supabase service key. Set SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_KEY in the environment.');
+    process.exit(1);
+  }
+
   console.log(`Starting deletion process for user: ${EMAIL_TO_DELETE}`);
   
   // Step 1: Find user ID from auth.users

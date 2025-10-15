@@ -3,7 +3,8 @@ import fs from 'fs';
 
 // Initialize the Supabase client
 const supabaseUrl = 'https://unveoqnlqnobufhublyw.supabase.co';
-const supabaseKey = 'sb_secret_ylIhDtikpno4LTTUmpDJvw_Ov7BtIEp';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
+if (!supabaseKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_KEY must be set in the environment');
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function applyHolidayFix() {

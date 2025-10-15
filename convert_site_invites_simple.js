@@ -2,7 +2,11 @@
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = 'https://unveoqnlqnobufhublyw.supabase.co';
-const supabaseServiceKey = 'sb_secret_ylIhDtikpno4LTTUmpDJvw_Ov7BtIEp';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
+
+if (!supabaseServiceKey) {
+  throw new Error('SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_KEY must be set in the environment');
+}
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey, {
   auth: {
