@@ -1,655 +1,103 @@
-/*
-  CheckLoops — UNO R4 WiFi Provisioning + Eyoyo BLE Pairing (auto-pair, clean)
-  - AP provisioning at "/"
-  - Handoff to https://checkloops.co.uk/scanner.html?mac=...&ok=1
-  - Manual pairing at "/pair"
-  - Device-led pairing: GET/POST /ble/start
-  - Auto-pair after Wi-Fi connect if no scanner is saved
-  - LED matrix scrolls short status (JOIN/DHCP/IP/SCAN/PAIR/OK/ERR/AP)
-
-  Requires: WiFiS3, EEPROM, Arduino_LED_Matrix, ArduinoBLE
-*/
-
-#include <WiFiS3.h>
-#include <EEPROM.h>
-#include <Arduino_LED_Matrix.h>
 #include <ArduinoBLE.h>
 
-ArduinoLEDMatrix matrix;
-WiFiServer server(80);
+// Minimal “connect-only” central for Eyoyo scanner
+// - Scans until it finds a candidate (name starts with EY- / EYOYO, or even no name)
+// - Stops scanning, connects, discovers attributes
+// - Prints a short summary, then idles (heartbeat)
 
-// ---------- Tunables ----------
-#define AP_PASSWORD        "checkloops"
-#define AP_CHANNEL         1
-#define EEPROM_SIZE        1024
-#define EEPROM_ADDR_WIFI   0
-#define EEPROM_ADDR_SCAN   256
-#define MAGIC_WIFI         0xA5
-#define MAGIC_SCAN         0xB6
-#define CONNECT_TIMEOUT_MS 20000
-#define DHCP_TIMEOUT_MS    20000
-#define FIRST_BYTE_TIMEOUT 8000
+BLEDevice dev;
+unsigned long lastBeat = 0;
 
-// ---------- LED pin ----------
-enum LedMode { LED_SLOW, LED_FAST, LED_ON, LED_OFF };
-LedMode ledMode = LED_SLOW; unsigned long ledT=0; bool ledState=false;
-void setLED(LedMode m){ ledMode=m; ledT=0; ledState=(m==LED_ON); pinMode(LED_BUILTIN,OUTPUT); digitalWrite(LED_BUILTIN,ledState?HIGH:LOW); }
-void svcLED(){ unsigned long n=millis();
-  if(ledMode==LED_SLOW && n-ledT>=800){ ledT=n; ledState=!ledState; digitalWrite(LED_BUILTIN,ledState); }
-  if(ledMode==LED_FAST && n-ledT>=150){ ledT=n; ledState=!ledState; digitalWrite(LED_BUILTIN,ledState); }
-  if(ledMode==LED_ON   && !ledState){ ledState=true; digitalWrite(LED_BUILTIN,HIGH); }
-  if(ledMode==LED_OFF  &&  ledState){ ledState=false; digitalWrite(LED_BUILTIN,LOW); }
+bool looksEyoyo(const String& s) {
+  String u = s; u.toUpperCase();
+  return u.startsWith("EY-") || u.startsWith("EYOYO");
 }
 
-// ---------- LED MATRIX ICONS ----------
-static uint8_t ICON_TICK[8][12] = {
-  {0,0,0,0,0,0,0,0,0,0,0,0},{0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,1,0,0,0},{0,0,0,0,0,0,0,1,1,0,0,0},
-  {1,0,0,0,0,0,1,1,0,0,0,0},{1,1,0,0,0,1,1,0,0,0,0,0},
-  {0,1,1,1,1,1,0,0,0,0,0,0},{0,0,1,1,0,0,0,0,0,0,0,0}
-};
-static uint8_t ICON_SMILE[8][12] = {
-  {0,0,0,0,0,0,0,0,0,0,0,0},{0,1,0,0,0,0,0,0,0,0,1,0},
-  {0,0,1,0,0,0,0,0,0,1,0,0},{0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,1,0,0,0,0,0,0,1,0,0},{0,1,0,0,0,0,0,0,0,0,1,0},
-  {0,0,0,1,1,1,1,1,1,0,0,0},{0,0,0,0,0,0,0,0,0,0,0,0}
-};
-static uint8_t ICON_WIFI[8][12] = {
-  {0,0,0,0,0,1,1,0,0,0,0,0},{0,0,0,0,1,0,0,1,0,0,0,0},
-  {0,0,0,1,0,0,0,0,1,0,0,0},{0,0,1,0,0,0,0,0,0,1,0,0},
-  {0,1,0,0,0,0,0,0,0,0,1,0},{0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,1,1,0,0,0,0,0},{0,0,0,0,0,0,0,0,0,0,0,0}
-};
-static uint8_t ICON_BLE[8][12] = {
-  {0,1,1,1,0,0,0,0,0,0,1,0},{0,1,0,0,1,0,0,0,0,1,0,0},
-  {0,1,1,1,0,0,0,0,1,0,0,0},{0,1,0,0,1,0,0,1,0,0,0,0},
-  {0,1,1,1,0,0,1,0,0,0,0,0},{0,0,0,0,0,1,0,0,0,0,0,0},
-  {0,0,0,0,0,0,1,0,0,0,0,0},{0,0,0,0,0,0,0,1,0,0,0,0}
-};
-static uint8_t ICON_ERR[8][12] = {
-  {1,0,0,0,0,0,0,0,0,0,0,1},{0,1,0,0,0,0,0,0,0,0,1,0},
-  {0,0,1,0,0,0,0,0,0,1,0,0},{0,0,0,1,0,0,0,0,1,0,0,0},
-  {0,0,0,0,1,0,0,1,0,0,0,0},{0,0,0,0,0,1,1,0,0,0,0,0},
-  {0,0,0,0,1,0,0,1,0,0,0,0},{0,0,0,1,0,0,0,0,1,0,0,0}
-};
-void mClear(){ static uint8_t E[8][12]={{0}}; matrix.renderBitmap(E,8,12); }
-void mShow(uint8_t bmp[8][12]){ matrix.renderBitmap(bmp,8,12); }
-void mTick(){ mShow(ICON_TICK); }
-void mSmile(){ mShow(ICON_SMILE); }
-void mWiFi(){ mShow(ICON_WIFI); }
-void mBLE(){ mShow(ICON_BLE); }
-void mErr(){ mShow(ICON_ERR); }
-
-volatile bool tickOn=false; unsigned long tickOffAt=0;
-void triggerTick(uint16_t ms=1800){ tickOn=true; tickOffAt=millis()+ms; mTick(); setLED(LED_ON); }
-volatile bool smileOn=false; unsigned long smileOffAt=0;
-void triggerSmile(uint16_t ms=1800){ smileOn=true; smileOffAt=millis()+ms; mSmile(); setLED(LED_ON); }
-
-// ---------- 5x7 marquee ----------
-struct Glyph { char ch; uint8_t col[5]; };
-static const Glyph FONT[] PROGMEM = {
-  {' ',{0x00,0x00,0x00,0x00,0x00}},
-  {'A',{0x1E,0x05,0x05,0x1E,0x00}},
-  {'C',{0x1E,0x11,0x11,0x11,0x00}},
-  {'D',{0x1F,0x11,0x11,0x0E,0x00}},
-  {'E',{0x1F,0x15,0x15,0x11,0x00}},
-  {'F',{0x1F,0x05,0x05,0x01,0x00}},
-  {'H',{0x1F,0x04,0x04,0x1F,0x00}},
-  {'I',{0x11,0x1F,0x11,0x00,0x00}},
-  {'J',{0x08,0x10,0x10,0x0F,0x00}},
-  {'K',{0x1F,0x04,0x0A,0x11,0x00}},
-  {'N',{0x1F,0x02,0x04,0x1F,0x00}},
-  {'O',{0x0E,0x11,0x11,0x0E,0x00}},
-  {'P',{0x1F,0x05,0x05,0x02,0x00}},
-  {'R',{0x1F,0x05,0x0D,0x12,0x00}},
-  {'S',{0x12,0x15,0x15,0x09,0x00}}
-};
-uint8_t scrollCols[256]; int scrollLen=0; bool scrollActive=false; int scrollIndex=-12;
-unsigned long nextScrollStep=0; uint16_t scrollSpeed=120; unsigned long scrollHoldUntil=0;
-
-bool glyphFor(char c, uint8_t out[5]){
-  if(c>='a'&&c<='z') c = c - 'a' + 'A';
-  for(unsigned i=0;i<sizeof(FONT)/sizeof(FONT[0]);++i){
-    if((char)pgm_read_byte(&FONT[i].ch)==c){
-      for(int k=0;k<5;k++) out[k]=pgm_read_byte(&FONT[i].col[k]);
-      return true;
-    }
-  }
-  for(int k=0;k<5;k++) out[k]=0;
-  return false;
-}
-void startScroll(const char* msg, uint16_t speed_ms=120, uint16_t hold_ms=600){
-  (void)hold_ms; // hold handled implicitly
-  scrollLen=0;
-  for(int i=0;i<2 && scrollLen<255;i++) scrollCols[scrollLen++]=0x00;
-  for(const char* p=msg; *p && scrollLen<240; ++p){
-    uint8_t g[5]; glyphFor(*p,g);
-    for(int k=0;k<5 && scrollLen<255;k++) scrollCols[scrollLen++]=g[k];
-    if(scrollLen<255) scrollCols[scrollLen++]=0x00;
-  }
-  for(int i=0;i<12 && scrollLen<255;i++) scrollCols[scrollLen++]=0x00;
-  scrollActive=true; scrollIndex=-12; scrollSpeed=speed_ms; nextScrollStep=0; scrollHoldUntil=0;
-}
-void svcScroll(){
-  if(!scrollActive) return;
-  unsigned long now=millis();
-  if(nextScrollStep==0) nextScrollStep=now + scrollSpeed;
-  if(now < nextScrollStep) return;
-
-  uint8_t frame[8][12]; for(int y=0;y<8;y++) for(int x=0;x<12;x++) frame[y][x]=0;
-  for(int x=0;x<12;x++){
-    int col = scrollIndex + x;
-    uint8_t bits = (col>=0 && col<scrollLen) ? scrollCols[col] : 0x00;
-    for(int y=0;y<7;y++){ frame[y+0][x] = (bits>>y)&1 ? 1 : 0; }
-  }
-  matrix.renderBitmap(frame,8,12);
-
-  scrollIndex++;
-  nextScrollStep = now + scrollSpeed;
-
-  if(scrollIndex > scrollLen){
-    if(scrollHoldUntil==0) scrollHoldUntil = now + 600;
-    if((long)(now - scrollHoldUntil) >= 0) scrollActive=false;
-  }
-}
-void scrollMsg(const String& s, uint16_t speed_ms=120){
-  static char buf[96]; size_t n = s.length(); if(n>95) n=95; s.substring(0,n).toCharArray(buf, n+1);
-  startScroll(buf, speed_ms, 600);
-}
-void scrollIPNow(IPAddress ip){ scrollMsg(String("IP ")+ip.toString(), 110); }
-
-// ---------- Creds ----------
-struct Credentials { uint8_t magic; char ssid[32]; char pass[64]; } creds;
-struct ScannerStore { uint8_t magic; char addr[18]; char name[32]; } scanner;
-#if defined(ARDUINO_ARCH_ESP32) || defined(ARDUINO_ARCH_ESP8266)
-static void eepromCommit(){ EEPROM.commit(); }
-#else
-static void eepromCommit(){}
-#endif
-bool haveCreds(){ EEPROM.get(EEPROM_ADDR_WIFI,creds); return creds.magic==MAGIC_WIFI && strlen(creds.ssid)>0; }
-void saveCreds(const char*s,const char*p){ Credentials c; c.magic=MAGIC_WIFI;
-  strncpy(c.ssid,s,31); c.ssid[31]='\0'; strncpy(c.pass,p,63); c.pass[63]='\0'; EEPROM.put(EEPROM_ADDR_WIFI,c); eepromCommit(); }
-void clearCreds(){ Credentials z{}; EEPROM.put(EEPROM_ADDR_WIFI,z); eepromCommit(); }
-bool haveScanner(){ EEPROM.get(EEPROM_ADDR_SCAN,scanner); return scanner.magic==MAGIC_SCAN && strlen(scanner.addr)>0; }
-void saveScanner(const char*addr,const char*name){ ScannerStore s{}; s.magic=MAGIC_SCAN;
-  strncpy(s.addr,addr,17); s.addr[17]='\0'; strncpy(s.name,name?name:"",31); s.name[31]='\0'; EEPROM.put(EEPROM_ADDR_SCAN,s); eepromCommit(); }
-void clearScanner(){ ScannerStore z{}; EEPROM.put(EEPROM_ADDR_SCAN,z); eepromCommit(); }
-
-// ---------- Wi-Fi helpers ----------
-bool hasIP(){ IPAddress ip=WiFi.localIP(); return !(ip[0]==0&&ip[1]==0&&ip[2]==0&&ip[3]==0); }
-const char* sname(int s){ switch(s){
-  case WL_NO_SHIELD:return"WL_NO_SHIELD"; case WL_IDLE_STATUS:return"WL_IDLE_STATUS";
-  case WL_NO_SSID_AVAIL:return"WL_NO_SSID_AVAIL"; case WL_SCAN_COMPLETED:return"WL_SCAN_COMPLETED";
-  case WL_CONNECTED:return"WL_CONNECTED"; case WL_CONNECT_FAILED:return"WL_CONNECT_FAILED";
-  case WL_CONNECTION_LOST:return"WL_CONNECTION_LOST"; case WL_DISCONNECTED:return"WL_DISCONNECTED";
-  default:return"UNKNOWN"; } }
-bool connectWait(const char* ssid,const char* pass){
-  setLED(LED_FAST); WiFi.disconnect(); delay(150); mWiFi(); startScroll("JOIN",110);
-  if(pass && strlen(pass)>0) WiFi.begin(ssid,pass); else WiFi.begin(ssid);
-  unsigned long t0=millis();
-  while(millis()-t0<CONNECT_TIMEOUT_MS){ if(WiFi.status()==WL_CONNECTED) break; svcLED(); svcScroll(); delay(10); }
-  if(WiFi.status()!=WL_CONNECTED){ mErr(); return false; }
-  startScroll("DHCP",110);
-  unsigned long t1=millis();
-  while(millis()-t1<DHCP_TIMEOUT_MS){ if(hasIP()){ triggerTick(1400); scrollIPNow(WiFi.localIP()); return true; } svcLED(); svcScroll(); delay(10); }
-  mErr(); return false;
-}
-
-// ---------- Utils ----------
-String macStr(){ byte m[6]; WiFi.macAddress(m); char b[20]; sprintf(b,"%02X:%02X:%02X:%02X:%02X:%02X",m[0],m[1],m[2],m[3],m[4],m[5]); return String(b); }
-String jsonEsc(const String&s){ String o; o.reserve(s.length()+8);
-  for(size_t i=0;i<s.length();++i){ char c=s[i];
-    if(c=='\\' || c=='"'){ o+='\\'; o+=c; } else if(c=='\n') { o+="\\n"; } else { o+=c; } }
-  return o;
-}
-String urlDecode(const String &in){ String out; out.reserve(in.length());
-  for(size_t i=0;i<in.length();++i){ char c=in[i];
-    if(c=='%' && i+2<in.length()){ auto val=[](char x){ if(x>='0'&&x<='9')return x-'0'; x|=32; if(x>='a'&&x<='f')return x-'a'+10; return 0; };
-      out+=(char)((val(in[i+1])<<4)|val(in[i+2])); i+=2;
-    } else if(c=='+') out+=' '; else out+=c;
-  } return out;
-}
-void sendHttp(WiFiClient&c,int code,const char*ct,const String&body){
-  c.print("HTTP/1.1 "); c.print(code);
-  if(code==200)c.print(" OK\r\n"); else if(code==204)c.print(" No Content\r\n");
-  else if(code==400)c.print(" Bad Request\r\n"); else if(code==404)c.print(" Not Found\r\n"); else c.print("\r\n");
-  c.print("Cache-Control: no-cache\r\nConnection: close\r\nContent-Type: "); c.print(ct);
-  c.print("\r\nContent-Length: "); c.print(body.length()); c.print("\r\n\r\n"); c.print(body);
-}
-bool waitFirst(WiFiClient&cl,unsigned long ms){ unsigned long t=millis(); while(cl.connected() && !cl.available() && millis()-t<ms){ delay(1);} return cl.available(); }
-bool readReq(WiFiClient&cl,String&m,String&p,String&hs,String&bd){
-  if(!waitFirst(cl,FIRST_BYTE_TIMEOUT)) return false;
-  String line=cl.readStringUntil('\n'); line.trim();
-  int s1=line.indexOf(' '), s2=line.indexOf(' ',s1+1); if(s1<0||s2<0) return false;
-  m=line.substring(0,s1); p=line.substring(s1+1,s2);
-  size_t clen=0;
-  while(cl.connected()){
-    String h=cl.readStringUntil('\n'); h.trim(); if(h.length()==0) break;
-    hs+=h+"\n"; String hl=h; hl.toLowerCase(); if(hl.startsWith("content-length:")) clen=hl.substring(15).toInt();
-  }
-  while(clen>0 && cl.connected()){
-    while(cl.available()){ bd+=(char)cl.read(); if(bd.length()>=clen){clen=0; break;} }
-    if(clen>0) delay(1);
-  }
-  return true;
-}
-
-// ---------- CSS + page shells (raw strings to avoid escaping) ----------
-const char CSS_DEVICE[] PROGMEM = R"CSS(
-html,body{height:100%}
-body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui;color:#f6f9ff;background:linear-gradient(180deg,#0b3cff,#0a2cff 24%,#071e6d 100%)}
-.wrap{padding:16px;max-width:480px;margin:0 auto}
-.card{border:1px solid #ffffff38;border-radius:22px;backdrop-filter:blur(22px) saturate(160%);background:linear-gradient(180deg,rgba(255,255,255,.18),rgba(255,255,255,.10));box-shadow:0 20px 40px rgba(3,12,50,.35);padding:16px}
-h1{margin:8px 6px 12px 6px;font-size:24px;font-weight:800;letter-spacing:.01em;color:#f2f6ff}
-p.muted{color:#d4e3ff;margin:6px}
-label{display:block;margin:12px 6px 6px 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#c7d7ff}
-select,input{width:calc(100% - 12px);margin:0 6px;padding:14px;border-radius:14px;border:1px solid #ffffff40;background:rgba(255,255,255,.14);color:#fff;font-size:16px}
-.row{display:flex;gap:10px;flex-wrap:wrap;margin:14px 6px}
-button{padding:14px 18px;border-radius:16px;border:0;font-weight:800;letter-spacing:.01em;cursor:pointer}
-.primary{background:linear-gradient(180deg,#2e8bff,#0a58ff);color:#fff;box-shadow:0 10px 20px rgba(10,88,255,.28)}
-.ghost{background:linear-gradient(180deg,rgba(255,255,255,.14),rgba(255,255,255,.08));color:#fff;border:1px solid #ffffff40}
-.status{margin:10px 6px;color:#d9e6ff}
-.chip{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:14px;border:1px solid #ffffff40;background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.10));color:#e8f1ff}
-.ok{color:#baffd0}
-)CSS";
-
-String gReturnTo;
-
-String pageIndex(bool apMode){
-  String head = String(
-    "<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1,viewport-fit=cover'>"
-    "<meta name=color-scheme content='light dark'><title>Device Setup</title><style>"
-  ) + CSS_DEVICE + String("</style></head><body><div class='wrap'><div class='card'>");
-
-  if(apMode){
-    String html = head + R"HTML(
-      <h1>Connect this device to Wi-Fi</h1>
-      <p class='muted'>Choose your network and password.</p>
-      <label>Scan Networks</label><select id='ssid'></select>
-      <label>Or type SSID</label><input id='ssid_m' placeholder='MyHomeWiFi'>
-      <label>Password</label><input id='pass' type='password' placeholder='Wi-Fi password' autocomplete='off'>
-      <div class='row'><button class='primary' onclick='save()'>Save &amp; Connect</button>
-      <button class='ghost' onclick='scan()'>Rescan</button></div>
-      <p id='status' class='status'>Ready.</p>
-      <script>
-      async function scan(){
-        try{
-          const r=await fetch('/scan'); const j=await r.json();
-          const s=document.getElementById('ssid');
-          s.innerHTML='<option value="">— choose —</option>';
-          j.forEach(x=>{const o=document.createElement('option');o.value=x;o.text=x;s.appendChild(o);});
-          document.getElementById('status').textContent='Found '+j.length+' networks';
-        }catch(e){document.getElementById('status').textContent='Scan failed';}
-      }
-      async function save(){
-        const s=document.getElementById('ssid');
-        const ssid=s.value||document.getElementById('ssid_m').value.trim();
-        const pass=document.getElementById('pass').value;
-        if(!ssid){alert('Enter SSID');return;}
-        document.getElementById('status').textContent='Saving… switching to your Wi-Fi';
-        const body=JSON.stringify({ssid:ssid,pass:pass});
-        const r=await fetch('/save',{method:'POST',headers:{'Content-Type':'application/json'},body});
-        const t=await r.text(); document.open(); document.write(t); document.close();
-      }
-      document.addEventListener('DOMContentLoaded',scan);
-      </script>
-    )HTML";
-    html += "</div></div></body></html>";
-    return html;
-  } else {
-    String ip = WiFi.localIP().toString();
-    String ssid = WiFi.SSID();
-    String html = head + String(
-      "<h1>Connected</h1><p class='muted'>Your device is on Wi-Fi.</p>"
-      "<div class='chip'><b>SSID</b> ") + ssid + String("</div> "
-      "<div class='chip'><b>IP</b> ") + ip + String("</div>"
-      "<div class='row'><a href='/pair'><button class='primary'>Pair Eyoyo Scanner</button></a>"
-      "<button class='ghost' onclick='fetch(\"/tick\",{method:\"POST\"})'>Show ✓ (2s)</button></div>"
-      "<p class='muted'>Once paired, the LED matrix shows a smiley.</p>"
-      "</div></div></body></html>");
-    return html;
-  }
-}
-
-String pageHandoff(){
-  String mac = macStr();
-  String link = gReturnTo.length()
-              ? (gReturnTo + (gReturnTo.indexOf('?')>=0?"&":"?") + "mac=" + mac + "&ok=1")
-              : String("https://checkloops.co.uk/scanner.html?mac=") + mac + "&ok=1";
-  String html = String(
-    "<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1,viewport-fit=cover'>"
-    "<meta name=color-scheme content='light dark'><title>Finishing up…</title><style>"
-  ) + CSS_DEVICE + String("</style></head><body><div class='wrap'><div class='card'>"
-    "<h1>Almost done</h1><p class='muted'>We’re connecting now. Switch your phone back to your home Wi-Fi, then finish below.</p>"
-    "<div class='chip'><b>Device ID</b> ") + mac + String("</div>"
-    "<div class='row'><a href='") + link + String("'><button class='primary'>Return to CheckLoops</button></a></div>"
-    "<p class='muted'>LED goes solid and ✓ shows when online. After pairing, the matrix shows a smiley.</p>"
-    "</div></div></body></html>");
-  return html;
-}
-
-// ---------- Wi-Fi JSON ----------
-String statusJson(){ bool ok=(WiFi.status()==WL_CONNECTED)&&hasIP();
-  String msg = ok ? (String("Connected: ")+WiFi.SSID()+" (IP "+WiFi.localIP().toString()+")")
-                  : (WiFi.status()==WL_CONNECTED ? "Waiting DHCP…" : String("Not connected (")+sname(WiFi.status())+")");
-  return String("{\"connected\":")+(ok?"true":"false")+",\"message\":\""+jsonEsc(msg)+"\"}";
-}
-String scanJson(){ int n=WiFi.scanNetworks(); String j="["; bool first=true;
-  for(int i=0;i<n;i++){ String ss=WiFi.SSID(i); if(ss.length()==0) continue; if(!first) j+=','; j+='\"'+jsonEsc(ss)+'\"'; first=false; }
-  j+="]"; return j;
-}
-
-// ---------- BLE (Central) ----------
-enum BleState { BLE_IDLE, BLE_SCANNING, BLE_CONNECTING, BLE_PAIRED, BLE_ERROR };
-BleState bleState = BLE_IDLE;
-String bleErr = "";
-String bleDeviceName = "";
-String bleDeviceAddr = "";
-int bleDeviceRSSI = 0;
-
-volatile bool bleAutoPairRequest = false;
-volatile bool bleAutoPairing = false;
-
-struct FoundDev { char name[32]; char addr[18]; int rssi; };
-const int MAX_FOUND=12;
-FoundDev found[MAX_FOUND]; int foundCount=0;
-
-void bleResetFound(){ foundCount=0; for(int i=0;i<MAX_FOUND;i++){ found[i].name[0]=0; found[i].addr[0]=0; found[i].rssi=0; } }
-
-bool bleBeginOnce(){
-  static bool inited=false;
-  if(inited) return true;
-  if(!BLE.begin()){ bleErr="BLE.begin failed"; return false; }
-  inited=true; return true;
-}
-
-void bleStartScan(){
-  if(!bleBeginOnce()){ bleState=BLE_ERROR; mErr(); startScroll("ERR",120); return; }
-  bleResetFound();
-  BLE.scan();
-  bleState = BLE_SCANNING;
-  mBLE(); startScroll("SCAN",120);
-}
-void bleStopScan(){ BLE.stopScan(); }
-
-int rankEyoyoName(const String& name){
-  String n=name; n.toLowerCase();
-  if(n.startsWith("ey-")) return 2;                     // highest priority
-  if(n.indexOf("eyoyo")>=0 || n.indexOf("scanner")>=0) return 1;
-  return 0;
-}
-bool isLikelyEyoyo(const String& name){ return rankEyoyoName(name) > 0; }
-
-String bleScanJson(){
-  String j="["; for(int i=0;i<foundCount;i++){
-    if(i) j+=',';
-    j+="{\"name\":\""+jsonEsc(found[i].name)+"\",\"addr\":\""+jsonEsc(found[i].addr)+"\",\"rssi\":"+String(found[i].rssi)+"}";
-  } j+="]";
-  return j;
-}
-
-bool bleConnectBy(const String &wantAddr, const String &wantName){
-  if(!bleBeginOnce()){ bleState=BLE_ERROR; mErr(); startScroll("ERR",120); return false; }
-  bleState=BLE_CONNECTING; bleErr="";
-  mBLE(); startScroll("PAIR",120);
-
-  BLE.stopScan();
+void connectEyoyo() {
+  Serial.println(F("Scanning for devices…"));
   BLE.scan();
 
-  unsigned long t0=millis();
-  String bestAddr=""; String bestName="";
-  int bestRank=-1; int bestRSSI=-9999;
-
-  while(millis()-t0 < 8000){
+  while (true) {
     BLEDevice d = BLE.available();
-    while(d){
-      String paddr = d.address(); String pname = d.localName(); int rssi = d.rssi();
-      bool match=false; int rank=0;
-      if(wantAddr.length()){ match = wantAddr.equalsIgnoreCase(paddr); rank = match?3:0; }
-      else if(wantName.length()){ match = (pname == wantName); rank = match?3:0; }
-      else { rank = rankEyoyoName(pname); match = (rank>0); }
-      if(match){ if(rank>bestRank || (rank==bestRank && rssi>bestRSSI)){ bestRank=rank; bestRSSI=rssi; bestAddr=paddr; bestName=pname; } }
-      d = BLE.available();
+    if (!d) continue;
+
+    String name = d.localName();
+    bool candidate = looksEyoyo(name) || name.length() == 0; // accept unnamed too
+
+    if (!candidate) continue;
+
+    Serial.print(F("Found candidate: "));
+    Serial.println(name.length() ? name : "(no name)");
+
+    // Per ArduinoBLE best-practice: stop scan before connect
+    BLE.stopScan();
+
+    Serial.print(F("Connecting … "));
+    if (!d.connect()) {
+      Serial.println(F("FAILED. Rescanning…"));
+      BLE.scan();
+      continue;
     }
-    svcLED(); svcScroll(); delay(5);
-  }
-  BLE.stopScan();
+    Serial.println(F("OK"));
 
-  if(bestAddr.length()==0){ bleErr="device not found"; bleState=BLE_ERROR; mErr(); startScroll("ERR",120); return false; }
-
-  // Re-find chosen quickly and connect
-  BLE.scan();
-  BLEDevice peripheral; bool foundIt=false; unsigned long t1=millis();
-  while(millis()-t1 < 4000){
-    peripheral = BLE.available();
-    while(peripheral){
-      if(peripheral.address().equalsIgnoreCase(bestAddr)){ foundIt=true; break; }
-      peripheral = BLE.available();
+    Serial.print(F("Discovering attributes … "));
+    if (!d.discoverAttributes()) {
+      Serial.println(F("FAILED"));
+      d.disconnect();
+      BLE.scan();
+      continue;
     }
-    if(foundIt) break;
-    delay(5);
-  }
-  BLE.stopScan();
+    Serial.println(F("OK"));
 
-  if(!foundIt){ bleErr="chosen device gone"; bleState=BLE_ERROR; mErr(); startScroll("ERR",120); return false; }
-
-  if(!peripheral.connect()){ bleErr="connect failed"; bleState=BLE_ERROR; mErr(); startScroll("ERR",120); return false; }
-  if(!peripheral.discoverAttributes()){ peripheral.disconnect(); bleErr="discover failed"; bleState=BLE_ERROR; mErr(); startScroll("ERR",120); return false; }
-
-  bleDeviceName = peripheral.localName();
-  bleDeviceAddr = peripheral.address();
-  bleDeviceRSSI = peripheral.rssi();
-  saveScanner(bleDeviceAddr.c_str(), bleDeviceName.c_str());
-  bleState = BLE_PAIRED;
-  triggerSmile(1800);
-  startScroll("OK",140);
-  return true;
-}
-
-// Device-led pairing task
-void bleAutoPairTask() {
-  if (bleAutoPairing) return;
-  bleAutoPairing = true;
-
-  if (bleState == BLE_SCANNING) bleStopScan();
-
-  WiFi.disconnect();
-  delay(200);
-
-  (void)bleConnectBy(String(""), String(""));
-
-  if (haveCreds()) { connectWait(creds.ssid, creds.pass); server.begin(); scrollIPNow(WiFi.localIP()); }
-
-  bleAutoPairing = false;
-}
-
-String bleStatusJson(){
-  String st;
-  switch(bleState){ case BLE_IDLE: st="idle"; break; case BLE_SCANNING: st="scanning"; break;
-    case BLE_CONNECTING: st="connecting"; break; case BLE_PAIRED: st="paired"; break; default: st="error"; }
-  String dev = bleDeviceName.length()? bleDeviceName+" ("+bleDeviceAddr+")" : (haveScanner()? String(scanner.name)+" ("+scanner.addr+")": "");
-  String j=String("{\"state\":\"")+st+"\",\"device\":\""+jsonEsc(dev)+"\"";
-  if(bleState==BLE_ERROR) j+=String(",\"error\":\"")+jsonEsc(bleErr)+"\"";
-  j+="}";
-  return j;
-}
-void bleForget(){
-  bleDeviceName=""; bleDeviceAddr=""; bleDeviceRSSI=0; bleState=BLE_IDLE; bleErr="";
-  clearScanner(); mBLE(); startScroll("CLR",120);
-}
-
-// ---------- Pair page (manual) ----------
-String pagePair(){
-  String head = String(
-    "<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1,viewport-fit=cover'>"
-    "<meta name=color-scheme content='light dark'><title>Pair Scanner</title><style>"
-  ) + CSS_DEVICE + String("</style></head><body><div class='wrap'><div class='card'>");
-
-  String html = head + R"HTML(
-    <h1>Pair Eyoyo Scanner</h1>
-    <p class='muted'>Put the Eyoyo in <b>Bluetooth LE</b> mode, then scan and connect.</p>
-    <div class='row'><button class='primary' onclick='scan()'>Scan Nearby</button>
-    <button class='ghost' onclick='forget()'>Forget Scanner</button></div>
-    <label>Devices</label><select id='devs'></select>
-    <div class='row'><button class='primary' onclick='connectSel()'>Connect</button></div>
-    <p id='status' class='status'>Ready.</p>
-    <script>
-      async function scan(){ await fetch('/ble/scan'); poll(); document.getElementById('status').textContent='Scanning…'; }
-      async function poll(){ try{ const r=await fetch('/ble/scan'); const a=await r.json(); const s=document.getElementById('devs'); s.innerHTML='';
-        a.forEach(x=>{ if(!x.name) x.name='(unnamed)'; const o=document.createElement('option'); o.value=x.addr; o.text=x.name+'  ['+x.addr+']  '+x.rssi+' dBm'; s.appendChild(o);});
-        setTimeout(poll,800); }catch(e){ /* ignore */ } }
-      async function connectSel(){ const addr=document.getElementById('devs').value; if(!addr){ alert('Choose a device'); return; }
-        document.getElementById('status').textContent='Connecting…';
-        const r=await fetch('/ble/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({addr})});
-        const t=await r.text(); document.getElementById('status').textContent=t; setTimeout(check,700); }
-      async function check(){ try{ const r=await fetch('/ble/status'); const j=await r.json();
-        if(j.state==='paired'){ document.getElementById('status').textContent='Paired: '+j.device; }
-        else if(j.state==='error'){ document.getElementById('status').textContent='Error: '+j.error; }
-        else { setTimeout(check,700); } }catch(e){} }
-      async function forget(){ await fetch('/ble/forget',{method:'POST'}); document.getElementById('status').textContent='Cleared.'; }
-    </script>
-  )HTML";
-  html += "</div></div></body></html>";
-  return html;
-}
-
-// ---------- Router helpers ----------
-String normalizePath(const String& fullPath){ int q=fullPath.indexOf('?'); if(q>=0) return fullPath.substring(0,q); return fullPath; }
-void maybeCaptureReturnParam(const String& fullPath){
-  int q=fullPath.indexOf('?'); if(q<0) return; String qs=fullPath.substring(q+1);
-  int i=qs.indexOf("return="); if(i<0) return; int s=i+7; int amp=qs.indexOf('&',s);
-  gReturnTo = urlDecode(qs.substring(s, amp<0?qs.length():amp));
-}
-String grabJsonVal(const String&body,const String&key){
-  int k=body.indexOf('\"'+key+'\"'); if(k<0) return "";
-  int c=body.indexOf(':',k); int q1=body.indexOf('\"',c+1); int q2=body.indexOf('\"',q1+1);
-  if(q1<0||q2<0) return ""; return body.substring(q1+1,q2);
-}
-
-// ---------- Router ----------
-void handle(WiFiClient&c, bool apMode){
-  String m,p,h,b; if(!readReq(c,m,p,h,b)){ sendHttp(c,400,"text/plain","Bad Request"); return; }
-  maybeCaptureReturnParam(p);
-  String path = normalizePath(p);
-
-  if(m=="GET" && (path=="/generate_204"||path=="/hotspot-detect.html"||path=="/ncsi.txt"||path=="/connecttest.txt")){
-    sendHttp(c,200,"text/html","<meta http-equiv='refresh' content='0;url=/' />"); return;
-  }
-  if(m=="GET" && (path=="/"||path=="/index.html")){ sendHttp(c,200,"text/html",pageIndex(apMode)); return; }
-  if(m=="GET" && path=="/scan"){ sendHttp(c,200,"application/json",scanJson()); return; }
-  if(m=="GET" && path=="/status"){ sendHttp(c,200,"application/json",statusJson()); return; }
-
-  if(m=="POST" && path=="/save"){
-    String ssid=grabJsonVal(b,"ssid"), pass=grabJsonVal(b,"pass");
-    if(ssid.length()==0){ sendHttp(c,400,"text/plain","SSID missing"); return; }
-    saveCreds(ssid.c_str(), pass.c_str());
-    mWiFi(); startScroll("JOIN",110);
-
-    // reply first, then connect
-    sendHttp(c,200,"text/html",pageHandoff()); c.flush();
-    delay(300);
-    if(connectWait(ssid.c_str(), pass.c_str())){
-      setLED(LED_ON); server.begin(); scrollIPNow(WiFi.localIP());
-      if(!haveScanner()){ bleAutoPairRequest = true; }
+    // Print a tiny summary of what we found
+    int sc = d.serviceCount();
+    Serial.print(F("Service count: "));
+    Serial.println(sc);
+    for (int si = 0; si < sc; si++) {
+      BLEService s = d.service(si);
+      Serial.print(F("  svc "));
+      Serial.println(s.uuid());
     }
+
+    dev = d;
+    Serial.println(F("Connected. (Minimal connect-only sketch; no subscriptions.)"));
+    return;
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  while (!Serial) { /* wait for monitor */ }
+
+  Serial.println();
+  Serial.println(F("Booting (connect-only)…"));
+
+  if (!BLE.begin()) {
+    Serial.println(F("BLE.begin() FAILED. Update board radio firmware if needed."));
+    while (1) { delay(500); Serial.print('.'); }
+  }
+
+  connectEyoyo();
+}
+
+void loop() {
+  // Keep BLE stack responsive
+  BLE.poll();
+
+  // Reconnect if link drops
+  if (!dev || !dev.connected()) {
+    Serial.println(F("Disconnected; reconnecting"));
+    connectEyoyo();
     return;
   }
 
-  if(m=="POST" && path=="/tick"){ triggerTick(1800); sendHttp(c,200,"text/plain","tick"); return; }
-  if(m=="POST" && path=="/forget"){ clearCreds(); sendHttp(c,200,"application/json","{\"ok\":true}"); mWiFi(); startScroll("AP",120); return; }
-
-  // Pairing & BLE (manual UI)
-  if(m=="GET" && path=="/pair"){ sendHttp(c,200,"text/html",pagePair()); return; }
-  if(m=="GET" && path=="/ble/scan"){ if(bleState!=BLE_SCANNING) bleStartScan(); String j=bleScanJson(); sendHttp(c,200,"application/json",j); return; }
-  if(m=="POST" && path=="/ble/connect"){
-    String addr = grabJsonVal(b,"addr"); String name = grabJsonVal(b,"name");
-    if(bleState==BLE_SCANNING) bleStopScan();
-    bool ok = bleConnectBy(addr,name);
-    sendHttp(c,200,"text/plain", ok ? "Connected." : String("Failed: ")+bleErr ); return;
-  }
-  if(m=="GET" && path=="/ble/status"){ sendHttp(c,200,"application/json",bleStatusJson()); return; }
-  if(m=="POST" && path=="/ble/forget"){ bleForget(); sendHttp(c,200,"application/json","{\"ok\":true}"); return; }
-
-  // Device-led pairing kickoff (linkable via GET, script via POST)
-  if((m=="GET" || m=="POST") && path=="/ble/start"){
-    String body = String(
-      "<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1,viewport-fit=cover'>"
-      "<meta http-equiv='refresh' content='5;url=/'><style>"
-    ) + CSS_DEVICE + String("</style><title>Starting pairing…</title></head>"
-      "<body><div class='wrap'><div class='card'><h1>Starting pairing…</h1>"
-      "<p class='muted'>Device will briefly disconnect from Wi-Fi to pair over Bluetooth LE (~20–30s).</p>"
-      "<p class='muted'>This page will refresh when the device is back online. Look for a smiley on the device.</p>"
-      "<div class='row'><a href='/'><button class='ghost'>Try device page</button></a></div>"
-      "</div></div></body></html>");
-    sendHttp(c,200,"text/html",body); c.flush();
-    delay(50);
-    mBLE(); startScroll("PAIR",120);
-    bleAutoPairRequest = true;
-    return;
-  }
-
-  sendHttp(c,404,"text/plain","Not Found");
-}
-
-// ---------- AP ----------
-void startAP(){
-  uint8_t mac[6]; WiFi.macAddress(mac);
-  char apName[32]; snprintf(apName,sizeof(apName),"CheckLoops-Setup-%02X%02X",mac[4],mac[5]);
-  WiFi.disconnect(); delay(120); WiFi.beginAP(apName, AP_PASSWORD, AP_CHANNEL);
-  delay(600); server.begin();
-  scrollIPNow(WiFi.localIP());
-  setLED(LED_SLOW); mWiFi(); startScroll("AP",120);
-}
-
-// ---------- setup / loop ----------
-void setup(){
-  Serial.begin(115200); while(!Serial && millis()<2000){}
-  matrix.begin(); mClear();
-  #if defined(ARDUINO_ARCH_ESP32) || defined(ARDUINO_ARCH_ESP8266)
-    EEPROM.begin(EEPROM_SIZE);
-  #endif
-
-  bleBeginOnce();
-
-  if(haveCreds()){
-    if(connectWait(creds.ssid,creds.pass)){
-      setLED(LED_ON); server.begin(); scrollMsg("OK",140); scrollIPNow(WiFi.localIP());
-      if(!haveScanner()){ bleAutoPairRequest = true; }
-    } else { startAP(); }
-  } else { startAP(); }
-}
-
-void loop(){
-  bool apMode = !(WiFi.status()==WL_CONNECTED && hasIP());
-  WiFiClient c=server.available(); if(c){ handle(c, apMode); delay(1); c.stop(); }
-
-  if(bleState==BLE_SCANNING){
-    BLEDevice d = BLE.available();
-    while(d){
-      if(foundCount<MAX_FOUND){
-        String name=d.localName(), addr=d.address(); int rssi=d.rssi();
-        strncpy(found[foundCount].name, name.c_str(), 31); found[foundCount].name[31]='\0';
-        strncpy(found[foundCount].addr, addr.c_str(), 17); found[foundCount].addr[17]='\0';
-        found[foundCount].rssi = rssi;
-        foundCount++;
-      }
-      d = BLE.available();
-    }
-  }
-
-  svcLED();
-  svcScroll();
-
-  if(tickOn && (long)(millis()-tickOffAt)>=0){ tickOn=false; mClear(); if(WiFi.status()==WL_CONNECTED&&hasIP()) setLED(LED_ON); else setLED(LED_SLOW); }
-  if(smileOn && (long)(millis()-smileOffAt)>=0){ smileOn=false; mClear(); if(WiFi.status()==WL_CONNECTED&&hasIP()) setLED(LED_ON); else setLED(LED_SLOW); }
-
-  if (bleAutoPairRequest && !bleAutoPairing) { bleAutoPairRequest = false; bleAutoPairTask(); }
-
-  static unsigned long last=0;
-  if(millis()-last>5000){ last=millis();
-    if(haveCreds() && !(WiFi.status()==WL_CONNECTED&&hasIP())){
-      mWiFi(); startScroll("JOIN",110);
-      if(connectWait(creds.ssid,creds.pass)){ setLED(LED_ON); server.begin(); scrollMsg("OK",140); scrollIPNow(WiFi.localIP()); }
-    }
+  // 1s heartbeat so you know it’s alive
+  unsigned long now = millis();
+  if (now - lastBeat >= 1000UL) {
+    lastBeat = now;
+    String name = dev.localName();
+    Serial.print(F("[HB] connected=1 name='"));
+    Serial.print(name.length() ? name : "(no name)");
+    Serial.println('\'');
   }
 }
