@@ -5222,6 +5222,73 @@ document.addEventListener('DOMContentLoaded', () => {
   #view-dashboard thead th{ background:#f6f8ff !important; border-bottom-color:#e7ecf5 !important; }
   #view-dashboard tbody tr:hover{ background:#edf2ff !important; }
 
+  /* Dashboard Section Styles */
+  .dashboard-section {
+    margin-bottom: 24px;
+    background: white;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    overflow: hidden;
+    transition: all 0.3s ease;
+  }
+
+  .dashboard-section:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  }
+
+  .dashboard-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    cursor: pointer;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    transition: background 0.3s ease;
+  }
+
+  .dashboard-section-header:hover {
+    background: linear-gradient(135deg, #5568d3 0%, #63408a 100%);
+  }
+
+  .dashboard-section-header .header-left {
+    display: flex;
+    align-items: center;
+    flex: 1;
+  }
+
+  .dashboard-section-header .section-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 4px 0;
+  }
+
+  .dashboard-section-header .section-summary {
+    font-size: 14px;
+    opacity: 0.9;
+  }
+
+  .dashboard-section-header .header-right {
+    display: flex;
+    align-items: center;
+  }
+
+  .dashboard-section-header .expand-icon.rotated {
+    transform: rotate(180deg);
+  }
+
+  .dashboard-section-content {
+    padding: 24px;
+    background: #f9fafb;
+  }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
   /* Active nav item with a soft purple glow so the menu feels alive */
   .nav button.active{ box-shadow: 0 8px 24px rgba(164,103,255,.18) !important; }
 </style>
@@ -6230,6 +6297,8 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
       </div>
       <nav class="nav" id="nav">
+        <!-- Dashboard (new) -->
+        <button data-section="dashboard"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13h8V3H3v10z"></path><path d="M13 21h8V11h-8v10z"></path></svg><span class="menu-item-label">Dashboard</span></button>
         <!-- CQC Prep Group -->
         <button class="nav-group-toggle" id="toggle-cqc-prep" type="button" aria-expanded="false" aria-controls="group-cqc-prep">CQC Prep <span class="caret" aria-hidden="true"></span></button>
         <div class="nav-group collapsed" id="group-cqc-prep">
@@ -6389,13 +6458,98 @@ document.addEventListener('DOMContentLoaded', () => {
     </aside>
 
     <main class="content">
+      <!-- Dashboard Section with Quiz Statistics -->
       <section class="view active" id="view-dashboard">
-        <div class="panel" style="display:grid; place-items:center; min-height:220px; text-align:center;">
-          <div>
+        <div class="panel">
+          <div class="page-header">
+            <div class="page-title-wrapper">
+              <h1 class="page-title">Dashboard</h1>
+              <button class="help-icon" onclick="showHelp('view-dashboard')" title="Help">?</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <!-- CQC Quiz Scores Section -->
+            <div class="dashboard-section" id="quiz-scores-section">
+              <!-- Collapsible Header (Always Visible) -->
+              <div class="dashboard-section-header" onclick="toggleDashboardSection('quiz-scores')">
+                <div class="header-left">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 24px; height: 24px; margin-right: 12px;">
+                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                  <div>
+                    <h3 class="section-title">CQC Quiz Scores</h3>
+                    <div class="section-summary" id="quiz-summary">
+                      Loading...
+                    </div>
+                  </div>
+                </div>
+                <div class="header-right">
+                  <svg class="expand-icon" id="quiz-scores-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px; transition: transform 0.3s;">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </div>
+              </div>
+
+              <!-- Expanded Content (Hidden by Default) -->
+              <div class="dashboard-section-content" id="quiz-scores-content" style="display: none;">
+                <div class="stats-grid">
+                  <!-- Average Score Card -->
+                  <div class="stat-card">
+                    <div class="icon-wrap" style="--c: #e8f5f1; --i: #10b981;">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                      </svg>
+                    </div>
+                    <div>
+                      <div class="stat-num" id="avg-score">--</div>
+                      <div class="stat-label">Average Score</div>
+                    </div>
+                  </div>
+
+                  <!-- Total Submissions Card -->
+                  <div class="stat-card">
+                    <div class="icon-wrap" style="--c: #eff6ff; --i: #3b82f6;">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                      </svg>
+                    </div>
+                    <div>
+                      <div class="stat-num" id="total-submissions">--</div>
+                      <div class="stat-label">Total Submissions</div>
+                    </div>
+                  </div>
+
+                  <!-- Pass Rate Card -->
+                  <div class="stat-card">
+                    <div class="icon-wrap" style="--c: #fef3c7; --i: #f59e0b;">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                      </svg>
+                    </div>
+                    <div>
+                      <div class="stat-num" id="pass-rate">--</div>
+                      <div class="stat-label">Pass Rate (≥80%)</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Most Incorrectly Answered Questions -->
+                <div style="margin-top: 24px;">
+                  <h4 style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: var(--text-primary);">
+                    Most Commonly Incorrect Questions
+                  </h4>
+                  <div id="incorrect-questions-list" style="background: white; border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb;">
+                    <div style="padding: 20px; text-align: center; color: #9ca3af;">
+                      Loading question data...
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
-      <!-- Project Management Section -->
       <section class="view" id="view-project-management">
         <div class="panel">
           <div class="page-header">
@@ -21517,6 +21671,166 @@ document.getElementById('help-modal').addEventListener('click', function(e) {
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape' && document.getElementById('help-modal').classList.contains('show')) {
     hideHelp();
+  }
+});
+
+// Dashboard Quiz Statistics Functions
+function toggleDashboardSection(sectionId) {
+  const content = document.getElementById(`${sectionId}-content`);
+  const icon = document.getElementById(`${sectionId}-icon`);
+  
+  if (content.style.display === 'none') {
+    content.style.display = 'block';
+    icon.classList.add('rotated');
+  } else {
+    content.style.display = 'none';
+    icon.classList.remove('rotated');
+  }
+}
+
+async function loadQuizStatistics() {
+  try {
+    const siteId = window.currentSiteId || 2;
+    
+    // Fetch all quiz attempts for the site
+    const { data: attempts, error } = await supabase
+      .from('quiz_attempts')
+      .select('*')
+      .eq('site_id', siteId)
+      .eq('is_practice', false); // Only mandatory quizzes
+    
+    if (error) throw error;
+    
+    if (!attempts || attempts.length === 0) {
+      document.getElementById('quiz-summary').textContent = 'No quiz data available';
+      document.getElementById('avg-score').textContent = 'N/A';
+      document.getElementById('total-submissions').textContent = '0';
+      document.getElementById('pass-rate').textContent = 'N/A';
+      document.getElementById('incorrect-questions-list').innerHTML = '<div style="padding: 20px; text-align: center; color: #9ca3af;">No quiz submissions yet</div>';
+      return;
+    }
+    
+    // Calculate statistics
+    const totalSubmissions = attempts.length;
+    const totalScore = attempts.reduce((sum, a) => sum + (a.score_percent || 0), 0);
+    const avgScore = Math.round(totalScore / totalSubmissions);
+    const passCount = attempts.filter(a => (a.score_percent || 0) >= 80).length;
+    const passRate = Math.round((passCount / totalSubmissions) * 100);
+    
+    // Update summary in header
+    document.getElementById('quiz-summary').textContent = 
+      `Avg: ${avgScore}% • ${totalSubmissions} Submissions • ${passRate}% Pass Rate`;
+    
+    // Update stat cards
+    document.getElementById('avg-score').textContent = `${avgScore}%`;
+    document.getElementById('total-submissions').textContent = totalSubmissions;
+    document.getElementById('pass-rate').textContent = `${passRate}%`;
+    
+    // Fetch questions to analyze incorrect answers
+    await loadIncorrectQuestions(attempts, siteId);
+    
+  } catch (error) {
+    console.error('Error loading quiz statistics:', error);
+    document.getElementById('quiz-summary').textContent = 'Error loading quiz data';
+  }
+}
+
+async function loadIncorrectQuestions(attempts, siteId) {
+  try {
+    // Fetch quiz attempt answers
+    const { data: answers, error: answersError } = await supabase
+      .from('quiz_attempt_answers')
+      .select('*')
+      .in('attempt_id', attempts.map(a => a.id));
+    
+    if (answersError) throw answersError;
+    
+    // Fetch all questions for this site
+    const { data: questions, error: questionsError } = await supabase
+      .from('quiz_questions')
+      .select('*')
+      .eq('site_id', siteId)
+      .eq('is_active', true);
+    
+    if (questionsError) throw questionsError;
+    
+    if (!answers || answers.length === 0 || !questions || questions.length === 0) {
+      document.getElementById('incorrect-questions-list').innerHTML = 
+        '<div style="padding: 20px; text-align: center; color: #9ca3af;">Question analysis not available</div>';
+      return;
+    }
+    
+    // Count incorrect answers per question
+    const incorrectCounts = {};
+    answers.forEach(answer => {
+      if (!answer.is_correct) {
+        incorrectCounts[answer.question_id] = (incorrectCounts[answer.question_id] || 0) + 1;
+      }
+    });
+    
+    // Sort by most incorrect
+    const sortedIncorrect = Object.entries(incorrectCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5); // Top 5
+    
+    if (sortedIncorrect.length === 0) {
+      document.getElementById('incorrect-questions-list').innerHTML = 
+        '<div style="padding: 20px; text-align: center; color: #22c55e;">✓ All questions answered correctly!</div>';
+      return;
+    }
+    
+    // Build the list
+    let html = '<table style="width: 100%; border-collapse: collapse;">';
+    html += '<thead><tr style="background: #f9fafb; border-bottom: 2px solid #e5e7eb;">';
+    html += '<th style="padding: 12px; text-align: left; font-weight: 600; color: #374151;">Question</th>';
+    html += '<th style="padding: 12px; text-align: center; font-weight: 600; color: #374151; width: 120px;">Incorrect Count</th>';
+    html += '</tr></thead><tbody>';
+    
+    sortedIncorrect.forEach(([questionId, count], index) => {
+      const question = questions.find(q => q.id === parseInt(questionId));
+      if (question) {
+        const bgColor = index % 2 === 0 ? '#ffffff' : '#f9fafb';
+        html += `<tr style="border-bottom: 1px solid #e5e7eb; background: ${bgColor};">`;
+        html += `<td style="padding: 12px;">${escapeHtml(question.question_text)}</td>`;
+        html += `<td style="padding: 12px; text-align: center; font-weight: 600; color: #ef4444;">${count}</td>`;
+        html += '</tr>';
+      }
+    });
+    
+    html += '</tbody></table>';
+    document.getElementById('incorrect-questions-list').innerHTML = html;
+    
+  } catch (error) {
+    console.error('Error loading incorrect questions:', error);
+    document.getElementById('incorrect-questions-list').innerHTML = 
+      '<div style="padding: 20px; text-align: center; color: #ef4444;">Error loading question analysis</div>';
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Load quiz statistics when dashboard view becomes active
+document.addEventListener('DOMContentLoaded', () => {
+  const dashboardView = document.getElementById('view-dashboard');
+  if (dashboardView) {
+    const observer = new MutationObserver(() => {
+      if (dashboardView.classList.contains('active') && !dashboardView.dataset._quizLoaded) {
+        dashboardView.dataset._quizLoaded = '1';
+        console.log('Dashboard view activated, loading quiz statistics...');
+        loadQuizStatistics();
+      }
+    });
+    observer.observe(dashboardView, { attributes: true, attributeFilter: ['class'] });
+    
+    // If already active on load, initialize immediately
+    if (dashboardView.classList.contains('active')) {
+      console.log('Dashboard view active on load, loading quiz statistics...');
+      loadQuizStatistics();
+    }
   }
 });
 
