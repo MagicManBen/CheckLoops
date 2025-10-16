@@ -2245,60 +2245,47 @@
 
       try {
         const now = new Date();
-        let nextDue = null;
+        let nextAvailable = null;
+        let lastCompleted = null;
 
+        // Check quiz_attempts for the last completed required quiz
         const { data: lastAttempt } = await supabase
           .from('quiz_attempts')
-          .select('completed_at, created_at')
+          .select('completed_at, mode')
           .eq('site_id', siteId)
           .eq('user_id', user.id)
+          .eq('mode', 'required')
           .not('completed_at', 'is', null)
           .order('completed_at', { ascending: false })
           .limit(1)
           .maybeSingle();
 
         if (lastAttempt?.completed_at) {
-          nextDue = new Date(lastAttempt.completed_at);
-          nextDue.setDate(nextDue.getDate() + 7);
-        } else {
-          // Fallback to master_users metadata if no attempts row exists
-          try {
-            const { data: mu } = await supabase
-              .from('master_users')
-              .select('next_quiz_due, last_required_quiz_at')
-              .eq('auth_user_id', user.id)
-              .maybeSingle();
-            if (mu?.next_quiz_due) {
-              nextDue = new Date(mu.next_quiz_due);
-            } else if (mu?.last_required_quiz_at) {
-              nextDue = new Date(mu.last_required_quiz_at);
-              nextDue.setDate(nextDue.getDate() + 7);
-            }
-          } catch (e) {
-            console.warn('Could not read master_users quiz metadata:', e);
-          }
+          lastCompleted = new Date(lastAttempt.completed_at);
+          nextAvailable = new Date(lastCompleted);
+          nextAvailable.setDate(nextAvailable.getDate() + 7);
         }
 
-        if (!nextDue || now >= nextDue) {
+        // Quiz is available if: never taken OR 7+ days have passed
+        if (!nextAvailable || now >= nextAvailable) {
+          // Quiz is available - show the alert
           quizAlert.classList.remove('hidden');
           quizBubble.classList.add('due');
 
-          if (!nextDue) {
+          if (!nextAvailable) {
             quizAlertMessage.textContent = 'Take your first weekly quiz now!';
           } else {
-            const overdueDays = Math.floor((now - nextDue) / (1000 * 60 * 60 * 24));
-            quizAlertMessage.textContent = overdueDays > 0
-              ? `Quiz is ${overdueDays} day${overdueDays>1?'s':''} overdue!`
-              : 'Your weekly quiz is due today!';
+            quizAlertMessage.textContent = 'Your weekly quiz is ready!';
           }
         } else {
-          const hoursUntilDue = (nextDue - now) / (1000 * 60 * 60);
-          if (hoursUntilDue <= 24) {
+          // Quiz is locked - check if we should show a "coming soon" alert
+          const hoursUntilAvailable = (nextAvailable - now) / (1000 * 60 * 60);
+          if (hoursUntilAvailable <= 24) {
             quizAlert.classList.remove('hidden');
-            quizAlertMessage.textContent = `Quiz due in ${Math.ceil(hoursUntilDue)} hour${Math.ceil(hoursUntilDue)>1?'s':''}`;
+            quizAlertMessage.textContent = `Next quiz available in ${Math.ceil(hoursUntilAvailable)} hour${Math.ceil(hoursUntilAvailable)>1?'s':''}`;
             quizBubble.classList.add('due');
           } else {
-            // Not due yet, ensure banner is hidden and bubble not flagged
+            // Quiz not available yet and more than 24 hours away
             quizAlert.classList.add('hidden');
             quizBubble.classList.remove('due');
           }

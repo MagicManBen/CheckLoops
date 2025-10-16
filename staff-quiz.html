@@ -1275,7 +1275,7 @@ function updateResultAvatar(scorePercent) {
     
     // Check if quiz was taken this week using master_users only
     async function checkWeeklyQuizStatus() {
-      console.log('📅 Checking weekly quiz status (master_users)…');
+      console.log('📅 Checking weekly quiz status (quiz_attempts)…');
       const fallback = { taken: false, lastAttempt: null, nextAvailable: new Date() };
 
       if (!currentUser?.id) {
@@ -1284,27 +1284,40 @@ function updateResultAvatar(scorePercent) {
       }
 
       try {
-        const { data, error } = await supabase
-          .from('master_users')
-          .select('auth_user_id, next_quiz_due, last_required_quiz_at')
-          .eq('auth_user_id', currentUser.id)
+        const now = new Date();
+        
+        // Check quiz_attempts for the last completed required quiz
+        const { data: lastAttempt, error } = await supabase
+          .from('quiz_attempts')
+          .select('completed_at, mode')
+          .eq('user_id', currentUser.id)
+          .eq('mode', 'required')
+          .not('completed_at', 'is', null)
+          .order('completed_at', { ascending: false })
           .limit(1)
           .maybeSingle();
 
         if (error) {
-          console.error('📅 master_users read error:', error);
+          console.error('📅 quiz_attempts read error:', error);
           return fallback;
         }
 
-        const now = new Date();
-        const nextDue = data?.next_quiz_due ? new Date(data.next_quiz_due) : null;
-        const last = data?.last_required_quiz_at ? new Date(data.last_required_quiz_at) : null;
-
-        if (nextDue && nextDue.getTime() > now.getTime()) {
-          return { taken: true, lastAttempt: last, nextAvailable: nextDue };
+        if (lastAttempt?.completed_at) {
+          const lastCompleted = new Date(lastAttempt.completed_at);
+          const nextAvailable = new Date(lastCompleted);
+          nextAvailable.setDate(nextAvailable.getDate() + 7);
+          
+          console.log('📅 Last quiz completed:', lastCompleted.toISOString());
+          console.log('📅 Next available:', nextAvailable.toISOString());
+          
+          if (now < nextAvailable) {
+            // Quiz was taken recently, still locked
+            return { taken: true, lastAttempt: lastCompleted, nextAvailable: nextAvailable };
+          }
         }
 
-        return { taken: false, lastAttempt: last, nextAvailable: now };
+        // Quiz is available (either never taken or 7+ days have passed)
+        return { taken: false, lastAttempt: lastAttempt?.completed_at ? new Date(lastAttempt.completed_at) : null, nextAvailable: now };
       } catch (err) {
         console.error('📅 Exception checking quiz status:', err);
         return fallback;
@@ -1636,6 +1649,7 @@ function updateResultAvatar(scorePercent) {
             const insertAttempt = {
               site_id: currentProfile?.site_id || null,
               user_id: currentUser.id,
+              mode: 'required',
               started_at: quizStartTime?.toISOString?.() || completedAt.toISOString(),
               completed_at: completedAt.toISOString(),
               total_questions: currentQuestions.length,
