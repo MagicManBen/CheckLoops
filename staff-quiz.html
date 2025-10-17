@@ -1657,13 +1657,49 @@ function updateResultAvatar(scorePercent) {
               score_percent: scorePercent,
               is_practice: false
             };
-            const { error: qaErr } = await supabase
+            const { data: attemptData, error: qaErr } = await supabase
               .from('quiz_attempts')
-              .insert(insertAttempt);
+              .insert(insertAttempt)
+              .select();
+            
             if (qaErr) {
               console.warn('💾 submitQuiz: quiz_attempts insert failed (non-blocking):', qaErr);
             } else {
-              console.log('💾 submitQuiz: quiz_attempts row inserted');
+              console.log('💾 submitQuiz: quiz_attempts row inserted', attemptData);
+              
+              // 3) Save individual question answers for analytics
+              if (attemptData && attemptData[0]) {
+                const attemptId = attemptData[0].id;
+                console.log('💾 submitQuiz: Saving individual answers for attempt ID:', attemptId);
+                
+                try {
+                  const answerRecords = currentQuestions.map((q, idx) => {
+                    const userAnswer = userAnswers[idx];
+                    const correctIndex = q.correct_answer !== null ? q.correct_answer : q.correct_index;
+                    const isCorrect = userAnswer === correctIndex;
+                    
+                    return {
+                      attempt_id: attemptId,
+                      question_id: q.id,
+                      chosen_index: userAnswer,
+                      is_correct: isCorrect,
+                      answered_at: completedAt.toISOString()
+                    };
+                  });
+                  
+                  const { error: answersErr } = await supabase
+                    .from('quiz_attempt_answers')
+                    .insert(answerRecords);
+                  
+                  if (answersErr) {
+                    console.warn('💾 submitQuiz: quiz_attempt_answers insert failed (non-blocking):', answersErr);
+                  } else {
+                    console.log('💾 submitQuiz: Individual answers saved successfully:', answerRecords.length);
+                  }
+                } catch (answersEx) {
+                  console.warn('💾 submitQuiz: quiz_attempt_answers exception (non-blocking):', answersEx);
+                }
+              }
             }
           } catch (qaEx) {
             console.warn('💾 submitQuiz: quiz_attempts insert exception (non-blocking):', qaEx);
