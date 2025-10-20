@@ -7056,8 +7056,15 @@ ${slotTypesList}`
     // ========== SLOT CHECKER FUNCTIONALITY ==========
     
     const STORAGE_KEYS = {
-      RULES: 'slot-checker-rules',
       SCAN_HISTORY: 'slot-checker-history'
+    };
+    
+    // Rule types for slot checker
+    const SLOT_RULE_TYPES = {
+      CLINICIAN_RESTRICTION: 'slot_clinician_restriction',
+      MINIMUM_DURATION: 'slot_minimum_duration',
+      MAXIMUM_DURATION: 'slot_maximum_duration',
+      SLOT_COUNT_LIMIT: 'slot_count_limit'
     };
 
     // Initialize Slot Checker
@@ -7066,7 +7073,7 @@ ${slotTypesList}`
       initSlotChecker();
     });
 
-    function initSlotChecker() {
+    async function initSlotChecker() {
       console.log('Initializing Slot Checker...');
       
       // Tab switching
@@ -7097,10 +7104,35 @@ ${slotTypesList}`
       // Clear all rules
       const clearAllBtn = document.getElementById('clear-all-rules-btn');
       if (clearAllBtn) {
-        clearAllBtn.addEventListener('click', () => {
+        clearAllBtn.addEventListener('click', async () => {
           if (confirm('Are you sure you want to delete all rules? This cannot be undone.')) {
-            localStorage.removeItem(STORAGE_KEYS.RULES);
-            renderRulesList();
+            try {
+              const sb = window.supabase;
+              if (!sb) throw new Error('Supabase not available');
+              
+              const siteId = window.user?.user_metadata?.site_id;
+              if (!siteId) throw new Error('Site ID not found');
+              
+              // Mark all slot checker rules as inactive for this site
+              const { error } = await sb
+                .from('emis_rules')
+                .update({ is_active: false })
+                .eq('site_id', siteId)
+                .in('rule_type', [
+                  SLOT_RULE_TYPES.CLINICIAN_RESTRICTION,
+                  SLOT_RULE_TYPES.MINIMUM_DURATION,
+                  SLOT_RULE_TYPES.MAXIMUM_DURATION,
+                  SLOT_RULE_TYPES.SLOT_COUNT_LIMIT
+                ]);
+              
+              if (error) throw error;
+              
+              await renderRulesList();
+              showToast('All rules deleted', 'info');
+            } catch (err) {
+              console.error('Error clearing rules:', err);
+              alert('Error clearing rules: ' + err.message);
+            }
           }
         });
       }
@@ -7133,7 +7165,7 @@ ${slotTypesList}`
       });
 
       // Load and render rules
-      renderRulesList();
+      await renderRulesList();
     }
 
     function switchSlotCheckerTab(tabName) {
@@ -7246,7 +7278,7 @@ ${slotTypesList}`
       configFields.innerHTML = html;
     }
 
-    function addNewRule() {
+    async function addNewRule() {
       const ruleType = document.getElementById('new-rule-type').value;
       const priority = document.getElementById('new-rule-priority').value;
       
@@ -7279,49 +7311,156 @@ ${slotTypesList}`
         return;
       }
       
-      // Add timestamp and ID
-      ruleConfig.id = Date.now();
-      ruleConfig.created = new Date().toISOString();
-      
-      // Save to localStorage
-      const rules = getRules();
-      rules.push(ruleConfig);
-      saveRules(rules);
-      
-      // Clear form
-      if (clinicianNameInput) clinicianNameInput.value = '';
-      if (slotTypeInput) slotTypeInput.value = '';
-      if (durationInput) durationInput.value = '';
-      if (countInput) countInput.value = '';
-      if (reasonInput) reasonInput.value = '';
-      
-      // Re-render list
-      renderRulesList();
+      try {
+        // Save to Supabase
+        await saveRule(ruleConfig);
+        
+        // Clear form
+        if (clinicianNameInput) clinicianNameInput.value = '';
+        if (slotTypeInput) slotTypeInput.value = '';
+        if (durationInput) durationInput.value = '';
+        if (countInput) countInput.value = '';
+        if (reasonInput) reasonInput.value = '';
+        
+        // Re-render list
+        await renderRulesList();
+      } catch (err) {
+        console.error('Error adding rule:', err);
+        alert('Error saving rule: ' + err.message);
+      }
       
       // Show success message
       showToast('Rule added successfully!', 'success');
     }
 
-    function getRules() {
-      const stored = localStorage.getItem(STORAGE_KEYS.RULES);
-      return stored ? JSON.parse(stored) : [];
+    async function getRules() {
+      try {
+        const sb = window.supabase;
+        if (!sb) {
+          console.error('Supabase not available');
+          return [];
+        }
+        
+        // Get current user's site_id from auth
+        const { data: { user } } = await sb.auth.getUser();
+        if (!user) {
+          console.error('No authenticated user');
+          return [];
+        }
+        
+        const siteId = user.user_metadata?.site_id || 2; // Default to site 2
+        
+        // Fetch all slot checker rules for this site
+        const { data, error } = await sb
+          .from('emis_rules')
+          .select('*')
+          .eq('site_id', siteId)
+          .in('rule_type', [
+            SLOT_RULE_TYPES.CLINICIAN_RESTRICTION,
+            SLOT_RULE_TYPES.MINIMUM_DURATION,
+            SLOT_RULE_TYPES.MAXIMUM_DURATION,
+            SLOT_RULE_TYPES.SLOT_COUNT_LIMIT
+          ])
+          .eq('is_active', true)
+          .order('created_at', { ascending: false });
+        
+        if (error) {
+          console.error('Error fetching rules:', error);
+          return [];
+        }
+        
+        // Convert Supabase format to our internal format
+        return (data || []).map(rule => ({
+          id: rule.id,
+          type: rule.rule_type,
+          priority: rule.rule_config.priority || 'warning',
+          clinicianName: rule.rule_config.clinician_name,
+          slotType: rule.rule_config.slot_type,
+          duration: rule.rule_config.duration,
+          count: rule.rule_config.count,
+          reason: rule.rule_config.reason,
+          created: rule.created_at,
+          createdBy: rule.created_by_email
+        }));
+      } catch (err) {
+        console.error('Error in getRules:', err);
+        return [];
+      }
+    }
+
+    async function saveRule(ruleConfig) {
+      try {
+        const sb = window.supabase;
+        if (!sb) throw new Error('Supabase not available');
+        
+        // Get current user
+        const { data: { user } } = await sb.auth.getUser();
+        if (!user) throw new Error('No authenticated user');
+        
+        const siteId = user.user_metadata?.site_id || 2;
+        
+        // Convert our internal format to Supabase format
+        const supabaseRule = {
+          site_id: siteId,
+          rule_type: ruleConfig.type,
+          rule_config: {
+            priority: ruleConfig.priority,
+            clinician_name: ruleConfig.clinicianName,
+            slot_type: ruleConfig.slotType,
+            duration: ruleConfig.duration,
+            count: ruleConfig.count,
+            reason: ruleConfig.reason
+          },
+          is_active: true,
+          created_by_email: user.email,
+          created_by_user_id: user.id
+        };
+        
+        const { data, error } = await sb
+          .from('emis_rules')
+          .insert([supabaseRule])
+          .select()
+          .single();
+        
+        if (error) throw error;
+        
+        return data;
+      } catch (err) {
+        console.error('Error saving rule:', err);
+        throw err;
+      }
     }
 
     function saveRules(rules) {
-      localStorage.setItem(STORAGE_KEYS.RULES, JSON.stringify(rules));
+      // Deprecated - individual rules are now saved via saveRule()
+      console.warn('saveRules() is deprecated. Use saveRule() for individual rules.');
     }
 
-    function deleteRule(ruleId) {
+    async function deleteRule(ruleId) {
       if (!confirm('Delete this rule?')) return;
       
-      const rules = getRules().filter(r => r.id !== ruleId);
-      saveRules(rules);
-      renderRulesList();
-      showToast('Rule deleted', 'info');
+      try {
+        const sb = window.supabase;
+        if (!sb) throw new Error('Supabase not available');
+        
+        // Instead of deleting, mark as inactive
+        const { error } = await sb
+          .from('emis_rules')
+          .update({ is_active: false })
+          .eq('id', ruleId);
+        
+        if (error) throw error;
+        
+        await renderRulesList();
+        showToast('Rule deleted', 'info');
+      } catch (err) {
+        console.error('Error deleting rule:', err);
+        showToast('Error deleting rule: ' + err.message, 'error');
+      }
     }
 
-    function renderRulesList() {
-      const rules = getRules();
+    async function renderRulesList() {
+      const rules = await getRules();
       const rulesList = document.getElementById('rules-list');
       const noRulesMsg = document.getElementById('no-rules-message');
       const ruleCount = document.getElementById('rule-count');
@@ -7372,7 +7511,7 @@ ${slotTypesList}`
               ${rule.reason ? `<div style="color:#64748b;font-size:13px;font-style:italic;">💡 ${rule.reason}</div>` : ''}
             </div>
             <div style="display:flex;gap:8px;">
-              <button onclick="deleteRule(${rule.id})" style="background:#fee2e2;color:#ef4444;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;transition:all 0.2s;">
+              <button onclick="deleteRule('${rule.id}')" style="background:#fee2e2;color:#ef4444;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;transition:all 0.2s;">
                 <i class="bi bi-trash"></i> Delete
               </button>
             </div>
@@ -7414,7 +7553,7 @@ ${slotTypesList}`
     }
 
     async function startScan() {
-      const rules = getRules();
+      const rules = await getRules();
       
       if (rules.length === 0) {
         alert('Please create at least one rule before scanning.');
