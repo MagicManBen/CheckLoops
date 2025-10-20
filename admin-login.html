@@ -600,6 +600,7 @@
     const { createClient } = supabase;
     
     // Create Supabase client with same settings as staff-common.js
+    // Start with persistSession: true; will be adjusted based on "Remember me" checkbox
     const supabaseClient = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
       auth: { 
         persistSession: true, 
@@ -607,7 +608,8 @@
         detectSessionInUrl: true,
         flowType: 'pkce',
         storage: window.localStorage,
-        storageKey: `sb-${CONFIG.SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`
+        storageKey: `sb-${CONFIG.SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`,
+        persistSessionOnWindowClose: true
       }
     });
     
@@ -720,13 +722,22 @@
         if (profileData && !profileData.onboarding_complete) {
           try { sessionStorage.setItem('onboarding_incomplete', 'true'); } catch(_) {}
         }
-        // Handle remember me functionality - only store email for security
+        // Handle remember me functionality
         if (remember) {
+          // Remember me: persist session beyond browser close
           localStorage.setItem('adminRememberMe', 'true');
           localStorage.setItem('adminRememberedEmail', email);
+          console.log('Remember me enabled: session will persist');
         } else {
+          // Don't remember: clear persistent session flags
           localStorage.removeItem('adminRememberMe');
           localStorage.removeItem('adminRememberedEmail');
+          // Clear auth session from localStorage to ensure logout on browser close
+          try {
+            const storageKey = `sb-${CONFIG.SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`;
+            localStorage.removeItem(storageKey);
+          } catch(_) {}
+          console.log('Remember me disabled: session will end on browser close');
         }
         // Remove any stored passwords for security
         localStorage.removeItem('adminRememberedPassword');

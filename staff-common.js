@@ -13,8 +13,8 @@ const profileRefreshPromises = new Map();
 const siteRefreshPromises = new Map();
 let supabaseClientPromise = null;
 
-function manualCleanupRedirectHome() {
-  try { clearAuthData(true); } catch(_) {}
+function manualCleanupRedirectHome(preserveRememberMe = false) {
+  try { clearAuthData(preserveRememberMe); } catch(_) {}
   try { const s = getSessionStorageSafe(); s && s.clear && s.clear(); } catch(_) {}
   try {
     document.cookie.split(';').forEach(c => {
@@ -745,7 +745,10 @@ if (typeof window !== 'undefined') {
           try { await sb.auth.signOut(); } catch (e) { console.error('Sign out failed:', e); }
         }
       } finally {
-        manualCleanupRedirectHome();
+        // Check if "Remember me" was enabled
+        const shouldRemember = localStorage.getItem('rememberMe') === 'true';
+        // Clear auth data, but preserve remember me flags if enabled
+        manualCleanupRedirectHome(shouldRemember);
       }
     };
   } catch(_) {}
