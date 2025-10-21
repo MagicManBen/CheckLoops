@@ -3512,11 +3512,12 @@ ${slotTypesList}`
   <!-- On-screen debug UI -->
   <style>
     #debug-toggle{position:fixed;left:12px;bottom:12px;width:44px;height:44px;border-radius:10px;background:linear-gradient(180deg,#2563eb,#1d4ed8);color:#fff;display:grid;place-items:center;z-index:11000;cursor:pointer;box-shadow:0 8px 22px rgba(37,99,235,.18);font-weight:700}
-    #debug-panel{position:fixed;left:12px;bottom:68px;width:460px;max-height:44vh;background:rgba(255,255,255,0.98);border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 12px 30px rgba(2,6,23,.2);padding:8px;z-index:11000;display:none;overflow:hidden;font-family:monospace}
-    #debug-panel .dbg-hd{display:flex;align-items:center;justify-content:space-between;padding:6px 4px 8px 4px;border-bottom:1px solid #eef2f7}
+  #debug-panel{position:fixed;left:12px;bottom:68px;width:460px;max-height:70vh;background:rgba(255,255,255,0.98);border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 12px 30px rgba(2,6,23,.2);padding:8px;z-index:11000;display:none;overflow:visible;font-family:monospace}
+  #debug-panel .dbg-hd{display:flex;align-items:center;justify-content:space-between;padding:6px 4px 8px 4px;border-bottom:1px solid #eef2f7}
+  #debug-panel .dbg-hd .dbg-actions button#debug-autoscroll{margin-left:6px;padding:6px 8px;border-radius:6px;border:1px solid #e2e8f0;background:#fff;cursor:pointer}
     #debug-panel .dbg-hd .title{font-weight:700;color:#0f172a}
     #debug-panel .dbg-actions button{margin-left:6px;padding:6px 8px;border-radius:6px;border:1px solid #e2e8f0;background:#fff;cursor:pointer}
-    #debug-logs{overflow:auto;padding:6px;max-height:calc(44vh - 56px);font-size:12px;color:#0f172a}
+  #debug-logs{overflow:auto;padding:6px;max-height:calc(70vh - 56px);font-size:12px;color:#0f172a}
     .debug-line{padding:6px;border-bottom:1px solid #f6f8fb;white-space:pre-wrap}
     .debug-log{color:#0f172a}
     .debug-info{color:#0b74c9}
@@ -3531,6 +3532,7 @@ ${slotTypesList}`
       <div class="dbg-actions">
         <button id="debug-clear" type="button">Clear</button>
         <button id="debug-copy" type="button">Copy</button>
+        <button id="debug-autoscroll" type="button" title="Toggle auto-scroll">Auto</button>
         <button id="debug-close" type="button">Close</button>
         <button id="debug-ai-req" type="button">AI Req</button>
         <button id="debug-ai-res" type="button">AI Res</button>
@@ -3542,16 +3544,20 @@ ${slotTypesList}`
 
   <script>
     (function(){
-      const MAX_LINES = 1000;
+      // Soft buffer sizes: allow many lines but trim in batches to avoid huge DOM slowdowns
+      const MAX_LINES = 50000;
+      const TRIM_BATCH = 500; // remove this many when exceeding MAX_LINES
       const toggle = document.getElementById('debug-toggle');
       const panel = document.getElementById('debug-panel');
       const logs = document.getElementById('debug-logs');
       const clearBtn = document.getElementById('debug-clear');
       const copyBtn = document.getElementById('debug-copy');
+      const autoBtn = document.getElementById('debug-autoscroll');
       const closeBtn = document.getElementById('debug-close');
     const aiReqBtn = document.getElementById('debug-ai-req');
     const aiResBtn = document.getElementById('debug-ai-res');
     const aiClassBtn = document.getElementById('debug-ai-class');
+    let autoScroll = true;
 
       function formatArg(a){
         try {
@@ -3570,9 +3576,14 @@ ${slotTypesList}`
           const text = args.map(formatArg).join(' ');
           el.textContent = `[${ts}] ${level.toUpperCase()}: ${text}`;
           logs.appendChild(el);
-          // trim
-          while(logs.childNodes.length > MAX_LINES) logs.removeChild(logs.firstChild);
-          logs.scrollTop = logs.scrollHeight;
+          // soft-trim in batches when we exceed MAX_LINES to avoid long loops
+          if (logs.childNodes.length > MAX_LINES) {
+            for (let i = 0; i < TRIM_BATCH && logs.childNodes.length > 0; i++) {
+              logs.removeChild(logs.firstChild);
+            }
+          }
+          // Auto-scroll unless the user has scrolled up
+          if (autoScroll) logs.scrollTop = logs.scrollHeight;
         }catch(e){/* ignore */}
       }
 
@@ -3602,18 +3613,68 @@ ${slotTypesList}`
       });
       closeBtn.addEventListener('click', ()=>{ panel.style.display = 'none'; panel.setAttribute('aria-hidden','true'); });
       clearBtn.addEventListener('click', ()=>{ if (logs) logs.innerHTML = ''; });
+      // Robust copy handler with fallback for older browsers
       copyBtn.addEventListener('click', async ()=>{
+        const origText = copyBtn.textContent;
         try{
           const text = Array.from(logs.children).map(ch=>ch.textContent).join('\n');
-          await navigator.clipboard.writeText(text);
-          const orig = copyBtn.textContent;
+          // Try navigator.clipboard first
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+          } else {
+            // Fallback to textarea + execCommand
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            // Avoid page jump
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            ta.style.top = '0';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            const ok = document.execCommand('copy');
+            document.body.removeChild(ta);
+            if (!ok) throw new Error('Fallback copy failed');
+          }
+
           copyBtn.textContent = 'Copied!';
-          setTimeout(()=>{ copyBtn.textContent = orig; }, 1500);
+          setTimeout(()=>{ copyBtn.textContent = origText; }, 1500);
         }catch(e){ 
           console.error('Copy failed:', e);
-          alert('Copy failed: ' + e.message); 
+          copyBtn.textContent = 'Copy failed';
+          setTimeout(()=>{ copyBtn.textContent = origText; }, 2000);
+          alert('Copy failed: ' + (e && e.message ? e.message : String(e)) ); 
         }
       });
+
+      // Auto-scroll toggle
+      function setAutoScroll(val){
+        autoScroll = !!val;
+        if (!autoBtn) return;
+        autoBtn.textContent = autoScroll ? 'Auto' : 'Paused';
+        autoBtn.style.background = autoScroll ? '#fff' : '#f8fafc';
+      }
+      if (autoBtn) {
+        autoBtn.addEventListener('click', () => {
+          setAutoScroll(!autoScroll);
+          if (autoScroll) logs.scrollTop = logs.scrollHeight;
+        });
+        setAutoScroll(true);
+      }
+
+      // Pause auto-scroll when user scrolls up
+      if (logs) {
+        logs.addEventListener('scroll', () => {
+          try {
+            const atBottom = logs.scrollHeight - logs.scrollTop - logs.clientHeight <= 20;
+            if (!atBottom && autoScroll) {
+              setAutoScroll(false);
+            } else if (atBottom && !autoScroll) {
+              setAutoScroll(true);
+            }
+          } catch (e) { /* ignore */ }
+        });
+      }
 
       // make sure panel exists before any early logs
       console.log('Debug panel initialized');
@@ -4546,35 +4607,65 @@ ${slotTypesList}`
 
         const selectedSeverity = document.getElementById('ai-rule-severity').value;
 
+        console.log('🤖 === GENERATING RULE ===');
+        console.log('User input:', input);
+        console.log('Severity:', selectedSeverity);
+        console.log('Site ID:', this.currentSite);
+        console.log('Context - Clinicians:', this.contextData.clinicians.length, 'available');
+        console.log('Context - Slot Types:', this.contextData.slotTypes.length, 'available');
+
         const btn = document.getElementById('ai-generate-btn');
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Generating...';
 
         try {
-          console.log('Generating rule...');
+          console.log('📡 Calling AI edge function...');
+          
+          const requestBody = {
+            rule_text: input,
+            site_id: this.currentSite,
+            context: {
+              available_clinicians: this.contextData.clinicians,
+              available_slot_types: this.contextData.slotTypes
+            }
+          };
+          
+          console.log('Request body:', JSON.stringify(requestBody, null, 2));
           
           const { data, error } = await window.supabase.functions.invoke('ai-rule-generator', {
-            body: {
-              rule_text: input,
-              site_id: this.currentSite,
-              context: {
-                available_clinicians: this.contextData.clinicians,
-                available_slot_types: this.contextData.slotTypes
-              }
-            }
+            body: requestBody
           });
 
-          if (error) throw error;
-          if (!data.success) throw new Error(data.error || 'Failed to generate rule');
+          console.log('📥 AI response received:', data);
+
+          if (error) {
+            console.error('❌ Edge function error:', error);
+            throw error;
+          }
+          
+          if (!data.success) {
+            console.error('❌ AI generation failed:', data.error);
+            throw new Error(data.error || 'Failed to generate rule');
+          }
+
+          console.log('✅ AI generated rule:', JSON.stringify(data.rule, null, 2));
+          console.log('Human readable:', data.human_readable);
+          
+          if (data.debug) {
+            console.log('🐛 Debug info from AI:', data.debug);
+          }
 
           // Override severity with user's selection
           data.rule.severity = selectedSeverity;
+          
+          console.log('Final rule (with user severity):', JSON.stringify(data.rule, null, 2));
           
           this.generatedRule = data.rule;
           this.displayGeneratedRule(data.rule, data.human_readable);
           
         } catch (error) {
-          console.error('Failed to generate rule:', error);
+          console.error('❌ Failed to generate rule:', error);
+          console.error('Error details:', JSON.stringify(error, null, 2));
           alert('Failed to generate rule: ' + error.message);
         } finally {
           btn.disabled = false;
@@ -4607,17 +4698,28 @@ ${slotTypesList}`
       async saveRule() {
         if (!this.generatedRule) return;
 
+        console.log('💾 === SAVING RULE ===');
+        console.log('Rule to save:', JSON.stringify(this.generatedRule, null, 2));
+
         const btn = document.getElementById('ai-save-btn');
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Saving...';
 
         try {
+          console.log('📤 Sending to database...');
+          
           const { data, error } = await window.supabase
             .from('emis_validation_rules')
             .insert([this.generatedRule])
             .select();
 
-          if (error) throw error;
+          if (error) {
+            console.error('❌ Database error:', error);
+            console.error('Error details:', JSON.stringify(error, null, 2));
+            throw error;
+          }
+
+          console.log('✅ Rule saved successfully:', data);
 
           // Success!
           document.getElementById('ai-rule-preview').style.display = 'none';
@@ -4631,8 +4733,12 @@ ${slotTypesList}`
           alert('✅ Rule saved successfully!');
           
         } catch (error) {
-          console.error('Failed to save rule:', error);
-          alert('Failed to save rule: ' + error.message);
+          console.error('❌ Failed to save rule:', error);
+          console.error('Error message:', error.message);
+          console.error('Error details:', JSON.stringify(error, null, 2));
+          
+          // Show detailed error to user
+          alert(`Failed to save rule:\n\n${error.message}\n\nCheck browser console for full details.`);
         } finally {
           btn.disabled = false;
           btn.innerHTML = '<i class="bi bi-save"></i> Save Rule';
@@ -4661,41 +4767,166 @@ ${slotTypesList}`
       },
 
       async runRuleTest(rule) {
+        console.log('🧪 === RUNNING RULE TEST ===');
+        console.log('Rule:', JSON.stringify(rule, null, 2));
+        
         // Simple test: query recent appointments from emis_apps_filled
-        const daysToCheck = 7;
+        const daysToCheck = 30;  // ← INCREASED FROM 7 TO 30 DAYS
+        const startDate = new Date(Date.now() - daysToCheck * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        
+        console.log(`📅 Querying appointments from ${startDate} onwards (${daysToCheck} days)`);
+        
         const { data, error } = await window.supabase
           .from('emis_apps_filled')
           .select('*')
           .eq('site_id', this.currentSite)
-          .gte('"Appointment Date"', new Date(Date.now() - daysToCheck * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
+          .gte('"Appointment Date"', startDate)
           .limit(1000);
 
         if (error) throw error;
+
+        console.log(`📊 Retrieved ${data.length} appointments to test`);
+        
+        // Log sample data structure
+        if (data.length > 0) {
+          const sample = data[0];
+          console.log('Sample appointment structure:', {
+            date: sample['Appointment Date'],
+            time: sample['Appointment Time'],
+            duration: sample['Slot Duration'],
+            slotType: sample['Slot Type'],
+            clinician: sample['Full Name of the Session Holder of the Session']
+          });
+          
+          // Get unique clinicians to help debug matching
+          const uniqueClinicians = [...new Set(data.map(row => row['Full Name of the Session Holder of the Session']))];
+          console.log(`📋 Unique clinicians in dataset (${uniqueClinicians.length}):`, uniqueClinicians.slice(0, 10));
+          
+          // Check if we have any Saeed appointments
+          const saeedAppointments = data.filter(row => {
+            const clinician = row['Full Name of the Session Holder of the Session'] || '';
+            return clinician.toLowerCase().includes('saeed');
+          });
+          console.log(`🔍 Found ${saeedAppointments.length} appointments with "saeed" in clinician name`);
+          
+          if (saeedAppointments.length > 0) {
+            console.log('Sample Saeed appointments:', saeedAppointments.slice(0, 3).map(a => ({
+              date: a['Appointment Date'],
+              time: a['Appointment Time'],
+              duration: a['Slot Duration'],
+              clinician: a['Full Name of the Session Holder of the Session']
+            })));
+          }
+        }
 
         // Apply rule logic based on rule type
         const violations = [];
         
         if (rule.rule_type === 'slot_duration') {
-          const { slot_type, min_duration } = rule.config;
+          console.log('🔍 Testing slot_duration rule...');
+          
+          const config = rule.config;
+          console.log('Rule config:', JSON.stringify(config, null, 2));
+          
+          // Extract config values
+          const slotTypes = config.slot_types || [];
+          const operator = config.operator || 'gte';
+          const value = config.value || config.min_duration || 0;
+          const appliesToAllClinicians = config.applies_to_all_clinicians !== false;
+          const clinicianNames = config.clinician_names || [];
+          
+          console.log(`📋 Rule parameters:
+  - Slot types filter: ${slotTypes.length > 0 ? slotTypes.join(', ') : 'ALL SLOT TYPES'}
+  - Operator: ${operator}
+  - Value: ${value} minutes
+  - Applies to all clinicians: ${appliesToAllClinicians}
+  - Specific clinicians: ${clinicianNames.length > 0 ? clinicianNames.join(', ') : 'N/A'}`);
+          
+          let testedCount = 0;
+          let matchedClinicianCount = 0;
+          let matchedSlotTypeCount = 0;
+          let debugMatchAttempts = 0;
           
           data.forEach(row => {
-            const duration = row['Slot Duration'] || 0;
-            const rowSlotType = row['Slot Type'];
+            const duration = parseInt(row['Slot Duration']) || 0;
+            const rowSlotType = row['Slot Type'] || '';
+            const rowClinician = row['Full Name of the Session Holder of the Session'] || '';
             
-            // If slot_type is specified, check for match
-            const slotTypeMatch = !slot_type || rowSlotType === slot_type;
+            // Debug: Log first few matching attempts
+            if (debugMatchAttempts < 5 && clinicianNames.length > 0) {
+              console.log(`Attempt ${debugMatchAttempts + 1}: Comparing "${rowClinician}" with [${clinicianNames.join(', ')}]`);
+              debugMatchAttempts++;
+            }
             
-            if (slotTypeMatch && duration < min_duration) {
+            // Check if this appointment matches our filters
+            
+            // 1. Clinician filter
+            let clinicianMatch = appliesToAllClinicians;
+            if (!appliesToAllClinicians && clinicianNames.length > 0) {
+              clinicianMatch = clinicianNames.some(name => 
+                rowClinician.toLowerCase().includes(name.toLowerCase()) ||
+                name.toLowerCase().includes(rowClinician.toLowerCase())
+              );
+              
+              // Debug: Log first match
+              if (clinicianMatch && matchedClinicianCount === 0) {
+                console.log(`✅ First clinician match! Row clinician: "${rowClinician}", Matched against: "${clinicianNames.join(', ')}"`);
+              }
+            }
+            
+            if (clinicianMatch) matchedClinicianCount++;
+            
+            // 2. Slot type filter (empty array = all slot types)
+            let slotTypeMatch = slotTypes.length === 0;
+            if (!slotTypeMatch) {
+              slotTypeMatch = slotTypes.some(type => 
+                rowSlotType.toLowerCase().includes(type.toLowerCase()) ||
+                type.toLowerCase().includes(rowSlotType.toLowerCase())
+              );
+            }
+            
+            if (slotTypeMatch) matchedSlotTypeCount++;
+            
+            // Only test if both filters pass
+            if (!clinicianMatch || !slotTypeMatch) {
+              return; // Skip this row
+            }
+            
+            testedCount++;
+            
+            // Apply operator
+            let violates = false;
+            switch (operator) {
+              case 'gte': violates = duration < value; break;
+              case 'gt':  violates = duration <= value; break;
+              case 'lte': violates = duration > value; break;
+              case 'lt':  violates = duration >= value; break;
+              case 'eq':  violates = duration !== value; break;
+              default:    violates = duration < value;
+            }
+            
+            if (violates) {
               violations.push({
                 date: row['Appointment Date'],
                 time: row['Appointment Time'],
-                clinician: row['Full Name of the Session Holder of the Session'],
+                clinician: rowClinician,
                 slot_type: rowSlotType,
                 duration: duration,
-                reason: `Duration ${duration}min is less than required ${min_duration}min`
+                reason: `Duration ${duration}min violates rule (${operator} ${value}min)`
               });
             }
           });
+          
+          console.log(`✅ Test complete:
+  - Total appointments: ${data.length}
+  - Matched clinician filter: ${matchedClinicianCount}
+  - Matched slot type filter: ${matchedSlotTypeCount}
+  - Actually tested: ${testedCount}
+  - Violations found: ${violations.length}`);
+          
+          if (violations.length > 0) {
+            console.log('❌ Sample violations:', violations.slice(0, 3));
+          }
         }
         
         else if (rule.rule_type === 'slot_count') {
@@ -4795,11 +5026,37 @@ ${slotTypesList}`
             reason: 'Custom rules require manual validation - automated testing not available'
           });
         }
+        
+        else {
+          console.log(`⚠️ Unknown rule type: ${rule.rule_type} - cannot test automatically`);
+          violations.push({
+            date: 'N/A',
+            time: 'N/A',
+            clinician: 'N/A',
+            slot_type: 'Unknown Rule Type',
+            duration: 0,
+            reason: `Rule type "${rule.rule_type}" testing not yet implemented`
+          });
+        }
 
-        return { total: data.length, violations };
+        console.log('🏁 === TEST COMPLETE ===');
+        
+        return { 
+          total: data.length, 
+          violations,
+          debug: {
+            rule_type: rule.rule_type,
+            rule_config: rule.config,
+            date_range: `${startDate} to today`,
+            total_appointments_queried: data.length,
+            violations_found: violations.length
+          }
+        };
       },
 
       displayTestResults(results) {
+        console.log('📊 Displaying test results:', results);
+        
         const testResults = document.getElementById('ai-test-results');
         const content = document.getElementById('ai-test-content');
         
@@ -4811,12 +5068,25 @@ ${slotTypesList}`
               <i class="bi bi-check-circle-fill" style="font-size:48px;color:#22c55e;"></i>
               <p style="margin-top:12px;font-weight:600;color:#166534;">No violations found!</p>
               <p style="font-size:13px;color:#64748b;">Tested ${results.total} appointments from the last 7 days (limit 1000)</p>
-              <p style="font-size:11px;color:#64748b;margin-top:6px;">Debug: counts use case-insensitive, partial slot-type matches over the last 7 days.</p>
+              ${results.debug ? `
+                <details style="margin-top:12px;text-align:left;font-size:11px;color:#64748b;">
+                  <summary style="cursor:pointer;font-weight:600;">📊 Debug Info (click to expand)</summary>
+                  <pre style="background:#f8fafc;padding:8px;border-radius:4px;margin-top:8px;overflow-x:auto;">${this.escapeHtml(JSON.stringify(results.debug, null, 2))}</pre>
+                </details>
+              ` : ''}
             </div>
           `;
         } else {
           content.innerHTML = `
-            <p style="font-weight:600;color:#92400e;margin-bottom:12px;">Found ${results.violations.length} violations in ${results.total} appointments tested:</p>
+            <p style="font-weight:600;color:#92400e;margin-bottom:12px;">
+              Found ${results.violations.length} violations in ${results.total} appointments tested
+            </p>
+            ${results.debug ? `
+              <details style="margin-bottom:12px;font-size:11px;color:#64748b;">
+                <summary style="cursor:pointer;font-weight:600;">📊 Debug Info (click to expand)</summary>
+                <pre style="background:#f8fafc;padding:8px;border-radius:4px;margin-top:8px;overflow-x:auto;font-size:10px;">${this.escapeHtml(JSON.stringify(results.debug, null, 2))}</pre>
+              </details>
+            ` : ''}
             <div style="max-height:300px;overflow-y:auto;background:white;border-radius:8px;padding:12px;">
               ${results.violations.slice(0, 20).map(v => `
                 <div style="border-bottom:1px solid #f3f4f6;padding:8px 0;">
@@ -5168,37 +5438,6 @@ ${slotTypesList}`
           `;
         }
 
-        formFields.innerHTML = html;
-      },
-          html = `
-            <div style="margin-bottom:16px;">
-              <label style="display:block;font-weight:500;color:#475569;margin-bottom:8px;">Clinician (Optional)</label>
-              <select id="manual-clinician" class="form-select" style="border-radius:8px;" multiple size="5">
-                ${this.contextData.clinicians.map(c => `<option value="${this.escapeHtml(c)}">${this.escapeHtml(c)}</option>`).join('')}
-              </select>
-              <small style="color:#64748b;">Hold Ctrl/Cmd to select multiple</small>
-            </div>
-            <div style="margin-bottom:16px;">
-              <label style="display:block;font-weight:500;color:#475569;margin-bottom:8px;">Slot Types (Optional)</label>
-              <select id="manual-slot-types" class="form-select" style="border-radius:8px;" multiple size="5">
-                ${this.contextData.slotTypes.map(s => `<option value="${this.escapeHtml(s)}">${this.escapeHtml(s)}</option>`).join('')}
-              </select>
-              <small style="color:#64748b;">Hold Ctrl/Cmd to select multiple</small>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-              <div>
-                <label style="display:block;font-weight:500;color:#475569;margin-bottom:8px;">Operator</label>
-                <select id="manual-operator" class="form-select" style="border-radius:8px;">
-                  <option value="gte">Greater than or equal (≥)</option>
-                  <option value="lte">Less than or equal (≤)</option>
-                  <option value="eq">Equal to (=)</option>
-                </select>
-              </div>
-              <div>
-                <label style="display:block;font-weight:500;color:#475569;margin-bottom:8px;">Duration (minutes)</label>
-                <input type="number" id="manual-value" class="form-control" placeholder="e.g., 15" min="1" style="border-radius:8px;">
-              </div>
-            </div>
         formFields.innerHTML = html;
       },
 

@@ -299,6 +299,21 @@ RETURN ONLY JSON: Do not include any text before or after the JSON object.`
       )
     }
 
+    // **FIX: Map AI rule types to database-compatible types**
+    // The DB constraint only allows: daily_check, slot_duration, slot_count, custom
+    const ruleTypeMapping: Record<string, string> = {
+      'slot_duration_requirement': 'slot_duration',
+      'daily_slot_count': 'daily_check',
+      'clinician_slot_restriction': 'custom',
+      'slot_distribution': 'custom',
+      'time_restriction': 'custom',
+      'slot_sequence': 'custom'
+    }
+
+    const dbRuleType = ruleTypeMapping[parsedRule.rule_type] || parsedRule.rule_type
+
+    console.log(`Mapping rule_type: ${parsedRule.rule_type} → ${dbRuleType}`)
+
     // Return the structured rule
     return new Response(
       JSON.stringify({
@@ -307,13 +322,19 @@ RETURN ONLY JSON: Do not include any text before or after the JSON object.`
           site_id: site_id,
           name: parsedRule.name,
           description: parsedRule.description || '',
-          rule_type: parsedRule.rule_type,
+          rule_type: dbRuleType, // Use mapped type
           severity: parsedRule.severity || 'warning',
           config: parsedRule.config,
           enabled: true
         },
         human_readable: parsedRule.human_readable || parsedRule.description,
-        original_input: rule_text
+        original_input: rule_text,
+        ai_rule_type: parsedRule.rule_type, // Keep original for reference
+        debug: {
+          ai_generated_type: parsedRule.rule_type,
+          db_compatible_type: dbRuleType,
+          config_keys: Object.keys(parsedRule.config || {})
+        }
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
