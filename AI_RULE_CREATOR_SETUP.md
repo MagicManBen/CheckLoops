@@ -22,7 +22,7 @@ cd /Users/benhoward/Desktop/CheckLoop/checkloops
 supabase functions deploy ai-rule-generator --no-verify-jwt
 
 # Set the OpenAI API key as an environment secret
-supabase secrets set OPENAI_API_KEY=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
+supabase secrets set OPENAI_API_KEY=<YOUR_OPENAI_API_KEY>
 ```
 
 ### Step 2: Test the Edge Function

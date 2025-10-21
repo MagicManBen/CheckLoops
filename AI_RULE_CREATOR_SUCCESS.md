@@ -132,7 +132,7 @@ curl -X POST 'https://unveoqnlqnobufhublyw.supabase.co/functions/v1/ai-rule-gene
 
 The OpenAI API key is securely stored in Supabase secrets:
 ```
-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
+<REDACTED_OPENAI_KEY>
 ```
 ✅ Already configured and working
 

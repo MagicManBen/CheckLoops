@@ -19,8 +19,24 @@ fi
 echo "✅ Supabase CLI found"
 echo ""
 
-# Set the OpenAI API key
-OPENAI_KEY="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"
+# Set the OpenAI API key. For security, do NOT hardcode your key here.
+# Either export OPENAI_KEY in your shell, or create a local .env with the key and load it.
+# Example (.env):
+# OPENAI_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Read key from environment
+OPENAI_KEY="${OPENAI_KEY:-}"
+if [ -z "$OPENAI_KEY" ]; then
+    if [ -f .env ]; then
+        # shellcheck disable=SC1091
+        export $(grep -v '^#' .env | xargs)
+        OPENAI_KEY="${OPENAI_KEY:-}"
+    fi
+fi
+if [ -z "$OPENAI_KEY" ]; then
+    echo "ERROR: OPENAI_KEY not set. Export OPENAI_KEY or add it to a local .env file. Aborting."
+    exit 1
+fi
 
 echo "🔑 Setting OpenAI API key..."
 supabase secrets set OPENAI_API_KEY="$OPENAI_KEY"
