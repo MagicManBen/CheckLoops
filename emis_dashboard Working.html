@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CheckLoops — EMIS Dashboard</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+<script src="config.js"></script>
+<script src="supabase-js.js"></script>
+<script type="module">
+  const { createClient } = supabase;
+  window.supabaseCreateClient = createClient;
+  const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false,
+      flowType: 'pkce',
+      storage: window.localStorage,
+      storageKey: `sb-${(CONFIG.SUPABASE_URL||'').split('//')[1]?.split('.')[0] || 'app'}-auth-token`
+    }
+  });
+  window.supabase = sb;
+</script>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background: #f5f5f7;
+    margin: 0;
+    padding: 20px;
+  }
+  
+  .dashboard-container {
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  
+  .week-section {
+    margin-bottom: 40px;
+  }
+  
+  .week-header {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1d1d1f;
+    margin-bottom: 16px;
+    text-align: right;
+    padding-right: 20px;
+  }
+  
+  .days-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 16px;
+  }
+  
+  .day-card {
+    background: white;
+    border-radius: 20px;
+    padding: 24px 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    text-align: center;
+  }
+  
+  .day-name {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1d1d1f;
+    margin-bottom: 12px;
+  }
+  
+  .day-date {
+    background: #e5e5e7;
+    border-radius: 16px;
+    padding: 12px;
+    font-size: 16px;
+    font-weight: 500;
+    color: #1d1d1f;
+    margin-bottom: 16px;
+  }
+  
+  .metric {
+    border-radius: 50px;
+    padding: 10px 20px;
+    margin: 6px 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  
+  .metric.otd { background: #ffcc00; color: #1d1d1f; }
+  .metric.otd.green { background: #34c759; }
+  .metric.otd.red { background: #ff3b30; }
+  
+  .metric.not-bkd { background: #ffcc00; color: #1d1d1f; }
+  .metric.not-bkd.green { background: #34c759; }
+  .metric.not-bkd.red { background: #ff3b30; }
+  
+  .metric.partner { background: #34c759; }
+  .metric.duty { background: #34c759; }
+  
+  .metric-label {
+    font-size: 14px;
+  }
+  
+  .metric-value {
+    font-size: 18px;
+    font-weight: 700;
+  }
+  
+  .checkmark {
+    font-size: 20px;
+    margin-left: 8px;
+  }
+  
+  .loading {
+    text-align: center;
+    padding: 60px;
+    font-size: 18px;
+    color: #86868b;
+  }
+  
+  .error {
+    background: #ff3b30;
+    color: white;
+    padding: 20px;
+    border-radius: 12px;
+    margin: 20px 0;
+  }
+  
+  /* Summary box on the right */
+  .summary-box {
+    position: absolute;
+    top: 0;
+    right: 0;
+    background: white;
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    min-width: 250px;
+  }
+  
+  .summary-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1d1d1f;
+    margin-bottom: 12px;
+  }
+  
+  .summary-stats {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #f5f5f7;
+  }
+  
+  .summary-stats:last-child {
+    border-bottom: none;
+  }
+  
+  .stat-label {
+    font-size: 12px;
+    color: #86868b;
+  }
+  
+  .stat-value {
+    font-size: 20px;
+    font-weight: 700;
+  }
+</style>
+</head>
+<body>
+  <div class="dashboard-container">
+    <div id="loading" class="loading">
+      <i class="bi bi-hourglass-split"></i> Loading appointment data...
+    </div>
+    
+    <div id="error" style="display:none;" class="error"></div>
+    
+    <div id="dashboard" style="display:none;">
+      <!-- Current Week -->
+      <div class="week-section">
+        <div style="position:relative;">
+          <div class="week-header">This Week</div>
+          <div id="current-week" class="days-grid"></div>
+        </div>
+      </div>
+      
+      <!-- Next Week -->
+      <div class="week-section">
+        <div style="position:relative;">
+          <div class="week-header">Next Week</div>
+          <div class="summary-box">
+            <div class="summary-title">OTD Booked In Advanced For Next Week</div>
+            <div class="summary-stats">
+              <span class="stat-label">(Blank)</span>
+              <div>
+                <div class="stat-value" id="next-week-blank">0</div>
+                <div class="stat-label">29</div>
+              </div>
+            </div>
+          </div>
+          <div id="next-week" class="days-grid"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    
+    // Get Monday of current week
+    function getMonday(d) {
+      d = new Date(d);
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+      return new Date(d.setDate(diff));
+    }
+    
+    // Format date as "13 Oct..." or "20 October"
+    function formatDate(date, short = true) {
+      const day = date.getDate();
+      const month = date.toLocaleDateString('en-GB', { month: short ? 'short' : 'long' });
+      return `${day} ${month}${short ? '...' : ''}`;
+    }
+    
+    // Get date string in YYYY-MM-DD format
+    function getDateString(date) {
+      return date.toISOString().split('T')[0];
+    }
+    
+    // Add days to a date
+    function addDays(date, days) {
+      const result = new Date(date);
+      result.setDate(result.getDate() + days);
+      return result;
+    }
+    
+    // Check if value meets threshold
+    function checkThreshold(value, dayOfWeek, metric) {
+      if (metric === 'otd' || metric === 'not-bkd') {
+        const threshold = dayOfWeek === 'Monday' ? 25 : 20;
+        return value >= threshold;
+      }
+      return true; // Other metrics always green
+    }
+    
+    // Create day card HTML
+    function createDayCard(dayName, date, metrics) {
+      const isMonday = dayName === 'Monday';
+      
+      const otdGreen = checkThreshold(metrics.otd, dayName, 'otd');
+      const notBkdGreen = checkThreshold(metrics.notBkd, dayName, 'not-bkd');
+      
+      return `
+        <div class="day-card">
+          <div class="day-name">${dayName}</div>
+          <div class="day-date">${formatDate(date)}</div>
+          
+          <div class="metric otd ${otdGreen ? 'green' : 'red'}">
+            <span class="metric-label">OTD</span>
+            <span class="metric-value">${metrics.otd}</span>
+          </div>
+          
+          <div class="metric not-bkd ${notBkdGreen ? 'green' : 'red'}">
+            <span class="metric-label">Not BKD</span>
+            <span class="metric-value">${metrics.notBkd}</span>
+          </div>
+          
+          <div class="metric partner">
+            <span class="metric-label">Partner In</span>
+            <span class="checkmark">✓</span>
+          </div>
+          
+          <div class="metric duty">
+            <span class="metric-label">Duty</span>
+            <span class="checkmark">✓</span>
+          </div>
+        </div>
+      `;
+    }
+    
+    // Load slot type mappings
+    async function loadSlotMappings() {
+      try {
+        const { data: user } = await window.supabase.auth.getUser();
+        if (!user || !user.user) {
+          throw new Error('Not authenticated');
+        }
+        
+        const { data: userProfile } = await window.supabase
+          .from('master_users')
+          .select('site_id')
+          .eq('auth_user_id', user.user.id)
+          .single();
+        
+        if (!userProfile || !userProfile.site_id) {
+          throw new Error('Site ID not found');
+        }
+        
+        const { data: mappings, error } = await window.supabase
+          .from('slot_type_mappings')
+          .select('*')
+          .eq('site_id', userProfile.site_id);
+        
+        if (error) throw error;
+        
+        // Build lookup maps
+        const bookOnDayTypes = [];
+        const dutyTypes = [];
+        
+        (mappings || []).forEach(mapping => {
+          if (mapping.hardcoded_type === 'on_the_day') {
+            bookOnDayTypes.push(mapping.matched_emis_type);
+          }
+          if (mapping.hardcoded_type === 'duty' || mapping.matched_emis_type.toLowerCase().includes('duty')) {
+            dutyTypes.push(mapping.matched_emis_type);
+          }
+        });
+        
+        return {
+          bookOnDayTypes,
+          dutyTypes
+        };
+      } catch (error) {
+        console.error('Error loading slot mappings:', error);
+        return {
+          bookOnDayTypes: [],
+          dutyTypes: []
+        };
+      }
+    }
+    
+    // Load appointment data for a specific date
+    async function loadAppointmentsForDate(dateStr, slotMappings) {
+      try {
+        // Get OTD (Book on the Day) count
+        let otdCount = 0;
+        if (slotMappings.bookOnDayTypes.length > 0) {
+          const { data: otdData, error: otdError } = await window.supabase
+            .from('emis_apps_filled')
+            .select('*', { count: 'exact', head: true })
+            .eq('appointment_date', dateStr)
+            .in('slot_type', slotMappings.bookOnDayTypes);
+          
+          if (!otdError) {
+            otdCount = otdData || 0;
+          }
+        }
+        
+        // Get Not BKD (Available appointments) count
+        let notBkdCount = 0;
+        if (slotMappings.bookOnDayTypes.length > 0) {
+          const { data: availData, error: availError } = await window.supabase
+            .from('emis_apps_filled')
+            .select('*', { count: 'exact', head: true })
+            .eq('appointment_date', dateStr)
+            .eq('availability', 'Available')
+            .in('slot_type', slotMappings.bookOnDayTypes);
+          
+          if (!availError) {
+            notBkdCount = availData || 0;
+          }
+        }
+        
+        // Check for Duty slots
+        let hasDuty = false;
+        if (slotMappings.dutyTypes.length > 0) {
+          const { data: dutyData, error: dutyError } = await window.supabase
+            .from('emis_apps_filled')
+            .select('id', { count: 'exact', head: false })
+            .eq('appointment_date', dateStr)
+            .in('slot_type', slotMappings.dutyTypes)
+            .limit(1);
+          
+          if (!dutyError && dutyData && dutyData.length > 0) {
+            hasDuty = true;
+          }
+        }
+        
+        return {
+          otd: otdCount,
+          notBkd: notBkdCount,
+          partnerIn: 999, // Placeholder as requested
+          hasDuty: hasDuty
+        };
+      } catch (error) {
+        console.error(`Error loading data for ${dateStr}:`, error);
+        return {
+          otd: 0,
+          notBkd: 0,
+          partnerIn: 999,
+          hasDuty: false
+        };
+      }
+    }
+    
+    // Main dashboard load function
+    async function loadDashboard() {
+      try {
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('error').style.display = 'none';
+        document.getElementById('dashboard').style.display = 'none';
+        
+        // Load slot type mappings first
+        const slotMappings = await loadSlotMappings();
+        
+        if (slotMappings.bookOnDayTypes.length === 0) {
+          throw new Error('No slot type mappings found. Please configure slot types in emis_checker.html first.');
+        }
+        
+        // Get current week's Monday
+        const today = new Date();
+        const currentMonday = getMonday(today);
+        const nextMonday = addDays(currentMonday, 7);
+        
+        // Load data for current week
+        const currentWeekData = [];
+        for (let i = 0; i < 5; i++) {
+          const date = addDays(currentMonday, i);
+          const dateStr = getDateString(date);
+          const metrics = await loadAppointmentsForDate(dateStr, slotMappings);
+          currentWeekData.push({
+            day: DAYS[i],
+            date: date,
+            metrics: metrics
+          });
+        }
+        
+        // Load data for next week
+        const nextWeekData = [];
+        for (let i = 0; i < 5; i++) {
+          const date = addDays(nextMonday, i);
+          const dateStr = getDateString(date);
+          const metrics = await loadAppointmentsForDate(dateStr, slotMappings);
+          nextWeekData.push({
+            day: DAYS[i],
+            date: date,
+            metrics: metrics
+          });
+        }
+        
+        // Render current week
+        const currentWeekHtml = currentWeekData.map(day => 
+          createDayCard(day.day, day.date, day.metrics)
+        ).join('');
+        document.getElementById('current-week').innerHTML = currentWeekHtml;
+        
+        // Render next week
+        const nextWeekHtml = nextWeekData.map(day => 
+          createDayCard(day.day, day.date, day.metrics)
+        ).join('');
+        document.getElementById('next-week').innerHTML = nextWeekHtml;
+        
+        // Calculate summary stats for next week
+        const totalOtd = nextWeekData.reduce((sum, day) => sum + day.metrics.otd, 0);
+        document.getElementById('next-week-blank').textContent = totalOtd;
+        
+        // Show dashboard
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('dashboard').style.display = 'block';
+        
+      } catch (error) {
+        console.error('Error loading dashboard:', error);
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('error').style.display = 'block';
+        document.getElementById('error').textContent = `Error: ${error.message}`;
+      }
+    }
+    
+    // Load dashboard on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      // Check authentication first
+      window.supabase.auth.getSession().then(({ data: { session } }) => {
+        if (!session) {
+          document.getElementById('loading').style.display = 'none';
+          document.getElementById('error').style.display = 'block';
+          document.getElementById('error').textContent = 'Please log in first.';
+        } else {
+          loadDashboard();
+        }
+      });
+    });
+  </script>
+</body>
+</html>

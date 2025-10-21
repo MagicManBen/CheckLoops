@@ -1,0 +1,1604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Rule Generator - DEBUG MODE</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Courier New', Monaco, monospace;
+      background: #0d1117;
+      color: #c9d1d9;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    body {
+      font-family: 'Courier New', Monaco, monospace;
+      background: #0d1117;
+      color: #c9d1d9;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1600px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    .header {
+      background: #161b22;
+      border: 1px solid #30363d;
+      padding: 15px 20px;
+      margin-bottom: 20px;
+      border-radius: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header h1 {
+      font-size: 18px;
+      color: #58a6ff;
+      font-weight: 600;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 12px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #238636;
+      animation: pulse 2s infinite;
+    }
+
+    .status-dot.error {
+      background: #da3633;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    .section {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 15px;
+    }
+
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #58a6ff;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #30363d;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .input-group {
+      margin-bottom: 15px;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      color: #8b949e;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-family: 'Courier New', Monaco, monospace;
+      border-radius: 6px;
+    }
+
+    textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #58a6ff;
+      box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
+    }
+
+    button {
+      background: #238636;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: 'Courier New', Monaco, monospace;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    button:hover:not(:disabled) {
+      background: #2ea043;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    button.secondary {
+      background: #21262d;
+      border: 1px solid #30363d;
+    }
+
+    button.secondary:hover:not(:disabled) {
+      background: #30363d;
+    }
+
+    button.danger {
+      background: #da3633;
+    }
+
+    button.danger:hover:not(:disabled) {
+      background: #f85149;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .console {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 12px;
+      font-size: 11px;
+      line-height: 1.6;
+      max-height: 400px;
+      overflow-y: auto;
+      margin-top: 10px;
+    }
+
+    .console-line {
+      padding: 2px 0;
+      border-bottom: 1px solid #21262d;
+    }
+
+    .console-line:last-child {
+      border-bottom: none;
+    }
+
+    .console-timestamp {
+      color: #6e7681;
+      margin-right: 10px;
+    }
+
+    .console-level-info {
+      color: #58a6ff;
+    }
+
+    .console-level-success {
+      color: #3fb950;
+    }
+
+    .console-level-error {
+      color: #f85149;
+    }
+
+    .console-level-warning {
+      color: #d29922;
+    }
+
+    .json-viewer {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 12px;
+      font-size: 11px;
+      line-height: 1.6;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .metric-box {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 12px;
+    }
+
+    .metric-label {
+      font-size: 10px;
+      color: #6e7681;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+
+    .metric-value {
+      font-size: 18px;
+      font-weight: 600;
+      color: #58a6ff;
+    }
+
+    .full-width {
+      grid-column: 1 / -1;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-success {
+      background: #238636;
+      color: white;
+    }
+
+    .badge-error {
+      background: #da3633;
+      color: white;
+    }
+
+    .badge-warning {
+      background: #d29922;
+      color: white;
+    }
+
+    .badge-info {
+      background: #1f6feb;
+      color: white;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 5px;
+      margin-bottom: 15px;
+      border-bottom: 1px solid #30363d;
+    }
+
+    .tab {
+      padding: 8px 16px;
+      background: transparent;
+      border: none;
+      color: #8b949e;
+      cursor: pointer;
+      font-size: 12px;
+      border-bottom: 2px solid transparent;
+    }
+
+    .tab:hover {
+      color: #c9d1d9;
+    }
+
+    .tab.active {
+      color: #58a6ff;
+      border-bottom-color: #58a6ff;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .loading-spinner {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: white;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .rule-card {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+
+    .rule-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      margin-bottom: 8px;
+    }
+
+    .rule-card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #c9d1d9;
+    }
+
+    .rule-card-meta {
+      font-size: 10px;
+      color: #6e7681;
+      margin-top: 4px;
+    }
+
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 20px;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #30363d;
+      transition: 0.3s;
+      border-radius: 20px;
+    }
+
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 14px;
+      width: 14px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: 0.3s;
+      border-radius: 50%;
+    }
+
+    input:checked + .toggle-slider {
+      background-color: #238636;
+    }
+
+    input:checked + .toggle-slider:before {
+      transform: translateX(20px);
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #0d1117;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #30363d;
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #484f58;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🤖 AI RULE GENERATOR - DEBUG MODE</h1>
+      <div class="status-indicator">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">INITIALIZING...</span>
+      </div>
+    </div>
+
+    .section {
+      margin-bottom: 30px;
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-title .icon {
+      font-size: 24px;
+    }
+
+    .input-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      color: #555;
+      margin-bottom: 8px;
+    }
+
+    textarea {
+      width: 100%;
+      padding: 15px;
+      border: 2px solid #e0e0e0;
+      border-radius: 10px;
+      font-size: 15px;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 120px;
+      transition: all 0.3s ease;
+    }
+
+    textarea:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    select {
+      width: 100%;
+      padding: 12px 15px;
+      border: 2px solid #e0e0e0;
+      border-radius: 10px;
+      font-size: 15px;
+      font-family: inherit;
+      background: white;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    select:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .button {
+      padding: 14px 28px;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+
+    .button-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    }
+
+    .button-primary:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+    }
+
+    .button-secondary {
+      background: white;
+      color: #667eea;
+      border: 2px solid #667eea;
+    }
+
+    .button-secondary:hover:not(:disabled) {
+      background: #f8f9ff;
+    }
+
+    .button-success {
+      background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+      color: white;
+      box-shadow: 0 4px 15px rgba(17, 153, 142, 0.4);
+    }
+
+    .button-success:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(17, 153, 142, 0.5);
+    }
+
+    .button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+    }
+
+    .preview-box {
+      background: #f8f9ff;
+      border: 2px solid #e0e7ff;
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 15px;
+      display: none;
+    }
+
+    .preview-box.active {
+      display: block;
+      animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .preview-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 15px;
+      padding-bottom: 15px;
+      border-bottom: 2px solid #e0e7ff;
+    }
+
+    .preview-icon {
+      font-size: 32px;
+    }
+
+    .preview-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .preview-content {
+      font-size: 15px;
+      line-height: 1.6;
+      color: #555;
+    }
+
+    .preview-field {
+      margin-bottom: 12px;
+    }
+
+    .preview-label {
+      font-weight: 600;
+      color: #667eea;
+      display: inline-block;
+      margin-right: 8px;
+    }
+
+    .preview-value {
+      color: #333;
+    }
+
+    .severity-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .severity-error {
+      background: #fee;
+      color: #c33;
+    }
+
+    .severity-warning {
+      background: #fffbeb;
+      color: #f59e0b;
+    }
+
+    .severity-info {
+      background: #eff6ff;
+      color: #3b82f6;
+    }
+
+    .message {
+      padding: 15px 20px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      display: none;
+      animation: slideIn 0.3s ease;
+    }
+
+    .message.active {
+      display: block;
+    }
+
+    .message-success {
+      background: #d1fae5;
+      color: #065f46;
+      border: 2px solid #6ee7b7;
+    }
+
+    .message-error {
+      background: #fee;
+      color: #991b1b;
+      border: 2px solid #fca5a5;
+    }
+
+    .message-info {
+      background: #dbeafe;
+      color: #1e40af;
+      border: 2px solid #93c5fd;
+    }
+
+    .examples {
+      background: #fffbeb;
+      border: 2px solid #fbbf24;
+      border-radius: 10px;
+      padding: 20px;
+      margin-top: 20px;
+    }
+
+    .examples-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #92400e;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .example-item {
+      background: white;
+      padding: 12px 15px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: 2px solid transparent;
+    }
+
+    .example-item:hover {
+      border-color: #fbbf24;
+      transform: translateX(5px);
+    }
+
+    .example-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .loading-spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 3px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: white;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .json-view {
+      background: #1e293b;
+      color: #e2e8f0;
+      padding: 15px;
+      border-radius: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      overflow-x: auto;
+      margin-top: 15px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .toggle-json {
+      background: transparent;
+      border: none;
+      color: #667eea;
+      font-size: 13px;
+      cursor: pointer;
+      text-decoration: underline;
+      margin-top: 10px;
+      padding: 5px 0;
+    }
+
+    .toggle-json:hover {
+      color: #764ba2;
+    }
+
+    .existing-rules {
+      margin-top: 40px;
+      padding-top: 30px;
+      border-top: 2px solid #e0e0e0;
+    }
+
+    .rules-list {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      margin-top: 15px;
+    }
+
+    .rule-card {
+      background: white;
+      border: 2px solid #e0e0e0;
+      border-radius: 10px;
+      padding: 20px;
+      transition: all 0.2s ease;
+    }
+
+    .rule-card:hover {
+      border-color: #667eea;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+    }
+
+    .rule-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      margin-bottom: 12px;
+    }
+
+    .rule-card-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .rule-card-desc {
+      font-size: 14px;
+      color: #666;
+      line-height: 1.5;
+      margin-bottom: 12px;
+    }
+
+    .rule-card-meta {
+      display: flex;
+      gap: 15px;
+      font-size: 12px;
+      color: #888;
+    }
+
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 48px;
+      height: 24px;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: 0.3s;
+      border-radius: 24px;
+    }
+
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: 0.3s;
+      border-radius: 50%;
+    }
+
+    input:checked + .toggle-slider {
+      background-color: #667eea;
+    }
+
+    input:checked + .toggle-slider:before {
+      transform: translateX(24px);
+    }
+  </style>
+</head>
+<body>
+    <div class="header">
+      <h1>🤖 AI RULE GENERATOR - DEBUG MODE</h1>
+      <div class="status-indicator">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">INITIALIZING...</span>
+      </div>
+    </div>
+
+    <div class="main-grid">
+      <!-- LEFT COLUMN: INPUT & CONTROLS -->
+      <div class="section">
+        <div class="section-title">⚙️ INPUT & CONTROLS</div>
+        
+        <div class="input-group">
+          <label>Site ID</label>
+          <select id="siteSelector">
+            <option value="">Loading...</option>
+          </select>
+        </div>
+
+        <div class="input-group">
+          <label>Natural Language Rule</label>
+          <textarea id="ruleInput" placeholder="Example: Dr Smith cannot have appointments less than 60 minutes"></textarea>
+        </div>
+
+        <div class="button-group">
+          <button id="generateBtn">🚀 GENERATE RULE</button>
+          <button id="clearBtn" class="secondary">🗑️ CLEAR</button>
+          <button id="clearConsoleBtn" class="secondary">� CLEAR CONSOLE</button>
+        </div>
+
+        <div class="input-group" style="margin-top: 20px;">
+          <label>Quick Test Examples</label>
+          <div class="button-group">
+            <button class="secondary" onclick="document.getElementById('ruleInput').value='Dr Smith cannot see wound checks'">Test 1</button>
+            <button class="secondary" onclick="document.getElementById('ruleInput').value='Dr Saeed cannot have appointments less than 60 minutes'">Test 2</button>
+            <button class="secondary" onclick="document.getElementById('ruleInput').value='There must be 2 emergency slots each day'">Test 3</button>
+            <button id="copyDebugBtn" class="secondary">📋 COPY ALL DEBUG</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN: METRICS -->
+      <div class="section">
+        <div class="section-title">📊 SESSION METRICS</div>
+        
+        <div class="metric-grid">
+          <div class="metric-box">
+            <div class="metric-label">Total Requests</div>
+            <div class="metric-value" id="metricRequests">0</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">Successful</div>
+            <div class="metric-value" id="metricSuccess" style="color: #3fb950;">0</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">Failed</div>
+            <div class="metric-value" id="metricFailed" style="color: #f85149;">0</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">Avg Response Time</div>
+            <div class="metric-value" id="metricAvgTime">-</div>
+          </div>
+        </div>
+
+        <div style="margin-top: 20px;">
+          <label>CONNECTION STATUS</label>
+          <div id="connectionInfo" class="json-viewer" style="max-height: 150px;">
+            Checking connection...
+          </div>
+        </div>
+
+        <div style="margin-top: 20px;">
+          <label>CONTEXT DATA (Sent to AI)</label>
+          <div id="contextData" class="json-viewer" style="max-height: 200px; font-size: 10px;">
+            Loading context...
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONSOLE OUTPUT -->
+    <div class="section full-width">
+      <div class="section-title">🖥️ CONSOLE OUTPUT</div>
+      <div id="console" class="console"></div>
+    </div>
+
+    <!-- TABS FOR DETAILED VIEW -->
+    <div class="section full-width">
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab('request')">📤 REQUEST PAYLOAD</button>
+        <button class="tab" onclick="switchTab('response')">📥 AI RESPONSE</button>
+        <button class="tab" onclick="switchTab('parsed')">✅ PARSED RULE</button>
+        <button class="tab" onclick="switchTab('metadata')">📋 METADATA</button>
+        <button class="tab" onclick="switchTab('rules')">💾 SAVED RULES</button>
+      </div>
+
+      <div id="tab-request" class="tab-content active">
+        <div class="section-title">Request Sent to Edge Function</div>
+        <div id="requestPayload" class="json-viewer">No request sent yet</div>
+      </div>
+
+      <div id="tab-response" class="tab-content">
+        <div class="section-title">Raw Response from OpenAI</div>
+        <div id="aiResponse" class="json-viewer">No response yet</div>
+      </div>
+
+      <div id="tab-parsed" class="tab-content">
+        <div class="section-title">Parsed Rule Object</div>
+        <div id="parsedRule" class="json-viewer">No rule parsed yet</div>
+        <div style="margin-top: 15px;">
+          <button id="saveBtn" disabled>💾 SAVE TO DATABASE</button>
+          <span id="saveStatus" style="margin-left: 15px; font-size: 12px;"></span>
+        </div>
+      </div>
+
+      <div id="tab-metadata" class="tab-content">
+        <div class="section-title">API Metadata & Token Usage</div>
+        <div id="metadata" class="json-viewer">No metadata yet</div>
+      </div>
+
+      <div id="tab-rules" class="tab-content">
+        <div class="section-title">Saved Rules in Database</div>
+        <button id="refreshRulesBtn" class="secondary" style="margin-bottom: 15px;">🔄 REFRESH</button>
+        <div id="rulesList"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // ============================================================================
+    // DEBUG MODE AI RULE GENERATOR
+    // ============================================================================
+
+    // Configuration
+    const CONFIG = {
+      SUPABASE_URL: 'https://unveoqnlqnobufhublyw.supabase.co',
+      SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmaHVibHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMTcyNzYsImV4cCI6MjA3MDU5MzI3Nn0.g93OsXDpO3V9DToU7s-Z3SwBBnB84rBv0JMv-idgSME',
+      EDGE_FUNCTION: 'ai-rule-generator',
+      AI_MODEL: 'gpt-4o',
+      AI_TEMPERATURE: 0.1,
+      AI_MAX_TOKENS: 1000
+    }
+
+    // Initialize Supabase
+    const supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY)
+
+    // Session State
+    const session = {
+      totalRequests: 0,
+      successCount: 0,
+      failCount: 0,
+      responseTimes: [],
+      lastRequest: null,
+      lastResponse: null,
+      lastParsedRule: null,
+      lastMetadata: null,
+      selectedSite: null,
+      contextData: {
+        clinicians: [],
+        slotTypes: []
+      }
+    }
+
+    // Console Logger
+    const logger = {
+      log(level, message, data = null) {
+        const timestamp = new Date().toLocaleTimeString('en-GB', { hour12: false, fractionalSecondDigits: 3 })
+        const consoleLine = document.createElement('div')
+        consoleLine.className = 'console-line'
+        
+        let dataStr = ''
+        if (data !== null) {
+          dataStr = typeof data === 'object' ? JSON.stringify(data, null, 2) : String(data)
+        }
+        
+        consoleLine.innerHTML = `
+          <span class="console-timestamp">[${timestamp}]</span>
+          <span class="console-level-${level}">[${level.toUpperCase()}]</span>
+          ${message}
+          ${dataStr ? `<pre style="margin-top: 5px; color: #8b949e;">${dataStr}</pre>` : ''}
+        `
+        
+        const consoleEl = document.getElementById('console')
+        consoleEl.appendChild(consoleLine)
+        consoleEl.scrollTop = consoleEl.scrollHeight
+
+        // Also log to browser console
+        console.log(`[${level.toUpperCase()}] ${message}`, data || '')
+      },
+      
+      info(message, data) { this.log('info', message, data) },
+      success(message, data) { this.log('success', message, data) },
+      error(message, data) { this.log('error', message, data) },
+      warning(message, data) { this.log('warning', message, data) }
+    }
+
+    // Update Metrics Display
+    function updateMetrics() {
+      document.getElementById('metricRequests').textContent = session.totalRequests
+      document.getElementById('metricSuccess').textContent = session.successCount
+      document.getElementById('metricFailed').textContent = session.failCount
+      
+      if (session.responseTimes.length > 0) {
+        const avg = session.responseTimes.reduce((a, b) => a + b, 0) / session.responseTimes.length
+        document.getElementById('metricAvgTime').textContent = `${avg.toFixed(0)}ms`
+      } else {
+        document.getElementById('metricAvgTime').textContent = '-'
+      }
+    }
+
+    // Update Status Indicator
+    function updateStatus(status, text) {
+      const dot = document.getElementById('statusDot')
+      const statusText = document.getElementById('statusText')
+      
+      if (status === 'ok') {
+        dot.className = 'status-dot'
+        dot.style.background = '#238636'
+      } else if (status === 'error') {
+        dot.className = 'status-dot error'
+        dot.style.background = '#da3633'
+      } else {
+        dot.className = 'status-dot'
+        dot.style.background = '#d29922'
+      }
+      
+      statusText.textContent = text
+    }
+
+    // Switch Tabs
+    window.switchTab = function(tabName) {
+      document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'))
+      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'))
+      
+      event.target.classList.add('active')
+      document.getElementById(`tab-${tabName}`).classList.add('active')
+    }
+
+    // Initialize
+    async function init() {
+      logger.info('🚀 Initializing AI Rule Generator Debug Mode')
+      logger.info('Configuration:', CONFIG)
+      
+      updateStatus('ok', 'INITIALIZING...')
+      
+      // Test Supabase connection
+      try {
+        logger.info('Testing Supabase connection...')
+        const { data, error } = await supabase.from('sites').select('count', { count: 'exact', head: true })
+        
+        if (error) throw error
+        
+        logger.success('✅ Supabase connection established')
+        document.getElementById('connectionInfo').textContent = JSON.stringify({
+          status: 'CONNECTED',
+          url: CONFIG.SUPABASE_URL,
+          authenticated: true,
+          timestamp: new Date().toISOString()
+        }, null, 2)
+      } catch (error) {
+        logger.error('❌ Supabase connection failed', error)
+        updateStatus('error', 'CONNECTION FAILED')
+        document.getElementById('connectionInfo').textContent = JSON.stringify({
+          status: 'ERROR',
+          error: error.message,
+          timestamp: new Date().toISOString()
+        }, null, 2)
+      }
+      
+      // Load sites
+      await loadSites()
+      
+      // Setup event listeners
+      setupEventListeners()
+      
+      updateStatus('ok', 'READY')
+      logger.success('✅ System ready')
+    }
+
+    // Load Sites
+    async function loadSites() {
+      try {
+        logger.info('Loading sites from database...')
+        
+        const { data, error } = await supabase
+          .from('sites')
+          .select('id, name')
+          .order('name')
+
+        if (error) throw error
+
+        logger.success(`✅ Loaded ${data.length} sites`)
+        
+        const selector = document.getElementById('siteSelector')
+        selector.innerHTML = '<option value="">Select a site...</option>'
+        
+        data.forEach(site => {
+          const option = document.createElement('option')
+          option.value = site.id
+          option.textContent = `[${site.id}] ${site.name}`
+          selector.appendChild(option)
+        })
+
+        if (data.length === 1) {
+          selector.value = data[0].id
+          session.selectedSite = data[0].id
+          logger.info(`Auto-selected site: ${data[0].name}`)
+        }
+      } catch (error) {
+        logger.error('❌ Failed to load sites', error)
+      }
+    }
+
+    // Load Existing Rules
+    async function loadRules() {
+      if (!session.selectedSite) {
+        document.getElementById('rulesList').innerHTML = '<p style="color: #6e7681;">Select a site first</p>'
+        return
+      }
+
+      try {
+        logger.info(`Loading rules for site ${session.selectedSite}...`)
+        
+        const { data, error } = await supabase
+          .from('emis_validation_rules')
+          .select('*')
+          .eq('site_id', session.selectedSite)
+          .order('created_at', { ascending: false })
+
+        if (error) throw error
+
+        logger.success(`✅ Loaded ${data.length} rules`)
+        displayRules(data)
+      } catch (error) {
+        logger.error('❌ Failed to load rules', error)
+      }
+    }
+
+    // Display Rules
+    function displayRules(rules) {
+      const container = document.getElementById('rulesList')
+      
+      if (!rules || rules.length === 0) {
+        container.innerHTML = '<p style="color: #6e7681;">No rules found for this site</p>'
+        return
+      }
+
+      container.innerHTML = rules.map(rule => `
+        <div class="rule-card">
+          <div class="rule-card-header">
+            <div>
+              <div class="rule-card-title">${escapeHtml(rule.name)}</div>
+              <div class="rule-card-meta">
+                <span class="badge badge-${rule.severity === 'error' ? 'error' : rule.severity === 'warning' ? 'warning' : 'info'}">
+                  ${rule.severity}
+                </span>
+                Type: ${rule.rule_type} | ID: ${rule.id} | Created: ${new Date(rule.created_at).toLocaleString()}
+              </div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" ${rule.enabled ? 'checked' : ''} onchange="toggleRule(${rule.id}, this.checked)">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <pre style="font-size: 10px; color: #6e7681; margin-top: 8px; overflow-x: auto;">${JSON.stringify(rule.config, null, 2)}</pre>
+        </div>
+      `).join('')
+    }
+
+    // Load Context Data (clinicians and slot types for AI)
+    async function loadContextData() {
+      if (!session.selectedSite) {
+        logger.warn('⚠️ No site selected - skipping context load')
+        return
+      }
+
+      try {
+        logger.info('📋 Loading context data from database...')
+
+        // Query distinct clinicians
+        const { data: cliniciansData, error: cliniciansError } = await supabase
+          .from('emis_apps_raw')
+          .select('full_name_session_holder')
+          .eq('site_id', session.selectedSite)
+          .not('full_name_session_holder', 'is', null)
+          .order('full_name_session_holder')
+
+        if (cliniciansError) throw cliniciansError
+
+        // Get unique clinicians
+        const uniqueClinicians = [...new Set(cliniciansData.map(r => r.full_name_session_holder))]
+          .filter(name => name && name.trim())
+          .sort()
+
+        // Query distinct slot types
+        const { data: slotTypesData, error: slotTypesError } = await supabase
+          .from('emis_apps_raw')
+          .select('slot_type')
+          .eq('site_id', session.selectedSite)
+          .not('slot_type', 'is', null)
+          .order('slot_type')
+
+        if (slotTypesError) throw slotTypesError
+
+        // Get unique slot types
+        const uniqueSlotTypes = [...new Set(slotTypesData.map(r => r.slot_type))]
+          .filter(type => type && type.trim())
+          .sort()
+
+        // Store in session
+        session.contextData = {
+          clinicians: uniqueClinicians,
+          slotTypes: uniqueSlotTypes
+        }
+
+        logger.success(`✅ Loaded ${uniqueClinicians.length} clinicians and ${uniqueSlotTypes.length} slot types`)
+        
+        // Update display
+        updateContextDisplay()
+
+      } catch (error) {
+        logger.error('❌ Failed to load context data', error)
+        session.contextData = { clinicians: [], slotTypes: [] }
+      }
+    }
+
+    // Update Context Display
+    function updateContextDisplay() {
+      try {
+        const cliniciansCount = session.contextData.clinicians.length
+        const slotTypesCount = session.contextData.slotTypes.length
+        
+        document.getElementById('contextClinicians').textContent = cliniciansCount
+        document.getElementById('contextSlotTypes').textContent = slotTypesCount
+        
+        // Log sample of context data for debugging
+        if (cliniciansCount > 0) {
+          const sampleClinicians = session.contextData.clinicians.slice(0, 5)
+          const sampleText = sampleClinicians.join(', ') + (cliniciansCount > 5 ? '...' : '')
+          logger.info(`📋 Sample clinicians: ${sampleText}`)
+        }
+        if (slotTypesCount > 0) {
+          const sampleSlotTypes = session.contextData.slotTypes.slice(0, 5)
+          const sampleText = sampleSlotTypes.join(', ') + (slotTypesCount > 5 ? '...' : '')
+          logger.info(`📋 Sample slot types: ${sampleText}`)
+        }
+      } catch (error) {
+        console.error('Error updating context display:', error)
+      }
+    }
+
+    // Copy All Debug Info
+    window.copyAllDebug = async function() {
+      try {
+        const timestamp = new Date().toISOString()
+        const avgTime = session.responseTimes.length > 0 
+          ? Math.round(session.responseTimes.reduce((a, b) => a + b) / session.responseTimes.length)
+          : 0
+
+        const debugInfo = {
+          timestamp,
+          site: session.selectedSite,
+          
+          session_metrics: {
+            total_requests: session.totalRequests,
+            success_count: session.successCount,
+            fail_count: session.failCount,
+            avg_response_time_ms: avgTime
+          },
+          
+          context_data: {
+            clinicians_count: session.contextData.clinicians.length,
+            clinicians: session.contextData.clinicians,
+            slot_types_count: session.contextData.slotTypes.length,
+            slot_types: session.contextData.slotTypes
+          },
+          
+          last_request: session.lastRequest,
+          last_response: session.lastResponse,
+          last_parsed_rule: session.lastParsedRule,
+          last_metadata: session.lastMetadata,
+          
+          console_logs: logger.logs.map(log => ({
+            timestamp: log.timestamp,
+            type: log.type,
+            message: log.message
+          }))
+        }
+
+        const debugText = JSON.stringify(debugInfo, null, 2)
+        
+        await navigator.clipboard.writeText(debugText)
+        logger.success('📋 Copied all debug info to clipboard!')
+        
+        // Visual feedback
+        const btn = event.target
+        const originalText = btn.innerHTML
+        btn.innerHTML = '✅ COPIED!'
+        setTimeout(() => {
+          btn.innerHTML = originalText
+        }, 2000)
+        
+      } catch (error) {
+        logger.error('❌ Failed to copy debug info', error)
+      }
+    }
+
+    // Toggle Rule
+    window.toggleRule = async function(ruleId, enabled) {
+      try {
+        logger.info(`Toggling rule ${ruleId} to ${enabled ? 'enabled' : 'disabled'}`)
+        
+        const { error } = await supabase
+          .from('emis_validation_rules')
+          .update({ enabled })
+          .eq('id', ruleId)
+
+        if (error) throw error
+
+        logger.success(`✅ Rule ${ruleId} ${enabled ? 'enabled' : 'disabled'}`)
+      } catch (error) {
+        logger.error(`❌ Failed to toggle rule ${ruleId}`, error)
+        await loadRules() // Reload to reset UI
+      }
+    }
+
+    // Generate Rule with AI
+    async function generateRule() {
+      const ruleText = document.getElementById('ruleInput').value.trim()
+
+      if (!ruleText) {
+        logger.error('❌ No rule text provided')
+        updateStatus('error', 'NO INPUT')
+        return
+      }
+
+      if (!session.selectedSite) {
+        logger.error('❌ No site selected')
+        updateStatus('error', 'NO SITE SELECTED')
+        return
+      }
+
+      // Update UI
+      const btn = document.getElementById('generateBtn')
+      btn.disabled = true
+      btn.innerHTML = '<span class="loading-spinner"></span> PROCESSING...'
+      updateStatus('ok', 'PROCESSING REQUEST...')
+
+      // Prepare request with context data
+      const requestPayload = {
+        rule_text: ruleText,
+        site_id: session.selectedSite,
+        context: {
+          available_clinicians: session.contextData.clinicians,
+          available_slot_types: session.contextData.slotTypes
+        }
+      }
+
+      session.lastRequest = requestPayload
+      session.totalRequests++
+      
+      logger.info('📤 Sending request to Edge Function')
+      logger.info('Request Payload:', requestPayload)
+      
+      document.getElementById('requestPayload').textContent = JSON.stringify({
+        endpoint: `${CONFIG.SUPABASE_URL}/functions/v1/${CONFIG.EDGE_FUNCTION}`,
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer [REDACTED]',
+          'Content-Type': 'application/json'
+        },
+        body: requestPayload,
+        timestamp: new Date().toISOString()
+      }, null, 2)
+
+      const startTime = performance.now()
+
+      try {
+        logger.info('⏳ Waiting for AI response...')
+        updateStatus('ok', 'WAITING FOR AI...')
+
+        // Call the edge function
+        const { data, error } = await supabase.functions.invoke(CONFIG.EDGE_FUNCTION, {
+          body: requestPayload
+        })
+
+        const endTime = performance.now()
+        const responseTime = Math.round(endTime - startTime)
+        session.responseTimes.push(responseTime)
+
+        logger.success(`✅ Response received in ${responseTime}ms`)
+
+        if (error) throw error
+
+        if (!data.success) {
+          throw new Error(data.error || 'Unknown error from AI')
+        }
+
+        // Success!
+        session.successCount++
+        session.lastResponse = data
+        session.lastParsedRule = data.rule
+        session.lastMetadata = {
+          response_time_ms: responseTime,
+          model_used: CONFIG.AI_MODEL,
+          temperature: CONFIG.AI_TEMPERATURE,
+          max_tokens: CONFIG.AI_MAX_TOKENS,
+          original_input: data.original_input,
+          human_readable: data.human_readable,
+          timestamp: new Date().toISOString()
+        }
+
+        logger.success('✅ Rule generated successfully')
+        logger.info('AI Response:', data)
+
+        // Update displays
+        document.getElementById('aiResponse').textContent = JSON.stringify(data, null, 2)
+        document.getElementById('parsedRule').textContent = JSON.stringify(data.rule, null, 2)
+        document.getElementById('metadata').textContent = JSON.stringify(session.lastMetadata, null, 2)
+
+        // Enable save button
+        document.getElementById('saveBtn').disabled = false
+        
+        updateStatus('ok', 'RULE GENERATED')
+
+      } catch (error) {
+        session.failCount++
+        logger.error('❌ Request failed', error)
+        
+        document.getElementById('aiResponse').textContent = JSON.stringify({
+          error: error.message,
+          timestamp: new Date().toISOString()
+        }, null, 2)
+        
+        updateStatus('error', 'REQUEST FAILED')
+      } finally {
+        btn.disabled = false
+        btn.innerHTML = '🚀 GENERATE RULE'
+        updateMetrics()
+      }
+    }
+
+    // Save Rule to Database
+    async function saveRule() {
+      if (!session.lastParsedRule) {
+        logger.error('❌ No rule to save')
+        return
+      }
+
+      const btn = document.getElementById('saveBtn')
+      btn.disabled = true
+      btn.innerHTML = '<span class="loading-spinner"></span> SAVING...'
+
+      try {
+        logger.info('💾 Saving rule to database...')
+        logger.info('Rule to save:', session.lastParsedRule)
+
+        const { data, error } = await supabase
+          .from('emis_validation_rules')
+          .insert([session.lastParsedRule])
+          .select()
+
+        if (error) throw error
+
+        logger.success('✅ Rule saved successfully')
+        logger.success('Saved rule:', data[0])
+
+        document.getElementById('saveStatus').innerHTML = '<span class="badge badge-success">SAVED</span>'
+        
+        // Refresh rules list
+        await loadRules()
+
+        // Clear the form
+        setTimeout(() => {
+          document.getElementById('ruleInput').value = ''
+          document.getElementById('saveStatus').innerHTML = ''
+          btn.disabled = true
+          btn.innerHTML = '💾 SAVE TO DATABASE'
+        }, 2000)
+
+      } catch (error) {
+        logger.error('❌ Failed to save rule', error)
+        document.getElementById('saveStatus').innerHTML = '<span class="badge badge-error">FAILED</span>'
+        btn.disabled = false
+        btn.innerHTML = '💾 SAVE TO DATABASE'
+      }
+    }
+
+    // Setup Event Listeners
+    function setupEventListeners() {
+      document.getElementById('siteSelector').addEventListener('change', (e) => {
+        session.selectedSite = e.target.value ? parseInt(e.target.value) : null
+        logger.info(`Site selected: ${session.selectedSite}`)
+        loadRules()
+        loadContextData()  // Load clinicians and slot types for AI context
+      })
+
+      document.getElementById('generateBtn').addEventListener('click', generateRule)
+      
+      document.getElementById('clearBtn').addEventListener('click', () => {
+        document.getElementById('ruleInput').value = ''
+        logger.info('Input cleared')
+      })
+
+      document.getElementById('clearConsoleBtn').addEventListener('click', () => {
+        document.getElementById('console').innerHTML = ''
+        logger.info('Console cleared')
+      })
+
+      document.getElementById('saveBtn').addEventListener('click', saveRule)
+      
+      document.getElementById('refreshRulesBtn').addEventListener('click', loadRules)
+
+      document.getElementById('ruleInput').addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === 'Enter') {
+          generateRule()
+        }
+      })
+    }
+
+    // Utility
+    function escapeHtml(text) {
+      const div = document.createElement('div')
+      div.textContent = text
+      return div.innerHTML
+    }
+
+    // Initialize on load
+    init()
+  </script>
+</body>
+</html>
