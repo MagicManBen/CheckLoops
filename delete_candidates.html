@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Delete Candidates — Review</title>
+    <style>
+      :root{--bg:#fbfdff;--card:#ffffff;--muted:#6b7280;--accent:#0ea5a4;--danger:#ef4444;--ok:#16a34a}
+      *{box-sizing:border-box}
+      body{font-family:Inter,system-ui,Segoe UI,Roboto,Arial;margin:24px;background:linear-gradient(180deg,#f6fbfc 0%,#fbfdff 100%);color:#111}
+      header{display:flex;justify-content:space-between;gap:1rem;align-items:center;margin-bottom:16px}
+      h1{margin:0;font-size:20px}
+      p{margin:2px 0 0;color:var(--muted);font-size:13px}
+  .btn{padding:8px 10px;border-radius:8px;border:1px solid rgba(0,0,0,0.06);background:var(--card);cursor:pointer;font-size:13px}
+  /* action buttons inside each row */
+  .action-row{display:flex;gap:8px;align-items:center;justify-content:flex-end}
+  .btn.action{padding:10px 14px;border-radius:10px;font-weight:600;min-width:72px}
+  .btn.action.open{background:#fff;border:1px solid #e6eef0}
+  .btn.action.danger{background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.14);color:var(--danger)}
+  .btn.action.keep{background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.14);color:var(--ok)}
+  .btn.action.selected{box-shadow:0 6px 18px rgba(2,6,23,0.04);transform:translateY(-2px)}
+    .btn.primary{background:linear-gradient(90deg,var(--accent),#06b6d4);color:#fff;border:none}
+      .btn.danger{background:transparent;border:1px solid rgba(239,68,68,0.12);color:var(--danger)}
+      .btn.muted{background:#fff;border:1px solid #eee;color:var(--muted)}
+      input#search{padding:10px;border-radius:10px;border:1px solid #e6eef0;width:360px}
+      .table-wrap{background:var(--card);border-radius:12px;box-shadow:0 6px 18px rgba(15,23,42,0.06);overflow:hidden}
+      table{width:100%;border-collapse:collapse}
+      thead th{background:#f8fafb;padding:12px 16px;text-align:left;font-size:13px;color:var(--muted)}
+      tbody tr{transition:transform .18s ease,background .18s ease;transform-origin:left center}
+      tbody tr.row-anim{transform:translateY(0)}
+      tbody tr:hover{transform:translateY(-4px)}
+      td{padding:12px 16px;border-top:1px solid #f1f5f9;vertical-align:middle}
+  td div.filename{font-weight:600;color:#0f172a;display:flex;align-items:center;gap:10px}
+  .status-badge{display:none;padding:4px 8px;border-radius:999px;font-size:12px;font-weight:700}
+  .status-badge.delete{display:inline-block;background:rgba(239,68,68,0.1);color:var(--danger);border:1px solid rgba(239,68,68,0.12)}
+  .status-badge.keep{display:inline-block;background:rgba(16,185,129,0.08);color:var(--ok);border:1px solid rgba(16,185,129,0.12)}
+      td div.sub{color:var(--muted);font-size:12px;margin-top:6px}
+  tr.delete td{background:linear-gradient(90deg,rgba(255,235,238,0.75),transparent)}
+  tr.keep td{background:linear-gradient(90deg,rgba(237,247,237,0.75),transparent)}
+  tr.delete td:first-child{box-shadow:inset 6px 0 0 rgba(239,68,68,0.12)}
+  tr.keep td:first-child{box-shadow:inset 6px 0 0 rgba(16,185,129,0.12)}
+      .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(2,6,23,0.45);padding:24px}
+      .modal-content{width:min(880px,96%);background:var(--card);padding:18px;border-radius:12px}
+      textarea#exportBox{width:100%;height:180px;padding:12px;border-radius:8px;border:1px solid #e6eef0;font-family:monospace}
+      tr.focused{outline:3px solid rgba(14,165,164,0.12)}
+      kbd{background:#111827;color:#fff;padding:2px 6px;border-radius:6px;font-size:12px}
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>Review Files for Deletion</h1>
+        <p>Mark files to delete or keep. Use search, bulk actions, and export when ready. Shortcuts: <kbd>Shift+D</kbd> = Delete, <kbd>Shift+K</kbd> = Keep (for focused row).</p>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="search" placeholder="Filter files or reasons" />
+        <button id="bulkDelete" class="btn muted">Mark Visible Delete</button>
+        <button id="bulkKeep" class="btn muted">Mark Visible Keep</button>
+        <button id="exportBtn" class="btn primary">Export</button>
+      </div>
+    </header>
+
+    <main>
+      <div id="tabsWrap" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"></div>
+      <div class="table-wrap">
+        <table id="fileTable" aria-label="Delete candidates">
+          <thead>
+            <tr>
+              <th style="width:48%">File</th>
+              <th style="width:42%">Reason</th>
+              <th style="width:10%">Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </main>
+
+    <div id="exportModal" class="modal" aria-hidden="true">
+      <div class="modal-content">
+        <h2 style="margin:0 0 8px 0">Export Delete List</h2>
+        <p style="margin:0 0 12px 0;color:var(--muted)">Copy the list below and paste it back to me when ready.</p>
+        <textarea id="exportBox" readonly></textarea>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
+          <button id="copyBtn" class="btn">Copy</button>
+          <button id="closeModal" class="btn muted">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // small helper
+      const el = (tag, attrs={}, txt='') => { const e = document.createElement(tag); Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,v)); if(txt) e.textContent = txt; return e }
+
+      const candidates = [
+  {file: 'artifacts/', reason: 'Build/package artifacts — generally safe to remove from repo.'},
+  {file: 'artifacts/daily-packages/2025-09-19/', reason: 'Old daily package artifacts.'},
+  {file: 'db_cluster-20-10-2025@02-50-56.backup.gz', reason: 'Database backup file — large and should live in backups, not repo.'},
+  {file: 'SupabaseInfo.unredacted.json', reason: 'Unredacted supabase credentials — sensitive and should be removed.'},
+  {file: 'supabaseinfo.txt', reason: 'Supabase export info — sensitive/duplicate.'},
+  {file: 'test-ai-rule-generator.sh', reason: 'Test script; likely safe to delete.'},
+  {file: 'test-edge-function.html', reason: 'Test HTML page.'},
+  {file: 'test-save-mappings.html', reason: 'Test HTML page for save mappings.'},
+  {file: 'test-classify-function.js', reason: 'Test JS script.'},
+  {file: 'boardtest.html', reason: 'Ad-hoc test page.'},
+  {file: 'icon-test.html', reason: 'Ad-hoc test page.'},
+  {file: 'indexIpad_fixed.html', reason: '"fixed" copy — likely a temporary/backup variant.'},
+  {file: 'emis_dashboard Working.html', reason: 'Working draft version of dashboard.'},
+  {file: 'staff-welcome working.html', reason: 'Working draft version of staff welcome page.'},
+  {file: 'Smart_Setup.html', reason: 'Likely duplicate/alternate of smartsetup.html.'},
+  {file: 'homeDESING.html', reason: 'Typo/old design copy.'},
+  {file: 'fix-count-column.html', reason: 'One-off fix page; likely temporary.'},
+  {file: 'fix_latest_upload_direct.mjs', reason: 'Fix script, probably one-off.'},
+  {file: 'fix_profiles_live.mjs', reason: 'One-off migration/fix script.'},
+  {file: 'fix_achievements.mjs', reason: 'One-off fix script.'},
+  {file: 'fix_all_database_issues.mjs', reason: 'Bulk fix script — keep only if needed; otherwise remove.'},
+  {file: 'fix_master_users_rls.mjs', reason: 'RLS fix script likely one-off.'},
+  {file: 'fix_kiosk_users_structure.mjs', reason: 'One-off migration/fix.'},
+  {file: 'fix_holiday_approval_database.mjs', reason: 'One-off DB fix.'},
+  {file: 'fix_holiday_data.mjs', reason: 'One-off data fix.'},
+  {file: 'fix_site_pill.py', reason: 'One-off Python fix script.'},
+  {file: 'fix_column_references.py', reason: 'One-off Python fix.'},
+  {file: 'fix_admin_role.cjs', reason: 'One-off CJS fix script.'},
+  {file: 'fix-live-server.cjs', reason: 'Server fix script; likely temporary.'},
+  {file: 'fix-users-issue.js', reason: 'One-off fix.'},
+  {file: 'apply_fix.js', reason: 'General apply-fix script — possibly temporary.'},
+  {file: 'apply_admin_dashboard_fix.js', reason: 'One-off dashboard fix.'},
+  {file: 'apply_holiday_fix.js', reason: 'Holiday fix script; one-off.'},
+  {file: 'apply-rls-fix.js', reason: 'RLS fix script; one-off.'},
+  {file: 'apply_staff_fix.sh', reason: 'Shell fix script; likely temporary.'},
+  {file: 'apply_onboarding_migration.js', reason: 'One-off migration.'},
+  {file: 'quick_fix_admin.mjs', reason: 'Ad-hoc quick-fix script.'},
+  {file: 'quick-setup.sh', reason: 'Quick setup script, may contain sensitive values or be obsolete.'},
+  {file: 'backup.sh', reason: 'Backup helper script; often unused.'},
+  {file: 'supabase-restore.sh', reason: 'Restore helper — large operations not suitable for repo.'},
+  {file: 'deploy-ai-rule-generator.sh', reason: 'Deploy script; might be environment-specific.'},
+  {file: 'deploy-save-mappings.sh', reason: 'Deploy script; environment-specific.'},
+  {file: 'db_cluster-20-10-2025@02-50-56.backup.gz', reason: 'Database dump file — duplicates previous entry (remove duplicates in list).' },
+  {file: 'artifacts/daily-packages/2025-09-19/package.json', reason: 'Artifact package manifest (build output).'},
+  {file: 'artifacts/daily-packages/2025-09-19/package-lock.json', reason: 'Artifact lockfile.'},
+  {file: 'artifacts/daily-packages/2025-09-19/openai-proxy/package.json', reason: 'Artifact package manifest.'},
+  {file: 'artifacts/daily-packages/2025-09-17/', reason: 'Old package artifacts.'},
+  {file: 'openai-proxy/', reason: 'Local proxy package directory (could be removed if unused).' },
+  {file: 'Syndication_Location_Id.json', reason: 'Possibly generated or environment data; verify before keeping.'},
+  {file: 'SupabaseInfo.txt', reason: 'Sensitive info backup (may be duplicate of supabaseinfo.txt).'},
+  {file: 'QUICK_START.txt', reason: 'Old quick start notes, possibly duplicated by README/QUICK_START.md.'},
+  {file: 'QUICK_START.sql', reason: 'SQL provisioning example — can be removed if setup is documented elsewhere.'},
+  {file: 'setup-demo-site.sql', reason: 'Demo site SQL — not needed in production repo.'},
+  {file: 'ArdunoTesting.txt', reason: 'Arduino test notes; unrelated to main project.'},
+  {file: 'ArdunoTesting.txt', reason: 'Duplicate Arduino testing note.'},
+  {file: 'working_ePaper/working_ePaper.ino', reason: 'Arduino sketch in repo root — likely unrelated.'},
+  {file: 'staff-welcome working.html', reason: 'Working draft of staff-welcome.'},
+  {file: 'emes_dashboard Working.html', reason: 'Working draft (duplicate).' },
+  {file: 'jspdf.umd.min.js', reason: 'Third-party lib - keep as vendored lib only if needed; otherwise switch to CDN or package manager.'},
+  {file: 'pdf.min.js', reason: 'Vendored PDF lib — consider removing if served via CDN/package manager.'},
+  {file: 'pdf.worker.min.js', reason: 'Worker for pdf lib (vendored).'},
+  {file: 'jszip.min.js', reason: 'Vendored library — consider replacing with package-managed version.'},
+  {file: 'xlsx.full.min.js', reason: 'Vendored XLSX library — consider removing or moving to vendor/ or package.json.'},
+  {file: 'jszip.min.js', reason: 'Duplicate vendored lib entry.'},
+  {file: 'jspdf.umd.min.js', reason: 'Duplicate vendored lib entry.'},
+  {file: 'check_working_hours_fields.js', reason: 'Contains "working" in name; possibly a diagnostic/test script.'},
+  {file: 'working_ePaper/working_ePaper.ino', reason: 'Hardware sketch unrelated to main app; consider removing.'}
+];
+
+
+      const tbody = document.querySelector('#fileTable tbody');
+      const tabsWrap = document.getElementById('tabsWrap');
+
+      // derive extension/group for each candidate and build groups
+      const groups = {};
+      candidates.forEach((c, idx) => {
+        // determine extension/folder
+        let ext = 'other';
+        if (c.file.endsWith('/')) ext = 'folder';
+        else {
+          const m = c.file.match(/\.([a-z0-9]+)(?:$|[\\?#\/])/i);
+          if (m) ext = m[1].toLowerCase();
+        }
+        c.ext = ext;
+        c.idx = idx; // global likelihood index (0 most likely)
+        groups[ext] = groups[ext] || [];
+        groups[ext].push(c);
+      });
+
+      // order groups by size (most files first) and create tabs
+      const extOrder = Object.keys(groups).sort((a,b)=> groups[b].length - groups[a].length);
+      const tabButtons = [];
+
+      function niceLabel(ext){
+        if(ext==='folder') return 'Folders';
+        if(ext==='other') return 'Other';
+        return ext.toUpperCase();
+      }
+
+      function buildTabs(){
+        // All tab
+        const allBtn = el('button',{class:'btn muted','data-ext':'all'}, `All (${candidates.length})`);
+        allBtn.addEventListener('click', ()=> showTab('all'));
+        tabsWrap.appendChild(allBtn);
+        tabButtons.push(allBtn);
+
+        extOrder.forEach(ext=>{
+          const btn = el('button',{class:'btn','data-ext':ext}, `${niceLabel(ext)} (${groups[ext].length})`);
+          btn.addEventListener('click', ()=> showTab(ext));
+          tabsWrap.appendChild(btn);
+          tabButtons.push(btn);
+        });
+      }
+
+      function renderAll(){
+        tbody.innerHTML = '';
+        // use overall candidates order (most to least likely)
+        candidates.forEach(item => {
+          // Render all candidates in one big list
+          candidates.forEach((c, idx) => { c.idx = idx; });
+
+          function renderAll(){
+            tbody.innerHTML = '';
+            candidates.forEach(item => {
+              const tr = document.createElement('tr'); tr.className='row-anim';
+              tr.setAttribute('data-file', item.file);
+              tr.setAttribute('data-action', '');
+
+              // soft gradient color by global index (more likely => stronger red overlay)
+              const n = candidates.length - 1 || 1;
+              const t = 1 - (item.idx / n);
+              const alpha = (0.12 * t + 0.02).toFixed(3);
+              const base = '239,68,68';
+              tr.style.background = `linear-gradient(90deg, rgba(${base},${alpha}), transparent)`;
+
+              const tdFile = document.createElement('td');
+              const name = el('div',{class:'filename'}, '');
+              const nameText = document.createElement('div'); nameText.textContent = item.file; nameText.style.flex='1';
+              const badge = el('span',{class:'status-badge','aria-hidden':'true'}, '');
+              name.appendChild(nameText);
+              name.appendChild(badge);
+              const sub = el('div',{class:'sub'}, '');
+              tdFile.appendChild(name); tdFile.appendChild(sub);
+
+              const tdReason = document.createElement('td'); tdReason.textContent = item.reason;
+
+              const tdAction = document.createElement('td');
+              const actionWrap = document.createElement('div'); actionWrap.className='action-row';
+              const bOpen = el('button',{class:'btn action open','aria-label':`Open ${item.file}`}, 'Open');
+              const bDel = el('button',{class:'btn action danger','aria-label':`Delete ${item.file}`}, 'Delete');
+              const bKeep = el('button',{class:'btn action keep','aria-label':`Keep ${item.file}`}, 'Keep');
+
+              bOpen.addEventListener('click', ()=> {
+                const href = encodeURI(item.file);
+                window.open(href, '_blank');
+              });
+              bDel.addEventListener('click', ()=> toggle(tr,'delete'));
+              bKeep.addEventListener('click', ()=> toggle(tr,'keep'));
+
+              actionWrap.appendChild(bOpen);
+              actionWrap.appendChild(bDel);
+              actionWrap.appendChild(bKeep);
+              tdAction.appendChild(actionWrap);
+
+              tr.appendChild(tdFile); tr.appendChild(tdReason); tr.appendChild(tdAction);
+              tbody.appendChild(tr);
+            });
+          }
+
+          renderAll();
+
+        document.getElementById('exportModal').style.display='flex';
+        document.getElementById('exportModal').setAttribute('aria-hidden','false');
+      });
+
+      document.getElementById('closeModal').addEventListener('click', ()=>{
+        document.getElementById('exportModal').style.display='none';
+        document.getElementById('exportModal').setAttribute('aria-hidden','true');
+      });
+
+      document.getElementById('copyBtn').addEventListener('click', async ()=>{
+        const txt = document.getElementById('exportBox').value;
+        try{ await navigator.clipboard.writeText(txt); alert('Copied to clipboard'); }catch(e){ alert('Copy failed — select and copy manually'); }
+      });
+
+      // focus + shortcuts
+      let focused = null;
+      tbody.addEventListener('click', (ev)=>{ const tr = ev.target.closest('tr'); if(!tr) return; if(focused) focused.classList.remove('focused'); focused = tr; focused.classList.add('focused'); });
+      document.addEventListener('keydown', (e)=>{
+        if(!focused) return;
+        if(e.shiftKey && e.key.toLowerCase()==='d'){ toggle(focused,'delete'); }
+        if(e.shiftKey && e.key.toLowerCase()==='k'){ toggle(focused,'keep'); }
+      });
+    </script>
+  </body>
+</html>

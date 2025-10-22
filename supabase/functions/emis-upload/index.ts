@@ -100,6 +100,9 @@ serve(async (req: Request) => {
 
     // Process records to handle empty values appropriately
     // Ensure they maintain the original order using csv_row_number
+    // Add a shared upload timestamp for this batch
+    const uploadTimestamp = new Date().toISOString();
+    
     const processedRecords = records.map((record: any) => {
       const processedRecord: any = {};
       
@@ -125,6 +128,9 @@ serve(async (req: Request) => {
       if (record.csv_row_number !== undefined) {
         processedRecord['csv_row_number'] = record.csv_row_number;
       }
+      
+      // Add the upload timestamp so we can identify the latest batch
+      processedRecord['created_at'] = uploadTimestamp;
       
       return processedRecord;
     });

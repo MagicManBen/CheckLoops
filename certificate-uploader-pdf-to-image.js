@@ -1045,128 +1045,127 @@ function initCertificateUploaderPDFToImage() {
     // Reset modal body to confirmation form
     if (modalBody) {
       modalBody.innerHTML = `
-        <div class="form-grid">
-          <div class="form-group" style="display:none;">
-            <!-- Hidden staff select field - always set to current user -->
-            <label for="cert-staff-select">Staff Member</label>
-            <select id="cert-staff-select">
-              <option value="">Select staff member...</option>
-            </select>
-          </div>
-          
-          <!-- Show detected name information instead -->
-          <div class="form-group">
-            <label>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                <circle cx="12" cy="7" r="4"></circle>
-              </svg>
-              Certificate Details
-            </label>
-            <div id="detected-name-info" style="padding: 0.75rem; background-color: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius); display: flex; align-items: center;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.5rem; color: var(--primary);">
+        <!-- Certificate Details Card -->
+        <div class="cert-details-card">
+          <div class="card-section certificate-section">
+            <div class="section-header">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                 <polyline points="14,2 14,8 20,8"></polyline>
               </svg>
               <div>
-                <div style="font-weight: 600; color: var(--gray-900);">Uploading as: <span style="color: var(--primary);" id="current-user-name"></span></div>
-                <div style="font-size: 0.875rem; color: var(--gray-600);">
-                  <span id="name-match-status">Checking certificate name...</span>
-                  <div id="detected-name-display" style="font-size: 0.75rem;">
-                    Detected: <span id="detected-person-name" style="font-weight: 500;"></span>
-                  </div>
-                </div>
+                <h4>Certificate Information</h4>
+                <p>Extracted from your certificate</p>
+              </div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">Uploading as:</div>
+              <div class="info-value"><span id="current-user-name" style="font-weight: 600; color: var(--primary);">Loading...</span></div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">Detected Name:</div>
+              <div class="info-value"><span id="detected-person-name" style="font-weight: 600; color: var(--gray-900);">-</span></div>
+            </div>
+            <div class="info-row" id="name-match-status-row" style="display: none;">
+              <div class="info-label">Status:</div>
+              <div class="info-value" id="name-match-status" style="display: flex; align-items: center; gap: 0.5rem;"></div>
+            </div>
+          </div>
+
+          <!-- Training Details Card -->
+          <div class="card-section training-section">
+            <div class="section-header">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path>
+                <path d="M6 12v5c3 3 9 3 12 0v-5"></path>
+              </svg>
+              <div>
+                <h4>Training Details</h4>
+                <p>Review and confirm the training information</p>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="cert-training-type">Training Type</label>
+              <select id="cert-training-type">
+                <option value="">Select training type...</option>
+              </select>
+              <div class="ai-match-indicator" id="ai-match-status" style="display: none;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M9 12l2 2 4-4"></path>
+                  <circle cx="12" cy="12" r="9"></circle>
+                </svg>
+                <span>AI matched with <span id="match-confidence">90%</span> confidence</span>
               </div>
             </div>
           </div>
 
-          <div class="form-group">
-            <label for="cert-training-type">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path>
-                <path d="M6 12v5c3 3 9 3 12 0v-5"></path>
-              </svg>
-              Training Type
-            </label>
-            <select id="cert-training-type">
-              <option value="">Select training type...</option>
-            </select>
-            <div class="ai-match-indicator" id="ai-match-status" style="display: none;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M9 12l2 2 4-4"></path>
-                <circle cx="12" cy="12" r="9"></circle>
-              </svg>
-              AI matched with <span id="match-confidence">90%</span> confidence
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label for="cert-completion-date">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <!-- Dates Card -->
+          <div class="card-section dates-section">
+            <div class="section-header">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
                 <line x1="16" y1="2" x2="16" y2="6"></line>
                 <line x1="8" y1="2" x2="8" y2="6"></line>
                 <line x1="3" y1="10" x2="21" y2="10"></line>
               </svg>
-              Completion Date
-            </label>
-            <input type="date" id="cert-completion-date">
+              <div>
+                <h4>Validity Period</h4>
+                <p>When does this training expire</p>
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+              <div class="form-group">
+                <label for="cert-completion-date">Completion Date</label>
+                <input type="date" id="cert-completion-date">
+              </div>
+              <div class="form-group">
+                <label for="cert-validity-years">Valid For</label>
+                <select id="cert-validity-years">
+                  <option value="">Auto-calculated...</option>
+                  <option value="1">1 Year</option>
+                  <option value="2">2 Years</option>
+                  <option value="3">3 Years</option>
+                  <option value="5">5 Years</option>
+                  <option value="never">Never Expires</option>
+                </select>
+              </div>
+            </div>
+            <div class="expiry-preview" id="expiry-preview" style="margin-top: 1rem;"></div>
           </div>
 
-          <div class="form-group">
-            <label for="cert-validity-years">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"></circle>
-                <polyline points="12,6 12,12 16,14"></polyline>
-              </svg>
-              Valid For
-            </label>
-            <select id="cert-validity-years">
-              <option value="">Auto-calculated...</option>
-              <option value="1">1 Year</option>
-              <option value="2">2 Years</option>
-              <option value="3">3 Years</option>
-              <option value="5">5 Years</option>
-              <option value="never">Never Expires</option>
-            </select>
-            <div class="expiry-preview" id="expiry-preview"></div>
-          </div>
-
-          <div class="form-group">
-            <label for="cert-provider">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <!-- Additional Info Card -->
+          <div class="card-section additional-section">
+            <div class="section-header">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
                 <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
               </svg>
-              Training Provider
-            </label>
-            <input type="text" id="cert-provider" placeholder="Provider not detected">
-          </div>
-
-          <div class="form-group">
-            <label for="cert-id">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14,2 14,8 20,8"></polyline>
-                <line x1="16" y1="13" x2="8" y2="13"></line>
-                <line x1="16" y1="17" x2="8" y2="17"></line>
-              </svg>
-              Certificate ID
-            </label>
-            <input type="text" id="cert-id" placeholder="Certificate ID not detected">
+              <div>
+                <h4>Additional Information</h4>
+                <p>Provider and certificate details</p>
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+              <div class="form-group">
+                <label for="cert-provider">Training Provider</label>
+                <input type="text" id="cert-provider" placeholder="e.g. E-Learning for Healthcare">
+              </div>
+              <div class="form-group">
+                <label for="cert-id">Certificate ID</label>
+                <input type="text" id="cert-id" placeholder="e.g. CERT-123456">
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="cert-notes">Notes</label>
+              <textarea id="cert-notes" rows="2" placeholder="Add any additional notes or observations..."></textarea>
+            </div>
           </div>
         </div>
 
-        <div class="form-group full-width">
-          <label for="cert-notes">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-              <path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-            </svg>
-            Additional Notes
-          </label>
-          <textarea id="cert-notes" rows="3" placeholder="Add any additional notes here..."></textarea>
-        </div>
+        <!-- Hidden staff select field - always set to current user -->
+        <select id="cert-staff-select" style="display: none;">
+          <option value="">Select staff member...</option>
+        </select>
       `;
     }
     
@@ -1197,62 +1196,99 @@ function initCertificateUploaderPDFToImage() {
       left: 0;
       right: 0;
       bottom: 0;
-      background-color: rgba(255, 247, 237, 0.98);
+      background: linear-gradient(135deg, rgba(11, 79, 179, 0.08), rgba(118, 167, 255, 0.12));
       z-index: 10;
       display: flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
       padding: 2rem;
-      text-align: center;
-      border-radius: var(--radius-xl);
+      backdrop-filter: blur(4px);
     `;
     
-    // Create SVG icon
-    const iconSvg = document.createElement('svg');
-    iconSvg.setAttribute('width', '48');
-    iconSvg.setAttribute('height', '48');
-    iconSvg.setAttribute('viewBox', '0 0 24 24');
-    iconSvg.setAttribute('fill', 'none');
-    iconSvg.setAttribute('stroke', '#f97316');
-    iconSvg.setAttribute('stroke-width', '2');
-    iconSvg.style.marginBottom = '1rem';
-    iconSvg.innerHTML = `
-      <circle cx="12" cy="12" r="10"></circle>
-      <line x1="12" y1="8" x2="12" y2="12"></line>
-      <line x1="12" y1="16" x2="12.01" y2="16"></line>
+    // Create wrapper for centered content
+    const contentWrapper = document.createElement('div');
+    contentWrapper.style.cssText = `
+      background: var(--white);
+      border: 2px solid rgba(11, 79, 179, 0.2);
+      border-radius: 16px;
+      padding: 2.5rem;
+      max-width: 500px;
+      width: 100%;
+      box-shadow: 0 20px 48px rgba(11, 79, 179, 0.12);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
     `;
-    warningOverlay.appendChild(iconSvg);
     
     // Add title
     const title = document.createElement('h3');
-    title.style.cssText = 'margin: 0 0 1rem; color: #f97316; font-size: 1.25rem;';
+    title.style.cssText = `
+      margin: 0 0 1.25rem;
+      color: var(--gray-900);
+      font-size: 1.375rem;
+      font-weight: 700;
+      font-family: var(--font-display);
+      letter-spacing: -0.02em;
+    `;
     title.textContent = 'Name Mismatch Detected';
-    warningOverlay.appendChild(title);
+    contentWrapper.appendChild(title);
     
     // Add first paragraph
     const para1 = document.createElement('p');
-    para1.style.cssText = 'margin: 0 0 1.5rem; font-size: 1rem; max-width: 500px; color: var(--gray-700);';
-    para1.innerHTML = `
-      The name on this certificate appears to be <strong>"${detectedName}"</strong>, but you're logged in as <strong>"${currentUserName}"</strong>.
+    para1.style.cssText = `
+      margin: 0 0 1.25rem;
+      font-size: 0.9375rem;
+      line-height: 1.6;
+      color: var(--gray-700);
     `;
-    warningOverlay.appendChild(para1);
+    para1.innerHTML = `
+      The name on this certificate appears to be <strong style="color: var(--gray-900); font-weight: 600;">"${detectedName}"</strong>, but you're logged in as <strong style="color: var(--gray-900); font-weight: 600;">"${currentUserName}"</strong>.
+    `;
+    contentWrapper.appendChild(para1);
     
     // Add second paragraph
     const para2 = document.createElement('p');
-    para2.style.cssText = 'margin: 0 0 2rem; font-size: 0.875rem; max-width: 500px; color: var(--gray-600);';
+    para2.style.cssText = `
+      margin: 0 0 2rem;
+      font-size: 0.8125rem;
+      line-height: 1.5;
+      color: var(--gray-600);
+    `;
     para2.textContent = 'This page is intended for uploading your own training certificates. If this certificate belongs to someone else, please cancel and use the admin dashboard to upload it for them.';
-    warningOverlay.appendChild(para2);
+    contentWrapper.appendChild(para2);
     
     // Create button container
     const buttonContainer = document.createElement('div');
-    buttonContainer.style.cssText = 'display: flex; gap: 1rem;';
+    buttonContainer.style.cssText = `
+      display: flex;
+      gap: 1rem;
+      width: 100%;
+      justify-content: center;
+    `;
     
     // Create "This is my certificate" button
     const confirmBtn = document.createElement('button');
     confirmBtn.className = 'btn btn-secondary';
-    confirmBtn.style.cssText = 'background-color: #fff; border: 1px solid #f97316; color: #f97316; cursor: pointer; padding: 0.75rem 1.25rem; border-radius: 0.375rem; font-weight: 600;';
+    confirmBtn.style.cssText = `
+      background-color: transparent;
+      border: 2px solid var(--primary);
+      color: var(--primary);
+      cursor: pointer;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      transition: all 0.3s ease;
+      flex: 1;
+    `;
     confirmBtn.textContent = 'This is my certificate';
+    confirmBtn.addEventListener('mouseover', function() {
+      this.style.backgroundColor = 'rgba(11, 79, 179, 0.05)';
+    });
+    confirmBtn.addEventListener('mouseout', function() {
+      this.style.backgroundColor = 'transparent';
+    });
     confirmBtn.addEventListener('click', function() {
       document.querySelector('.name-mismatch-warning').remove();
       console.log('Certificate confirmed as own despite name mismatch');
@@ -1263,8 +1299,28 @@ function initCertificateUploaderPDFToImage() {
     // Create "Cancel upload" button
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'btn';
-    cancelBtn.style.cssText = 'background-color: #f97316; color: white; cursor: pointer; padding: 0.75rem 1.25rem; border-radius: 0.375rem; font-weight: 600; border: none;';
+    cancelBtn.style.cssText = `
+      background: linear-gradient(135deg, var(--primary), #4f9cf9);
+      color: white;
+      cursor: pointer;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      border: none;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 12px rgba(11, 79, 179, 0.2);
+      flex: 1;
+    `;
     cancelBtn.textContent = 'Cancel upload';
+    cancelBtn.addEventListener('mouseover', function() {
+      this.style.boxShadow = '0 8px 24px rgba(11, 79, 179, 0.3)';
+      this.style.transform = 'translateY(-2px)';
+    });
+    cancelBtn.addEventListener('mouseout', function() {
+      this.style.boxShadow = '0 4px 12px rgba(11, 79, 179, 0.2)';
+      this.style.transform = 'translateY(0)';
+    });
     cancelBtn.addEventListener('click', function() {
       if (typeof window.closeConfirmModal === 'function') {
         window.closeConfirmModal();
@@ -1280,9 +1336,8 @@ function initCertificateUploaderPDFToImage() {
       debug.info('[PDF-IMG] Certificate upload canceled due to name mismatch');
     });
     buttonContainer.appendChild(cancelBtn);
-    
-    // Add buttons to overlay
-    warningOverlay.appendChild(buttonContainer);
+    contentWrapper.appendChild(buttonContainer);
+    warningOverlay.appendChild(contentWrapper);
     
     // Add to modal
     const modalContent = confirmModal.querySelector('.cert-modal-content');

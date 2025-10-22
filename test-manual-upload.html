@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Manual Certificate Upload</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+        h1 { color: #333; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 4px; }
+        input, button { padding: 8px; margin: 5px; font-size: 14px; }
+        button { cursor: pointer; background: #0066cc; color: white; border: none; border-radius: 4px; }
+        button:hover { background: #0052a3; }
+        .log { background: #f9f9f9; padding: 10px; border: 1px solid #ccc; border-radius: 4px; max-height: 300px; overflow-y: auto; margin-top: 10px; font-size: 12px; }
+        .log-entry { padding: 3px 0; border-bottom: 1px solid #eee; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Manual Certificate Upload Test</h1>
+        
+        <div class="test-section">
+            <h2>Check Recent Records</h2>
+            <button onclick="checkRecentRecords()">Check Database for Type 66 Records</button>
+            <div class="log" id="check-log"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>Simulate Record Without File</h2>
+            <p>This simulates what happens when saveTrainingRecord is called but window.uploadedFile is null</p>
+            <button onclick="simulateRecordNoFile()">Create Test Record (No File)</button>
+            <div class="log" id="sim-log"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        const supabaseUrl = 'https://unveoqnlqnobufhublyw.supabase.co';
+        const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudmVvcW5scW5vYnVmdWh1Ymx5dyIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNjg4MjMyODAwLCJleHAiOjE5MDM4MDQ4MDB9.G9WlNwOZvgExToDQ8AqAfDvRJkddbVr_1uJ0zLeLUqg';
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+
+        window.currentUser = {
+            id: '61b3f0ba-1ffc-4bfc-82f6-30148aa62b76',
+            siteId: 2
+        };
+
+        function logToDiv(divId, message, type = 'info') {
+            const logDiv = document.getElementById(divId);
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${timestamp}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        async function checkRecentRecords() {
+            const logDiv = 'check-log';
+            document.getElementById(logDiv).innerHTML = '';
+            logToDiv(logDiv, '🔍 Checking recent records...', 'info');
+
+            try {
+                const { data, error } = await supabase
+                    .from('training_records')
+                    .select('id,training_type_id,completion_date,expiry_date,certificate_url,created_at,user_id')
+                    .eq('training_type_id', 66)
+                    .order('created_at', { ascending: false })
+                    .limit(5);
+
+                if (error) {
+                    logToDiv(logDiv, `❌ Query error: ${error.message}`, 'error');
+                    return;
+                }
+
+                logToDiv(logDiv, `✅ Found ${data?.length || 0} records for training_type_id = 66`, 'success');
+
+                if (data && data.length > 0) {
+                    data.forEach((rec, idx) => {
+                        const hasCert = rec.certificate_url ? '✅' : '❌';
+                        const userId = rec.user_id ? rec.user_id.substring(0, 8) : 'null';
+                        logToDiv(logDiv, `\n📋 Record ${idx + 1} (ID: ${rec.id}):`, 'info');
+                        logToDiv(logDiv, `   User: ${userId}`, 'info');
+                        logToDiv(logDiv, `   Date: ${rec.completion_date} → Expiry: ${rec.expiry_date}`, 'info');
+                        logToDiv(logDiv, `   ${hasCert} Certificate: ${rec.certificate_url || 'NONE'}`, rec.certificate_url ? 'success' : 'error');
+                        logToDiv(logDiv, `   Created: ${new Date(rec.created_at).toLocaleString()}`, 'info');
+                    });
+                } else {
+                    logToDiv(logDiv, 'No records found', 'info');
+                }
+
+            } catch (err) {
+                logToDiv(logDiv, `❌ Exception: ${err.message}`, 'error');
+            }
+        }
+
+        async function simulateRecordNoFile() {
+            const logDiv = 'sim-log';
+            document.getElementById(logDiv).innerHTML = '';
+            logToDiv(logDiv, '📝 Simulating manual upload without file...', 'info');
+            logToDiv(logDiv, 'This happens when: user selects training type and date but NO file is selected', 'info');
+
+            try {
+                const recordData = {
+                    site_id: window.currentUser.siteId,
+                    user_id: window.currentUser.id,
+                    training_type_id: 66,
+                    completion_date: new Date().toISOString().split('T')[0],
+                    expiry_date: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0],
+                    notes: 'TEST: Simulated record without file',
+                    certificate_url: null
+                };
+
+                logToDiv(logDiv, `\n🔄 Inserting record:`, 'info');
+                logToDiv(logDiv, `   Type: 66 (Information Governance)`, 'info');
+                logToDiv(logDiv, `   Certificate: NULL (no file uploaded)`, 'error');
+                logToDiv(logDiv, `   User: ${window.currentUser.id.substring(0, 8)}...`, 'info');
+
+                const { data, error } = await supabase
+                    .from('training_records')
+                    .insert([recordData])
+                    .select();
+
+                if (error) {
+                    logToDiv(logDiv, `❌ Insert failed: ${error.message}`, 'error');
+                    return;
+                }
+
+                logToDiv(logDiv, `\n✅ Record inserted successfully!`, 'success');
+                logToDiv(logDiv, `📊 This matches the pattern in your database:`, 'success');
+                logToDiv(logDiv, `   - Rows have completion_date and expiry_date ✅`, 'success');
+                logToDiv(logDiv, `   - Rows have certificate_url = NULL ❌`, 'error');
+                logToDiv(logDiv, `\n🔍 Root cause: Manual form was submitted without selecting a file`, 'error');
+                logToDiv(logDiv, `   The saveTrainingRecord() function saves even if window.uploadedFile is null/falsy`, 'error');
+
+            } catch (err) {
+                logToDiv(logDiv, `❌ Exception: ${err.message}`, 'error');
+            }
+        }
+
+        // Run on load
+        window.addEventListener('load', () => {
+            logToDiv('check-log', 'Page loaded. Click button to check database.', 'info');
+        });
+    </script>
+</body>
+</html>
