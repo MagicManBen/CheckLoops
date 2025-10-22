@@ -104,66 +104,14 @@
     .fx-pop { animation: fxPop .28s cubic-bezier(.2,.9,.2,1); }
     @keyframes fxPop { from { transform: scale(.96); opacity:.0 } to { transform: scale(1); opacity:1 } }
 
+    /* Live indicator pulse animation */
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+
     /* Confetti canvas */
     .confetti { position: fixed; inset: 0; pointer-events: none; z-index: 1000; }
-
-    /* Step states */
-    .stepper .step.done .num { 
-      background: linear-gradient(180deg,#16a34a,#15803d); 
-      box-shadow: 
-        0 4px 12px rgba(22,163,74,.2),
-        0 1px 4px rgba(22,163,74,.1),
-        inset 0 1px 0 rgba(255,255,255,0.15);
-    }
-    .stepper .step.active { 
-      border-color: rgba(37,99,235,.2);
-      outline: 2px solid rgba(37,99,235,.25); 
-      box-shadow: 
-        0 4px 16px rgba(37,99,235,.08),
-        0 8px 24px rgba(0,0,0,0.04),
-        0 0 0 2px rgba(37,99,235,.06);
-    }
-
-    /* Internal welcome wizard pages */
-    .wsteps { margin-top: 8px; }
-    .wstep { display:none; }
-    .wstep.on { display:block; animation: fxPop .24s cubic-bezier(.2,.9,.2,1); }
-    #welcome-back[disabled] { opacity:.5; pointer-events:none; }
-
-    /* Simplified wizard progress bar */
-    .wizard-progress{ margin:4px 0 16px; }
-    .wizard-progress .rail{ 
-      height: 6px; 
-      border-radius: 999px; 
-      background: #eef2f7; 
-      overflow: hidden; 
-      box-shadow: inset 0 1px 2px rgba(0,0,0,0.04);
-    }
-    .wizard-progress .fill{ 
-      height: 100%; 
-      background: linear-gradient(90deg, #60a5fa, #2563eb); 
-      transition: width .3s ease;
-      box-shadow: 0 1px 2px rgba(37,99,235,.16);
-    }
-    .wizard-progress .labels{ 
-      display: flex; 
-      justify-content: space-between; 
-      font-size: 11px; 
-      color: #64748b; 
-      margin-top: 6px;
-    }
-    .wizard-progress .labels .active{ 
-      color: #0f172a; 
-      font-weight: 600; 
-    }
-
-    /* Make stepper non-interactive (visual only) */
-    .stepper .step{ pointer-events:none; }
-    
-    /* Partner staff custom scrollbar */
-    #partner-checkboxes::-webkit-scrollbar {
-      width: 10px;
-    }
     #partner-checkboxes::-webkit-scrollbar-track {
       background: #f1f5f9;
       border-radius: 10px;
@@ -805,6 +753,8 @@
     }
     
     .error-details {
+          /* TV carousel: include padding in each slide’s width */
+    .tv-view { box-sizing: border-box; }
         font-size: 14px;
         color: #64748b;
         margin-bottom: 16px;
@@ -813,6 +763,7 @@
         margin-right: auto;
     }
 </style>
+  
 </head>
 <body>
   <div class="bg">
@@ -864,6 +815,9 @@
           <!-- Raw Data removed -->
           <button class="nav-btn" data-page="ai-rules" style="color:#64748b;background:transparent;text-decoration:none;font-weight:500;padding:8px 16px;border-radius:8px;transition:all .15s;border:none;cursor:pointer;font-size:14px;">
             <i class="bi bi-stars"></i> AI Rules
+          </button>
+          <button class="nav-btn" data-page="live" style="color:#64748b;background:transparent;text-decoration:none;font-weight:500;padding:8px 16px;border-radius:8px;transition:all .15s;border:none;cursor:pointer;font-size:14px;">
+            <i class="bi bi-broadcast-pin"></i> LIVE
           </button>
           <button class="nav-btn" data-page="rules-alerts" style="color:#64748b;background:transparent;text-decoration:none;font-weight:500;padding:8px 16px;border-radius:8px;transition:all .15s;border:none;cursor:pointer;font-size:14px;">
             <i class="bi bi-gear"></i> Settings
@@ -1380,6 +1334,210 @@
         </div>
       </section>
 
+      <!-- LIVE Page (Auto-rotating 2×2 TV Display) -->
+      <section id="page-live" class="page-view" style="display:none;">
+        <!-- Timer Control (Fixed in corner) -->
+        <div id="tv-timer-control" style="position:fixed;top:80px;right:20px;z-index:200;display:flex;flex-direction:column;align-items:center;gap:6px;background:rgba(255,255,255,0.95);border:1px solid #e2e8f0;border-radius:8px;padding:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);backdrop-filter:blur(10px);">
+          <div style="display:flex;gap:3px;">
+            <button id="tv-timer-up" style="background:linear-gradient(180deg,#3b82f6,#2563eb);border:none;color:white;padding:3px 6px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:700;transition:all 0.2s;">
+              <i class="bi bi-chevron-up"></i>
+            </button>
+            <button id="tv-timer-down" style="background:linear-gradient(180deg,#64748b,#475569);border:none;color:white;padding:3px 6px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:700;transition:all 0.2s;">
+              <i class="bi bi-chevron-down"></i>
+            </button>
+          </div>
+          <div>
+            <div style="font-size:9px;color:#64748b;font-weight:600;text-transform:uppercase;line-height:1;text-align:center;">Rotation</div>
+            <div style="font-size:14px;font-weight:800;color:#0f172a;line-height:1.2;font-variant-numeric:tabular-nums;text-align:center;">
+              <span id="tv-timer-value">10</span><span style="font-size:10px;color:#64748b;margin-left:1px;">s</span>
+            </div>
+          </div>
+          <!-- Progress bar -->
+          <div style="width:40px;height:3px;background:#e2e8f0;border-radius:2px;overflow:hidden;">
+            <div id="tv-progress-bar" style="height:100%;background:linear-gradient(90deg,#3b82f6,#60a5fa);width:0%;transition:width 0.3s linear;"></div>
+          </div>
+          <!-- Navigation arrows -->
+          <div style="display:flex;gap:4px;margin-top:4px;">
+            <button id="tv-view-prev" style="background:linear-gradient(180deg,#f59e0b,#d97706);border:none;color:white;padding:4px 6px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:700;transition:all 0.2s;" title="Previous view">
+              <i class="bi bi-chevron-left"></i>
+            </button>
+            <button id="tv-view-next" style="background:linear-gradient(180deg,#f59e0b,#d97706);border:none;color:white;padding:4px 6px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:700;transition:all 0.2s;" title="Next view">
+              <i class="bi bi-chevron-right"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Carousel Container -->
+  <div id="tv-carousel-container" style="position:relative;overflow:hidden;width:100%;height:calc(100vh - 180px);">
+          <!-- Carousel Track (slides horizontally) -->
+          <div id="tv-carousel-track" style="display:flex;transition:transform 0.8s cubic-bezier(0.4, 0, 0.2, 1);width:300%;height:100%;">
+            
+            <!-- View 1: Triage & Communications (2×2) -->
+            <div class="tv-view" data-view="1" style="width:100%;display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:auto 1fr;gap:6px;height:100%;padding:6px;box-sizing:border-box;">
+              <!-- Triage Requests -->
+              <div style="background:linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);border:2px solid #7dd3fc;border-radius:12px;padding:12px;box-shadow:0 4px 12px rgba(37,99,235,0.12);display:flex;flex-direction:column;grid-column:1 / span 2;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                  <div style="flex:1;">
+                    <h2 style="margin:0;font-size:20px;font-weight:800;color:#0369a1;display:flex;align-items:center;gap:6px;">
+                      <i class="bi bi-chat-dots-fill" style="font-size:22px;"></i>
+                      Triage Requests
+                      <span id="live-indicator" style="display:none;background:#22c55e;color:white;font-size:9px;padding:2px 6px;border-radius:4px;font-weight:700;animation:pulse 2s infinite;">● LIVE</span>
+                    </h2>
+                    <p style="margin:3px 0 0;color:#0284c7;font-size:11px;font-weight:500;">Realtime Accurx requests</p>
+                  </div>
+                  <!-- Audio alerts removed -->
+                </div>
+                <div style="flex:1;display:flex;flex-direction:column;justify-content:center;">
+                  <div id="live-tiles" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <!-- Tiles will be injected here -->
+                  </div>
+                </div>
+                <div style="text-align:center;margin-top:auto;padding-top:10px;border-top:2px solid #bae6fd;">
+                </div>
+              </div>
+
+              <!-- Messages -->
+              <div style="background:linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);border:2px solid #c084fc;border-radius:12px;padding:12px;box-shadow:0 4px 12px rgba(168,85,247,0.12);display:flex;flex-direction:column;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                  <i class="bi bi-envelope-fill" style="font-size:22px;color:#9333ea;"></i>
+                  <h2 style="margin:0;font-size:20px;font-weight:800;color:#6b21a8;">Messages</h2>
+                </div>
+                <div style="flex:1;display:flex;align-items:center;justify-content:center;color:#7c3aed;font-size:13px;font-weight:600;">
+                  <div style="text-align:center;">
+                    <i class="bi bi-inbox" style="font-size:48px;opacity:0.3;display:block;margin-bottom:10px;"></i>
+                    No data available
+                  </div>
+                </div>
+              </div>
+
+              <!-- Appointments -->
+              <div style="background:linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);border:2px solid #4ade80;border-radius:12px;padding:12px;box-shadow:0 4px 12px rgba(34,197,94,0.12);display:flex;flex-direction:column;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                  <i class="bi bi-calendar-check-fill" style="font-size:22px;color:#16a34a;"></i>
+                  <h2 style="margin:0;font-size:20px;font-weight:800;color:#15803d;">Appointments</h2>
+                </div>
+                <div style="flex:1;display:flex;align-items:center;justify-content:center;color:#16a34a;font-size:13px;font-weight:600;">
+                  <div style="text-align:center;">
+                    <i class="bi bi-inbox" style="font-size:48px;opacity:0.3;display:block;margin-bottom:10px;"></i>
+                    No data available
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- View 2: Calls Intelligence (2×2) -->
+            <div class="tv-view" data-view="2" style="width:100%;display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(2,1fr);gap:6px;height:100%;padding:6px;box-sizing:border-box;">
+              <!-- Call Volume -->
+              <div style="background:linear-gradient(135deg, #fff7ed 0%, #fde68a 100%);border:2px solid #f59e0b;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(245,158,11,0.18);display:flex;flex-direction:column;">
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;gap:12px;">
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <i class="bi bi-telephone-inbound-fill" style="font-size:28px;color:#b45309;"></i>
+                    <h2 style="margin:0;font-size:22px;font-weight:800;color:#92400e;">Today's Call Volume</h2>
+                  </div>
+                  <div id="calls-last-updated" style="font-size:11px;font-weight:600;color:#b45309;opacity:0.8;white-space:nowrap;">Waiting for updates…</div>
+                </div>
+                <div id="calls-volume-card" style="flex:1;display:flex;align-items:center;justify-content:center;color:#b45309;font-size:14px;font-weight:600;text-align:center;">
+                  Loading live call data…
+                </div>
+              </div>
+
+              <!-- Performance Metrics -->
+              <div style="background:linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);border:2px solid #60a5fa;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(59,130,246,0.15);display:flex;flex-direction:column;">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+                  <i class="bi bi-speedometer2" style="font-size:28px;color:#2563eb;"></i>
+                  <h2 style="margin:0;font-size:22px;font-weight:800;color:#1d4ed8;">Performance</h2>
+                </div>
+                <div id="calls-performance-card" style="flex:1;display:flex;align-items:center;justify-content:center;color:#2563eb;font-size:14px;font-weight:600;text-align:center;">
+                  Loading performance data…
+                </div>
+              </div>
+
+              <!-- Aftercall Actions -->
+              <div style="background:linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);border:2px solid #a855f7;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(168,85,247,0.15);display:flex;flex-direction:column;">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+                  <i class="bi bi-people-fill" style="font-size:28px;color:#7c3aed;"></i>
+                  <h2 style="margin:0;font-size:22px;font-weight:800;color:#6b21a8;">Aftercall Actions</h2>
+                </div>
+                <div id="calls-actions-card" style="flex:1;display:flex;align-items:center;justify-content:center;color:#6b21a8;font-size:14px;font-weight:600;text-align:center;">
+                  Tracking follow-up outcomes…
+                </div>
+              </div>
+
+              <!-- Reason Insights -->
+              <div style="background:linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);border:2px solid #34d399;border-radius:12px;padding:16px;box-shadow:0 6px 16px rgba(16,185,129,0.15);display:flex;flex-direction:column;">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+                  <i class="bi bi-chat-dots-fill" style="font-size:28px;color:#047857;"></i>
+                  <h2 style="margin:0;font-size:22px;font-weight:800;color:#047857;">Reason Insights</h2>
+                </div>
+                <div id="calls-reasons-card" style="flex:1;display:flex;align-items:center;justify-content:center;color:#047857;font-size:14px;font-weight:600;text-align:center;">
+                  Surfacing reason trends…
+                </div>
+              </div>
+            </div>
+
+            <!-- View 3: Analytics & Summary (2×2) -->
+            <div class="tv-view" data-view="3" style="width:100%;display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(2,1fr);gap:6px;height:100%;padding:6px;box-sizing:border-box;">
+              <!-- Analytics -->
+              <div style="background:linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);border:2px solid #60a5fa;border-radius:12px;padding:12px;box-shadow:0 6px 16px rgba(59,130,246,0.15);display:flex;flex-direction:column;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                  <i class="bi bi-graph-up-arrow" style="font-size:28px;color:#2563eb;"></i>
+                  <h2 style="margin:0;font-size:22px;font-weight:800;color:#1e40af;">Analytics</h2>
+                </div>
+                <div style="flex:1;display:flex;align-items:center;justify-content:center;color:#2563eb;font-size:14px;font-weight:600;">
+                  <div style="text-align:center;">
+                    <i class="bi bi-inbox" style="font-size:56px;opacity:0.3;display:block;margin-bottom:14px;"></i>
+                    No data available
+                  </div>
+                </div>
+              </div>
+
+              <!-- Summary Stats 1 -->
+              <div style="background:linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);border:2px solid #fbbf24;border-radius:12px;padding:12px;box-shadow:0 6px 16px rgba(251,191,36,0.15);display:flex;flex-direction:column;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                  <i class="bi bi-speedometer2" style="font-size:28px;color:#d97706;"></i>
+                  <h2 style="margin:0;font-size:22px;font-weight:800;color:#92400e;">Performance</h2>
+                </div>
+                <div style="flex:1;display:flex;align-items:center;justify-content:center;color:#b45309;font-size:14px;font-weight:600;">
+                  <div style="text-align:center;">
+                    <i class="bi bi-inbox" style="font-size:56px;opacity:0.3;display:block;margin-bottom:14px;"></i>
+                    No data available
+                  </div>
+                </div>
+              </div>
+
+              <!-- Summary Stats 2 -->
+              <div style="background:linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);border:2px solid #4ade80;border-radius:12px;padding:12px;box-shadow:0 6px 16px rgba(34,197,94,0.15);display:flex;flex-direction:column;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                  <i class="bi bi-clipboard-data" style="font-size:28px;color:#16a34a;"></i>
+                  <h2 style="margin:0;font-size:22px;font-weight:800;color:#15803d;">Overview</h2>
+                </div>
+                <div style="flex:1;display:flex;align-items:center;justify-content:center;color:#16a34a;font-size:14px;font-weight:600;">
+                  <div style="text-align:center;">
+                    <i class="bi bi-inbox" style="font-size:56px;opacity:0.3;display:block;margin-bottom:14px;"></i>
+                    No data available
+                  </div>
+                </div>
+              </div>
+
+              <!-- System Status -->
+              <div style="background:linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);border:2px solid #c084fc;border-radius:12px;padding:12px;box-shadow:0 6px 16px rgba(168,85,247,0.15);display:flex;flex-direction:column;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                  <i class="bi bi-cpu" style="font-size:28px;color:#9333ea;"></i>
+                  <h2 style="margin:0;font-size:22px;font-weight:800;color:#6b21a8;">System Status</h2>
+                </div>
+                <div style="flex:1;display:flex;align-items:center;justify-content:center;color:#7c3aed;font-size:14px;font-weight:600;">
+                  <div style="text-align:center;">
+                    <i class="bi bi-check-circle-fill" style="font-size:56px;opacity:0.4;display:block;margin-bottom:14px;color:#22c55e;"></i>
+                    All Systems Operational
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
       <!-- EMIS Apps (filled) table - hidden -->
       <section id="view-filled" class="view" style="display:none;">
         <div class="card" style="margin-top:14px;">
@@ -1566,6 +1724,9 @@
           btn.style.fontWeight = isActive ? '600' : '500';
         });
         
+        // Save current page to localStorage so it persists after refresh
+        localStorage.setItem('emis_current_page', pageName);
+        
         // Raw Data page removed — no-op
         
         // Update dashboard stats if on dashboard (only once per session)
@@ -1573,6 +1734,14 @@
           updateDashboardStats();
         }
       }
+      
+      // Restore saved page view on page load
+      document.addEventListener('DOMContentLoaded', () => {
+        const savedPage = localStorage.getItem('emis_current_page');
+        if (savedPage && document.getElementById('page-' + savedPage)) {
+          showPage(savedPage);
+        }
+      });
 
       // Update dashboard statistics
       async function updateDashboardStats() {
@@ -1609,9 +1778,15 @@
           });
         });
         
-        // Load dashboard on initial load
-        if (typeof updateDashboardStats === 'function') {
-          updateDashboardStats();
+        // Restore saved page view on page load, or show dashboard as default
+        const savedPage = localStorage.getItem('emis_current_page');
+        if (savedPage && document.getElementById('page-' + savedPage)) {
+          showPage(savedPage);
+        } else {
+          // Default to dashboard if no saved page
+          if (typeof updateDashboardStats === 'function') {
+            updateDashboardStats();
+          }
         }
       });
 
@@ -1636,11 +1811,21 @@
           btn.style.fontWeight = isActive ? '600' : '500';
         });
         
+        // Save current page to localStorage so it persists after refresh
+        localStorage.setItem('emis_current_page', pageName);
+        
         // Raw Data page removed — no-op
         
         // Update dashboard stats if on dashboard (only once per session)
         if (pageName === 'dashboard' && !window.dashboardLoaded) {
           updateDashboardStats();
+        }
+        // If showing live page, load triage counts and setup realtime
+        if (pageName === 'live') {
+          loadLiveTriageCounts();
+          setupTriageRealtime();
+          loadLiveCallStats();
+          setupCallsRealtime();
         }
       }
 
@@ -1654,6 +1839,761 @@
         const diff = d.getDate() - day + (day === 0 ? -6 : 1);
         return new Date(d.setDate(diff));
       }
+
+      // --- Live triage requests loader ---
+      async function loadLiveTriageCounts() {
+        try {
+          console.log('🚀 loadLiveTriageCounts() called');
+          
+          let sb = window.supabase;
+          console.log('📍 window.supabase:', sb ? '✅ exists' : '❌ null/undefined');
+          
+          if (!sb) {
+            console.error('❌ Supabase client not initialized, waiting 1 second...');
+            await new Promise(r => setTimeout(r, 1000));
+            sb = window.supabase;
+            console.log('📍 After wait, window.supabase:', sb ? '✅ exists' : '❌ still null');
+            if (!sb) throw new Error('Supabase client still not available');
+          }
+
+          const tilesEl = document.getElementById('live-tiles');
+          const updatedEl = document.getElementById('live-updated');
+          if (!tilesEl) {
+            console.error('❌ Could not find live-tiles element');
+            return;
+          }
+          tilesEl.innerHTML = '<div style="grid-column:1/-1;padding:24px;text-align:center;color:#64748b;">Loading…</div>';
+
+          // Today's date in YYYY-MM-DD (triage table uses ISO-like dates in request_date)
+          const today = new Date();
+          const yyyy = today.getFullYear();
+          const mm = String(today.getMonth() + 1).padStart(2, '0');
+          const dd = String(today.getDate()).padStart(2, '0');
+          const isoDate = `${yyyy}-${mm}-${dd}`;
+          console.log('� Today date:', isoDate);
+          console.log('�🔍 About to query triage_requests...');
+          console.log('   Filter: request_date = "' + isoDate + '"');
+
+          // Fetch all requests for today (no count parameter, fetch actual rows and count client-side)
+          console.log('📡 Executing: sb.from("triage_requests").select("id, type, topic").eq("request_date", "' + isoDate + '")');
+          const { data: allRequests, error: fetchError } = await sb.from('triage_requests')
+            .select('id, type, topic')
+            .eq('request_date', isoDate);
+          
+          console.log('📊 Query response:');
+          console.log('   Error:', fetchError);
+          console.log('   Data length:', allRequests ? allRequests.length : 'null');
+          console.log('   Data sample:', allRequests ? allRequests.slice(0, 3) : 'null');
+          
+          if (fetchError) {
+            console.error('❌ Supabase error:', fetchError.message, fetchError.code);
+            throw fetchError;
+          }
+
+          if (!allRequests) {
+            console.warn('⚠️  allRequests is null, using empty array');
+            allRequests = [];
+          }
+
+          // Count by type
+          const medRequests = allRequests.filter(r => r.type === 'Medical');
+          const adminRequests = allRequests.filter(r => r.type === 'Admin');
+          const medCount = medRequests.length;
+          const adminCount = adminRequests.length;
+          
+          console.log('📈 Counts:');
+          console.log('   Medical:', medCount, medRequests.length > 0 ? `(examples: ${medRequests.slice(0, 2).map(r => r.id).join(', ')})` : '(none)');
+          console.log('   Admin:', adminCount, adminRequests.length > 0 ? `(examples: ${adminRequests.slice(0, 2).map(r => r.id).join(', ')})` : '(none)');
+
+          const makeTile = (title, value, color) => `
+            <div style="background:#fff;border:1px solid #e6eefc;border-radius:12px;padding:16px;display:flex;flex-direction:column;justify-content:space-between;min-height:100px;">
+              <div style="font-size:13px;color:#64748b;font-weight:600;margin-bottom:6px;">${title}</div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                <div style="font-size:28px;font-weight:800;color:${color};">${value ?? 0}</div>
+                <div style="font-size:12px;color:#94a3b8;text-align:right;">Today</div>
+              </div>
+            </div>
+          `;
+
+          // Build topic breakdown for Admin requests
+          const adminTopicCounts = {};
+          adminRequests.forEach(r => {
+            const topic = r.topic || 'Unknown';
+            adminTopicCounts[topic] = (adminTopicCounts[topic] || 0) + 1;
+          });
+          
+          const topicRows = Object.entries(adminTopicCounts)
+            .sort(([, a], [, b]) => b - a) // Sort by count descending
+            .map(([topic, count]) => `
+              <div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;color:#64748b;">
+                <span>${topic}</span>
+                <span style="font-weight:600;color:#1e293b;">${count}</span>
+              </div>
+            `)
+            .join('');
+          
+          const adminBreakdownHtml = adminCount > 0 ? `
+            <div style="margin-top:8px;padding:8px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+              <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:6px;">Topics</div>
+              ${topicRows}
+            </div>
+          ` : '';
+
+          tilesEl.innerHTML = '';
+          tilesEl.insertAdjacentHTML('beforeend', makeTile('Medical requests', medCount, '#2563eb'));
+          
+          // Admin tile with topic breakdown
+          const adminTileHtml = `
+            <div style="background:#fff;border:1px solid #e6eefc;border-radius:12px;padding:16px;display:flex;flex-direction:column;justify-content:space-between;">
+              <div>
+                <div style="font-size:13px;color:#64748b;font-weight:600;margin-bottom:6px;">Admin requests</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                  <div style="font-size:28px;font-weight:800;color:#10b981;">${adminCount ?? 0}</div>
+                  <div style="font-size:12px;color:#94a3b8;text-align:right;">Today</div>
+                </div>
+              </div>
+              ${adminBreakdownHtml}
+            </div>
+          `;
+          tilesEl.insertAdjacentHTML('beforeend', adminTileHtml);
+
+          // Timestamp removed per user request: do not display 'Updated HH:MM'
+          // const now = new Date();
+          // updatedEl.textContent = `Updated ${now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+          console.log('✅ Live triage counts loaded and rendered successfully');
+        } catch (err) {
+          console.error('❌ CRITICAL ERROR in loadLiveTriageCounts:', err);
+          console.error('   Message:', err.message);
+          console.error('   Stack:', err.stack);
+          const tilesEl = document.getElementById('live-tiles');
+          if (tilesEl) {
+            tilesEl.innerHTML = `<div style="grid-column:1/-1;padding:18px;color:#ef4444;background:#fff6f6;border:1px solid #fee2e2;border-radius:8px;">
+              <strong>Error loading data:</strong> ${err.message || err}
+              <br><small style="color:#64748b;">Check browser console for details.</small>
+            </div>`;
+          }
+        }
+      }
+
+      const numberFormatter = new Intl.NumberFormat('en-GB');
+
+      function escapeHtmlLite(text) {
+        if (text === null || text === undefined) return '';
+        return String(text)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function formatDuration(seconds) {
+        if (seconds === null || seconds === undefined || isNaN(seconds)) return '—';
+        const total = Math.max(0, Math.round(seconds));
+        const hours = Math.floor(total / 3600);
+        const minutes = Math.floor((total % 3600) / 60);
+        const secs = total % 60;
+        if (hours > 0) {
+          return `${hours}h ${minutes}m`;
+        }
+        if (minutes > 0) {
+          return `${minutes}m ${secs.toString().padStart(2, '0')}s`;
+        }
+        return `${secs}s`;
+      }
+
+      function formatPercentage(value) {
+        if (value === null || value === undefined || isNaN(value)) return '—';
+        const rounded = value >= 10 ? value.toFixed(0) : value.toFixed(1);
+        return `${rounded.replace(/\.0$/, '')}%`;
+      }
+
+      function formatNumber(value) {
+        if (value === null || value === undefined || isNaN(value)) return '—';
+        return numberFormatter.format(Math.round(value));
+      }
+
+      function isCallAnswered(call) {
+        if (!call) return false;
+        if (typeof call.answered === 'boolean') return call.answered;
+        if (call.outcome) return String(call.outcome).toLowerCase() === 'answered';
+        return false;
+      }
+
+      function getWaitSeconds(call) {
+        if (!call) return null;
+        if (typeof call.wait_time === 'number') return call.wait_time;
+        if (typeof call.queue_duration === 'number') return call.queue_duration;
+        return null;
+      }
+
+      function getHandleSeconds(call) {
+        if (!call) return null;
+        if (typeof call.handle_time === 'number') return call.handle_time;
+        const talk = typeof call.talk_duration === 'number' ? call.talk_duration : 0;
+        const hold = typeof call.hold_duration === 'number' ? call.hold_duration : 0;
+        const total = talk + hold;
+        return total > 0 ? total : null;
+      }
+
+      async function loadLiveCallStats() {
+        try {
+          console.log('📞 loadLiveCallStats() called');
+
+          let sb = window.supabase;
+          if (!sb) {
+            console.warn('📞 Supabase client not ready – retrying in 1s');
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            sb = window.supabase;
+            if (!sb) throw new Error('Supabase client unavailable for call statistics');
+          }
+
+          const summaryEl = document.getElementById('calls-summary-card');
+          const volumeEl = document.getElementById('calls-volume-card');
+          const performanceEl = document.getElementById('calls-performance-card');
+          const actionsEl = document.getElementById('calls-actions-card');
+          const reasonsEl = document.getElementById('calls-reasons-card');
+          const updatedEl = document.getElementById('calls-last-updated');
+
+          if (!volumeEl || !performanceEl || !actionsEl || !reasonsEl) {
+            console.warn('📞 Call insight containers not found in DOM');
+            return;
+          }
+
+          const now = new Date();
+          const startOfDay = new Date(now);
+          startOfDay.setHours(0, 0, 0, 0);
+          const endOfDay = new Date(startOfDay);
+          endOfDay.setDate(endOfDay.getDate() + 1);
+
+          const { data: callRows, error } = await sb
+            .from('calls_live_final_stream')
+            .select('call_id,start_time,end_time,direction,queue_name,final_agent_name,call_type,outcome,call_outcome,reason,reason_summary,reason_category,answered,total_duration,ivr_duration,queue_duration,talk_duration,hold_duration,wait_time,handle_time,is_internal,status,dialled_name,asked_for_appointment,appointment_given,asked_to_call_back')
+            .gte('start_time', startOfDay.toISOString())
+            .lt('start_time', endOfDay.toISOString())
+            .order('start_time', { ascending: true })
+            .limit(5000);
+
+          if (error) {
+            console.error('📞 Supabase error while loading calls:', error);
+            throw error;
+          }
+
+          const calls = Array.isArray(callRows) ? callRows : [];
+          console.log(`📞 Retrieved ${calls.length} calls for today`);
+
+          if (updatedEl) {
+            const stamp = new Date();
+            updatedEl.textContent = `Updated ${stamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+            updatedEl.title = `Last updated ${stamp.toLocaleString()}`;
+          }
+
+          if (calls.length === 0) {
+            volumeEl.innerHTML = `
+              <div style="text-align:center;width:100%;">
+                <div style="font-size:42px;font-weight:800;color:#b45309;line-height:1;">0</div>
+                <div style="margin-top:8px;font-size:13px;color:#b45309;">No calls recorded yet today.</div>
+                <div style="margin-top:12px;font-size:12px;color:#a16207;">This view will populate as soon as the first call arrives.</div>
+              </div>`;
+            performanceEl.innerHTML = `<div style="text-align:center;font-size:13px;color:#2563eb;">Awaiting call activity…</div>`;
+            actionsEl.innerHTML = `<div style="text-align:center;font-size:13px;color:#6b21a8;">Follow-up actions will appear once calls are answered.</div>`;
+            reasonsEl.innerHTML = `<div style="text-align:center;font-size:13px;color:#047857;">Reason insights will appear once calls start coming in.</div>`;
+            if (summaryEl) {
+              summaryEl.innerHTML = `
+                <div style="text-align:center;">
+                  <i class="bi bi-inbox" style="font-size:40px;opacity:0.3;display:block;margin-bottom:10px;"></i>
+                  No call activity yet today
+                </div>
+              `;
+            }
+            return;
+          }
+
+          const totalCalls = calls.length;
+          const inboundCalls = calls.filter(call => String(call.direction || '').toUpperCase() === 'INBOUND').length;
+          const outboundCalls = calls.filter(call => String(call.direction || '').toUpperCase() === 'OUTBOUND').length;
+          const internalCalls = calls.filter(call => call.is_internal === true).length;
+          const answeredCallList = calls.filter(isCallAnswered);
+          const answeredCalls = answeredCallList.length;
+          const missedCalls = totalCalls - answeredCalls;
+          const answerRate = totalCalls ? (answeredCalls / totalCalls) * 100 : NaN;
+          const liveCalls = calls.filter(call => !call.end_time).length;
+
+          const waits = calls.map(getWaitSeconds).filter(value => value !== null);
+          const waitsSorted = [...waits].sort((a, b) => a - b);
+          const avgWait = waits.length ? waits.reduce((acc, value) => acc + value, 0) / waits.length : null;
+          const longestWait = waits.length ? waitsSorted[waitsSorted.length - 1] : null;
+          const p90Wait = waits.length ? waitsSorted[Math.floor(0.9 * (waitsSorted.length - 1))] : null;
+
+          let longestWaitDetails = null;
+          if (longestWait !== null) {
+            longestWaitDetails = calls.reduce((best, call) => {
+              const wait = getWaitSeconds(call);
+              if (wait === null) return best;
+              if (!best || wait > best.wait) {
+                return {
+                  wait,
+                  queue: call.queue_name || call.dialled_name || 'Unassigned',
+                  outcome: call.outcome || call.call_outcome || ''
+                };
+              }
+              return best;
+            }, null);
+          }
+
+          const handleTimes = calls.map(getHandleSeconds).filter(value => value !== null);
+          const avgHandle = handleTimes.length ? handleTimes.reduce((acc, value) => acc + value, 0) / handleTimes.length : null;
+          const talkSeconds = calls.reduce((acc, call) => acc + (typeof call.talk_duration === 'number' ? call.talk_duration : 0), 0);
+
+          const answeredWaits = answeredCallList
+            .map(getWaitSeconds)
+            .filter(value => value !== null);
+          const answeredWithin120 = answeredWaits.filter(value => value <= 120).length;
+          const answeredWithin120Rate = answeredWaits.length ? (answeredWithin120 / answeredWaits.length) * 100 : NaN;
+
+          const reasonStats = {};
+          calls.forEach(call => {
+            const rawReason = call.reason_category || '';
+            const reason = (rawReason && rawReason.trim()) ? rawReason.trim() : 'Unspecified';
+            reasonStats[reason] = (reasonStats[reason] || 0) + 1;
+          });
+          const reasonEntries = Object.entries(reasonStats).sort((a, b) => b[1] - a[1]);
+          const hasMeaningfulReason = reasonEntries.some(([reason]) => reason.toLowerCase() !== 'unspecified');
+          const topReasons = hasMeaningfulReason
+            ? reasonEntries.filter(([reason]) => reason.toLowerCase() !== 'unspecified').slice(0, 4)
+            : reasonEntries.slice(0, 4);
+
+          const askedForAppointmentAnswered = answeredCallList.filter(call => call.asked_for_appointment === true).length;
+          const appointmentGivenAnswered = answeredCallList.filter(call => call.appointment_given === true).length;
+          const askedToCallbackAnswered = answeredCallList.filter(call => call.asked_to_call_back === true).length;
+          const askedForAppointmentRate = answeredCalls ? (askedForAppointmentAnswered / answeredCalls) * 100 : NaN;
+          const appointmentGivenRate = answeredCalls ? (appointmentGivenAnswered / answeredCalls) * 100 : NaN;
+          const askedToCallbackRate = answeredCalls ? (askedToCallbackAnswered / answeredCalls) * 100 : NaN;
+
+          const metricPill = (label, value, accent, subline = '') => `
+            <div style="background:rgba(255,255,255,0.65);border-radius:10px;padding:12px 14px;text-align:left;">
+              <div style="font-size:11px;font-weight:700;color:${accent};text-transform:uppercase;letter-spacing:.05em;">${label}</div>
+              <div style="font-size:22px;font-weight:800;color:#0f172a;margin-top:4px;">${value}</div>
+              ${subline ? `<div style="font-size:11px;color:#475569;margin-top:4px;">${subline}</div>` : ''}
+            </div>
+          `;
+
+          if (summaryEl) {
+            summaryEl.innerHTML = `
+              <div style="display:flex;flex-direction:column;gap:12px;">
+                <div style="display:flex;align-items:flex-end;justify-content:space-between;">
+                  <div>
+                    <div style="font-size:36px;font-weight:800;color:#7c2d12;line-height:1;">${formatNumber(totalCalls)}</div>
+                    <div style="font-size:12px;color:#b45309;margin-top:4px;">Calls today</div>
+                  </div>
+                  <div style="text-align:right;">
+                    <div style="font-size:16px;font-weight:700;color:#047857;">${formatPercentage(answerRate)}</div>
+                    <div style="font-size:11px;color:#065f46;">Answered</div>
+                  </div>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
+                  <div style="background:rgba(255,255,255,0.65);border-radius:10px;padding:10px;">
+                    <div style="font-size:11px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.04em;">Answered</div>
+                    <div style="font-size:18px;font-weight:800;color:#7c2d12;margin-top:3px;">${formatNumber(answeredCalls)}</div>
+                  </div>
+                  <div style="background:rgba(255,255,255,0.65);border-radius:10px;padding:10px;">
+                    <div style="font-size:11px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.04em;">Missed</div>
+                    <div style="font-size:18px;font-weight:800;color:#7c2d12;margin-top:3px;">${formatNumber(missedCalls)}</div>
+                  </div>
+                  <div style="background:rgba(255,255,255,0.65);border-radius:10px;padding:10px;">
+                    <div style="font-size:11px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.04em;">Avg wait</div>
+                    <div style="font-size:18px;font-weight:800;color:#7c2d12;margin-top:3px;">${formatDuration(avgWait)}</div>
+                  </div>
+                  <div style="background:rgba(255,255,255,0.65);border-radius:10px;padding:10px;">
+                    <div style="font-size:11px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.04em;">Longest</div>
+                    <div style="font-size:18px;font-weight:800;color:#7c2d12;margin-top:3px;">${formatDuration(longestWait)}</div>
+                  </div>
+                </div>
+                <div style="font-size:11px;color:#a16207;text-align:right;">
+                  ${liveCalls > 0 ? `${formatNumber(liveCalls)} live call${liveCalls === 1 ? '' : 's'} right now` : 'No live calls right now'}
+                </div>
+              </div>
+            `;
+          }
+
+          volumeEl.innerHTML = `
+            <div style="width:100%;">
+              <div style="text-align:left;">
+                <div style="font-size:13px;font-weight:600;color:#b45309;text-transform:uppercase;letter-spacing:.05em;">Total calls</div>
+                <div style="font-size:46px;font-weight:800;color:#7c2d12;line-height:1;margin-top:6px;">${formatNumber(totalCalls)}</div>
+                <div style="font-size:13px;color:#b45309;margin-top:6px;">${formatPercentage(answerRate)} answered</div>
+              </div>
+              <div style="margin-top:16px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+                ${metricPill('Inbound', formatNumber(inboundCalls), '#c2410c')}
+                ${metricPill('Outbound', formatNumber(outboundCalls), '#c2410c')}
+                ${metricPill('Answered', formatNumber(answeredCalls), '#047857')}
+                ${metricPill('Missed', formatNumber(missedCalls), '#b91c1c')}
+              </div>
+              <div style="margin-top:12px;font-size:11px;color:#b45309;opacity:0.9;">
+                ${internalCalls > 0 ? `${formatNumber(internalCalls)} internal call${internalCalls === 1 ? '' : 's'} • ` : ''}
+                ${liveCalls > 0 ? `${formatNumber(liveCalls)} live call${liveCalls === 1 ? '' : 's'} in progress` : 'No active calls right now'}
+              </div>
+            </div>
+          `;
+
+          performanceEl.innerHTML = `
+            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;width:100%;">
+              ${metricPill('Avg wait', formatDuration(avgWait), '#2563eb', waits.length ? `Across ${formatNumber(waits.length)} calls` : '')}
+              ${metricPill('Longest wait', formatDuration(longestWait), '#2563eb', longestWaitDetails ? escapeHtmlLite(longestWaitDetails.queue) : '')}
+              ${metricPill('Avg handle', formatDuration(avgHandle), '#2563eb', handleTimes.length ? 'Answered calls' : '')}
+              ${metricPill('Answered <2m', formatPercentage(answeredWithin120Rate), '#2563eb', Number.isFinite(answeredWithin120Rate) ? `${formatNumber(answeredWithin120)} of ${formatNumber(answeredWaits.length)}` : '')}
+            </div>
+            <div style="margin-top:12px;font-size:11px;color:#1d4ed8;opacity:0.8;text-align:right;">
+              90th percentile wait ${formatDuration(p90Wait)} • Talk time today ${formatDuration(talkSeconds)}
+            </div>
+          `;
+
+          if (topQueues.length === 0) {
+            queuesEl.innerHTML = `<div style="text-align:center;color:#6b21a8;font-size:13px;">We haven't captured queue names for today's calls yet.</div>`;
+          } else {
+            queuesEl.innerHTML = `
+              <div style="width:100%;display:flex;flex-direction:column;gap:10px;">
+                ${topQueues.map((queue, index) => `
+                  <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;border-radius:12px;background:rgba(124,58,237,${0.18 - index * 0.03});">
+                    <div>
+                      <div style="font-size:13px;font-weight:700;color:#5b21b6;">${index + 1}. ${escapeHtmlLite(queue.name)}</div>
+                      <div style="font-size:11px;color:#7c3aed;margin-top:4px;">${formatNumber(queue.total)} calls • Avg wait ${formatDuration(queue.avgWait)}</div>
+                    </div>
+                    <div style="text-align:right;">
+                      <div style="font-size:18px;font-weight:800;color:#4c1d95;">${formatPercentage(queue.answerRate)}</div>
+                      <div style="font-size:11px;color:#7c3aed;">Answered</div>
+                    </div>
+                  </div>
+                `).join('')}
+                <div style="font-size:11px;color:#5b21b6;opacity:0.8;text-align:right;">Tracking ${Object.keys(queueStats).length} queue${Object.keys(queueStats).length === 1 ? '' : 's'} today</div>
+              </div>
+            `;
+          }
+
+          if (!topReasons.length) {
+            reasonsEl.innerHTML = `<div style="text-align:center;color:#047857;font-size:13px;">Reason insights will appear once calls include coded reasons.</div>`;
+          } else {
+            reasonsEl.innerHTML = `
+              <div style="width:100%;display:flex;flex-direction:column;gap:10px;">
+                ${topReasons.map(([reason, count]) => `
+                  <div style="padding:12px;border-radius:12px;background:rgba(16,185,129,0.16);">
+                    <div style="font-size:13px;font-weight:700;color:#047857;">${escapeHtmlLite(reason)}</div>
+                    <div style="font-size:11px;color:#047857;margin-top:6px;">${formatNumber(count)} calls • ${formatPercentage((count / totalCalls) * 100)} of today's volume</div>
+                  </div>
+                `).join('')}
+              </div>
+            `;
+          }
+        } catch (error) {
+          console.error('📞 Failed to load live call stats:', error);
+          const volumeEl = document.getElementById('calls-volume-card');
+          const performanceEl = document.getElementById('calls-performance-card');
+          const queuesEl = document.getElementById('calls-queues-card');
+          const reasonsEl = document.getElementById('calls-reasons-card');
+          const updatedEl = document.getElementById('calls-last-updated');
+          const message = `<div style="padding:16px;background:#fff6f6;border:1px solid #fecaca;border-radius:10px;color:#b91c1c;font-size:13px;">Unable to load call insights: ${escapeHtmlLite(error.message || error)}</div>`;
+          const summaryEl = document.getElementById('calls-summary-card');
+          if (volumeEl) volumeEl.innerHTML = message;
+          if (performanceEl) performanceEl.innerHTML = message;
+          if (queuesEl) queuesEl.innerHTML = message;
+          if (reasonsEl) reasonsEl.innerHTML = message;
+          if (summaryEl) summaryEl.innerHTML = message;
+          if (updatedEl) updatedEl.textContent = 'Update failed';
+        }
+      }
+
+      // Realtime subscription handles
+      let triageRealtimeChannel = null;
+      let callsRealtimeChannel = null;
+
+      // Sound Effect Utilities - DISABLED
+      // Audio alerts have been intentionally disabled per user request.
+      let audioAlertsEnabled = false;
+      function playSound(type) { return; }
+      function playTone() { return; }
+
+      function setupTriageRealtime() {
+        const sb = window.supabase;
+        if (!sb) {
+          console.warn('⚠️  Supabase client not ready for realtime subscription');
+          return;
+        }
+
+        // Clean up existing subscription if any
+        if (triageRealtimeChannel) {
+          sb.removeChannel(triageRealtimeChannel);
+        }
+
+        console.log('🔴 Setting up realtime subscription for triage_requests...');
+
+        // Subscribe to INSERT events on triage_requests
+        triageRealtimeChannel = sb
+          .channel('triage-requests-live')
+          .on(
+            'postgres_changes',
+            {
+              event: 'INSERT',
+              schema: 'public',
+              table: 'triage_requests'
+            },
+            (payload) => {
+              console.log('🔴 REALTIME: New triage request inserted!', payload.new);
+              
+              // Play sound based on request type
+              const requestType = payload.new?.type;
+              if (requestType === 'Medical') {
+                console.log('🔔 Playing Medical alert sound...');
+                playSound('medical');
+              } else if (requestType === 'Admin') {
+                console.log('🔔 Playing Admin alert sound...');
+                playSound('admin');
+              }
+              
+              // Reload counts when new request comes in
+              loadLiveTriageCounts();
+            }
+          )
+          .subscribe((status) => {
+            console.log('🔴 Realtime subscription status:', status);
+            
+            // Show live indicator when subscription is active
+            const indicator = document.getElementById('live-indicator');
+            if (status === 'SUBSCRIBED') {
+              indicator.style.display = 'inline-block';
+              console.log('✅ Realtime is now active! Dashboard will auto-update when new triage requests are inserted.');
+            } else {
+              indicator.style.display = 'none';
+            }
+          });
+      }
+
+      function setupCallsRealtime() {
+        const sb = window.supabase;
+        if (!sb) {
+          console.warn('⚠️  Supabase client not ready for calls realtime subscription');
+          return;
+        }
+
+        if (callsRealtimeChannel) {
+          sb.removeChannel(callsRealtimeChannel);
+        }
+
+        console.log('📞 Setting up realtime subscription for calls_live_final_stream...');
+
+        callsRealtimeChannel = sb
+          .channel('calls-live-tv')
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'calls_live_final_stream'
+            },
+            (payload) => {
+              console.log('📞 REALTIME: Calls change detected', payload.eventType, payload.new?.call_id || payload.old?.call_id);
+              loadLiveCallStats();
+            }
+          )
+          .subscribe((status) => {
+            console.log('📞 Calls realtime subscription status:', status);
+          });
+      }
+
+      // No manual refresh button for Live view — realtime updates handle refreshing counts
+      // (Left intentionally empty)
+      
+      // ===== TV CAROUSEL AUTO-ROTATION SYSTEM =====
+      let tvCarouselState = {
+        currentView: 0,
+        totalViews: 3,
+        intervalSeconds: 10,
+        intervalId: null,
+        progressIntervalId: null,
+        startTime: null
+      };
+
+      function startTVCarousel(resetToFirst = false) {
+        // Clear any existing intervals
+        if (tvCarouselState.intervalId) {
+          clearInterval(tvCarouselState.intervalId);
+        }
+        if (tvCarouselState.progressIntervalId) {
+          clearInterval(tvCarouselState.progressIntervalId);
+        }
+
+        // Optionally reset to first view
+        if (resetToFirst) {
+          tvCarouselState.currentView = 0;
+        }
+        updateCarouselPosition();
+
+        // Start rotation timer
+        tvCarouselState.intervalId = setInterval(() => {
+          nextTVView();
+        }, tvCarouselState.intervalSeconds * 1000);
+
+        // Start progress bar animation
+        startProgressBar();
+      }
+
+      function stopTVCarousel() {
+        if (tvCarouselState.intervalId) {
+          clearInterval(tvCarouselState.intervalId);
+          tvCarouselState.intervalId = null;
+        }
+        if (tvCarouselState.progressIntervalId) {
+          clearInterval(tvCarouselState.progressIntervalId);
+          tvCarouselState.progressIntervalId = null;
+        }
+      }
+
+      function nextTVView() {
+        tvCarouselState.currentView = (tvCarouselState.currentView + 1) % tvCarouselState.totalViews;
+        updateCarouselPosition();
+        startProgressBar();
+      }
+
+      function updateCarouselPosition() {
+        const track = document.getElementById('tv-carousel-track');
+        const container = document.getElementById('tv-carousel-container');
+        if (!track || !container) return;
+        const translateX = -(tvCarouselState.currentView * container.offsetWidth);
+        track.style.transform = `translateX(${translateX}px)`;
+      }
+
+      function startProgressBar() {
+        const progressBar = document.getElementById('tv-progress-bar');
+        if (!progressBar) return;
+
+        // Clear existing progress interval
+        if (tvCarouselState.progressIntervalId) {
+          clearInterval(tvCarouselState.progressIntervalId);
+        }
+
+        // Reset progress bar
+        progressBar.style.transition = 'none';
+        progressBar.style.width = '0%';
+
+        // Force reflow
+        void progressBar.offsetWidth;
+
+        // Animate progress bar
+        progressBar.style.transition = `width ${tvCarouselState.intervalSeconds}s linear`;
+        progressBar.style.width = '100%';
+      }
+
+      function updateTimerDisplay() {
+        const valueEl = document.getElementById('tv-timer-value');
+        if (valueEl) {
+          valueEl.textContent = tvCarouselState.intervalSeconds;
+        }
+      }
+
+      function increaseTimer() {
+        if (tvCarouselState.intervalSeconds < 60) {
+          tvCarouselState.intervalSeconds += 5;
+          updateTimerDisplay();
+          // Restart carousel with new timing
+          restartCarouselTimer();
+        }
+      }
+
+      function decreaseTimer() {
+        if (tvCarouselState.intervalSeconds > 5) {
+          tvCarouselState.intervalSeconds -= 5;
+          updateTimerDisplay();
+          // Restart carousel with new timing
+          restartCarouselTimer();
+        }
+      }
+
+      // Restart only the timers/progress without changing current view
+      function restartCarouselTimer() {
+        if (tvCarouselState.intervalId) {
+          clearInterval(tvCarouselState.intervalId);
+        }
+        if (tvCarouselState.progressIntervalId) {
+          clearInterval(tvCarouselState.progressIntervalId);
+        }
+        tvCarouselState.intervalId = setInterval(() => {
+          nextTVView();
+        }, tvCarouselState.intervalSeconds * 1000);
+        startProgressBar();
+      }
+
+      function prevTVView() {
+        tvCarouselState.currentView = (tvCarouselState.currentView - 1 + tvCarouselState.totalViews) % tvCarouselState.totalViews;
+        updateCarouselPosition();
+        // Reset the carousel timer
+        restartCarouselTimer();
+      }
+
+      function nextManualTVView() {
+        tvCarouselState.currentView = (tvCarouselState.currentView + 1) % tvCarouselState.totalViews;
+        updateCarouselPosition();
+        // Reset the carousel timer
+        restartCarouselTimer();
+      }
+
+      // Initialize TV carousel when LIVE page is shown
+      document.addEventListener('DOMContentLoaded', () => {
+        // Dynamically size the TV container to ensure 2x2 fits exactly
+        function setTVContainerHeight() {
+          const container = document.getElementById('tv-carousel-container');
+          const header = document.querySelector('header.app-hero');
+          if (!container) return;
+          const headerH = header ? header.offsetHeight : 70; // sticky header is ~70px
+          const extra = 80; // additional margins/padding
+          const height = Math.max(400, window.innerHeight - headerH - extra);
+          container.style.height = height + 'px';
+          console.log('TV Container height set:', height, 'px (viewport:', window.innerHeight, 'header:', headerH, ')');
+          updateCarouselPosition();
+        }
+        window.addEventListener('resize', setTVContainerHeight);
+        // Set initial height
+        setTVContainerHeight();
+
+        const timerUpBtn = document.getElementById('tv-timer-up');
+        const timerDownBtn = document.getElementById('tv-timer-down');
+
+        if (timerUpBtn) {
+          timerUpBtn.addEventListener('click', increaseTimer);
+        }
+        if (timerDownBtn) {
+          timerDownBtn.addEventListener('click', decreaseTimer);
+        }
+
+        
+
+        // Add event listeners for view navigation arrows
+        const viewPrevBtn = document.getElementById('tv-view-prev');
+        const viewNextBtn = document.getElementById('tv-view-next');
+        if (viewPrevBtn) {
+          viewPrevBtn.addEventListener('click', prevTVView);
+        }
+        if (viewNextBtn) {
+          viewNextBtn.addEventListener('click', nextManualTVView);
+        }
+
+        // Update the showPage function to handle carousel
+        const originalShowPage = window.showPage;
+        window.showPage = function(pageName) {
+          // Stop carousel when leaving LIVE page
+          if (originalShowPage) {
+            originalShowPage.call(this, pageName);
+          }
+
+          // Start/stop carousel based on page
+          if (pageName === 'live') {
+            setTimeout(() => {
+              setTVContainerHeight();
+              startTVCarousel(true);
+            }, 100);
+          } else {
+            stopTVCarousel();
+          }
+        };
+      });
       
       // Format date as "13 Oct..." or "20 October"
       function formatDate(date, short = true) {
@@ -1760,6 +2700,11 @@
             <div class="metric duty ${metrics.hasDuty ? '' : 'red'}">
               <span class="metric-label">Duty</span>
               <span class="checkmark">${metrics.hasDuty ? '✓' : '✗'}</span>
+            </div>
+            
+            <div class="metric" style="background: linear-gradient(135deg, #a78bfa, #9370db); color: white;">
+              <span class="metric-label">Doctors</span>
+              <span class="metric-value">${metrics.doctors || 0}</span>
             </div>
           </div>
         `;
@@ -1914,14 +2859,40 @@
           } else {
             console.log('No partners configured');
           }
+
+          // Count Doctors (session holders with "Dr" in their name)
+          let doctorCount = 0;
+          if (slotMappings.bookOnDayTypes.length > 0) {
+            console.log(`Querying Doctors: WHERE "Appointment Date" = '${dateStr}' AND "Slot Type" IN [${slotMappings.bookOnDayTypes.join(', ')}] AND "Full Name of the Session Holder of the Session" contains "Dr"`);
+            
+            const { data: doctorData, error: doctorError } = await window.supabase
+              .from('emis_apps_filled')
+              .select('"Full Name of the Session Holder of the Session"')
+              .eq('"Appointment Date"', dateStr)
+              .in('"Slot Type"', slotMappings.bookOnDayTypes);
+            
+            if (!doctorError && doctorData) {
+              // Count unique doctors (session holders with "Dr" in their name)
+              const uniqueDoctors = new Set(
+                doctorData
+                  .map(row => row['Full Name of the Session Holder of the Session'])
+                  .filter(name => name && /\bDr\b/i.test(name))
+              );
+              doctorCount = uniqueDoctors.size;
+              console.log(`Doctor count result: ${doctorCount} (unique doctors found)`);
+            } else if (doctorError) {
+              console.error('Error loading doctor data:', doctorError);
+            }
+          }
           
-          console.log(`Final results for ${dateStr}: OTD=${otdCount}, Not BKD=${notBkdCount}, Duty=${hasDuty}, Partner=${hasPartner}`);
+          console.log(`Final results for ${dateStr}: OTD=${otdCount}, Not BKD=${notBkdCount}, Duty=${hasDuty}, Partner=${hasPartner}, Doctors=${doctorCount}`);
           
           return {
             otd: otdCount,
             notBkd: notBkdCount,
             partnerIn: hasPartner, // Use real partner check instead of placeholder
-            hasDuty: hasDuty
+            hasDuty: hasDuty,
+            doctors: doctorCount
           };
         } catch (error) {
           console.error(`Error loading data for ${dateStr}:`, error);
@@ -1929,7 +2900,8 @@
             otd: 0,
             notBkd: 0,
             partnerIn: 999,
-            hasDuty: false
+            hasDuty: false,
+            doctors: 0
           };
         }
       }
@@ -2752,11 +3724,25 @@
             })();
         }
 
-        // Helper: load unique slot types from emis_apps_raw into window.loadedSlotTypes
+        // Helper: load unique slot types from latest upload only
         async function loadUniqueSlotTypes() {
           if (Array.isArray(window.loadedSlotTypes) && window.loadedSlotTypes.length) return window.loadedSlotTypes;
           const sb = window.supabase || (window.getSupabase && window.getSupabase());
           if (!sb) throw new Error('Supabase client not available');
+          
+          // First, get the latest upload timestamp
+          const { data: latestData, error: latestError } = await sb
+            .from('emis_apps_raw')
+            .select('created_at')
+            .order('created_at', { ascending: false })
+            .limit(1);
+          
+          if (latestError) throw latestError;
+          if (!latestData || !latestData.length) return [];
+          
+          const latestTimestamp = latestData[0].created_at;
+          
+          // Now fetch slot types only from the latest upload
           const PAGE_SIZE = 1000;
           let offset = 0;
           const seen = new Set();
@@ -2765,6 +3751,7 @@
             const { data, error } = await sb
               .from('emis_apps_raw')
               .select('slot_type')
+              .eq('created_at', latestTimestamp)
               .not('slot_type', 'is', null)
               .order('slot_type', { ascending: true })
               .range(offset, offset + PAGE_SIZE - 1);
@@ -5293,21 +6280,47 @@ ${slotTypesList}`
         try {
           console.log('Loading context data for site:', this.currentSite);
           
-          // Query distinct clinicians
-          const { data: cliniciansData, error: cliniciansError } = await window.supabase
+          // First, get the latest upload timestamp
+          const { data: latestData, error: latestError } = await window.supabase
+            .from('emis_apps_raw')
+            .select('created_at')
+            .order('created_at', { ascending: false })
+            .limit(1);
+          
+          if (latestError) throw latestError;
+          
+          let latestTimestamp = null;
+          if (latestData && latestData.length > 0) {
+            latestTimestamp = latestData[0].created_at;
+          }
+          
+          // Query distinct clinicians from latest upload only
+          const cliniciansQuery = window.supabase
             .from('emis_apps_raw')
             .select('full_name_session_holder')
             .eq('site_id', this.currentSite)
             .not('full_name_session_holder', 'is', null);
+          
+          if (latestTimestamp) {
+            cliniciansQuery.eq('created_at', latestTimestamp);
+          }
+          
+          const { data: cliniciansData, error: cliniciansError } = await cliniciansQuery;
 
           if (cliniciansError) throw cliniciansError;
 
-          // Query distinct slot types
-          const { data: slotTypesData, error: slotTypesError } = await window.supabase
+          // Query distinct slot types from latest upload only
+          const slotTypesQuery = window.supabase
             .from('emis_apps_raw')
             .select('slot_type')
             .eq('site_id', this.currentSite)
             .not('slot_type', 'is', null);
+          
+          if (latestTimestamp) {
+            slotTypesQuery.eq('created_at', latestTimestamp);
+          }
+          
+          const { data: slotTypesData, error: slotTypesError } = await slotTypesQuery;
 
           if (slotTypesError) throw slotTypesError;
 
@@ -6482,6 +7495,26 @@ ${slotTypesList}`
       AIRules.init();
     });
   </script>
+
+  <script>
+(function () {
+  function sizeLiveView() {
+    var container = document.getElementById('tv-carousel-container');
+    if (!container) return;
+    // Fill remaining viewport space under the sticky header / container top
+    var available = window.innerHeight - container.getBoundingClientRect().top - 8; // small breathing room
+    container.style.height = Math.max(320, Math.floor(available)) + 'px';
+    if (typeof updateCarouselPosition === 'function') {
+      updateCarouselPosition();
+    }
+  }
+  // Initial runs
+  document.addEventListener('DOMContentLoaded', sizeLiveView);
+  window.addEventListener('load', function(){ setTimeout(sizeLiveView, 120); });
+  // Keep in sync on resize/orientation
+  window.addEventListener('resize', sizeLiveView);
+})();
+</script>
 
   
 </body>
